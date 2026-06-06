@@ -6,6 +6,7 @@ use aes_gcm::{
 };
 use argon2::{Algorithm as Argon2Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{ChaCha20Poly1305, Nonce as ChaChaNonce};
+use rand::RngCore;
 use zeroize::Zeroizing;
 
 use crate::crypto::EncryptionAlgorithm;
@@ -91,7 +92,8 @@ pub fn encrypt_bytes(
 ) -> Result<Vec<u8>, AgentError> {
     validate_passphrase(passphrase)?;
 
-    let salt: [u8; SALT_LEN] = rand::random();
+    let mut salt = [0u8; SALT_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut salt);
 
     let params = get_kdf_params()?;
     let m_cost = params.m_cost();
@@ -103,7 +105,8 @@ pub fn encrypt_bytes(
         .hash_password_into(passphrase.as_bytes(), &salt, &mut *key)
         .map_err(|e| AgentError::CryptoError(format!("Argon2 key derivation failed: {}", e)))?;
 
-    let nonce: [u8; NONCE_LEN] = rand::random();
+    let mut nonce = [0u8; NONCE_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut nonce);
 
     let ciphertext = match algo {
         EncryptionAlgorithm::AesGcm256 => {

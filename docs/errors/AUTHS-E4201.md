@@ -1,6 +1,6 @@
 # AUTHS-E4201
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InitError::Git`
 
 ## Message

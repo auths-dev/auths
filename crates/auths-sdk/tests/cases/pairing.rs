@@ -76,14 +76,15 @@ fn test_verify_session_status_responded() {
 
 #[test]
 fn test_verify_device_did_matches() {
-    use auths_verifier::types::DeviceDID;
+    use auths_verifier::types::CanonicalDid;
 
     let pubkey = [0x42u8; 32];
-    let expected_did = DeviceDID::from_public_key(&pubkey, auths_crypto::CurveType::Ed25519);
+    let expected_did =
+        CanonicalDid::from_public_key_did_key(&pubkey, auths_crypto::CurveType::Ed25519);
     let result = pairing::verify_device_did(
         &pubkey,
         auths_crypto::CurveType::Ed25519,
-        &expected_did.to_string(),
+        expected_did.as_ref(),
     );
     assert!(result.is_ok());
 }

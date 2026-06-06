@@ -61,24 +61,28 @@ pub fn compute_rotation_event(
     state: &KeyState,
     next_signer: &auths_crypto::TypedSignerKey,
     new_next_public_key: &[u8],
-    _new_next_curve: auths_crypto::CurveType,
+    new_next_curve: auths_crypto::CurveType,
     witness_config: Option<&WitnessConfig>,
 ) -> Result<(RotEvent, Vec<u8>), RotationError> {
     let prefix = &state.prefix;
 
     let new_current_pub_encoded = next_signer.cesr_encoded();
-    let new_next_commitment = compute_next_commitment(new_next_public_key);
+    let new_next_verkey =
+        auths_keri::KeriPublicKey::from_verkey_bytes(new_next_public_key, new_next_curve)
+            .map_err(|e| RotationError::RotationFailed(format!("next verkey: {e}")))?;
+    let new_next_commitment = compute_next_commitment(&new_next_verkey);
 
+    // Witness-set change expressed as br/ba deltas vs the prior backer set
+    // (cuts then adds; bt over the resolved new set). Enabled: converge on the
+    // configured witnesses. Disabled: cut all prior backers.
     let (bt, br, ba) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (
-            Threshold::Simple(cfg.threshold as u64),
-            vec![],
-            cfg.witness_urls
-                .iter()
-                .map(|u| Prefix::new_unchecked(u.to_string()))
-                .collect(),
-        ),
-        _ => (Threshold::Simple(0), vec![], vec![]),
+        Some(cfg) if cfg.is_enabled() => {
+            let desired: Vec<Prefix> = cfg.aids().cloned().collect();
+            let (br, ba) = witness_set_delta(&state.backers, &desired);
+            let bt = Threshold::Simple((cfg.threshold as u64).min(desired.len() as u64));
+            (bt, br, ba)
+        }
+        _ => (Threshold::Simple(0), state.backers.clone(), vec![]),
     };
 
     let new_sequence = state.sequence + 1;
@@ -97,7 +101,6 @@ pub fn compute_rotation_event(
         ba,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -109,6 +112,34 @@ pub fn compute_rotation_event(
         .map_err(|e| RotationError::RotationFailed(format!("final serialization failed: {e}")))?;
 
     Ok((rot, event_bytes))
+}
+
+/// Compute the `(cuts, adds)` backer deltas that converge the prior backer set
+/// onto `desired`.
+///
+/// Cuts (`br`) are prior backers no longer desired; adds (`ba`) are desired
+/// backers not already present. The two are disjoint, so applying cuts-before-
+/// adds to `prior` yields exactly `desired` — the witness-set-change semantics a
+/// `rot` event encodes. Avoids re-adding an already-present backer (which the
+/// validator's backer-delta rules reject).
+///
+/// Args:
+/// * `prior`: The backer set in force before this rotation.
+/// * `desired`: The configured target backer set.
+fn witness_set_delta(prior: &[Prefix], desired: &[Prefix]) -> (Vec<Prefix>, Vec<Prefix>) {
+    let desired_set: std::collections::HashSet<&str> = desired.iter().map(|p| p.as_str()).collect();
+    let prior_set: std::collections::HashSet<&str> = prior.iter().map(|p| p.as_str()).collect();
+    let br = prior
+        .iter()
+        .filter(|p| !desired_set.contains(p.as_str()))
+        .cloned()
+        .collect();
+    let ba = desired
+        .iter()
+        .filter(|p| !prior_set.contains(p.as_str()))
+        .cloned()
+        .collect();
+    (br, ba)
 }
 
 /// Key material required for the keychain side of `apply_rotation`.
@@ -365,7 +396,10 @@ fn retrieve_precommitted_key(
     let parsed = auths_crypto::parse_key_material(&decrypted)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
 
-    if !verify_commitment(&parsed.public_key, &state.next_commitment[0]) {
+    let next_verkey =
+        auths_keri::KeriPublicKey::from_verkey_bytes(&parsed.public_key, parsed.seed.curve())
+            .map_err(|e| RotationError::RotationFailed(format!("next verkey: {e}")))?;
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::RotationFailed(
             "commitment mismatch: next key does not match previous commitment".into(),
         ));
@@ -837,7 +871,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let ctx =
@@ -945,5 +978,39 @@ mod tests {
             33,
             "P-256 compressed public key must be 33 bytes"
         );
+    }
+
+    fn p(s: &str) -> Prefix {
+        Prefix::new_unchecked(s.to_string())
+    }
+
+    #[test]
+    fn rot_adds_witness_via_ba() {
+        let (br, ba) = witness_set_delta(&[], &[p("BW1")]);
+        assert!(br.is_empty());
+        assert_eq!(ba, vec![p("BW1")]);
+    }
+
+    #[test]
+    fn rot_removes_witness_via_br() {
+        let (br, ba) = witness_set_delta(&[p("BW1")], &[]);
+        assert_eq!(br, vec![p("BW1")]);
+        assert!(ba.is_empty());
+    }
+
+    #[test]
+    fn rot_cut_then_readd_dedupes() {
+        // w1 already present: it must NOT be re-added; only w2 is added.
+        let (br, ba) = witness_set_delta(&[p("BW1")], &[p("BW1"), p("BW2")]);
+        assert!(br.is_empty());
+        assert_eq!(ba, vec![p("BW2")]);
+    }
+
+    #[test]
+    fn rot_delta_cuts_and_adds_are_disjoint() {
+        // prior {w1,w2} -> desired {w2,w3}: cut w1, add w3, retain w2.
+        let (br, ba) = witness_set_delta(&[p("BW1"), p("BW2")], &[p("BW2"), p("BW3")]);
+        assert_eq!(br, vec![p("BW1")]);
+        assert_eq!(ba, vec![p("BW3")]);
     }
 }

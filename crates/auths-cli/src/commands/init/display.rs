@@ -90,6 +90,10 @@ pub(crate) fn display_agent_dry_run(
         out.println(&format!("  Expires in: {}s", secs));
     }
     out.newline();
+    out.print_info(
+        "An agent is a KERI delegated identifier — after `auths init`, create one with \
+         `auths id agent add`.",
+    );
     out.print_info("TOML config that would be generated:");
     let provisioning_config = auths_sdk::identity::AgentProvisioningConfig {
         agent_name: config.alias.to_string(),

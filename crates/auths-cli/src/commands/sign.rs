@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::domains::identity::local::{LocalSigner, resolve_local_signer};
 use auths_sdk::signing::PassphraseProvider;
 
 use super::artifact::sign::handle_sign as handle_artifact_sign;
@@ -61,15 +62,56 @@ const ARTIFACT_EXTENSIONS: &[&str] = &[
     ".pkg", ".nupkg",
 ];
 
-/// Execute `git rebase --exec "git commit --amend --no-edit" <base>` to re-sign a range.
+/// Build the in-band signer trailers for the local machine's signing identity:
+/// `Auths-Id` = root identity, `Auths-Device` = signing device, and (when the root
+/// KEL tip is known) `Auths-Anchor-Seq` = the delegator-anchoring position at
+/// signing, so a verifier can order this commit against a later revocation by KEL
+/// position. The trailers ride in the commit message body, covered by the signature.
+fn commit_trailer_args(signer: &LocalSigner) -> Vec<String> {
+    let mut trailers = vec![
+        format!("Auths-Id: {}", signer.root_did),
+        format!("Auths-Device: {}", signer.signer_did),
+    ];
+    if let Some(seq) = signer.anchor_seq {
+        trailers.push(auths_verifier::anchor_seq_trailer(seq));
+    }
+    trailers
+}
+
+/// Resolve the local signing identity → the trailer values to embed in-band.
+///
+/// Resolution reads identity + registry only (no key decryption), so it needs no
+/// passphrase. Fails clearly when this machine has no resolvable signing identity.
+fn resolve_signer_trailer(
+    repo_opt: Option<&Path>,
+    env_config: &EnvironmentConfig,
+) -> Result<LocalSigner> {
+    let repo_path =
+        auths_sdk::storage_layout::resolve_repo_path(repo_opt.map(|p| p.to_path_buf()))?;
+    let ctx = crate::factories::storage::build_auths_context(&repo_path, env_config, None)
+        .context("Failed to build auths context for commit signing")?;
+    resolve_local_signer(&ctx).map_err(anyhow::Error::from).context(
+        "Could not resolve the local signing identity. Run `auths init`, or pair this device with `auths pair --join`.",
+    )
+}
+
+/// Execute `git rebase --exec` to re-sign a range, embedding the signer trailers
+/// per commit (the amend re-signs over the trailered message).
 ///
 /// Args:
 /// * `base` - The exclusive base ref (commits after this ref will be re-signed).
-fn execute_git_rebase(base: &str) -> Result<()> {
-    let output =
-        crate::subprocess::git_command(&["rebase", "--exec", "git commit --amend --no-edit", base])
-            .output()
-            .context("Failed to spawn git rebase")?;
+/// * `trailers` - The `Auths-Id` / `Auths-Device` trailer strings.
+fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
+    // did:keri values and integer sequences are `[A-Za-z0-9_:.\- ]`, safe to
+    // single-quote in the exec shell.
+    let trailer_flags: String = trailers
+        .iter()
+        .map(|t| format!(" --trailer '{}'", t))
+        .collect();
+    let exec_cmd = format!("git commit --amend --no-edit --no-verify{trailer_flags}");
+    let output = crate::subprocess::git_command(&["rebase", "--exec", &exec_cmd, base])
+        .output()
+        .context("Failed to spawn git rebase")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(anyhow!(
@@ -80,21 +122,30 @@ fn execute_git_rebase(base: &str) -> Result<()> {
     Ok(())
 }
 
-/// Sign a Git commit range by invoking git-rebase with auths-sign as the signing program.
+/// Sign a Git commit range, embedding the `Auths-Id` / `Auths-Device` trailers
+/// in-band so a verifier knows which KEL to replay. Amending triggers auths-sign
+/// via git's signing program; the trailer (idempotent via git's
+/// `addIfDifferentNeighbor`) is part of the signed message body.
 ///
 /// Args:
 /// * `range` - A git ref or range (e.g., "HEAD", "main..HEAD").
-fn sign_commit_range(range: &str) -> Result<()> {
+/// * `signer` - The resolved local signing identity (root + device DIDs).
+fn sign_commit_range(range: &str, signer: &LocalSigner) -> Result<()> {
+    let trailers = commit_trailer_args(signer);
     let is_range = range.contains("..");
     if is_range {
         let parts: Vec<&str> = range.splitn(2, "..").collect();
         let base = parts[0];
-        execute_git_rebase(base)?;
+        execute_git_rebase(base, &trailers)?;
     } else {
-        let output =
-            crate::subprocess::git_command(&["commit", "--amend", "--no-edit", "--no-verify"])
-                .output()
-                .context("Failed to spawn git commit --amend")?;
+        let mut args: Vec<&str> = vec!["commit", "--amend", "--no-edit", "--no-verify"];
+        for trailer in &trailers {
+            args.push("--trailer");
+            args.push(trailer);
+        }
+        let output = crate::subprocess::git_command(&args)
+            .output()
+            .context("Failed to spawn git commit --amend")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow!(
@@ -196,7 +247,10 @@ pub fn handle_sign_unified(
                 false,
             )
         }
-        SignTarget::CommitRange(range) => sign_commit_range(&range),
+        SignTarget::CommitRange(range) => {
+            let signer = resolve_signer_trailer(repo_opt.as_deref(), env_config)?;
+            sign_commit_range(&range, &signer)
+        }
     }
 }
 
@@ -214,6 +268,48 @@ impl crate::commands::executable::ExecutableCommand for SignCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn commit_trailer_args_emit_auths_id_and_device() {
+        let signer = LocalSigner {
+            signer_did: "did:keri:Edevice".to_string(),
+            root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: None,
+        };
+        let trailers = commit_trailer_args(&signer);
+        assert_eq!(trailers[0], "Auths-Id: did:keri:Eroot");
+        assert_eq!(trailers[1], "Auths-Device: did:keri:Edevice");
+        assert_eq!(
+            trailers.len(),
+            2,
+            "no anchor seq → no Auths-Anchor-Seq trailer"
+        );
+    }
+
+    #[test]
+    fn trailer_carries_signing_sequence() {
+        let signer = LocalSigner {
+            signer_did: "did:keri:Edevice".to_string(),
+            root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: Some(7),
+        };
+        let trailers = commit_trailer_args(&signer);
+        assert_eq!(trailers.len(), 3);
+        assert_eq!(trailers[2], "Auths-Anchor-Seq: 7");
+    }
+
+    #[test]
+    fn commit_trailer_args_root_machine_signs_directly() {
+        // On the root machine signer == root → both trailers carry the same DID.
+        let signer = LocalSigner {
+            signer_did: "did:keri:Eroot".to_string(),
+            root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: None,
+        };
+        let trailers = commit_trailer_args(&signer);
+        assert_eq!(trailers[0], "Auths-Id: did:keri:Eroot");
+        assert_eq!(trailers[1], "Auths-Device: did:keri:Eroot");
+    }
 
     #[test]
     fn test_parse_sign_target_commit_ref() {

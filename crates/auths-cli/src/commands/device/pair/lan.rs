@@ -35,12 +35,23 @@ pub async fn handle_initiate_lan(
     no_qr: bool,
     no_mdns: bool,
     verify: bool,
-    rotate: bool,
+    recover: Option<String>,
     expiry_secs: u64,
     capabilities: &[String],
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
+    // Recovery (--recover) is a one-shot pair-replacement-then-revoke flow under the
+    // delegation model, but only over the relay path today (the LAN joiner is an
+    // external app). Redirect LAN recovery to online recovery or the manual path.
+    if let Some(ref old_did) = recover {
+        let _ = old_did;
+        return Err(anyhow::anyhow!(
+            "Device recovery (--recover) over LAN is not yet supported. Use online recovery \
+             (`auths pair --recover <did> --registry <url>`), or remove the lost device with \
+             `auths device remove <did>` and pair a replacement."
+        ));
+    }
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
@@ -68,11 +79,6 @@ pub async fn handle_initiate_lan(
     let session_id = session.token.session_id.clone();
 
     // Build the CreateSessionRequest for the LAN server.
-    let mode = if rotate {
-        auths_sdk::pairing::SessionMode::Rotate
-    } else {
-        auths_sdk::pairing::SessionMode::Pair
-    };
     let request = CreateSessionRequest {
         session_id: session_id.clone(),
         controller_did: session.token.controller_did.clone(),
@@ -82,7 +88,7 @@ pub async fn handle_initiate_lan(
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
-        mode,
+        recovery_target: recover.clone(),
     };
 
     // Start the LAN server bound to the detected LAN IP
@@ -210,30 +216,19 @@ pub async fn handle_initiate_lan(
             // a silent daemon.
             let _confirmation = server.wait_for_confirmation(Duration::from_secs(5)).await;
 
-            match server.session_mode() {
-                auths_sdk::pairing::SessionMode::Pair => {
-                    handle_pairing_response(
-                        now,
-                        &mut session,
-                        response_data,
-                        &auths_dir,
-                        capabilities,
-                        Arc::clone(&passphrase_provider),
-                        env_config,
-                        verify,
-                    )?;
-                }
-                auths_sdk::pairing::SessionMode::Rotate => {
-                    super::rotate::handle_rotation_response(
-                        now,
-                        &session,
-                        response_data,
-                        &auths_dir,
-                        Arc::clone(&passphrase_provider),
-                        env_config,
-                    )?;
-                }
-            }
+            // Pair is the only session path — no mode branching.
+            // Local device-key rotation goes through `auths identity rotate`,
+            // never through the daemon.
+            handle_pairing_response(
+                now,
+                &mut session,
+                response_data,
+                &auths_dir,
+                capabilities,
+                Arc::clone(&passphrase_provider),
+                env_config,
+                verify,
+            )?;
 
             server.shutdown();
         }

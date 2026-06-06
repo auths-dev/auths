@@ -19,8 +19,6 @@ use auths_keri::{
     CesrKey, Event, IcpEvent, KeriSequence, Prefix, Said, Threshold, VersionString,
     finalize_icp_event,
 };
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 use serde_json::Value;
@@ -29,7 +27,10 @@ fn gen_cesr_ed25519_pub() -> String {
     let rng = SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let kp = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-    format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
+    auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+        .unwrap()
+        .to_qb64()
+        .unwrap()
 }
 
 fn make_icp() -> IcpEvent {
@@ -48,7 +49,6 @@ fn make_icp() -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
     finalize_icp_event(icp).unwrap()
 }

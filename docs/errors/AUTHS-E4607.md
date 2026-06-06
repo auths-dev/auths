@@ -1,6 +1,6 @@
 # AUTHS-E4607
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `KelError::ValidationFailed`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E4902
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InceptionError::Kel`
 
 ## Message

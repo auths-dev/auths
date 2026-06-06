@@ -89,14 +89,14 @@ mod storage;
 pub use auths_keri::KERI_VERSION_PREFIX;
 pub use auths_keri::witness::{
     AsyncWitnessProvider, DuplicityEvidence, EventHash, EventHashParseError, NoOpAsyncWitness,
-    RECEIPT_TYPE, Receipt, ReceiptBuilder, SignedReceipt, WitnessError, WitnessProvider,
-    WitnessReport,
+    RECEIPT_TYPE, Receipt, ReceiptBuilder, ReceiptTag, SignedReceipt, StoredReceipt, WitnessError,
+    WitnessProvider, WitnessReport,
 };
 pub use noop::NoOpWitness;
 
 // Collection and duplicity detection
 pub use collector::{CollectionError, ReceiptCollector, ReceiptCollectorBuilder};
-pub use duplicity::DuplicityDetector;
+pub use duplicity::{DuplicityDetector, detect_receipt_conflict};
 
 // Witness server (feature-gated)
 #[cfg(feature = "witness-server")]

@@ -9,7 +9,7 @@ use auths_transparency::merkle::{compute_root, hash_leaf};
 use auths_transparency::proof::InclusionProof;
 use auths_transparency::types::{LogOrigin, MerkleHash};
 use auths_transparency::{TrustRoot, TrustRootWitness, verify_bundle};
-use auths_verifier::{CanonicalDid, DeviceDID, Ed25519PublicKey, Ed25519Signature};
+use auths_verifier::{CanonicalDid, Ed25519PublicKey, Ed25519Signature};
 use chrono::{DateTime, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -27,7 +27,7 @@ fn fixed_now() -> DateTime<Utc> {
 
 /// Build a `did:key:z...` string from a 32-byte Ed25519 public key (test helper).
 fn ed25519_did(pk: &[u8; 32]) -> String {
-    DeviceDID::from_public_key(pk, auths_crypto::CurveType::Ed25519).to_string()
+    CanonicalDid::from_public_key_did_key(pk, auths_crypto::CurveType::Ed25519).to_string()
 }
 
 /// End-to-end: generate keys, sign entry, build tree, sign checkpoint, verify bundle.
@@ -44,7 +44,7 @@ fn verify_bundle_end_to_end_single_entry() {
     let content = EntryContent {
         entry_type: EntryType::DeviceBind,
         body: EntryBody::DeviceBind {
-            device_did: DeviceDID::new_unchecked(&actor_did),
+            device_did: CanonicalDid::new_unchecked(&actor_did),
             public_key: Ed25519PublicKey::from_bytes(actor_pk),
         },
         actor_did: CanonicalDid::new_unchecked(&actor_did),
@@ -126,7 +126,7 @@ fn verify_bundle_multi_leaf_tree() {
         let content = EntryContent {
             entry_type: EntryType::DeviceBind,
             body: EntryBody::DeviceBind {
-                device_did: DeviceDID::new_unchecked(&actor_did),
+                device_did: CanonicalDid::new_unchecked(&actor_did),
                 public_key: Ed25519PublicKey::from_bytes(actor_pk),
             },
             actor_did: CanonicalDid::new_unchecked(&actor_did),
@@ -214,7 +214,7 @@ fn verify_bundle_with_witnesses() {
     let content = EntryContent {
         entry_type: EntryType::DeviceBind,
         body: EntryBody::DeviceBind {
-            device_did: DeviceDID::new_unchecked(&actor_did),
+            device_did: CanonicalDid::new_unchecked(&actor_did),
             public_key: Ed25519PublicKey::from_bytes(actor_pk),
         },
         actor_did: CanonicalDid::new_unchecked(&actor_did),
@@ -273,7 +273,7 @@ fn verify_bundle_with_witnesses() {
         log_public_key: Ed25519PublicKey::from_bytes(log_pk),
         log_origin: LogOrigin::new("test.dev/log").unwrap(),
         witnesses: vec![TrustRootWitness {
-            witness_did: DeviceDID::new_unchecked(ed25519_did(&w1_pk)),
+            witness_did: CanonicalDid::new_unchecked(ed25519_did(&w1_pk)),
             name: "w1".into(),
             public_key: Ed25519PublicKey::from_bytes(w1_pk),
         }],

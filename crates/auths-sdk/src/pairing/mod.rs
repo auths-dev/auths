@@ -7,26 +7,27 @@
 #[cfg(feature = "lan-pairing")]
 pub mod lan;
 
+mod delegation;
+
+pub use delegation::{
+    JoinerPending, PairingAnchorResult, anchor_pairing_response, build_delegated_join_response,
+    finalize_delegated_join,
+};
+
 // Re-exports of pairing types from auths-core for CLI consumption
 pub use auths_core::pairing::types::{
-    Base64UrlEncoded, CreateSessionRequest, SessionMode, SubmitConfirmationRequest,
-    SubmitResponseRequest,
+    Base64UrlEncoded, CreateSessionRequest, SubmitConfirmationRequest, SubmitResponseRequest,
 };
 pub use auths_core::pairing::{
     PairingResponse, PairingSession, PairingToken, QrOptions, normalize_short_code, render_qr,
 };
 
 use auths_core::pairing::SessionStatus;
-use auths_core::ports::clock::ClockProvider;
 use auths_core::ports::pairing::PairingRelayClient;
-use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
-use auths_id::attestation::export::AttestationSink;
 use auths_id::storage::identity::IdentityStorage;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use crate::context::AuthsContext;
 
@@ -124,113 +125,26 @@ pub struct PairingSessionRequest {
     pub create_request: auths_core::pairing::types::CreateSessionRequest,
 }
 
-/// Decrypted pairing response payload from the responding device.
-///
-/// Built by the CLI after completing ECDH and resolving the identity key.
-/// Passed to [`complete_pairing_from_response`] for attestation creation.
-///
-/// Args:
-/// * `auths_dir`: Path to the `~/.auths` identity repository.
-/// * `device_pubkey`: Ed25519 signing public key bytes (32 bytes).
-/// * `device_did`: DID string of the responding device.
-/// * `device_name`: Optional human-readable device name.
-/// * `capabilities`: Capability strings to grant.
-/// * `identity_key_alias`: Resolved keychain alias for the identity key.
-///
-/// Usage:
-/// ```ignore
-/// let response = DecryptedPairingResponse {
-///     auths_dir: auths_dir.to_path_buf(),
-///     device_pubkey: pubkey_bytes,
-///     device_did: DeviceDID::new_unchecked("did:key:z6Mk..."),
-///     device_name: Some("iPhone 15".into()),
-///     capabilities: vec!["sign_commit".into()],
-///     identity_key_alias: "main".into(),
-/// };
-/// ```
-pub struct DecryptedPairingResponse {
-    /// Path to the `~/.auths` identity repository.
-    pub auths_dir: PathBuf,
-    /// Signing public key bytes (32 bytes Ed25519, 33 bytes P-256 compressed).
-    pub device_pubkey: Vec<u8>,
-    /// Curve of `device_pubkey`. Carried in-band so downstream code never
-    /// re-derives curve from byte length.
-    pub curve: auths_crypto::CurveType,
-    /// DID of the responding device.
-    pub device_did: DeviceDID,
-    /// Optional human-readable device name.
-    pub device_name: Option<String>,
-    /// Capability strings to grant.
-    pub capabilities: Vec<String>,
-    /// Resolved keychain alias for the identity key.
-    pub identity_key_alias: KeyAlias,
-}
-
 /// Outcome of a completed pairing operation.
+///
+/// Pairing now anchors a KERI delegation rather than creating an attestation, so
+/// there is no attestation-fallback path — a failure is a hard error returned via
+/// `Result`, not a soft fallback variant.
 ///
 /// Usage:
 /// ```ignore
 /// match result {
 ///     PairingCompletionResult::Success { device_did, .. } => println!("Paired {}", device_did),
-///     PairingCompletionResult::Fallback { error, .. } => {
-///         eprintln!("Attestation failed: {}", error);
-///         save_device_info(auths_dir, &raw_response)?;
-///     }
 /// }
 /// ```
 pub enum PairingCompletionResult {
-    /// Pairing completed successfully with a signed attestation.
+    /// Pairing completed: the device is a delegated identifier anchored by the root.
     Success {
-        /// The DID of the paired device.
-        device_did: DeviceDID,
+        /// The delegated device's `did:keri:`.
+        device_did: CanonicalDid,
         /// Optional human-readable name of the paired device.
         device_name: Option<String>,
     },
-    /// Attestation creation failed; caller should fall back to raw device info storage.
-    Fallback {
-        /// The DID of the device that could not be fully attested.
-        device_did: DeviceDID,
-        /// Optional human-readable name of the device.
-        device_name: Option<String>,
-        /// The error message from the failed attestation attempt.
-        error: String,
-    },
-}
-
-/// Parameters for creating a pairing attestation.
-///
-/// Args:
-/// * `identity_storage`: Pre-initialized identity storage adapter.
-/// * `key_storage`: Pre-initialized key storage for signing key access.
-/// * `device_pubkey`: The device's Ed25519 public key (32 bytes).
-/// * `device_did_str`: The device's DID string.
-/// * `capabilities`: List of capability strings to grant.
-/// * `identity_key_alias`: The key alias to use for signing.
-/// * `passphrase_provider`: Provider for the signing passphrase.
-///
-/// Usage:
-/// ```ignore
-/// let attestation = create_pairing_attestation(&params, now)?;
-/// ```
-pub struct PairingAttestationParams<'a> {
-    /// Pre-initialized identity storage adapter.
-    pub identity_storage: Arc<dyn IdentityStorage + Send + Sync>,
-    /// Pre-initialized key storage for signing key access.
-    pub key_storage: Arc<dyn KeyStorage + Send + Sync>,
-    /// The device's signing public key (32 bytes Ed25519, 33 bytes P-256 compressed).
-    pub device_pubkey: &'a [u8],
-    /// The signing curve of `device_pubkey`. Carried in-band so the attestation
-    /// boundary never infers curve from byte length.
-    pub curve: auths_crypto::CurveType,
-    /// The device's DID string.
-    pub device_did_str: &'a str,
-    /// List of capability strings to grant.
-    pub capabilities: &'a [String],
-    /// The key alias to use for signing.
-    pub identity_key_alias: &'a KeyAlias,
-    /// Provider for the signing passphrase.
-    pub passphrase_provider:
-        std::sync::Arc<dyn auths_core::signing::PassphraseProvider + Send + Sync>,
 }
 
 /// Validate and normalize a pairing short code.
@@ -298,10 +212,10 @@ pub fn verify_device_did(
     curve: auths_crypto::CurveType,
     claimed_did: &str,
 ) -> Result<(), PairingError> {
-    use auths_verifier::types::DeviceDID;
+    use auths_verifier::types::CanonicalDid;
 
-    let derived = DeviceDID::from_public_key(device_pubkey, curve);
-    let claimed = DeviceDID::parse(claimed_did).map_err(|_| PairingError::DidMismatch {
+    let derived = CanonicalDid::from_public_key_did_key(device_pubkey, curve);
+    let claimed = CanonicalDid::parse(claimed_did).map_err(|_| PairingError::DidMismatch {
         response: claimed_did.to_string(),
         derived: derived.to_string(),
     })?;
@@ -314,97 +228,6 @@ pub fn verify_device_did(
     }
 
     Ok(())
-}
-
-/// Create a signed device attestation for a paired device.
-///
-/// Args:
-/// * `params`: Attestation creation parameters.
-///
-/// Usage:
-/// ```ignore
-/// let attestation = create_pairing_attestation(&PairingAttestationParams {
-///     auths_dir: Path::new("~/.auths"),
-///     device_pubkey: &pubkey_bytes,
-///     device_did_str: "did:key:z...",
-///     capabilities: &["sign_commit".to_string()],
-///     identity_key_alias: "main",
-///     passphrase_provider: provider,
-/// })?;
-/// ```
-pub fn create_pairing_attestation(
-    params: &PairingAttestationParams,
-    now: DateTime<Utc>,
-) -> Result<auths_verifier::core::Attestation, PairingError> {
-    use auths_core::signing::StorageSigner;
-    use auths_id::attestation::create::create_signed_attestation;
-    use auths_id::identity::helpers::ManagedIdentity;
-    use auths_id::storage::git_refs::AttestationMetadata;
-    use auths_verifier::Capability;
-    use auths_verifier::types::DeviceDID;
-
-    let managed_identity: ManagedIdentity = params
-        .identity_storage
-        .load_identity()
-        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
-
-    let controller_did = managed_identity.controller_did;
-    let rid = managed_identity.storage_id;
-
-    let curve = params.curve;
-    if params.device_pubkey.len() != curve.public_key_len() {
-        return Err(PairingError::AttestationFailed(format!(
-            "device pubkey length {} does not match declared curve {} (expected {} bytes)",
-            params.device_pubkey.len(),
-            curve,
-            curve.public_key_len(),
-        )));
-    }
-
-    verify_device_did(params.device_pubkey, curve, params.device_did_str)?;
-
-    let meta = AttestationMetadata {
-        timestamp: Some(now),
-        expires_at: None,
-        note: Some("Paired via QR".to_string()),
-    };
-
-    let device_capabilities: Vec<Capability> = params
-        .capabilities
-        .iter()
-        .map(|s| {
-            s.parse::<Capability>()
-                .map_err(|e| PairingError::AttestationFailed(format!("invalid capability: {e}")))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let target_did = DeviceDID::parse(params.device_did_str)
-        .map_err(|e| PairingError::AttestationFailed(format!("invalid device DID: {e}")))?;
-    let secure_signer = StorageSigner::new(Arc::clone(&params.key_storage));
-
-    let attestation = create_signed_attestation(
-        now,
-        &rid,
-        &controller_did,
-        &target_did,
-        params.device_pubkey,
-        curve,
-        None,
-        &meta,
-        &secure_signer,
-        params.passphrase_provider.as_ref(),
-        Some(params.identity_key_alias),
-        None,
-        device_capabilities,
-        None,
-        None,
-        None, // commit_sha
-        None,
-        None, // supersedes_rid
-    )
-    .map_err(|e| PairingError::AttestationFailed(e.to_string()))?;
-
-    Ok(attestation)
 }
 
 /// Build a pairing session and its registry registration payload.
@@ -452,93 +275,12 @@ pub fn build_pairing_session_request(
         short_code: session.token.short_code.clone(),
         capabilities: session.token.capabilities.clone(),
         expires_at: session.token.expires_at.timestamp(),
-        mode: auths_core::pairing::types::SessionMode::Pair,
+        recovery_target: None,
     };
 
     Ok(PairingSessionRequest {
         session,
         create_request,
-    })
-}
-
-/// Complete a pairing operation from a decrypted device response.
-///
-/// Creates and exports a signed device attestation. Returns
-/// [`PairingCompletionResult::Success`] on success, or
-/// [`PairingCompletionResult::Fallback`] when attestation creation fails
-/// so the caller can perform alternative device info storage.
-///
-/// This function performs no I/O beyond attestation persistence and holds
-/// no mutable session state — it is fully testable without a live connection.
-///
-/// Args:
-/// * `response`: Decrypted response payload built by the CLI after ECDH.
-/// * `passphrase_provider`: Provider for the identity key passphrase.
-///
-/// Usage:
-/// ```ignore
-/// let result = complete_pairing_from_response(decrypted, provider)?;
-/// match result {
-///     PairingCompletionResult::Success { device_did, .. } => println!("Paired"),
-///     PairingCompletionResult::Fallback { error, .. } => {
-///         eprintln!("Attestation failed: {}", error);
-///     }
-/// }
-/// ```
-pub fn complete_pairing_from_response(
-    response: DecryptedPairingResponse,
-    identity_storage: Arc<dyn IdentityStorage + Send + Sync>,
-    attestation_sink: Arc<dyn AttestationSink + Send + Sync>,
-    key_storage: Arc<dyn KeyStorage + Send + Sync>,
-    passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
-    clock: &dyn ClockProvider,
-) -> Result<PairingCompletionResult, PairingError> {
-    let now = clock.now();
-
-    let DecryptedPairingResponse {
-        device_pubkey,
-        curve,
-        device_did,
-        device_name,
-        capabilities,
-        identity_key_alias,
-        ..
-    } = response;
-
-    let attestation_result = {
-        let params = PairingAttestationParams {
-            identity_storage,
-            key_storage,
-            device_pubkey: &device_pubkey,
-            curve,
-            device_did_str: device_did.as_str(),
-            capabilities: &capabilities,
-            identity_key_alias: &identity_key_alias,
-            passphrase_provider,
-        };
-        create_pairing_attestation(&params, now)
-    };
-
-    let attestation = match attestation_result {
-        Ok(a) => a,
-        Err(e) => {
-            return Ok(PairingCompletionResult::Fallback {
-                device_did,
-                device_name,
-                error: e.to_string(),
-            });
-        }
-    };
-
-    attestation_sink
-        .export(&auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation.clone()))
-        .map_err(|e| PairingError::StorageError(e.to_string()))?;
-
-    attestation_sink.sync_index(&attestation);
-
-    Ok(PairingCompletionResult::Success {
-        device_did,
-        device_name,
     })
 }
 
@@ -611,7 +353,7 @@ pub fn load_device_signing_material(
         .map_err(|e| PairingError::KeyExchangeFailed(format!("failed to parse key: {e}")))?;
 
     let curve = parsed.seed.curve();
-    let device_did = DeviceDID::from_public_key(&parsed.public_key, curve);
+    let device_did = CanonicalDid::from_public_key_did_key(&parsed.public_key, curve);
 
     Ok(DeviceSigningMaterial {
         seed: parsed.seed,
@@ -654,7 +396,7 @@ pub struct DeviceSigningMaterial {
     /// Public key bytes (32 for Ed25519, 33 for P-256 compressed).
     pub public_key: Vec<u8>,
     /// DID of the local device.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// DID of the controller identity this device belongs to.
     pub controller_did: String,
 }
@@ -786,67 +528,146 @@ pub async fn initiate_online_pairing<R: PairingRelayClient>(
         .complete_exchange(&device_ecdh_bytes)
         .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
 
-    let controller_did = load_controller_did(ctx.identity_storage.as_ref())?;
+    // The device's custody of its signing key is now proven (verify_response). Anchor
+    // the delegated dip it shipped and relay the root's anchoring ixn back so the
+    // device can confirm + persist its delegation.
+    let anchor = anchor_pairing_response(
+        ctx,
+        &response.responder_inception_event,
+        response.device_name.clone(),
+    )?;
+
+    relay
+        .submit_confirmation(&registry, &session_id, &anchor.confirmation)
+        .await
+        .map_err(|e| PairingError::StorageError(e.to_string()))?;
+
+    Ok(PairingCompletionResult::Success {
+        device_did: anchor.device_did,
+        device_name: anchor.device_name,
+    })
+}
+
+/// The outcome of a device recovery: a replacement device was paired and the lost
+/// device's delegation revoked.
+pub struct RecoveryResult {
+    /// The newly-paired delegated device's `did:keri:`.
+    pub new_device_did: CanonicalDid,
+    /// The new device's friendly name, if it supplied one.
+    pub new_device_name: Option<String>,
+    /// The old device DID whose delegation was revoked.
+    pub revoked_old_did: String,
+}
+
+/// Recover from a lost/stolen device: pair a replacement delegated device, then
+/// revoke the old device's delegation.
+///
+/// The replacement is paired and anchored **first**, so the identity is never left
+/// with zero usable devices; only then is the old delegation revoked. If pairing
+/// succeeds but the revoke fails, this returns an error that names the new device so
+/// the caller can report both states — the new device stays paired and the old one
+/// can be removed manually.
+///
+/// Args:
+/// * `params`: Session parameters for pairing the replacement device.
+/// * `relay`: Pairing relay client.
+/// * `ctx`: Runtime context (the root identity's registry + signing key).
+/// * `now`: Current time (injected by caller).
+/// * `old_device_did`: The `did:keri:` of the device being replaced.
+/// * `on_status`: Optional progress callback for the pairing phase.
+///
+/// Usage:
+/// ```ignore
+/// let r = recover_device(params, &relay, &ctx, now, &old_did, None).await?;
+/// println!("paired {}, revoked {}", r.new_device_did, r.revoked_old_did);
+/// ```
+pub async fn recover_device<R: PairingRelayClient>(
+    params: PairingSessionParams,
+    relay: &R,
+    ctx: &AuthsContext,
+    now: DateTime<Utc>,
+    old_device_did: &str,
+    on_status: Option<&(dyn Fn(PairingStatus) + Send + Sync)>,
+) -> Result<RecoveryResult, PairingError> {
+    // Pair the replacement first — the identity must never have zero usable devices.
+    let PairingCompletionResult::Success {
+        device_did,
+        device_name,
+    } = initiate_online_pairing(params, relay, ctx, now, on_status).await?;
+
+    // Resolve the root's signing alias to author the revocation.
+    let managed = ctx
+        .identity_storage
+        .load_identity()
+        .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
     #[allow(clippy::disallowed_methods)]
-    // INVARIANT: controller_did comes from load_controller_did() which returns into_inner() of a validated IdentityDID from storage
-    let controller_identity_did = IdentityDID::new_unchecked(controller_did.clone());
+    // INVARIANT: controller_did is a validated IdentityDID from IdentityStorage.
+    let root_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
     let aliases = ctx
         .key_storage
-        .list_aliases_for_identity(&controller_identity_did)
+        .list_aliases_for_identity(&root_identity_did)
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
-    let identity_key_alias = aliases
+    let root_alias = aliases
         .into_iter()
         .find(|a| !a.contains("--next-"))
         .ok_or_else(|| {
-            PairingError::IdentityNotFound(format!("no signing key found for {controller_did}"))
+            PairingError::IdentityNotFound(format!(
+                "no signing key found for {}",
+                managed.controller_did
+            ))
         })?;
 
-    let decrypted = DecryptedPairingResponse {
-        auths_dir: PathBuf::new(),
-        device_pubkey: device_signing_bytes,
-        curve,
-        #[allow(clippy::disallowed_methods)] // INVARIANT: response.device_did was verified by session.verify_response() which validated the signature against the device's signing key
-        device_did: DeviceDID::new_unchecked(response.device_did.to_string()),
-        device_name: response.device_name.clone(),
-        capabilities: session.token.capabilities.clone(),
-        identity_key_alias,
-    };
+    // Only now revoke the old delegation.
+    crate::domains::device::remove_device(ctx, &root_alias, old_device_did).map_err(|e| {
+        PairingError::StorageError(format!(
+            "replacement device {device_did} was paired, but revoking the old device \
+             {old_device_did} failed: {e}. Remove it manually with \
+             `auths device remove {old_device_did}`."
+        ))
+    })?;
 
-    complete_pairing_from_response(
-        decrypted,
-        Arc::clone(&ctx.identity_storage),
-        Arc::clone(&ctx.attestation_sink),
-        Arc::clone(&ctx.key_storage),
-        Arc::clone(&ctx.passphrase_provider),
-        ctx.clock.as_ref(),
-    )
+    Ok(RecoveryResult {
+        new_device_did: device_did,
+        new_device_name: device_name,
+        revoked_old_did: old_device_did.to_string(),
+    })
 }
 
-/// Orchestrate joining a pairing session: lookup by code, create ECDH response, submit.
+/// Orchestrate joining a pairing session as a delegated device.
 ///
-/// The CLI retains passphrase prompting and key loading (see `DeviceSigningMaterial`).
-/// This function contains only the protocol logic: code validation, session lookup,
-/// ECDH response creation, and submission.
+/// The joining device generates its own key, builds + self-signs its `dip`
+/// (delegated by the session's `controller_did`), ships it in the response, then
+/// waits for the initiator to anchor it. On confirmation it verifies the anchor and
+/// persists its own KEL + key. A fresh device needs no pre-existing identity — only
+/// an initialized (possibly empty) registry + keychain in `ctx`.
 ///
 /// Args:
+/// * `ctx`: The joining device's context (its own registry + keychain + passphrase).
 /// * `code`: Short code entered by the user (normalized internally).
 /// * `registry_url`: Pairing relay server URL.
 /// * `relay`: Pairing relay client.
 /// * `now`: Current time (injected by caller).
-/// * `material`: Decrypted device signing material loaded by the CLI.
+/// * `curve`: Curve for the new device key.
+/// * `device_alias`: Keychain alias to store the new device key under.
 /// * `device_name`: Optional friendly name to include in the response.
+/// * `confirmation_timeout`: How long to wait for the initiator's anchor.
 ///
 /// Usage:
 /// ```ignore
-/// let result = join_pairing_session(code, registry, &relay, now, &material, hostname).await?;
+/// let result = join_pairing_session(&ctx, code, registry, &relay, now,
+///     CurveType::Ed25519, KeyAlias::new_unchecked("laptop"), hostname, ttl).await?;
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub async fn join_pairing_session<R: PairingRelayClient>(
+    ctx: &AuthsContext,
     code: &str,
     registry_url: &str,
     relay: &R,
     now: DateTime<Utc>,
-    material: &DeviceSigningMaterial,
+    curve: auths_crypto::CurveType,
+    device_alias: KeyAlias,
     device_name: Option<String>,
+    confirmation_timeout: std::time::Duration,
 ) -> Result<PairingCompletionResult, PairingError> {
     let normalized = validate_short_code(code)?;
 
@@ -877,38 +698,25 @@ pub async fn join_pairing_session<R: PairingRelayClient>(
         return Err(PairingError::SessionExpired);
     }
 
-    let (pairing_response, _shared_secret) = PairingResponse::create(
-        now,
-        &token,
-        &material.seed,
-        &material.public_key,
-        material.device_did.to_string(),
-        device_name,
-    )
-    .map_err(|e| PairingError::KeyExchangeFailed(e.to_string()))?;
-
-    let submit_req = SubmitResponseRequest {
-        device_ephemeral_pubkey: Base64UrlEncoded::from_raw(
-            pairing_response.device_ephemeral_pubkey,
-        ),
-        device_signing_pubkey: Base64UrlEncoded::from_raw(pairing_response.device_signing_pubkey),
-        curve: pairing_response.curve,
-        device_did: pairing_response.device_did.clone(),
-        signature: Base64UrlEncoded::from_raw(pairing_response.signature),
-        device_name: pairing_response.device_name,
-        subkey_chain: None,
-        new_device_signing_pubkey: None,
-    };
+    let device_name_out = device_name.clone();
+    let (submit_req, pending, _shared_secret) =
+        build_delegated_join_response(now, &token, curve, device_alias, device_name)?;
 
     relay
         .submit_response(registry_url, &session_data.session_id, &submit_req)
         .await
         .map_err(|e| PairingError::StorageError(e.to_string()))?;
 
+    let confirmation = relay
+        .wait_for_confirmation(registry_url, &session_data.session_id, confirmation_timeout)
+        .await
+        .map_err(|e| PairingError::StorageError(e.to_string()))?
+        .ok_or(PairingError::SessionExpired)?;
+
+    let device_did = finalize_delegated_join(ctx, pending, &confirmation)?;
+
     Ok(PairingCompletionResult::Success {
-        device_did: DeviceDID::parse(&pairing_response.device_did).map_err(|e| {
-            PairingError::AttestationFailed(format!("invalid device DID in response: {e}"))
-        })?,
-        device_name: None,
+        device_did,
+        device_name: device_name_out,
     })
 }

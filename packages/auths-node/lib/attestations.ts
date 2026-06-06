@@ -12,8 +12,6 @@ export interface AttestationInfo {
   subject: string
   /** DID of the device this attestation applies to. */
   deviceDid: string
-  /** List of capabilities granted (e.g. `['sign']`). */
-  capabilities: string[]
   /** Signer type: `'human'`, `'agent'`, or `'workload'`, or `null`. */
   signerType: string | null
   /** Expiration timestamp (RFC 3339), or `null` if no expiry. */
@@ -55,7 +53,6 @@ export class AttestationService {
         issuer: a.issuer,
         subject: a.subject,
         deviceDid: a.deviceDid,
-        capabilities: a.capabilities,
         signerType: a.signerType ?? null,
         expiresAt: a.expiresAt ?? null,
         revokedAt: a.revokedAt ?? null,
@@ -82,7 +79,6 @@ export class AttestationService {
         issuer: a.issuer,
         subject: a.subject,
         deviceDid: a.deviceDid,
-        capabilities: a.capabilities,
         signerType: a.signerType ?? null,
         expiresAt: a.expiresAt ?? null,
         revokedAt: a.revokedAt ?? null,
@@ -111,7 +107,6 @@ export class AttestationService {
         issuer: a.issuer,
         subject: a.subject,
         deviceDid: a.deviceDid,
-        capabilities: a.capabilities,
         signerType: a.signerType ?? null,
         expiresAt: a.expiresAt ?? null,
         revokedAt: a.revokedAt ?? null,

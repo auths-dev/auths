@@ -1,6 +1,6 @@
 # AUTHS-E4804
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ResolveError::Validation`
 
 ## Message

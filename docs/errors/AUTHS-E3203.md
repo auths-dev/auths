@@ -1,6 +1,6 @@
 # AUTHS-E3203
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `PairingError::RelayError`
 
 ## Message

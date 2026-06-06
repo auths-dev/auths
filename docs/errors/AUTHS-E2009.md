@@ -1,6 +1,6 @@
 # AUTHS-E2009
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::SerializationError`
 
 ## Message

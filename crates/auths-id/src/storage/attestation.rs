@@ -1,6 +1,6 @@
 use crate::error::StorageError;
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 
 /// Abstracts the source and loading of device attestations from the underlying storage.
 ///
@@ -9,13 +9,13 @@ use auths_verifier::types::DeviceDID;
 /// through this trait without knowledge of the backing store.
 ///
 /// Args:
-/// * `device_did`: A `DeviceDID` identifying the device whose attestations to load.
+/// * `device_did`: A `CanonicalDid` identifying the device whose attestations to load.
 ///
 /// Usage:
 /// ```ignore
 /// use auths_id::storage::attestation::AttestationSource;
 ///
-/// fn count_device_attestations(source: &dyn AttestationSource, did: &DeviceDID) -> usize {
+/// fn count_device_attestations(source: &dyn AttestationSource, did: &CanonicalDid) -> usize {
 ///     source.load_attestations_for_device(did)
 ///         .map(|atts| atts.len())
 ///         .unwrap_or(0)
@@ -25,7 +25,7 @@ pub trait AttestationSource {
     /// Loads all attestations found for a specific device DID using the configured layout.
     fn load_attestations_for_device(
         &self,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
     ) -> Result<Vec<Attestation>, StorageError>;
 
     /// Loads all known attestations from the storage backend by discovering devices
@@ -72,5 +72,5 @@ pub trait AttestationSource {
     }
 
     /// Discovers device DIDs that have attestations stored based on the configured layout.
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError>;
+    fn discover_device_dids(&self) -> Result<Vec<CanonicalDid>, StorageError>;
 }

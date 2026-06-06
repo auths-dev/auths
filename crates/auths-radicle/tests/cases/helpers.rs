@@ -7,8 +7,8 @@ use auths_radicle::refs::Layout;
 use auths_radicle::verify::AuthsStorage;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::IdentityDID;
-use auths_verifier::core::{Attestation, Capability};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::core::Attestation;
+use auths_verifier::types::CanonicalDid;
 use radicle_core::{Did, RepoId};
 use radicle_crypto::PublicKey;
 
@@ -79,7 +79,7 @@ impl AuthsStorage for MockStorage {
             .get(&(device_did.clone(), identity_did.clone()))
             .cloned()
             .ok_or_else(|| BridgeError::AttestationLoad {
-                device_did: DeviceDID::new_unchecked(device_did.to_string()),
+                device_did: CanonicalDid::new_unchecked(device_did.to_string()),
                 reason: "Not found".into(),
             })
     }
@@ -129,7 +129,6 @@ pub fn make_test_attestation(
     device_did: &Did,
     rid: &RepoId,
     revoked: bool,
-    capabilities: Vec<Capability>,
 ) -> auths_verifier::core::Attestation {
     use chrono::Utc;
     AttestationBuilder::default()
@@ -137,7 +136,6 @@ pub fn make_test_attestation(
         .issuer(&issuer.to_string())
         .subject(&device_did.to_string())
         .revoked_at(if revoked { Some(Utc::now()) } else { None })
-        .capabilities(capabilities)
         .build()
 }
 
@@ -161,11 +159,10 @@ pub fn register_device(
     identity_did: &Did,
     repo_id: &RepoId,
     revoked: bool,
-    capabilities: Vec<Capability>,
 ) {
     storage.attestations.insert(
         (device.did.clone(), identity_did.clone()),
-        make_test_attestation(identity_did, &device.did, repo_id, revoked, capabilities),
+        make_test_attestation(identity_did, &device.did, repo_id, revoked),
     );
     storage
         .device_to_identity

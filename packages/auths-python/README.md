@@ -59,15 +59,15 @@ for commit in result.commits:
     print(f"{commit.commit_sha}: {'valid' if commit.is_valid else commit.error}")
 ```
 
-## Capability-aware verification
+## Time-pinned verification
 
 ```python
-# Verify an attestation grants a specific capability
-result = auths.verify(attestation_json=data, issuer_key=key, required_capability="sign_commit")
-
-# Verify an entire chain grants a capability
-report = auths.verify_chain(chain, root_key, required_capability="deploy")
+# Verify an attestation's authenticity at a historical point in time
+result = auths.verify(attestation_json=data, issuer_key=key, at="2024-06-15T00:00:00Z")
 ```
+
+> Capability/role authority is no longer checked at verification time. A capability
+> grant comes from a holder-verified ACDC credential, not the attestation.
 
 ## Agent auth for MCP / AI frameworks
 

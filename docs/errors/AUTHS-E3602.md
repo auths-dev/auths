@@ -1,6 +1,6 @@
 # AUTHS-E3602
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `NetworkError::Timeout`
 
 ## Message

@@ -1,0 +1,55 @@
+{
+  "$id": "ECJN2IjRhuWpNRFJaIhLbYAAbB-DjILDaQ3dEX7rfA9_",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuthsCapability",
+  "description": "Auths v1 holder-bindable capability credential.",
+  "type": "object",
+  "properties": {
+    "v": {
+      "type": "string"
+    },
+    "d": {
+      "type": "string"
+    },
+    "i": {
+      "type": "string"
+    },
+    "ri": {
+      "type": "string"
+    },
+    "s": {
+      "type": "string"
+    },
+    "a": {
+      "type": "object",
+      "properties": {
+        "d": {
+          "type": "string"
+        },
+        "i": {
+          "type": "string"
+        },
+        "dt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "capability": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "d",
+        "i",
+        "capability"
+      ]
+    }
+  },
+  "required": [
+    "v",
+    "d",
+    "i",
+    "ri",
+    "s",
+    "a"
+  ]
+}

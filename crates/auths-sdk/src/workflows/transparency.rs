@@ -103,7 +103,7 @@ pub async fn fetch_trust_root(
         .filter_map(|w| {
             let pk_bytes: [u8; 32] = hex::decode(&w.public_key).ok()?.try_into().ok()?;
             let public_key = Ed25519PublicKey::from_bytes(pk_bytes);
-            let witness_did = auths_verifier::DeviceDID::from_public_key(
+            let witness_did = auths_verifier::CanonicalDid::from_public_key_did_key(
                 public_key.as_bytes(),
                 auths_crypto::CurveType::Ed25519,
             );
@@ -354,7 +354,7 @@ mod tests {
     use auths_transparency::entry::{Entry, EntryBody, EntryContent, EntryType};
     use auths_transparency::proof::InclusionProof;
     use auths_transparency::types::{LogOrigin, MerkleHash};
-    use auths_verifier::{CanonicalDid, DeviceDID, Ed25519PublicKey, Ed25519Signature};
+    use auths_verifier::{CanonicalDid, Ed25519PublicKey, Ed25519Signature};
 
     fn dummy_signed_checkpoint(size: u64, root: MerkleHash) -> SignedCheckpoint {
         SignedCheckpoint {
@@ -410,7 +410,7 @@ mod tests {
             content: EntryContent {
                 entry_type: EntryType::DeviceBind,
                 body: EntryBody::DeviceBind {
-                    device_did: DeviceDID::new_unchecked("did:key:z6MkTest"),
+                    device_did: CanonicalDid::new_unchecked("did:key:z6MkTest"),
                     public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
                 },
                 actor_did: CanonicalDid::new_unchecked("did:key:z6MkTest"),

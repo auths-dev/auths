@@ -1,6 +1,6 @@
 # AUTHS-E4004
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `FreezeError::ZeroDuration`
 
 ## Message

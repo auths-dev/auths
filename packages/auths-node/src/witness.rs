@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
+use auths_id::keri::types::Prefix;
 use auths_id::storage::identity::IdentityStorage;
-use auths_id::witness_config::WitnessConfig;
+use auths_id::witness_config::{WitnessConfig, WitnessRef};
 use auths_storage::git::RegistryIdentityStorage;
 use napi_derive::napi;
 
@@ -62,6 +63,7 @@ pub struct NapiWitnessResult {
 #[napi]
 pub fn add_witness(
     url_str: String,
+    aid: String,
     repo_path: String,
     label: Option<String>,
 ) -> napi::Result<NapiWitnessResult> {
@@ -72,18 +74,22 @@ pub fn add_witness(
             format!("Invalid URL '{}': {}", url_str, e),
         )
     })?;
+    let aid = Prefix::new_unchecked(aid);
 
     let mut config = load_witness_config(&repo)?;
 
-    if config.witness_urls.contains(&parsed_url) {
+    if config.witnesses.iter().any(|w| w.url == parsed_url) {
         return Ok(NapiWitnessResult {
             url: url_str,
-            did: None,
+            did: Some(aid.as_str().to_string()),
             label,
         });
     }
 
-    config.witness_urls.push(parsed_url);
+    config.witnesses.push(WitnessRef {
+        url: parsed_url,
+        aid: aid.clone(),
+    });
     if config.threshold == 0 {
         config.threshold = 1;
     }
@@ -91,7 +97,7 @@ pub fn add_witness(
     save_witness_config(&repo, &config)?;
     Ok(NapiWitnessResult {
         url: url_str,
-        did: None,
+        did: Some(aid.as_str().to_string()),
         label,
     })
 }
@@ -107,10 +113,10 @@ pub fn remove_witness(url_str: String, repo_path: String) -> napi::Result<()> {
     })?;
 
     let mut config = load_witness_config(&repo)?;
-    config.witness_urls.retain(|u| u != &parsed_url);
+    config.witnesses.retain(|w| w.url != parsed_url);
 
-    if config.threshold > config.witness_urls.len() {
-        config.threshold = config.witness_urls.len();
+    if config.threshold > config.witnesses.len() {
+        config.threshold = config.witnesses.len();
     }
 
     save_witness_config(&repo, &config)?;
@@ -123,12 +129,12 @@ pub fn list_witnesses(repo_path: String) -> napi::Result<String> {
     let config = load_witness_config(&repo)?;
 
     let entries: Vec<serde_json::Value> = config
-        .witness_urls
+        .witnesses
         .iter()
-        .map(|u| {
+        .map(|w| {
             serde_json::json!({
-                "url": u.to_string(),
-                "did": null,
+                "url": w.url.to_string(),
+                "did": w.aid.as_str(),
                 "label": null,
             })
         })

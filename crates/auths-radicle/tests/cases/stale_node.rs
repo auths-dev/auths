@@ -15,14 +15,7 @@ fn stale_identity_repo_rejected_in_enforce() {
     let device = DeviceFixture::new(1);
 
     storage.add_identity(identity_did.clone(), make_key_state("EAlice", 1));
-    register_device(
-        &mut storage,
-        &device,
-        &identity_did,
-        &repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &device, &identity_did, &repo_id, false);
 
     // Local tip is AA
     storage.set_identity_tip(identity_did.clone(), [0xAA; 20]);
@@ -58,14 +51,7 @@ fn missing_identity_repo_quarantined_in_enforce() {
     let device = DeviceFixture::new(1);
 
     // Identity repo is NOT in storage (load_key_state will return error)
-    register_device(
-        &mut storage,
-        &device,
-        &identity_did,
-        &repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &device, &identity_did, &repo_id, false);
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
@@ -95,14 +81,7 @@ fn min_kel_seq_violation_rejected() {
 
     // Identity is at sequence 5
     storage.add_identity(identity_did.clone(), make_key_state("EAlice", 5));
-    register_device(
-        &mut storage,
-        &device,
-        &identity_did,
-        &repo_id,
-        false,
-        vec![],
-    );
+    register_device(&mut storage, &device, &identity_did, &repo_id, false);
 
     let bridge = DefaultBridge::with_storage(storage);
 

@@ -1,6 +1,6 @@
 # AUTHS-E2014
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::OrgVerificationFailed`
 
 ## Message

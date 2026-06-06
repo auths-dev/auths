@@ -3,7 +3,6 @@
 //! These types are the single authoritative definition of KERI events for the
 //! entire workspace. All other crates import from here.
 
-use chrono::{DateTime, Utc};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
@@ -113,17 +112,32 @@ pub enum Seal {
         /// Event SAID.
         d: Said,
     },
+    /// Event-location seal (KERI v1.1 §7): `{"i","s","p","t","d"}`.
+    EventLocation {
+        /// AID.
+        i: Prefix,
+        /// Sequence number.
+        s: KeriSequence,
+        /// Prior event SAID.
+        p: Said,
+        /// Event type (ilk).
+        t: String,
+        /// Event SAID.
+        d: Said,
+    },
     /// Latest establishment event seal: `{"i": "<AID>"}`
     LatestEstablishment {
         /// AID.
         i: Prefix,
     },
-    /// Merkle tree root digest seal: `{"rd": "<digest>"}`
+    /// Merkle tree root digest seal: `{"rd": "<digest>"}` (non-spec extension).
+    #[cfg(feature = "seal-extensions")]
     MerkleRoot {
         /// Root digest.
         rd: Said,
     },
-    /// Registrar backer seal: `{"bi": "<AID>", "d": "<SAID>"}`
+    /// Registrar backer seal: `{"bi": "<AID>", "d": "<SAID>"}` (non-spec extension).
+    #[cfg(feature = "seal-extensions")]
     RegistrarBacker {
         /// Backer AID.
         bi: Prefix,
@@ -155,9 +169,12 @@ impl Seal {
             Seal::Digest { d } => Some(d),
             Seal::SourceEvent { d, .. } => Some(d),
             Seal::KeyEvent { d, .. } => Some(d),
-            Seal::RegistrarBacker { d, .. } => Some(d),
-            Seal::MerkleRoot { rd } => Some(rd),
+            Seal::EventLocation { d, .. } => Some(d),
             Seal::LatestEstablishment { .. } => None,
+            #[cfg(feature = "seal-extensions")]
+            Seal::RegistrarBacker { d, .. } => Some(d),
+            #[cfg(feature = "seal-extensions")]
+            Seal::MerkleRoot { rd } => Some(rd),
         }
     }
 }
@@ -183,16 +200,27 @@ impl Serialize for Seal {
                 map.serialize_entry("d", d)?;
                 map.end()
             }
+            Seal::EventLocation { i, s, p, t, d } => {
+                let mut map = serializer.serialize_map(Some(5))?;
+                map.serialize_entry("i", i)?;
+                map.serialize_entry("s", s)?;
+                map.serialize_entry("p", p)?;
+                map.serialize_entry("t", t)?;
+                map.serialize_entry("d", d)?;
+                map.end()
+            }
             Seal::LatestEstablishment { i } => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("i", i)?;
                 map.end()
             }
+            #[cfg(feature = "seal-extensions")]
             Seal::MerkleRoot { rd } => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 map.serialize_entry("rd", rd)?;
                 map.end()
             }
+            #[cfg(feature = "seal-extensions")]
             Seal::RegistrarBacker { bi, d } => {
                 let mut map = serializer.serialize_map(Some(2))?;
                 map.serialize_entry("bi", bi)?;
@@ -208,109 +236,61 @@ impl<'de> Deserialize<'de> for Seal {
         let map: serde_json::Map<String, serde_json::Value> =
             serde_json::Map::deserialize(deserializer)?;
 
-        // Discriminate by field presence (most-specific first)
-        if map.contains_key("rd") {
-            let rd = map
-                .get("rd")
+        let want_str = |k: &str| -> Result<String, D::Error> {
+            map.get(k)
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("rd must be a string"))?;
-            Ok(Seal::MerkleRoot {
-                rd: Said::new_unchecked(rd.to_string()),
-            })
-        } else if map.contains_key("bi") {
-            let bi = map
-                .get("bi")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("bi must be a string"))?;
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d required for registrar backer seal"))?;
-            Ok(Seal::RegistrarBacker {
-                bi: Prefix::new_unchecked(bi.to_string()),
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else if map.contains_key("i") && map.contains_key("s") && map.contains_key("d") {
-            let i = map
-                .get("i")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("i must be a string"))?;
-            let s: KeriSequence = serde_json::from_value(
-                map.get("s")
-                    .cloned()
-                    .ok_or_else(|| serde::de::Error::custom("s required"))?,
-            )
-            .map_err(serde::de::Error::custom)?;
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d must be a string"))?;
-            Ok(Seal::KeyEvent {
-                i: Prefix::new_unchecked(i.to_string()),
-                s,
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else if map.contains_key("i") {
-            let i = map
-                .get("i")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("i must be a string"))?;
-            Ok(Seal::LatestEstablishment {
-                i: Prefix::new_unchecked(i.to_string()),
-            })
-        } else if map.contains_key("s") && map.contains_key("d") {
-            let s: KeriSequence = serde_json::from_value(
-                map.get("s")
-                    .cloned()
-                    .ok_or_else(|| serde::de::Error::custom("s required"))?,
-            )
-            .map_err(serde::de::Error::custom)?;
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d must be a string"))?;
-            Ok(Seal::SourceEvent {
-                s,
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else if map.contains_key("d") {
-            let d = map
-                .get("d")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| serde::de::Error::custom("d must be a string"))?;
-            Ok(Seal::Digest {
-                d: Said::new_unchecked(d.to_string()),
-            })
-        } else {
-            Err(serde::de::Error::custom("unrecognized seal format"))
-        }
-    }
-}
+                .map(|v| v.to_string())
+                .ok_or_else(|| {
+                    serde::de::Error::custom(format!("seal field `{k}` must be a string"))
+                })
+        };
+        let want_seq =
+            |k: &str| -> Result<KeriSequence, D::Error> {
+                serde_json::from_value(map.get(k).cloned().ok_or_else(|| {
+                    serde::de::Error::custom(format!("seal field `{k}` required"))
+                })?)
+                .map_err(serde::de::Error::custom)
+            };
 
-/// Type of data anchored by a seal.
-///
-/// **DEPRECATED:** This enum is retained for backwards compatibility with existing
-/// stored attestations. New code should use `Seal::digest()` directly — the type
-/// information lives in the anchored document, not the seal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-#[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
-pub enum SealType {
-    /// Device attestation seal
-    DeviceAttestation,
-    /// Capability delegation seal
-    Delegation,
-    /// Identity provider binding seal
-    IdpBinding,
-}
+        // Match on the EXACT sorted field set — no silent field-dropping (F-37).
+        let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
+        keys.sort_unstable();
 
-impl fmt::Display for SealType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SealType::DeviceAttestation => write!(f, "device-attestation"),
-            SealType::Delegation => write!(f, "delegation"),
-            SealType::IdpBinding => write!(f, "idp-binding"),
+        match keys.as_slice() {
+            ["d"] => Ok(Seal::Digest {
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["d", "s"] => Ok(Seal::SourceEvent {
+                s: want_seq("s")?,
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["d", "i", "s"] => Ok(Seal::KeyEvent {
+                i: Prefix::new_unchecked(want_str("i")?),
+                s: want_seq("s")?,
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["d", "i", "p", "s", "t"] => Ok(Seal::EventLocation {
+                i: Prefix::new_unchecked(want_str("i")?),
+                s: want_seq("s")?,
+                p: Said::new_unchecked(want_str("p")?),
+                t: want_str("t")?,
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            ["i"] => Ok(Seal::LatestEstablishment {
+                i: Prefix::new_unchecked(want_str("i")?),
+            }),
+            #[cfg(feature = "seal-extensions")]
+            ["rd"] => Ok(Seal::MerkleRoot {
+                rd: Said::new_unchecked(want_str("rd")?),
+            }),
+            #[cfg(feature = "seal-extensions")]
+            ["bi", "d"] => Ok(Seal::RegistrarBacker {
+                bi: Prefix::new_unchecked(want_str("bi")?),
+                d: Said::new_unchecked(want_str("d")?),
+            }),
+            other => Err(serde::de::Error::custom(format!(
+                "unrecognized seal field set: {other:?}"
+            ))),
         }
     }
 }
@@ -329,7 +309,6 @@ pub struct IcpEvent {
     /// Version string
     pub v: VersionString,
     /// SAID (Self-Addressing Identifier) — Blake3 hash of event
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix (same as `d` for self-addressing inception)
     pub i: Prefix,
@@ -354,14 +333,6 @@ pub struct IcpEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
-    /// Signed-in wall-clock timestamp (ISO 8601, ms precision). When
-    /// present, it is part of the SAID digest — any tampering breaks
-    /// the event signature. Time-aware policy checks
-    /// (rotation cooldown, clock-skew rejection) live in
-    /// [`crate::validate::validate_kel_with_policy`]; `validate_kel`
-    /// itself stays pure / clock-free.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`IcpEvent::new`]. Mirrors the existing
@@ -370,23 +341,34 @@ pub struct IcpEvent {
 /// a `with_*` method, not by widening this `Init` struct — that's
 /// what makes the pattern future-proof.
 pub struct IcpEventInit {
+    /// Version string (`KERI10JSON…`); a placeholder until finalized.
     pub v: VersionString,
+    /// Self-addressing identifier (the event SAID); blank until finalized.
     pub d: Said,
+    /// Identifier prefix; for inception this equals the SAID (self-addressing).
     pub i: Prefix,
+    /// Sequence number (0 for inception).
     pub s: KeriSequence,
+    /// Signing threshold over the current keys `k`.
     pub kt: Threshold,
+    /// Current signing keys (CESR-encoded verkeys).
     pub k: Vec<CesrKey>,
+    /// Next-key threshold over the pre-rotation commitments `n`.
     pub nt: Threshold,
+    /// Pre-rotation commitments (digests of the next keys).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold.
     pub bt: Threshold,
+    /// Backer (witness) prefixes.
     pub b: Vec<Prefix>,
+    /// Configuration traits (e.g. establishment-only, do-not-delegate).
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals.
     pub a: Vec<Seal>,
 }
 
 impl IcpEvent {
-    /// Construct an `IcpEvent` from its required fields. The
-    /// additional, optional `dt` is set via [`Self::with_dt`].
+    /// Construct an `IcpEvent` from its required fields.
     pub fn new(init: IcpEventInit) -> Self {
         Self {
             v: init.v,
@@ -401,24 +383,14 @@ impl IcpEvent {
             b: init.b,
             c: init.c,
             a: init.a,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in rotation timestamp. Included in the SAID
-    /// digest, so tampering invalidates the signature.
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, (dt) (+ x if non-empty, legacy)
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a
 impl Serialize for IcpEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 13 + usize::from(self.dt.is_some());
+        let field_count = 13;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "icp")?;
@@ -433,23 +405,19 @@ impl Serialize for IcpEvent {
         map.serialize_entry("b", &self.b)?;
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
 
 /// Rotation event — rotates to pre-committed key.
 ///
-/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a]`
+/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a]`
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RotEvent {
     /// Version string
     pub v: VersionString,
     /// SAID of this event
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -479,33 +447,43 @@ pub struct RotEvent {
     /// Anchored seals
     #[serde(default)]
     pub a: Vec<Seal>,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`RotEvent::new`]. See [`IcpEventInit`] for
 /// the pattern rationale.
 pub struct RotEventInit {
+    /// Version string (`KERI10JSON…`); a placeholder until finalized.
     pub v: VersionString,
+    /// Self-addressing identifier (the event SAID); blank until finalized.
     pub d: Said,
+    /// Identifier prefix of the rotating identity.
     pub i: Prefix,
+    /// Sequence number (strictly greater than the prior event's).
     pub s: KeriSequence,
+    /// Prior event SAID (the back-link establishing the chain).
     pub p: Said,
+    /// Signing threshold over the new current keys `k`.
     pub kt: Threshold,
+    /// New current signing keys (CESR-encoded verkeys) revealed by this rotation.
     pub k: Vec<CesrKey>,
+    /// Next-key threshold over the new pre-rotation commitments `n`.
     pub nt: Threshold,
+    /// New pre-rotation commitments (digests of the next keys).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold after applying the backer deltas.
     pub bt: Threshold,
+    /// Backer (witness) prefixes to remove.
     pub br: Vec<Prefix>,
+    /// Backer (witness) prefixes to add.
     pub ba: Vec<Prefix>,
+    /// Configuration traits (e.g. `RB`/`NRB`) updated by this rotation.
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals carried in this event's `a[]`.
     pub a: Vec<Seal>,
 }
 
 impl RotEvent {
-    /// Construct a `RotEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct a `RotEvent` from its required fields.
     pub fn new(init: RotEventInit) -> Self {
         Self {
             v: init.v,
@@ -522,22 +500,14 @@ impl RotEvent {
             ba: init.ba,
             c: init.c,
             a: init.a,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, (dt) (+ x if non-empty, legacy)
+/// Spec field order: v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a
 impl Serialize for RotEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 15 + usize::from(self.dt.is_some());
+        let field_count = 14;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "rot")?;
@@ -552,11 +522,7 @@ impl Serialize for RotEvent {
         map.serialize_entry("bt", &self.bt)?;
         map.serialize_entry("br", &self.br)?;
         map.serialize_entry("ba", &self.ba)?;
-        map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -570,7 +536,6 @@ pub struct IxnEvent {
     /// Version string
     pub v: VersionString,
     /// SAID of this event
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -580,9 +545,6 @@ pub struct IxnEvent {
     pub p: Said,
     /// Anchored seals (the main purpose of IXN events)
     pub a: Vec<Seal>,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
 }
 
 /// Parameter struct for [`IxnEvent::new`].
@@ -596,8 +558,7 @@ pub struct IxnEventInit {
 }
 
 impl IxnEvent {
-    /// Construct an `IxnEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct an `IxnEvent` from its required fields.
     pub fn new(init: IxnEventInit) -> Self {
         Self {
             v: init.v,
@@ -606,22 +567,14 @@ impl IxnEvent {
             s: init.s,
             p: init.p,
             a: init.a,
-            dt: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, p, a, (dt) (+ x if non-empty, legacy)
+/// Spec field order: v, t, d, i, s, p, a
 impl Serialize for IxnEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 7 + usize::from(self.dt.is_some());
+        let field_count = 7;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "ixn")?;
@@ -630,9 +583,6 @@ impl Serialize for IxnEvent {
         map.serialize_entry("s", &self.s)?;
         map.serialize_entry("p", &self.p)?;
         map.serialize_entry("a", &self.a)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -660,7 +610,6 @@ pub struct DipEvent {
     /// Version string
     pub v: VersionString,
     /// SAID
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix (same as `d` for self-addressing)
     pub i: Prefix,
@@ -687,31 +636,47 @@ pub struct DipEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix
     pub di: Prefix,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
+    /// Delegate-side source seal (`-G` `SealSourceCouple`): a back-reference to
+    /// the delegator's anchoring event. Carried in the CESR **attachment**, never
+    /// in the event body — so it is `#[serde(skip)]` (absent from the JSON and from
+    /// SAID computation) and populated after the delegator anchors (the cooperative
+    /// double-anchor). `None` until/unless the anchoring event is known.
+    #[serde(skip)]
+    pub source_seal: Option<SourceSeal>,
 }
 
 /// Parameter struct for [`DipEvent::new`].
 pub struct DipEventInit {
+    /// Version string (KERI version + serialization + byte count).
     pub v: VersionString,
+    /// Self-addressing identifier (SAID) of this event.
     pub d: Said,
+    /// Identifier prefix (AID); self-addressing for a delegated AID (`i == d`).
     pub i: Prefix,
+    /// Sequence number (0 for inception).
     pub s: KeriSequence,
+    /// Current signing threshold.
     pub kt: Threshold,
+    /// Current signing public keys (CESR-encoded).
     pub k: Vec<CesrKey>,
+    /// Next (rotation) threshold.
     pub nt: Threshold,
+    /// Next-key commitments (pre-rotation digests).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold.
     pub bt: Threshold,
+    /// Backer (witness) list.
     pub b: Vec<Prefix>,
+    /// Configuration traits.
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals.
     pub a: Vec<Seal>,
+    /// Delegator prefix — the AID delegating this identifier.
     pub di: Prefix,
 }
 
 impl DipEvent {
-    /// Construct a `DipEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct a `DipEvent` from its required fields.
     pub fn new(init: DipEventInit) -> Self {
         Self {
             v: init.v,
@@ -727,22 +692,15 @@ impl DipEvent {
             c: init.c,
             a: init.a,
             di: init.di,
-            dt: None,
+            source_seal: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di, (dt) (+ x if non-empty)
+/// Spec field order: v, t, d, i, s, kt, k, nt, n, bt, b, c, a, di
 impl Serialize for DipEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 14 + usize::from(self.dt.is_some());
+        let field_count = 14;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "dip")?;
@@ -758,9 +716,6 @@ impl Serialize for DipEvent {
         map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -769,14 +724,13 @@ impl Serialize for DipEvent {
 ///
 /// Same field set as ROT but type `drt`. Validation requires checking the
 /// delegator's KEL for an anchoring seal.
-/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a]`
+/// Spec field order: `[v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a]`
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DrtEvent {
     /// Version string
     pub v: VersionString,
     /// SAID
-    #[serde(default)]
     pub d: Said,
     /// Identifier prefix
     pub i: Prefix,
@@ -808,33 +762,49 @@ pub struct DrtEvent {
     pub a: Vec<Seal>,
     /// Delegator identifier prefix (KERI §11).
     pub di: Prefix,
-    /// Signed-in rotation timestamp. See [`IcpEvent::dt`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dt: Option<DateTime<Utc>>,
+    /// Delegate-side source seal (`-G` `SealSourceCouple`) — see
+    /// [`DipEvent::source_seal`]. Carried in the attachment, set after the
+    /// delegator anchors this rotation.
+    #[serde(skip)]
+    pub source_seal: Option<SourceSeal>,
 }
 
 /// Parameter struct for [`DrtEvent::new`].
 pub struct DrtEventInit {
+    /// Version string (KERI version + serialization + byte count).
     pub v: VersionString,
+    /// Self-addressing identifier (SAID) of this event.
     pub d: Said,
+    /// Identifier prefix (AID) — the existing delegated AID (not self-addressing).
     pub i: Prefix,
+    /// Sequence number.
     pub s: KeriSequence,
+    /// Prior event SAID (chains to the previous event).
     pub p: Said,
+    /// Current signing threshold.
     pub kt: Threshold,
+    /// Current signing public keys (CESR-encoded) — the revealed pre-rotated keys.
     pub k: Vec<CesrKey>,
+    /// Next (rotation) threshold.
     pub nt: Threshold,
+    /// Next-key commitments (pre-rotation digests).
     pub n: Vec<Said>,
+    /// Backer (witness) threshold.
     pub bt: Threshold,
+    /// Backers (witnesses) to remove.
     pub br: Vec<Prefix>,
+    /// Backers (witnesses) to add.
     pub ba: Vec<Prefix>,
+    /// Configuration traits.
     pub c: Vec<ConfigTrait>,
+    /// Anchored seals.
     pub a: Vec<Seal>,
+    /// Delegator prefix — the AID delegating this identifier.
     pub di: Prefix,
 }
 
 impl DrtEvent {
-    /// Construct a `DrtEvent` from its required fields. The optional
-    /// `dt` is set via [`Self::with_dt`].
+    /// Construct a `DrtEvent` from its required fields.
     pub fn new(init: DrtEventInit) -> Self {
         Self {
             v: init.v,
@@ -852,22 +822,15 @@ impl DrtEvent {
             c: init.c,
             a: init.a,
             di: init.di,
-            dt: None,
+            source_seal: None,
         }
-    }
-
-    /// Attach a signed-in timestamp. Included in the SAID digest, so
-    /// tampering invalidates the signature.
-    pub fn with_dt(mut self, dt: DateTime<Utc>) -> Self {
-        self.dt = Some(dt);
-        self
     }
 }
 
-/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, c, a, di, (dt)
+/// Spec field order (KERI §11): v, t, d, i, s, p, kt, k, nt, n, bt, br, ba, a, di
 impl Serialize for DrtEvent {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let field_count = 16 + usize::from(self.dt.is_some());
+        let field_count = 15;
         let mut map = serializer.serialize_map(Some(field_count))?;
         map.serialize_entry("v", &self.v)?;
         map.serialize_entry("t", "drt")?;
@@ -882,12 +845,8 @@ impl Serialize for DrtEvent {
         map.serialize_entry("bt", &self.bt)?;
         map.serialize_entry("br", &self.br)?;
         map.serialize_entry("ba", &self.ba)?;
-        map.serialize_entry("c", &self.c)?;
         map.serialize_entry("a", &self.a)?;
         map.serialize_entry("di", &self.di)?;
-        if let Some(dt) = &self.dt {
-            map.serialize_entry("dt", dt)?;
-        }
         map.end()
     }
 }
@@ -1030,6 +989,16 @@ impl Event {
     pub fn is_delegated(&self) -> bool {
         matches!(self, Event::Dip(_) | Event::Drt(_))
     }
+
+    /// Get the delegate-side source seal (`-G` back-reference to the delegator's
+    /// anchoring event), if this is a delegated event that has been anchored.
+    pub fn source_seal(&self) -> Option<&SourceSeal> {
+        match self {
+            Event::Dip(e) => e.source_seal.as_ref(),
+            Event::Drt(e) => e.source_seal.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 // ── Signed Event (externalized signatures) ──────────────────────────────────
@@ -1043,16 +1012,259 @@ impl Event {
 /// Usage:
 /// ```
 /// use auths_keri::IndexedSignature;
-/// let sig = IndexedSignature { index: 0, sig: vec![0u8; 64] };
+/// let sig = IndexedSignature { index: 0, prior_index: None, sig: vec![0u8; 64] };
 /// assert_eq!(sig.index, 0);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexedSignature {
-    /// Index into the key list (which key signed).
+    /// Index into the new key list `k[]` (which current key signed).
     pub index: u32,
+    /// For a rotation signature, the index into the prior event's next-key
+    /// commitment list `n[]` that this signature reveals (CESR *ondex*).
+    ///
+    /// `Some(j)` emits a dual-index ("Big", `2A`) siger; `None` emits the
+    /// single-index code (`A`) with ondex == index — preserving the wire
+    /// bytes of every single-index signer (inception, symmetric rotation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_index: Option<u32>,
     /// Raw signature bytes (64 bytes for Ed25519).
     #[serde(with = "hex::serde")]
     pub sig: Vec<u8>,
+}
+
+/// A delegate-side source seal — the parsed form of a CESR `-G` `SealSourceCouple`.
+///
+/// A delegated event (`dip`/`drt`) carries one of these as an **attachment** (never
+/// in the body) to bind itself back to the *specific* delegator event that anchored
+/// it: `s` is that anchoring event's sequence number (CESR `Seqner`), `d` is its
+/// SAID (CESR `Saider`). Together with the delegator-side `Seal::KeyEvent` (which
+/// points the other way) this forms the **bilateral** delegation binding keripy
+/// requires. Byte-aligned with keripy 1.3.4's `-G` couple.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct SourceSeal {
+    /// Sequence number of the delegator's anchoring event.
+    pub s: KeriSequence,
+    /// SAID of the delegator's anchoring event.
+    pub d: Said,
+}
+
+/// Delegator-anchored scope/expiry for a delegated agent (Epic E.7).
+///
+/// Carried as a `Seal::Digest` in the **delegator's** anchoring `ixn` — authority
+/// comes from the party that controls the delegator key, never agent-self-asserted.
+/// The digest value is a structured marker string (not a SAID) namespaced under
+/// `agentscope:`, so it never collides with a real digest, a revocation (bare
+/// prefix), or an `agent:` role marker. Advisory authorization; the principled
+/// upgrade is a targeted ACDC (Epic F).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct AgentScope {
+    /// Capabilities granted to the agent (empty = unrestricted). Capability strings
+    /// may contain `:` (e.g. `repo:foo`) but not `,` (the list separator).
+    pub capabilities: Vec<String>,
+    /// Expiry as Unix epoch seconds; `None` = never expires.
+    pub expires_at: Option<i64>,
+}
+
+/// Marker prefix for an agent-scope `Seal::Digest` value.
+const AGENT_SCOPE_MARKER: &str = "agentscope:";
+
+/// Encode an agent-scope seal value: `agentscope:{prefix}:{expires_or_0}:{caps_csv}`.
+///
+/// Args:
+/// * `agent_prefix`: The agent's KEL prefix the scope applies to.
+/// * `scope`: The granted capabilities + optional expiry.
+///
+/// Usage:
+/// ```
+/// use auths_keri::{AgentScope, encode_agent_scope};
+/// let s = AgentScope { capabilities: vec!["sign_commit".into()], expires_at: Some(99) };
+/// assert_eq!(encode_agent_scope("Eabc", &s), "agentscope:Eabc:99:sign_commit");
+/// ```
+pub fn encode_agent_scope(agent_prefix: &str, scope: &AgentScope) -> String {
+    let expires = scope.expires_at.unwrap_or(0);
+    let caps = scope.capabilities.join(",");
+    format!("{AGENT_SCOPE_MARKER}{agent_prefix}:{expires}:{caps}")
+}
+
+/// Decode an agent-scope seal value into `(agent_prefix, AgentScope)`, or `None` if
+/// the value is not an `agentscope:` marker. Inverse of [`encode_agent_scope`].
+///
+/// Args:
+/// * `value`: A `Seal::Digest` value to interpret.
+pub fn decode_agent_scope(value: &str) -> Option<(String, AgentScope)> {
+    // {prefix}:{expires}:{caps_csv} — prefix is a `:`-free KERI prefix; caps may
+    // contain `:`, so the 3-way split keeps the caps tail intact.
+    let rest = value.strip_prefix(AGENT_SCOPE_MARKER)?;
+    let mut parts = rest.splitn(3, ':');
+    let prefix = parts.next()?.to_string();
+    let expires: i64 = parts.next()?.parse().ok()?;
+    let caps_csv = parts.next().unwrap_or("");
+    let capabilities = if caps_csv.is_empty() {
+        Vec::new()
+    } else {
+        caps_csv.split(',').map(|c| c.to_string()).collect()
+    };
+    Some((
+        prefix,
+        AgentScope {
+            capabilities,
+            expires_at: (expires != 0).then_some(expires),
+        },
+    ))
+}
+
+/// Serialize source seals to a CESR text-domain `-G##<Seqner><Saider>…`
+/// `SealSourceCouples` group, byte-aligned with keripy 1.3.4.
+///
+/// Each couple is a `Seqner` (`0A`-coded 128-bit sequence) followed by a `Saider`
+/// (the anchoring event's SAID). Reads back via [`parse_source_seal_couples`].
+///
+/// Args:
+/// * `couples`: The delegate-side source seals to encode.
+///
+/// Usage:
+/// ```ignore
+/// let bytes = serialize_source_seal_couples(&[SourceSeal { s, d }])?;
+/// ```
+pub fn serialize_source_seal_couples(couples: &[SourceSeal]) -> Result<Vec<u8>, AttachmentError> {
+    use cesride::{Counter, Matter, Saider, Seqner, counter};
+
+    let count = u32::try_from(couples.len())
+        .map_err(|_| AttachmentError::Encode("too many source seal couples".into()))?;
+    let mut out = Counter::new_with_code_and_count(counter::Codex::SealSourceCouples, count)
+        .and_then(|c| c.qb64())
+        .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+
+    for couple in couples {
+        let seqner = Seqner::new_with_sn(couple.s.value())
+            .and_then(|s| s.qb64())
+            .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+        let saider = Saider::new_with_qb64(couple.d.as_str())
+            .and_then(|s| s.qb64())
+            .map_err(|e| AttachmentError::Encode(e.to_string()))?;
+        out.push_str(&seqner);
+        out.push_str(&saider);
+    }
+
+    Ok(out.into_bytes())
+}
+
+/// Parse a CESR `-G##` `SealSourceCouples` group into [`SourceSeal`]s.
+///
+/// Inverse of [`serialize_source_seal_couples`]; code-directed so each `Seqner`
+/// and `Saider` width is read from its CESR hard code.
+///
+/// Args:
+/// * `bytes`: The `-G`-prefixed couple-group bytes (e.g. from an attachment tail).
+pub fn parse_source_seal_couples(bytes: &[u8]) -> Result<Vec<SourceSeal>, AttachmentError> {
+    let s = std::str::from_utf8(bytes)
+        .map_err(|e| AttachmentError::Decode(format!("non-utf8 source-seal group: {e}")))?;
+    let (couples, rest) = parse_source_seal_group(s)?;
+    if !rest.is_empty() {
+        return Err(AttachmentError::Decode(format!(
+            "trailing bytes after source-seal group: {rest:?}"
+        )));
+    }
+    Ok(couples)
+}
+
+/// Parse one `-G` `SealSourceCouples` group at the head of `s`, returning the
+/// couples and the unconsumed remainder.
+fn parse_source_seal_group(s: &str) -> Result<(Vec<SourceSeal>, &str), AttachmentError> {
+    use cesride::{Matter, Saider, Seqner};
+
+    let rest = s.strip_prefix("-G").ok_or_else(|| {
+        AttachmentError::Decode("source-seal group must start with -G counter code".into())
+    })?;
+    if rest.len() < 2 {
+        return Err(AttachmentError::Decode(
+            "truncated -G counter header".into(),
+        ));
+    }
+    let (count_b64, mut cursor) = rest.split_at(2);
+    let count = decode_count_b64(count_b64)?;
+
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
+        // Seqner is fixed-width (`0A` + 22 base64 = 24 chars; a 128-bit number).
+        if cursor.len() < SEQNER_QB64_LEN {
+            return Err(AttachmentError::Decode(
+                "truncated Seqner in -G couple".into(),
+            ));
+        }
+        let (seqner_qb64, after_seqner) = cursor.split_at(SEQNER_QB64_LEN);
+        let seqner = Seqner::new_with_qb64(seqner_qb64)
+            .map_err(|e| AttachmentError::Decode(format!("Seqner: {e}")))?;
+        let sn = seqner
+            .sn()
+            .map_err(|e| AttachmentError::Decode(format!("Seqner sn: {e}")))?;
+
+        // Saider is code-directed; the leading char fixes its full width.
+        let first = *after_seqner.as_bytes().first().ok_or_else(|| {
+            AttachmentError::Decode("truncated -G couple: expected a Saider".into())
+        })?;
+        let fs = saider_qb64_len(first).ok_or_else(|| {
+            AttachmentError::Decode(format!("unsupported Saider code byte {first:?}"))
+        })?;
+        if after_seqner.len() < fs {
+            return Err(AttachmentError::Decode(
+                "truncated Saider in -G couple".into(),
+            ));
+        }
+        let (saider_qb64, remainder) = after_seqner.split_at(fs);
+        let saider = Saider::new_with_qb64(saider_qb64)
+            .and_then(|s| s.qb64())
+            .map_err(|e| AttachmentError::Decode(format!("Saider: {e}")))?;
+        cursor = remainder;
+
+        out.push(SourceSeal {
+            s: KeriSequence::new(sn),
+            d: Said::new_unchecked(saider),
+        });
+    }
+    Ok((out, cursor))
+}
+
+/// Parse a delegated event's combined attachment — the controller signature group
+/// (`-A`) followed by an optional source-seal group (`-G`).
+///
+/// Returns the indexed signatures and any source seals. Used by storage read paths
+/// to re-attach a delegated event's `-G` back-reference after a JSON round-trip.
+///
+/// Args:
+/// * `bytes`: The full attachment bytes (`-A…` then optional `-G…`).
+pub fn parse_delegated_attachment(
+    bytes: &[u8],
+) -> Result<(Vec<IndexedSignature>, Vec<SourceSeal>), AttachmentError> {
+    let s = std::str::from_utf8(bytes)
+        .map_err(|e| AttachmentError::Decode(format!("non-utf8 attachment: {e}")))?;
+    if s.is_empty() {
+        return Ok((vec![], vec![]));
+    }
+    let (sigs, rest) = parse_sig_group(s)?;
+    if rest.is_empty() {
+        return Ok((sigs, vec![]));
+    }
+    let (couples, tail) = parse_source_seal_group(rest)?;
+    if !tail.is_empty() {
+        return Err(AttachmentError::Decode(format!(
+            "trailing bytes after delegated attachment: {tail:?}"
+        )));
+    }
+    Ok((sigs, couples))
+}
+
+/// CESR `Seqner` qb64 width: `0A` hard code (2) + 22 base64 chars = 24.
+const SEQNER_QB64_LEN: usize = 24;
+
+/// qb64 full width of a 32-byte digest `Saider` from its leading code char.
+/// Blake3-256 (`E`), Blake2b-256 (`F`), Blake2s-256 (`G`), SHA3-256 (`H`),
+/// SHA2-256 (`I`) are all single-char-coded 44-char primitives. Mirrors cesride
+/// `matter` sizage for the digest family auths emits.
+fn saider_qb64_len(first: u8) -> Option<usize> {
+    matches!(first, b'E' | b'F' | b'G' | b'H' | b'I').then_some(44)
 }
 
 /// An event paired with its detached signature(s).
@@ -1111,14 +1323,20 @@ pub fn serialize_attachment(signatures: &[IndexedSignature]) -> Result<Vec<u8>, 
     out.push_str(&encode_count_b64(signatures.len())?);
 
     for sig in signatures {
-        // Ed25519 indexed signature — single-curve for now. P-256 indexed
-        // signatures would use `indexer::Codex::ECDSA_256r1`; auths' current
-        // flows produce Ed25519 in this sign path.
+        // Ed25519 indexed signature (auths' sign paths produce Ed25519). A
+        // distinct prior-commitment index (`prior_index != index`) needs the
+        // dual-index "Big" code `2A`, which carries both indices; otherwise the
+        // single-index `A` (ondex == index) keeps the legacy 88-char bytes.
+        let (code, ondex) = if sig.prior_index.is_some_and(|j| j != sig.index) {
+            (indexer::Codex::Ed25519_Big, sig.prior_index)
+        } else {
+            (indexer::Codex::Ed25519, None)
+        };
         let siger = Siger::new(
             None,
             Some(sig.index),
-            None,
-            Some(indexer::Codex::Ed25519),
+            ondex,
+            Some(code),
             Some(&sig.sig),
             None,
             None,
@@ -1134,17 +1352,59 @@ pub fn serialize_attachment(signatures: &[IndexedSignature]) -> Result<Vec<u8>, 
     Ok(out.into_bytes())
 }
 
+/// CESR Indexer hard-code length: codes whose first char is a digit (`0`–`4`)
+/// are multi-char selectors; all others are single-char. Mirrors cesride's
+/// `indexer` hardage (whose tables are `pub(crate)`).
+fn indexer_hard_len(first: u8) -> usize {
+    if first.is_ascii_digit() { 2 } else { 1 }
+}
+
+/// `(full qb64 size, ondex size)` for a CESR Indexer signature code, mirroring
+/// cesride `indexer/tables.rs` (its `sizage` is `pub(crate)`, not callable here).
+///
+/// `os > 0` marks a dual-index ("Big") code carrying a *distinct* prior-commitment
+/// index (ondex); single-index codes have `os == 0` (ondex echoes index).
+fn indexer_sizage(code: &str) -> Option<(usize, usize)> {
+    Some(match code {
+        // single-index: Ed25519 A/B, secp256k1 C/D, P-256 E/F (+ Crt variants)
+        "A" | "B" | "C" | "D" | "E" | "F" => (88, 0),
+        // dual-index ("Big"): Ed25519 2A/2B, secp256k1 2C/2D, P-256 2E/2F
+        "2A" | "2B" | "2C" | "2D" | "2E" | "2F" => (92, 2),
+        // large/huge index variants (completeness; not emitted by auths)
+        "0A" | "0B" => (156, 1),
+        "3A" | "3B" => (160, 3),
+        _ => return None,
+    })
+}
+
 /// Parse a CESR `-A##` indexed-signature group into the constituent
 /// `IndexedSignature`s.
+///
+/// Code-directed: each siger's width is read from its CESR hard code (so a group
+/// may mix single-index `A` (88 ch) and dual-index `2A` (92 ch), or curves). A
+/// signature under a dual-index code populates `prior_index` from its ondex.
 pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, AttachmentError> {
-    use cesride::{Indexer, Siger};
-
     let s = std::str::from_utf8(bytes)
         .map_err(|e| AttachmentError::Decode(format!("non-utf8 attachment: {e}")))?;
 
     if s.is_empty() {
         return Ok(vec![]);
     }
+
+    let (sigs, rest) = parse_sig_group(s)?;
+    if !rest.is_empty() {
+        return Err(AttachmentError::Decode(format!(
+            "trailing bytes after signature group: {rest:?}"
+        )));
+    }
+    Ok(sigs)
+}
+
+/// Parse one `-A` indexed-signature group at the head of `s`, returning the
+/// signatures and the unconsumed remainder (e.g. a trailing `-G` source-seal
+/// group on a delegated event).
+fn parse_sig_group(s: &str) -> Result<(Vec<IndexedSignature>, &str), AttachmentError> {
+    use cesride::{Indexer, Siger};
 
     let rest = s.strip_prefix("-A").ok_or_else(|| {
         AttachmentError::Decode("attachment must start with -A counter code".into())
@@ -1158,30 +1418,39 @@ pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, Attachmen
     let mut out = Vec::with_capacity(count);
     let mut cursor = body;
     for _ in 0..count {
-        // Ed25519 indexed sigs are 88 chars in CESR (2-char code + 86 body).
-        // P-256 ECDSA indexed sigs also 88 chars (code ECDSA_256r1 + body).
-        // Both match; parse fixed-width.
-        if cursor.len() < 88 {
+        let first = *cursor.as_bytes().first().ok_or_else(|| {
+            AttachmentError::Decode("truncated group: expected another signature".into())
+        })?;
+        let hs = indexer_hard_len(first);
+        if cursor.len() < hs {
+            return Err(AttachmentError::Decode("truncated siger hard code".into()));
+        }
+        let code = &cursor[..hs];
+        let (fs, os) = indexer_sizage(code)
+            .ok_or_else(|| AttachmentError::Decode(format!("unknown indexer code {code:?}")))?;
+        if cursor.len() < fs {
             return Err(AttachmentError::Decode(format!(
-                "insufficient bytes for siger: need 88, have {}",
+                "insufficient bytes for {code} siger: need {fs}, have {}",
                 cursor.len()
             )));
         }
-        let (siger_qb64, remainder) = cursor.split_at(88);
+        let (siger_qb64, remainder) = cursor.split_at(fs);
         cursor = remainder;
 
         let siger = Siger::new(None, None, None, None, None, None, Some(siger_qb64), None)
             .map_err(|e| AttachmentError::Decode(format!("Siger: {e}")))?;
-        let index = siger.index();
-        let sig_bytes = siger.raw();
+        // A distinct prior-commitment index is carried only by dual-index codes
+        // (os > 0); single-index codes report ondex == index, which is not a binding.
+        let prior_index = (os > 0).then(|| siger.ondex());
 
         out.push(IndexedSignature {
-            index,
-            sig: sig_bytes,
+            index: siger.index(),
+            prior_index,
+            sig: siger.raw(),
         });
     }
 
-    Ok(out)
+    Ok((out, cursor))
 }
 
 /// Error shape for attachment encode/decode.
@@ -1236,6 +1505,7 @@ mod tests {
     fn attachment_roundtrip_single_sig() {
         let sigs = vec![IndexedSignature {
             index: 0,
+            prior_index: None,
             sig: vec![0x42u8; 64],
         }];
         let bytes = serialize_attachment(&sigs).unwrap();
@@ -1252,14 +1522,17 @@ mod tests {
         let sigs = vec![
             IndexedSignature {
                 index: 0,
+                prior_index: None,
                 sig: vec![0x01u8; 64],
             },
             IndexedSignature {
                 index: 1,
+                prior_index: None,
                 sig: vec![0x02u8; 64],
             },
             IndexedSignature {
                 index: 2,
+                prior_index: None,
                 sig: vec![0x03u8; 64],
             },
         ];
@@ -1328,7 +1601,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let json = serde_json::to_string(&icp).unwrap();
         // d, a, c are always serialized (spec requires all fields)
@@ -1342,7 +1614,7 @@ mod tests {
 
     #[test]
     fn event_enum_deserializes_by_t_field() {
-        let json = r#"{"v":"KERI10JSON","t":"icp","i":"E123","s":"0","kt":"1","k":["DKey"],"nt":"1","n":["ENext"],"bt":"0","b":[]}"#;
+        let json = r#"{"v":"KERI10JSON000000_","t":"icp","d":"ETestSaid","i":"E123","s":"0","kt":"1","k":["DKey"],"nt":"1","n":["ENext"],"bt":"0","b":[]}"#;
         let event: Event = serde_json::from_str(json).unwrap();
         assert!(event.is_inception());
         assert_eq!(event.sequence().value(), 0);
@@ -1355,6 +1627,33 @@ mod tests {
         assert_eq!(json, r#"{"d":"EDigest123"}"#);
         let parsed: Seal = serde_json::from_str(&json).unwrap();
         assert_eq!(seal, parsed);
+    }
+
+    #[test]
+    fn seal_event_location_roundtrips() {
+        // A.8 (F-36): the KERI §7 event-location seal {i,s,p,t,d} round-trips.
+        let seal = Seal::EventLocation {
+            i: Prefix::new_unchecked("EPrefix".to_string()),
+            s: KeriSequence::new(3),
+            p: Said::new_unchecked("EPrior".to_string()),
+            t: "ixn".to_string(),
+            d: Said::new_unchecked("EDigest".to_string()),
+        };
+        let json = serde_json::to_string(&seal).unwrap();
+        let parsed: Seal = serde_json::from_str(&json).unwrap();
+        assert_eq!(seal, parsed);
+        assert_eq!(parsed.digest_value().map(|d| d.as_str()), Some("EDigest"));
+    }
+
+    #[test]
+    fn seal_rejects_malformed_i_s() {
+        // A.8 (F-37): a malformed {i,s} seal (no d) must error, not silently
+        // collapse to a LatestEstablishment {i} that drops `s`.
+        let r: Result<Seal, _> = serde_json::from_str(r#"{"i":"EPrefix","s":"3"}"#);
+        assert!(r.is_err(), "malformed {{i,s}} seal must be rejected");
+        // and an entirely unknown field set errors too.
+        let r2: Result<Seal, _> = serde_json::from_str(r#"{"zz":"x"}"#);
+        assert!(r2.is_err());
     }
 
     #[test]
@@ -1373,10 +1672,15 @@ mod tests {
     fn indexed_signature_serde_roundtrip() {
         let sig = IndexedSignature {
             index: 2,
+            prior_index: None,
             sig: vec![0xab; 64],
         };
         let json = serde_json::to_string(&sig).unwrap();
         assert!(json.contains("\"index\":2"));
+        assert!(
+            !json.contains("prior_index"),
+            "a None prior_index must be omitted from the wire: {json}"
+        );
         let parsed: IndexedSignature = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, sig);
     }
@@ -1397,12 +1701,12 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         let signed = SignedEvent::new(
             Event::Icp(icp),
             vec![IndexedSignature {
                 index: 0,
+                prior_index: None,
                 sig: vec![0u8; 64],
             }],
         );

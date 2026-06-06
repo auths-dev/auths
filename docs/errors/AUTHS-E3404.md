@@ -1,6 +1,6 @@
 # AUTHS-E3404
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `WitnessError::Timeout`
 
 ## Message

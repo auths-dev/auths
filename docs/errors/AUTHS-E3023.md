@@ -1,6 +1,6 @@
 # AUTHS-E3023
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::HsmSessionExpired`
 
 ## Message

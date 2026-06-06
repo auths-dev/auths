@@ -1,4 +1,3 @@
-pub mod allowed_signers;
 pub mod approval;
 pub mod artifact;
 pub mod audit;
@@ -17,6 +16,7 @@ pub mod org;
 pub mod platform;
 pub mod policy_diff;
 pub mod provision;
+pub mod roots;
 pub mod rotation;
 pub mod signing;
 pub mod status;

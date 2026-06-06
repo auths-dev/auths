@@ -20,11 +20,8 @@ import { PairingService } from './pairing'
 import { mapNativeError, CryptoError, VerificationError } from './errors'
 import {
   verifyAttestation,
-  verifyAttestationWithCapability,
   verifyAtTime,
-  verifyAtTimeWithCapability,
   verifyChain as verifyChainFn,
-  verifyChainWithCapability,
   verifyChainWithWitnesses,
   type VerificationResult,
   type VerificationReport,
@@ -46,8 +43,6 @@ export interface VerifyOptions {
   attestationJson: string
   /** Hex-encoded Ed25519 public key of the issuer. */
   issuerKey: string
-  /** Optional capability the attestation must grant. */
-  requiredCapability?: string
   /** Optional RFC 3339 timestamp to verify at. */
   at?: string
 }
@@ -58,8 +53,6 @@ export interface VerifyChainOptions {
   attestations: string[]
   /** Hex-encoded Ed25519 public key of the root identity. */
   rootKey: string
-  /** Optional capability the leaf attestation must grant. */
-  requiredCapability?: string
   /** Optional witness configuration for receipt-based verification. */
   witnesses?: WitnessConfig
 }
@@ -152,7 +145,10 @@ export class Auths {
   }
 
   /**
-   * Verifies a single attestation with optional capability and time constraints.
+   * Verifies a single attestation's authenticity, with an optional time constraint.
+   *
+   * Capability/role authority is no longer checked here — that grant comes from a
+   * holder-verified ACDC credential, not the attestation.
    *
    * @param opts - Verification options.
    * @returns The verification result.
@@ -168,20 +164,17 @@ export class Auths {
    * ```
    */
   async verify(opts: VerifyOptions): Promise<VerificationResult> {
-    if (opts.at && opts.requiredCapability) {
-      return verifyAtTimeWithCapability(opts.attestationJson, opts.issuerKey, opts.at, opts.requiredCapability)
-    }
     if (opts.at) {
       return verifyAtTime(opts.attestationJson, opts.issuerKey, opts.at)
-    }
-    if (opts.requiredCapability) {
-      return verifyAttestationWithCapability(opts.attestationJson, opts.issuerKey, opts.requiredCapability)
     }
     return verifyAttestation(opts.attestationJson, opts.issuerKey)
   }
 
   /**
-   * Verifies an attestation chain with optional capability and witness constraints.
+   * Verifies an attestation chain's authenticity, with optional witness quorum.
+   *
+   * Capability authority is no longer checked here — that grant comes from a
+   * holder-verified ACDC credential.
    *
    * @param opts - Chain verification options.
    * @returns The verification report.
@@ -190,9 +183,6 @@ export class Auths {
   async verifyChain(opts: VerifyChainOptions): Promise<VerificationReport> {
     if (opts.witnesses) {
       return verifyChainWithWitnesses(opts.attestations, opts.rootKey, opts.witnesses)
-    }
-    if (opts.requiredCapability) {
-      return verifyChainWithCapability(opts.attestations, opts.rootKey, opts.requiredCapability)
     }
     return verifyChainFn(opts.attestations, opts.rootKey)
   }

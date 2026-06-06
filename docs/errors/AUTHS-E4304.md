@@ -1,6 +1,6 @@
 # AUTHS-E4304
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `AgentProvisioningError::KeychainAccess`
 
 ## Message

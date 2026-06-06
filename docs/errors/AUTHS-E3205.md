@@ -1,6 +1,6 @@
 # AUTHS-E3205
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `PairingError::MdnsError`
 
 ## Message

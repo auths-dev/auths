@@ -1,6 +1,6 @@
 # AUTHS-E4501
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::InvalidSaid`
 
 ## Message

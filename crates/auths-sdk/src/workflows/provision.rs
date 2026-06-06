@@ -12,7 +12,7 @@ use auths_id::{
     identity::initialize::initialize_registry_identity,
     ports::registry::RegistryBackend,
     storage::identity::IdentityStorage,
-    witness_config::{WitnessConfig, WitnessPolicy},
+    witness_config::{WitnessConfig, WitnessPolicy, WitnessRef},
 };
 use serde::Deserialize;
 
@@ -45,12 +45,21 @@ pub struct IdentityConfig {
     pub metadata: HashMap<String, String>,
 }
 
+/// A configured witness in node config: where to reach it and its pinned AID.
+#[derive(Debug, Deserialize)]
+pub struct WitnessTomlEntry {
+    /// Witness server URL.
+    pub url: String,
+    /// Witness AID (curve-tagged CESR verkey prefix).
+    pub aid: String,
+}
+
 /// Witness section of the node configuration (TOML-friendly view).
 #[derive(Debug, Deserialize)]
 pub struct WitnessOverride {
-    /// Witness server URLs.
+    /// Configured witnesses as `(url, aid)` pairs.
     #[serde(default)]
-    pub urls: Vec<String>,
+    pub witnesses: Vec<WitnessTomlEntry>,
 
     /// Minimum witness receipts required (k-of-n threshold).
     #[serde(default = "default_threshold")]
@@ -166,7 +175,7 @@ pub fn enforce_identity_state(
 
 fn build_witness_config(witness: Option<&WitnessOverride>) -> Option<WitnessConfig> {
     let w = witness?;
-    if w.urls.is_empty() {
+    if w.witnesses.is_empty() {
         return None;
     }
     let policy = match w.policy.as_str() {
@@ -174,8 +183,20 @@ fn build_witness_config(witness: Option<&WitnessOverride>) -> Option<WitnessConf
         "skip" => WitnessPolicy::Skip,
         _ => WitnessPolicy::Enforce,
     };
+    let witnesses: Vec<WitnessRef> = w
+        .witnesses
+        .iter()
+        .filter_map(|e| {
+            let url = e.url.parse().ok()?;
+            let aid = auths_keri::Prefix::new(e.aid.clone()).ok()?;
+            Some(WitnessRef { url, aid })
+        })
+        .collect();
+    if witnesses.is_empty() {
+        return None;
+    }
     Some(WitnessConfig {
-        witness_urls: w.urls.iter().filter_map(|u| u.parse().ok()).collect(),
+        witnesses,
         threshold: w.threshold,
         timeout_ms: w.timeout_ms,
         policy,

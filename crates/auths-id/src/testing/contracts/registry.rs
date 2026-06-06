@@ -158,10 +158,10 @@ macro_rules! registry_backend_contract_tests {
 
             #[test]
             fn contract_store_and_load_attestation() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new_unchecked("did:key:zContractStoreLoad1");
+                let did = CanonicalDid::new_unchecked("did:key:zContractStoreLoad1");
                 let att = $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
                 store.store_attestation(&att).unwrap();
                 let loaded = store.load_attestation(&did).unwrap();
@@ -174,20 +174,20 @@ macro_rules! registry_backend_contract_tests {
 
             #[test]
             fn contract_load_attestation_not_found() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new_unchecked("did:key:zNotStored99");
+                let did = CanonicalDid::new_unchecked("did:key:zNotStored99");
                 let result = store.load_attestation(&did).unwrap();
                 assert!(result.is_none(), "missing attestation should return None");
             }
 
             #[test]
             fn contract_store_attestation_overwrites_latest() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new_unchecked("did:key:zContractOverwrite1");
+                let did = CanonicalDid::new_unchecked("did:key:zContractOverwrite1");
                 let att1 = $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
                 let mut att2 =
                     $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
@@ -205,10 +205,10 @@ macro_rules! registry_backend_contract_tests {
 
             #[test]
             fn contract_attestation_history_preserves_order() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new_unchecked("did:key:zContractHistory1");
+                let did = CanonicalDid::new_unchecked("did:key:zContractHistory1");
 
                 for i in 0..3u32 {
                     let mut att =
@@ -232,10 +232,10 @@ macro_rules! registry_backend_contract_tests {
 
             #[test]
             fn contract_visit_attestation_history_early_exit() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
-                let did = DeviceDID::new_unchecked("did:key:zContractHistExit1");
+                let did = CanonicalDid::new_unchecked("did:key:zContractHistExit1");
                 for i in 0..3u32 {
                     let mut att =
                         $crate::testing::fixtures::test_attestation(&did, "did:keri:EIssuer1");
@@ -255,11 +255,11 @@ macro_rules! registry_backend_contract_tests {
 
             #[test]
             fn contract_visit_devices_early_exit() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
-                let did1 = DeviceDID::new_unchecked("did:key:zContractDev1");
-                let did2 = DeviceDID::new_unchecked("did:key:zContractDev2");
+                let did1 = CanonicalDid::new_unchecked("did:key:zContractDev1");
+                let did2 = CanonicalDid::new_unchecked("did:key:zContractDev2");
                 store
                     .store_attestation(&$crate::testing::fixtures::test_attestation(
                         &did1,
@@ -285,11 +285,11 @@ macro_rules! registry_backend_contract_tests {
 
             #[test]
             fn contract_store_and_visit_org_member() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
                 let org = "ETestOrgPrefix";
-                let did = DeviceDID::new_unchecked("did:key:zMemberContract1");
+                let did = CanonicalDid::new_unchecked("did:key:zMemberContract1");
                 let mut att =
                     $crate::testing::fixtures::test_attestation(&did, "did:keri:ETestOrgPrefix");
                 att.rid = auths_verifier::core::ResourceId::new("org-rid");
@@ -310,14 +310,14 @@ macro_rules! registry_backend_contract_tests {
 
             #[test]
             fn contract_metadata_reflects_counts() {
-                use auths_verifier::types::DeviceDID;
+                use auths_verifier::types::CanonicalDid;
 
                 let (store, _guard) = $setup;
                 let event = $crate::testing::fixtures::test_inception_event("seed-metadata");
                 let prefix = event.prefix().clone();
                 store.append_event(&prefix, &event).unwrap();
 
-                let did = DeviceDID::new_unchecked("did:key:zContractMeta1");
+                let did = CanonicalDid::new_unchecked("did:key:zContractMeta1");
                 store
                     .store_attestation(&$crate::testing::fixtures::test_attestation(
                         &did,

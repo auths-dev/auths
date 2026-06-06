@@ -4,17 +4,14 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
+use auths_core::storage::keychain::{IdentityDID, KeyRole};
 use auths_id::storage::identity::IdentityStorage;
 use auths_pairing_daemon::{
     MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder, PairingDaemonHandle,
     RateLimiter,
 };
-use auths_sdk::pairing::{
-    PairingAttestationParams, PairingSessionParams, build_pairing_session_request,
-    create_pairing_attestation,
-};
-use auths_storage::git::{RegistryAttestationStorage, RegistryIdentityStorage};
+use auths_sdk::pairing::{PairingSessionParams, build_pairing_session_request};
+use auths_storage::git::RegistryIdentityStorage;
 use chrono::Utc;
 use tokio::sync::Mutex;
 
@@ -37,14 +34,6 @@ pub struct NapiPairingResponse {
     pub device_did: String,
     pub device_name: Option<String>,
     pub device_public_key_hex: String,
-}
-
-#[napi(object)]
-#[derive(Clone)]
-pub struct NapiPairingResult {
-    pub device_did: String,
-    pub device_name: Option<String>,
-    pub attestation_rid: String,
 }
 
 #[napi]
@@ -194,92 +183,6 @@ impl NapiPairingHandle {
     }
 
     #[napi]
-    pub async fn complete(
-        &self,
-        device_did: String,
-        device_public_key_hex: String,
-        repo_path: String,
-        capabilities_json: Option<String>,
-        passphrase: Option<String>,
-    ) -> napi::Result<NapiPairingResult> {
-        let passphrase_str = resolve_passphrase(passphrase);
-        let repo = resolve_repo_path(Some(repo_path.clone()));
-        let env_config = make_env_config(&passphrase_str, &repo_path);
-
-        let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-            serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
-        } else {
-            vec!["sign:commit".to_string()]
-        };
-
-        let device_pubkey = hex::decode(&device_public_key_hex).map_err(|e| {
-            format_error(
-                "AUTHS_PAIRING_ERROR",
-                format!("Invalid public key hex: {e}"),
-            )
-        })?;
-
-        let identity_storage: Arc<dyn IdentityStorage + Send + Sync> =
-            Arc::new(RegistryIdentityStorage::new(repo.clone()));
-
-        let managed = identity_storage
-            .load_identity()
-            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
-        let controller_identity_did =
-            IdentityDID::new_unchecked(managed.controller_did.to_string());
-
-        let keychain = get_keychain(&env_config)?;
-        let aliases = keychain
-            .list_aliases_for_identity_with_role(&controller_identity_did, KeyRole::Primary)
-            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-        let identity_key_alias_str = aliases
-            .into_iter()
-            .next()
-            .ok_or_else(|| format_error("AUTHS_PAIRING_ERROR", "No primary signing key found"))?;
-        #[allow(clippy::disallowed_methods)] // INVARIANT: alias from keychain storage
-        let identity_key_alias = KeyAlias::new_unchecked(identity_key_alias_str);
-
-        let key_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
-        let provider = Arc::new(auths_core::signing::PrefilledPassphraseProvider::new(
-            &passphrase_str,
-        ));
-
-        #[allow(clippy::disallowed_methods)]
-        let now = Utc::now();
-        let curve = auths_crypto::did_key_decode(&device_did)
-            .map(|d| d.curve())
-            .unwrap_or_default();
-        let params = PairingAttestationParams {
-            identity_storage: identity_storage.clone(),
-            key_storage: key_storage.clone(),
-            device_pubkey: &device_pubkey,
-            curve,
-            device_did_str: &device_did,
-            capabilities: &capabilities,
-            identity_key_alias: &identity_key_alias,
-            passphrase_provider: provider,
-        };
-
-        let attestation = create_pairing_attestation(&params, now)
-            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-
-        let attestation_storage = RegistryAttestationStorage::new(&repo);
-        use auths_id::attestation::AttestationSink;
-        attestation_storage
-            .export(
-                &auths_verifier::VerifiedAttestation::dangerous_from_unchecked(attestation.clone()),
-            )
-            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", e))?;
-
-        Ok(NapiPairingResult {
-            device_did,
-            device_name: None,
-            attestation_rid: attestation.rid.to_string(),
-        })
-    }
-
-    #[napi]
     pub async fn stop(&self) -> napi::Result<()> {
         let mut handle_guard = self.handle.lock().await;
         *handle_guard = None;
@@ -351,7 +254,7 @@ pub async fn join_pairing_session(
 
     // Curve-agnostic parse: `ParsedKey.seed` is a `TypedSeed` carrying the
     // detected curve; `public_key` is 32 bytes for Ed25519, 33 for P-256.
-    // Pairing-response wire format is Ed25519-pinned today (DeviceDID::from_ed25519
+    // Pairing-response wire format is Ed25519-pinned today (CanonicalDid::from_ed25519
     // + 32-byte pubkey), so we enforce that here.
     let parsed = auths_crypto::parse_key_material(&pkcs8_bytes).map_err(|e| {
         format_error(
@@ -359,8 +262,10 @@ pub async fn join_pairing_session(
             format!("Failed to parse key material: {e}"),
         )
     })?;
-    let device_did =
-        auths_verifier::types::DeviceDID::from_public_key(&parsed.public_key, parsed.seed.curve());
+    let device_did = auths_verifier::types::CanonicalDid::from_public_key_did_key(
+        &parsed.public_key,
+        parsed.seed.curve(),
+    );
 
     let lookup_url = format!("{}/v1/pairing/sessions/by-code/{}", endpoint, short_code);
 
@@ -442,7 +347,9 @@ pub async fn join_pairing_session(
         ),
         device_name: pairing_response.device_name,
         subkey_chain: None,
-        new_device_signing_pubkey: None,
+        initiator_inception_event: String::new(),
+        responder_inception_event: String::new(),
+        shared_kel_inception_event: None,
     };
 
     let submit_url = format!("{}/v1/pairing/sessions/{}/response", endpoint, session_id);

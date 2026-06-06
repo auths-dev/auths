@@ -1,6 +1,6 @@
 # AUTHS-E4107
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `StorageError::Index`
 
 ## Message

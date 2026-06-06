@@ -15,7 +15,8 @@ fn ed(pk: &[u8; 32]) -> DevicePublicKey {
 
 /// Build a `did:key:z...` string from a 32-byte Ed25519 public key (test helper).
 fn ed25519_did(pk: &[u8; 32]) -> String {
-    auths_verifier::DeviceDID::from_public_key(pk, auths_crypto::CurveType::Ed25519).to_string()
+    auths_verifier::CanonicalDid::from_public_key_did_key(pk, auths_crypto::CurveType::Ed25519)
+        .to_string()
 }
 
 fn create_signed_attestation(

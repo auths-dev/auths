@@ -1,6 +1,6 @@
 # AUTHS-E5801
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `AllowedSignersError::InvalidEmail`
 
 ## Message

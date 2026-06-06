@@ -21,6 +21,8 @@ use sqlite::Connection;
 
 use super::error::WitnessError;
 use super::receipt::Receipt;
+#[cfg(test)]
+use super::receipt::ReceiptTag;
 
 /// SQLite-based storage for witness state.
 ///
@@ -312,7 +314,7 @@ mod tests {
         use auths_keri::{KeriSequence, VersionString};
         Receipt {
             v: VersionString::placeholder(),
-            t: "rct".into(),
+            t: ReceiptTag,
             d: Said::new_unchecked(event_said.into()),
             i: Prefix::new_unchecked("did:key:witness".into()),
             s: KeriSequence::new(5),

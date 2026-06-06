@@ -1,6 +1,6 @@
 # AUTHS-E5805
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `AllowedSignersError::ParseError`
 
 ## Message

@@ -1,5 +1,5 @@
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 
 use std::collections::BTreeMap;
 
@@ -42,7 +42,7 @@ impl AttestationGroup {
     }
 
     /// Returns the most recent attestation for the given device DID (subject).
-    pub fn latest(&self, device_did: &DeviceDID) -> Option<&Attestation> {
+    pub fn latest(&self, device_did: &CanonicalDid) -> Option<&Attestation> {
         self.by_device
             .get(device_did.as_str())
             .and_then(|list| list.last())
@@ -72,7 +72,7 @@ impl EnrichedAttestationGroup {
     }
 
     /// Returns the most recent enriched attestation for the given device DID.
-    pub fn latest(&self, device_did: &DeviceDID) -> Option<&EnrichedAttestation> {
+    pub fn latest(&self, device_did: &CanonicalDid) -> Option<&EnrichedAttestation> {
         self.by_device
             .get(device_did.as_str())
             .and_then(|list| list.last())

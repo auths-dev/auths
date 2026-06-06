@@ -101,6 +101,9 @@ pub mod anchor;
 #[allow(clippy::disallowed_methods, clippy::disallowed_types)]
 // INVARIANT: file-based KEL cache — entire module is an I/O adapter
 pub mod cache;
+pub mod credential_registry;
+pub mod delegation;
+pub mod device_kel;
 pub mod event;
 #[cfg(feature = "git-storage")]
 pub mod inception;
@@ -109,10 +112,13 @@ pub mod incremental;
 #[cfg(feature = "git-storage")]
 pub mod kel;
 #[cfg(feature = "git-storage")]
+pub mod kel_resolver;
+#[cfg(feature = "git-storage")]
 pub mod resolve;
 #[cfg(feature = "git-storage")]
 pub mod rotation;
 pub mod seal;
+pub mod shared_kel;
 pub mod state;
 pub mod types;
 pub mod validate;
@@ -126,6 +132,10 @@ pub use anchor::{
     try_stage_anchor, verify_anchor, verify_anchor_by_digest, verify_attestation_anchor_by_issuer,
 };
 pub use auths_keri::KERI_VERSION_PREFIX;
+pub use credential_registry::{
+    CredentialRegistryError, anchor_seal_for, anchor_tel_event, build_iss, build_rev,
+    ensure_registry, find_registry, read_credential_tel,
+};
 pub use event::{
     CesrKey, ConfigTrait, Event, EventReceipts, IcpEvent, IxnEvent, KeriSequence, RotEvent,
     Threshold, VersionString,
@@ -138,18 +148,24 @@ pub use inception::{
 #[cfg(feature = "git-storage")]
 pub use kel::{GitKel, KelError};
 #[cfg(feature = "git-storage")]
+pub use kel_resolver::{
+    KelResolveError, KelResolver, LocalKelResolver, collect_kel, verify_prefix_binding,
+};
+#[cfg(feature = "git-storage")]
 pub use resolve::{
-    DidKeriResolution, ResolveError, parse_did_keri, resolve_did_keri, resolve_did_keri_at_sequence,
+    DidKeriResolution, ResolveError, parse_did_keri, resolve_did_keri,
+    resolve_did_keri_at_sequence, resolve_kel_events,
 };
 #[cfg(feature = "git-storage")]
 pub use rotation::{
     RotationError, RotationResult, abandon_identity, get_key_state, get_key_state_with_backend,
     rotate_keys, rotate_keys_with_backend,
 };
-pub use seal::{Seal, SealType};
+pub use seal::Seal;
 pub use state::KeyState;
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{
-    ValidationError, compute_event_said, finalize_icp_event, replay_kel, serialize_for_signing,
+    ValidationError, compute_event_said, finalize_dip_event, finalize_drt_event,
+    finalize_icp_event, replay_kel, serialize_for_signing, validate_delegation,
     validate_for_append, validate_kel, verify_event_crypto, verify_event_said,
 };

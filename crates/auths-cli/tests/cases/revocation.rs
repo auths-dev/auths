@@ -44,18 +44,14 @@ fn test_emergency_revoke_device() {
         String::from_utf8_lossy(&commit.stderr)
     );
 
-    // Verify commit before revocation
-    let signers = env.allowed_signers_path();
-    let verify_before = env
-        .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
-        .output()
-        .unwrap();
+    // Add the in-band trailers, then verify the commit KEL-native before revocation.
+    let sign = env.cmd("auths").args(["sign", "HEAD"]).output().unwrap();
+    assert!(
+        sign.status.success(),
+        "auths sign failed: {}",
+        String::from_utf8_lossy(&sign.stderr)
+    );
+    let verify_before = env.cmd("auths").args(["verify", "HEAD"]).output().unwrap();
     assert!(
         verify_before.status.success(),
         "commit should verify before revocation"

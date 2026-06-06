@@ -1,6 +1,6 @@
 # AUTHS-E1005
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `CryptoError::UnsupportedTarget`
 
 ## Message

@@ -10,7 +10,7 @@ use auths_verifier::types::IdentityDID;
 use git2::Repository;
 
 use super::types::Prefix;
-use super::{GitKel, KelError, ValidationError, validate_kel};
+use super::{Event, GitKel, KelError, ValidationError, validate_kel};
 
 /// Error type for did:keri resolution.
 #[derive(Debug, thiserror::Error)]
@@ -130,6 +130,30 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
         can_rotate: state.can_rotate(),
         is_abandoned: state.is_abandoned,
     })
+}
+
+/// Resolve the raw KEL events for a `did:keri` from local refs (no replay).
+///
+/// Returns the unvalidated event chain — the verifier replays it itself (a device
+/// KEL is `dip`-rooted and needs a delegator lookup, so plain `validate_kel` here
+/// would fail). Used by the commit verifier to obtain the device + root KEL slices.
+///
+/// Args:
+/// * `repo`: Git repository containing the KEL.
+/// * `did`: The `did:keri:` string.
+///
+/// Usage:
+/// ```ignore
+/// let device_kel = resolve_kel_events(&repo, device_did)?;
+/// let root_kel = resolve_kel_events(&repo, root_did)?;
+/// ```
+pub fn resolve_kel_events(repo: &Repository, did: &str) -> Result<Vec<Event>, ResolveError> {
+    let prefix = parse_did_keri(did)?;
+    let kel = GitKel::new(repo, prefix.as_str());
+    if !kel.exists() {
+        return Err(ResolveError::NotFound(prefix.as_str().to_string()));
+    }
+    Ok(kel.get_events()?)
 }
 
 /// Resolve a did:keri at a specific sequence number (historical lookup).
@@ -344,9 +368,11 @@ mod tests {
 
     #[test]
     fn decode_ed25519_key() {
-        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
         let key_bytes = [1u8; 32];
-        let encoded = format!("D{}", URL_SAFE_NO_PAD.encode(key_bytes));
+        let encoded = KeriPublicKey::ed25519(&key_bytes)
+            .unwrap()
+            .to_qb64()
+            .unwrap();
 
         let key = KeriPublicKey::parse(&encoded).unwrap();
         assert_eq!(key.as_bytes(), &key_bytes);

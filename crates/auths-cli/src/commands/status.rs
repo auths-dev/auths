@@ -5,13 +5,13 @@ use anyhow::{Result, anyhow};
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::keychain::KeyStorage;
 use auths_sdk::ports::IdentityStorage;
-use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
+use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::storage_layout::layout;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use serde::Serialize;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
 use nix::sys::signal;
@@ -63,6 +63,18 @@ pub struct IdentityStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub alias: Option<String>,
     pub key_aliases: Vec<String>,
+    /// The identity's designated witness set (D.9), when configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub witnesses: Option<WitnessSummary>,
+}
+
+/// Designated witness set for the identity (presentation of `WitnessConfig`).
+#[derive(Debug, Serialize)]
+pub struct WitnessSummary {
+    /// Number of designated witnesses (`b[]` size).
+    pub designated: usize,
+    /// Required receipts threshold (`bt`).
+    pub threshold: usize,
 }
 
 /// Agent status information.
@@ -116,7 +128,7 @@ pub fn handle_status(
     let repo_path = resolve_repo_path(repo)?;
     let identity = load_identity_status(&repo_path, env_config);
     let agent = get_agent_status();
-    let devices = load_devices_summary(&repo_path, now);
+    let devices = load_devices_summary(&repo_path, env_config);
 
     let next_steps = compute_next_steps(&identity, &agent, &devices);
 
@@ -140,6 +152,13 @@ pub fn handle_status(
 fn print_status(report: &StatusReport, now: DateTime<Utc>) {
     let out = Output::new();
 
+    // Shared-identity duplicity surfaces at the top so users see it
+    // before anything else. Fail-open: exit code stays 0 regardless.
+    if let Some(warning) = maybe_format_duplicity_warning(report) {
+        out.println(&warning);
+        out.newline();
+    }
+
     // Identity
     if let Some(ref id) = report.identity {
         out.println(&format!("Identity:    {}", out.info(&id.controller_did)));
@@ -150,6 +169,13 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
             out.println(&format!("Key aliases: {}", out.dim("none")));
         } else {
             out.println(&format!("Key aliases: {}", id.key_aliases.join(", ")));
+        }
+        match &id.witnesses {
+            Some(w) => out.println(&format!(
+                "Witnesses:   {} designated, threshold {}",
+                w.designated, w.threshold
+            )),
+            None => out.println(&format!("Witnesses:   {}", out.dim("none designated"))),
         }
     } else {
         out.println(&format!("Identity:    {}", out.dim("not initialized")));
@@ -231,6 +257,82 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
     }
 }
 
+/// Render the pinned duplicity warning when the local KEL stream
+/// contains a diverging rotation.
+///
+/// Walks `refs/auths/shared-kel/*` via git2, turns each matching ref
+/// into a [`KelEventRef`] (prefix + sequence + SAID), and asks the
+/// duplicity detector whether any same-prefix same-seq events carry
+/// differing SAIDs. Fail-open: returns `None` if no shared KEL is
+/// replicated locally or if the scan errors (a missing shared KEL is
+/// the pre-first-pair norm, not an error state).
+fn maybe_format_duplicity_warning(_report: &StatusReport) -> Option<String> {
+    use auths_sdk::keri::copy::format_duplicity_warning;
+    use auths_sdk::verify::{DuplicityReport, KelEventRef, detect_duplicity};
+
+    // Resolve the auths home repo. Any failure → None (pre-first-pair
+    // case is the common one; not worth a log line).
+    let auths_dir = match auths_sdk::paths::auths_home() {
+        Ok(p) => p,
+        Err(_) => return None,
+    };
+    let repo = match git2::Repository::open(&auths_dir) {
+        Ok(r) => r,
+        Err(_) => return None,
+    };
+
+    // Scan refs under the shared-KEL namespace. Ref names have the
+    // shape `refs/auths/shared-kel/<prefix>/<seq>/<said-or-role>`;
+    // we extract prefix + seq and treat the ref target OID as the
+    // SAID for divergence purposes (two refs at the same (prefix,
+    // seq) with different OIDs indicates a fork in the local replica).
+    let prefix_str = "refs/auths/shared-kel/";
+    let mut rows: Vec<(String, u64, String)> = Vec::new();
+    let refs = match repo.references() {
+        Ok(r) => r,
+        Err(_) => return None,
+    };
+    for r in refs.filter_map(|r| r.ok()) {
+        let Some(name) = r.name() else { continue };
+        let Some(rest) = name.strip_prefix(prefix_str) else {
+            continue;
+        };
+        let mut parts = rest.splitn(3, '/');
+        let Some(prefix) = parts.next() else { continue };
+        let Some(seq_str) = parts.next() else {
+            continue;
+        };
+        let Ok(seq) = seq_str.parse::<u64>() else {
+            continue;
+        };
+        let said = r.target().map(|oid| oid.to_string()).unwrap_or_default();
+        if said.is_empty() {
+            continue;
+        }
+        rows.push((prefix.to_string(), seq, said));
+    }
+
+    if rows.is_empty() {
+        return None;
+    }
+
+    // Build KelEventRefs on borrowed storage. `detect_duplicity`
+    // returns the first divergence it finds.
+    let events: Vec<KelEventRef<'_>> = rows
+        .iter()
+        .map(|(prefix, seq, said)| KelEventRef {
+            prefix: prefix.as_str(),
+            seq: *seq,
+            said: said.as_str(),
+        })
+        .collect();
+
+    match detect_duplicity(&events) {
+        DuplicityReport::Clean => None,
+        DuplicityReport::Diverging { seq, .. } => Some(format_duplicity_warning(seq)),
+    }
+}
+
 /// Format seconds into a human-readable duration string.
 fn format_duration_human(secs: i64) -> String {
     if secs < 0 {
@@ -303,10 +405,24 @@ fn load_identity_status(
                 .map(|aliases| aliases.iter().map(|a| a.as_str().to_string()).collect())
                 .unwrap_or_default();
 
+            let witnesses = identity
+                .metadata
+                .as_ref()
+                .and_then(|m| m.get("witness_config"))
+                .and_then(|wc| {
+                    serde_json::from_value::<auths_sdk::witness::WitnessConfig>(wc.clone()).ok()
+                })
+                .filter(|c| !c.witnesses.is_empty())
+                .map(|c| WitnessSummary {
+                    designated: c.witnesses.len(),
+                    threshold: c.threshold,
+                });
+
             Some(IdentityStatus {
                 controller_did: identity.controller_did.to_string(),
                 alias: None,
                 key_aliases,
+                witnesses,
             })
         }
         Err(_) => None,
@@ -349,8 +465,8 @@ fn get_agent_status() -> AgentStatusInfo {
     }
 }
 
-/// Load devices summary from attestations.
-fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSummary {
+/// Load the devices summary from the delegation set (live = delegated − revoked).
+fn load_devices_summary(repo_path: &Path, env_config: &EnvironmentConfig) -> DevicesSummary {
     let empty = DevicesSummary {
         linked: 0,
         revoked: 0,
@@ -359,105 +475,46 @@ fn load_devices_summary(repo_path: &PathBuf, now: DateTime<Utc>) -> DevicesSumma
         devices_detail: Vec::new(),
     };
 
-    if crate::factories::storage::open_git_repo(repo_path).is_err() {
-        return empty;
-    }
-
-    let storage = RegistryAttestationStorage::new(repo_path);
-    let enriched = match storage.load_all_enriched() {
-        Ok(a) => a,
+    let ctx = match crate::factories::storage::build_auths_context(repo_path, env_config, None) {
+        Ok(ctx) => ctx,
+        Err(_) => return empty,
+    };
+    let devices = match auths_sdk::domains::device::list_delegated_devices(&ctx) {
+        Ok(devices) => devices,
         Err(_) => return empty,
     };
 
-    let mut latest_by_device: std::collections::HashMap<
-        String,
-        &auths_sdk::attestation::EnrichedAttestation,
-    > = std::collections::HashMap::new();
-
-    for att in &enriched {
-        let key = att.attestation.subject.as_str().to_string();
-        latest_by_device
-            .entry(key)
-            .and_modify(|existing| {
-                if att.attestation.timestamp > existing.attestation.timestamp {
-                    *existing = att;
-                }
-            })
-            .or_insert(att);
-    }
-
-    let threshold = now + Duration::days(7);
     let mut linked = 0;
     let mut revoked = 0;
-    let mut unanchored = 0;
-    let mut expiring_soon = Vec::new();
     let mut devices_detail = Vec::new();
-
-    for (device_did, enriched_att) in &latest_by_device {
-        let att = &enriched_att.attestation;
-        let is_anchored = enriched_att.anchor == auths_keri::AnchorStatus::Anchored;
-        let (status, expires_in) = compute_device_status(att, now);
-
-        devices_detail.push(DeviceStatus {
-            device_did: device_did.clone(),
-            status,
-            anchored: is_anchored,
-            revoked_at: att.revoked_at,
-            expires_at: att.expires_at,
-            expires_in,
-        });
-
-        if att.is_revoked() {
+    for device in devices {
+        if device.revoked {
             revoked += 1;
         } else {
             linked += 1;
-            if !is_anchored {
-                unanchored += 1;
-            }
-            if let Some(expires_at) = att.expires_at
-                && expires_at <= threshold
-                && expires_at > now
-            {
-                let secs_left = (expires_at - now).num_seconds();
-                expiring_soon.push(ExpiringDevice {
-                    device_did: device_did.clone(),
-                    expires_in: secs_left,
-                });
-            }
         }
+        devices_detail.push(DeviceStatus {
+            device_did: device.device_did,
+            status: if device.revoked {
+                "revoked".to_string()
+            } else {
+                "active".to_string()
+            },
+            anchored: true,
+            revoked_at: None,
+            expires_at: None,
+            expires_in: None,
+        });
     }
 
-    expiring_soon.sort_by_key(|e| e.expires_in);
-
+    // KERI delegation carries no timestamps: no expiry / expiring-soon set, and a
+    // delegated device is inherently anchored.
     DevicesSummary {
         linked,
         revoked,
-        unanchored,
-        expiring_soon,
+        unanchored: 0,
+        expiring_soon: Vec::new(),
         devices_detail,
-    }
-}
-
-fn compute_device_status(
-    att: &auths_verifier::core::Attestation,
-    now: DateTime<Utc>,
-) -> (String, Option<i64>) {
-    if att.is_revoked() {
-        return ("revoked".to_string(), None);
-    }
-    match att.expires_at {
-        None => ("active".to_string(), None),
-        Some(expires_at) => {
-            let secs = (expires_at - now).num_seconds();
-            let status = if expires_at < now {
-                "expired"
-            } else if secs <= 7 * 86400 {
-                "expiring_soon"
-            } else {
-                "active"
-            };
-            (status.to_string(), Some(secs))
-        }
     }
 }
 
@@ -535,6 +592,7 @@ impl crate::commands::executable::ExecutableCommand for StatusCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration;
     use chrono::TimeZone;
 
     #[test]
@@ -552,6 +610,7 @@ mod tests {
                 controller_did: "did:keri:ETestController123".to_string(),
                 alias: Some("dev-machine".to_string()),
                 key_aliases: vec!["main".to_string()],
+                witnesses: None,
             }),
             agent: AgentStatusInfo {
                 running: true,
@@ -597,5 +656,21 @@ mod tests {
         };
 
         insta::assert_json_snapshot!(report);
+    }
+
+    #[test]
+    fn status_shows_witness_set() {
+        let id = IdentityStatus {
+            controller_did: "did:keri:E1".to_string(),
+            alias: None,
+            key_aliases: vec![],
+            witnesses: Some(WitnessSummary {
+                designated: 3,
+                threshold: 2,
+            }),
+        };
+        let json = serde_json::to_string(&id).unwrap();
+        assert!(json.contains("\"designated\":3"));
+        assert!(json.contains("\"threshold\":2"));
     }
 }

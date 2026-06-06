@@ -1,6 +1,6 @@
 # AUTHS-E2001
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::IssuerSignatureFailed`
 
 ## Message

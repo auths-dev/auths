@@ -974,32 +974,6 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E5706\n\n**Crate:** `auths-sdk`  \n**Type:** `ApprovalError::ApprovalStorage`\n\n## Message\n\nstorage error: {0}\n\n## Suggestion\n\nCheck file permissions and disk space\n",
         ),
 
-        // --- auths-sdk (AllowedSignersError) ---
-        "AUTHS-E5801" => Some(
-            "# AUTHS-E5801\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::InvalidEmail`\n\n## Message\n\ninvalid email address: {0}\n\n## Suggestion\n\nEmail must be in user@domain.tld format\n",
-        ),
-        "AUTHS-E5802" => Some(
-            "# AUTHS-E5802\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::InvalidKey`\n\n## Message\n\ninvalid SSH key: {0}\n",
-        ),
-        "AUTHS-E5803" => Some(
-            "# AUTHS-E5803\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::FileRead`\n\n## Message\n\nfailed to read {path}: {source}\n\n## Suggestion\n\nCheck file exists and has correct permissions\n",
-        ),
-        "AUTHS-E5804" => Some(
-            "# AUTHS-E5804\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::FileWrite`\n\n## Message\n\nfailed to write {path}: {source}\n\n## Suggestion\n\nCheck directory exists and has write permissions\n",
-        ),
-        "AUTHS-E5805" => Some(
-            "# AUTHS-E5805\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::ParseError`\n\n## Message\n\nline {line}: {detail}\n",
-        ),
-        "AUTHS-E5806" => Some(
-            "# AUTHS-E5806\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::DuplicatePrincipal`\n\n## Message\n\nprincipal already exists: {0}\n",
-        ),
-        "AUTHS-E5807" => Some(
-            "# AUTHS-E5807\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::AttestationEntryProtected`\n\n## Message\n\ncannot remove attestation-managed entry: {0}\n",
-        ),
-        "AUTHS-E5808" => Some(
-            "# AUTHS-E5808\n\n**Crate:** `auths-sdk`  \n**Type:** `AllowedSignersError::Storage`\n\n## Message\n\nattestation storage error: {0}\n\n## Suggestion\n\nCheck the auths repository at ~/.auths\n",
-        ),
-
         // --- auths-sdk (ArtifactSigningError) ---
         "AUTHS-E5850" => Some(
             "# AUTHS-E5850\n\n**Crate:** `auths-sdk`  \n**Type:** `ArtifactSigningError::IdentityNotFound`\n\n## Message\n\nidentity not found in configured identity storage\n",
@@ -1386,14 +1360,6 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5704",
         "AUTHS-E5705",
         "AUTHS-E5706",
-        "AUTHS-E5801",
-        "AUTHS-E5802",
-        "AUTHS-E5803",
-        "AUTHS-E5804",
-        "AUTHS-E5805",
-        "AUTHS-E5806",
-        "AUTHS-E5807",
-        "AUTHS-E5808",
         "AUTHS-E5850",
         "AUTHS-E5851",
         "AUTHS-E5852",
@@ -1456,6 +1422,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 323);
+        assert_eq!(all_codes().len(), 315);
     }
 }

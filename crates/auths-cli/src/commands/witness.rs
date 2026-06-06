@@ -7,9 +7,11 @@ use anyhow::{Result, anyhow};
 use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};
 
+use auths_infra_http::HttpAsyncWitnessClient;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::storage::RegistryIdentityStorage;
-use auths_sdk::witness::WitnessConfig;
+use auths_sdk::witness::AsyncWitnessProvider;
+use auths_sdk::witness::{WitnessConfig, WitnessRef};
 use auths_sdk::witness::{WitnessServerConfig, WitnessServerState, run_server};
 
 /// Manage identity witness servers.
@@ -77,7 +79,7 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                         WitnessServerConfig {
                             #[allow(clippy::disallowed_methods)]
                             // INVARIANT: caller-supplied witness DID
-                            witness_did: auths_verifier::types::DeviceDID::new_unchecked(
+                            witness_did: auths_verifier::types::CanonicalDid::new_unchecked(
                                 did_override,
                             ),
                             ..cfg
@@ -109,19 +111,41 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                 .parse()
                 .map_err(|e| anyhow!("Invalid witness URL '{}': {}", url, e))?;
             let mut config = load_witness_config(&repo_path)?;
-            if config.witness_urls.contains(&parsed_url) {
-                println!("Witness already configured: {}", url);
+            // A witness is its AID, not its URL: resolve the witness's identity
+            // from its `/health` and pin `(url, aid)`. The AID is what gets
+            // designated in `b[]` and what receipt signatures are verified
+            // against. Refuse to pin a witness we can't identify.
+            let rt = tokio::runtime::Runtime::new()?;
+            let aid = rt
+                .block_on(async {
+                    let client = HttpAsyncWitnessClient::new(
+                        parsed_url.to_string(),
+                        config.threshold.max(1),
+                    );
+                    client.witness_aid().await
+                })
+                .map_err(|e| {
+                    anyhow!(
+                        "Could not resolve witness identity from {}/health: {}",
+                        parsed_url,
+                        e
+                    )
+                })?;
+            if !config.pin(WitnessRef {
+                url: parsed_url.clone(),
+                aid: aid.clone(),
+            }) {
+                println!("Witness already configured (aid {}): {}", aid.as_str(), url);
                 return Ok(());
             }
-            config.witness_urls.push(parsed_url);
             if config.threshold == 0 {
                 config.threshold = 1;
             }
             save_witness_config(&repo_path, &config)?;
-            println!("Added witness: {}", url);
+            println!("Added witness: {} (aid {})", url, aid.as_str());
             println!(
                 "  Witnesses: {}, required: {}",
-                config.witness_urls.len(),
+                config.witnesses.len(),
                 config.threshold
             );
             Ok(())
@@ -133,21 +157,19 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                 .parse()
                 .map_err(|e| anyhow!("Invalid witness URL '{}': {}", url, e))?;
             let mut config = load_witness_config(&repo_path)?;
-            let before = config.witness_urls.len();
-            config.witness_urls.retain(|u| u != &parsed_url);
-            if config.witness_urls.len() == before {
+            if !config.remove_url(&parsed_url) {
                 println!("Witness not found: {}", url);
                 return Ok(());
             }
             // Adjust threshold if needed
-            if config.threshold > config.witness_urls.len() {
-                config.threshold = config.witness_urls.len();
+            if config.threshold > config.witnesses.len() {
+                config.threshold = config.witnesses.len();
             }
             save_witness_config(&repo_path, &config)?;
             println!("Removed witness: {}", url);
             println!(
                 "  Remaining witnesses: {}, required: {}",
-                config.witness_urls.len(),
+                config.witnesses.len(),
                 config.threshold
             );
             Ok(())
@@ -156,18 +178,18 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
         WitnessSubcommand::List => {
             let repo_path = resolve_repo_path(repo_opt)?;
             let config = load_witness_config(&repo_path)?;
-            if config.witness_urls.is_empty() {
+            if config.witnesses.is_empty() {
                 println!("No witnesses configured.");
                 return Ok(());
             }
             println!("Configured witnesses:");
-            for (i, url) in config.witness_urls.iter().enumerate() {
-                println!("  {}. {}", i + 1, url);
+            for (i, w) in config.witnesses.iter().enumerate() {
+                println!("  {}. {}  (aid {})", i + 1, w.url, w.aid.as_str());
             }
             println!(
                 "\nRequired: {}/{} (policy: {:?})",
                 config.threshold,
-                config.witness_urls.len(),
+                config.witnesses.len(),
                 config.policy
             );
             Ok(())

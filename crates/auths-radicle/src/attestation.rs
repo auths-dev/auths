@@ -256,10 +256,7 @@ impl TryFrom<RadAttestation> for Attestation {
             commit_message: None,
             author: None,
             oidc_binding: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         })
@@ -515,10 +512,7 @@ mod tests {
             commit_message: None,
             author: None,
             oidc_binding: None,
-            role: None,
-            capabilities: vec![],
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         };

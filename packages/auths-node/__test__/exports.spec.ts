@@ -30,10 +30,7 @@ describe('top-level exports', () => {
     expect(auths.verifyAttestation).toBeDefined()
     expect(auths.verifyChain).toBeDefined()
     expect(auths.verifyDeviceAuthorization).toBeDefined()
-    expect(auths.verifyAttestationWithCapability).toBeDefined()
-    expect(auths.verifyChainWithCapability).toBeDefined()
     expect(auths.verifyAtTime).toBeDefined()
-    expect(auths.verifyAtTimeWithCapability).toBeDefined()
     expect(auths.verifyChainWithWitnesses).toBeDefined()
   })
 

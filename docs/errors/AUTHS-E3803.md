@@ -1,6 +1,6 @@
 # AUTHS-E3803
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `PlatformError::AccessDenied`
 
 ## Message

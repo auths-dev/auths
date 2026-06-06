@@ -528,18 +528,14 @@ components:
         expires_at:
           type: integer
           description: Unix seconds.
-        mode:
-          $ref: "#/components/schemas/SessionMode"
-
-    SessionMode:
-      type: string
-      enum: [pair, rotate]
-      description: |
-        What a session is for. Always carried explicitly on the wire — no
-        implicit default so verifiers never guess at intent.
-        - `pair` — initial pairing: first time a device is bound to the controller.
-        - `rotate` — device-key rotation: the device is already bound; this
-          session swaps in a new signing key and records a superseding attestation.
+        recovery_target:
+          type: string
+          nullable: true
+          description: |
+            DID (`did:keri:E…`) of an old device being replaced in a
+            stolen-laptop recovery. When present, the surviving
+            controller's `/confirm` signs a single rotation on the
+            shared KEL that drops this DID and adds the new initiator.
 
     CurveTag:
       type: string
@@ -585,15 +581,27 @@ components:
         device_name:
           type: string
           nullable: true
-        new_device_signing_pubkey:
+        initiator_inception_event:
+          type: string
+          description: |
+            Base64url-no-pad JSON of the initiator's device-KEL `icp` event.
+            Both sides validate the other's inception event before signing
+            any shared-KEL change; the daemon is an untrusted relay and
+            does not inspect this field.
+        responder_inception_event:
+          type: string
+          description: |
+            Base64url-no-pad JSON of the responder's device-KEL `icp` event.
+            Mirror of `initiator_inception_event` from the other side.
+        shared_kel_inception_event:
           type: string
           nullable: true
           description: |
-            Rotation extension — the NEW signing pubkey the controller should attest.
-            Present only on `rotate` sessions. Same encoding rules as `device_signing_pubkey`.
-            When present, `device_signing_pubkey` holds the OLD (current) pubkey that
-            signed the rotation binding, and the binding-message layout includes this
-            new pubkey so the OLD key's signature commits to the transition.
+            Present only when no shared identity KEL exists yet (first-ever
+            pair). Base64url-no-pad JSON of the `icp` event the Mac
+            (initiator) signs for the shared KEL. Size-capped at 1 KB on
+            serialize to keep future multi-sig inceptions from silently
+            overflowing QR capacity.
 
     SubmitConfirmationRequest:
       type: object

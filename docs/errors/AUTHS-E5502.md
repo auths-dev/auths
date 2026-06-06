@@ -1,6 +1,6 @@
 # AUTHS-E5502
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `McpAuthError::TokenExchangeFailed`
 
 ## Message

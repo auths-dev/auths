@@ -12,11 +12,8 @@ use auths_sdk::identity::ManagedIdentity;
 use auths_sdk::keychain::KeyAlias;
 use auths_sdk::ports::{AttestationSource, IdentityStorage};
 use auths_sdk::signing::{PassphraseProvider, UnifiedPassphraseProvider};
-use auths_sdk::storage::{
-    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
-};
+use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
 use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
-use chrono::Utc;
 
 use crate::commands::registry_overrides::RegistryOverrides;
 use crate::factories::storage::build_auths_context;
@@ -25,15 +22,11 @@ use crate::ux::format::{JsonResponse, is_json_mode};
 #[derive(Serialize)]
 struct DeviceEntry {
     id: String,
+    /// `active` or `revoked` — a delegated device carries no expiry (KERI
+    /// delegation has no timestamps).
     status: String,
+    /// Always true for a delegated device: its `dip` is anchored by the root.
     anchored: bool,
-    public_key: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    created_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    expires_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    note: Option<String>,
 }
 
 #[derive(Args, Debug, Clone)]
@@ -70,8 +63,27 @@ pub enum DeviceSubcommand {
         include_revoked: bool,
     },
 
-    /// Authorize a new device to act on behalf of the identity.
-    #[command(visible_alias = "add")]
+    /// Add a device as a delegated identifier of the identity.
+    ///
+    /// The new device gets its own KERI KEL (a delegated inception) that the
+    /// root identity anchors — the keripy-native, device-bound way to grant a
+    /// device signing authority. (Use `link` for the legacy attestation flow.)
+    Add {
+        #[arg(long, help = "Your identity's signing key name.")]
+        key: String,
+
+        #[arg(long, help = "Keychain alias to store the new device's key under.")]
+        device_key: String,
+
+        #[arg(
+            long,
+            default_value = "p256",
+            help = "Curve for the new device key (p256 or ed25519)."
+        )]
+        curve: String,
+    },
+
+    /// Authorize a new device to act on behalf of the identity (legacy attestation).
     Link {
         #[arg(long, help = "Your identity's key name.")]
         key: String,
@@ -116,13 +128,27 @@ pub enum DeviceSubcommand {
             help = "Optional description/note for this device authorization."
         )]
         note: Option<String>,
+    },
 
-        #[arg(
-            long,
-            value_delimiter = ',',
-            help = "Permissions to grant this device (comma-separated)"
-        )]
-        capabilities: Option<Vec<String>>,
+    /// Remove a device from the shared identity's controller set by
+    /// signing a rotation on the shared KEL.
+    ///
+    /// Semantically distinct from `revoke`: `remove` changes *who can
+    /// sign for the identity* by producing a new `rot` event; `revoke`
+    /// produces an attestation revocation that marks a specific
+    /// attestation inactive without touching the controller set.
+    ///
+    /// Self-removal is rejected at the CLI with a pointer to
+    /// `auths identity forget`. The authoritative guard lives in the
+    /// SDK — even callers that bypass the CLI check hit
+    /// `SharedKelError::WouldOrphanIdentity`.
+    Remove {
+        /// The controller DID (`did:keri:E…`) to drop.
+        #[arg(long, visible_alias = "device", help = "The controller DID to remove.")]
+        device_did: String,
+
+        #[arg(long, help = "Your identity's signing key name.")]
+        key: String,
     },
 
     /// Revoke an existing device authorization using the identity key.
@@ -189,8 +215,6 @@ pub fn handle_device(
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
-    #[allow(clippy::disallowed_methods)]
-    let now = Utc::now();
     let repo_path = layout::resolve_repo_path(repo_opt)?;
 
     let mut config = StorageLayoutConfig::default();
@@ -209,7 +233,7 @@ pub fn handle_device(
 
     match cmd.command {
         DeviceSubcommand::List { include_revoked } => {
-            list_devices(now, &repo_path, &config, include_revoked)
+            list_devices(&repo_path, env_config, include_revoked)
         }
         DeviceSubcommand::Resolve { device_did } => resolve_device(&repo_path, &device_did),
         DeviceSubcommand::Pair(pair_cmd) => {
@@ -227,22 +251,14 @@ pub fn handle_device(
             schema: schema_path_opt,
             expires_in,
             note,
-            capabilities,
         } => {
             let payload = read_payload_file(payload_path_opt.as_deref())?;
             validate_payload_schema(schema_path_opt.as_deref(), &payload)?;
-
-            let caps: Vec<auths_verifier::Capability> = capabilities
-                .unwrap_or_default()
-                .into_iter()
-                .filter_map(|s| auths_verifier::Capability::parse(&s).ok())
-                .collect();
 
             let link_config = auths_sdk::types::DeviceLinkConfig {
                 identity_key_alias: KeyAlias::new_unchecked(key),
                 device_key_alias: Some(KeyAlias::new_unchecked(device_key)),
                 device_did: Some(device_did.clone()),
-                capabilities: caps,
                 expires_in,
                 note,
                 payload,
@@ -264,6 +280,53 @@ pub fn handle_device(
             .map_err(anyhow::Error::new)?;
 
             display_link_result(&result, &device_did)
+        }
+
+        DeviceSubcommand::Add {
+            key,
+            device_key,
+            curve,
+        } => {
+            let curve = parse_curve(&curve)?;
+            let ctx = build_auths_context(
+                &repo_path,
+                env_config,
+                Some(Arc::clone(&passphrase_provider)),
+            )?;
+            let root_alias = KeyAlias::new_unchecked(key);
+            let device_alias = KeyAlias::new_unchecked(device_key);
+            let result =
+                auths_sdk::domains::device::add_device(&ctx, &root_alias, &device_alias, curve)
+                    .map_err(anyhow::Error::new)?;
+            display_add_result(&result.device_did, &repo_path)
+        }
+
+        DeviceSubcommand::Remove { device_did, key } => {
+            // Remove = revoke the device's KERI delegation: the root anchors a
+            // revocation marker so verifiers stop honouring the device. Single-
+            // author (the root's key signs); the device's key is not needed.
+            //
+            // Self-removal pre-flight (UX only — the SDK is the authoritative
+            // guard): reject removing the root identity itself; point the caller
+            // at `auths identity forget` to wipe their own state.
+            let ctx = build_auths_context(
+                &repo_path,
+                env_config,
+                Some(Arc::clone(&passphrase_provider)),
+            )?;
+            let identity = ctx.identity_storage.load_identity().map_err(|e| {
+                anyhow::anyhow!("failed to load identity for self-removal check: {e}")
+            })?;
+            if device_did == identity.controller_did.as_str() {
+                return Err(anyhow::anyhow!(
+                    "Cannot remove the root identity itself. \
+                     Use `auths identity forget` to delete this device's copy of the identity."
+                ));
+            }
+            let root_alias = KeyAlias::new_unchecked(key);
+            auths_sdk::domains::device::remove_device(&ctx, &root_alias, &device_did)
+                .map_err(anyhow::Error::new)?;
+            display_revoke_result(&device_did, &repo_path)
         }
 
         DeviceSubcommand::Revoke {
@@ -356,6 +419,29 @@ fn display_dry_run_revoke(device_did: &str, identity_key_alias: &str) -> Result<
     }
 }
 
+fn parse_curve(s: &str) -> Result<auths_crypto::CurveType> {
+    match s.to_ascii_lowercase().as_str() {
+        "p256" | "p-256" => Ok(auths_crypto::CurveType::P256),
+        "ed25519" => Ok(auths_crypto::CurveType::Ed25519),
+        other => Err(anyhow::anyhow!(
+            "unknown curve {:?}: expected p256 or ed25519",
+            other
+        )),
+    }
+}
+
+fn display_add_result(device_did: &str, repo_path: &Path) -> Result<()> {
+    let identity_storage = RegistryIdentityStorage::new(repo_path.to_path_buf());
+    let identity: ManagedIdentity = identity_storage
+        .load_identity()
+        .context("Failed to load identity")?;
+    println!(
+        "\n✅ Delegated device {} added to identity {}",
+        device_did, identity.controller_did
+    );
+    Ok(())
+}
+
 fn display_revoke_result(device_did: &str, repo_path: &Path) -> Result<()> {
     let identity_storage = RegistryIdentityStorage::new(repo_path.to_path_buf());
     let identity: ManagedIdentity = identity_storage
@@ -425,7 +511,7 @@ fn handle_extend(
     let config = auths_sdk::types::DeviceExtensionConfig {
         repo_path: repo_path.to_path_buf(),
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from CLI arg validated upstream
-        device_did: auths_verifier::types::DeviceDID::new_unchecked(device_did),
+        device_did: auths_verifier::types::CanonicalDid::new_unchecked(device_did),
         expires_in,
         identity_key_alias: KeyAlias::new_unchecked(key),
         device_key_alias: Some(KeyAlias::new_unchecked(device_key)),
@@ -450,7 +536,7 @@ fn handle_extend(
 fn resolve_device(repo_path: &Path, device_did_str: &str) -> Result<()> {
     let attestation_storage = RegistryAttestationStorage::new(repo_path.to_path_buf());
     #[allow(clippy::disallowed_methods)] // INVARIANT: device_did_str from attestation storage
-    let device_did = auths_verifier::types::DeviceDID::new_unchecked(device_did_str);
+    let device_did = auths_verifier::types::CanonicalDid::new_unchecked(device_did_str);
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .with_context(|| format!("Failed to load attestations for device {device_did_str}"))?;
@@ -464,120 +550,41 @@ fn resolve_device(repo_path: &Path, device_did_str: &str) -> Result<()> {
 }
 
 fn list_devices(
-    now: chrono::DateTime<Utc>,
     repo_path: &Path,
-    _config: &StorageLayoutConfig,
+    env_config: &EnvironmentConfig,
     include_revoked: bool,
 ) -> Result<()> {
-    let identity_storage = RegistryIdentityStorage::new(repo_path.to_path_buf());
-    let attestation_storage = RegistryAttestationStorage::new(repo_path.to_path_buf());
-    let backend = Arc::new(GitRegistryBackend::from_config_unchecked(
-        RegistryConfig::single_tenant(repo_path),
-    )) as Arc<dyn auths_sdk::ports::RegistryBackend + Send + Sync>;
-    let resolver = auths_sdk::identity::RegistryDidResolver::new(backend);
+    let ctx = build_auths_context(repo_path, env_config, None)
+        .context("Failed to build auths context")?;
 
-    let identity: ManagedIdentity = identity_storage
+    let identity = ctx
+        .identity_storage
         .load_identity()
         .with_context(|| format!("Failed to load identity from {:?}", repo_path))?;
 
-    let enriched = attestation_storage
-        .load_all_enriched()
-        .context("Could not load device attestations")?;
-
-    let grouped = auths_sdk::attestation::EnrichedAttestationGroup::from_enriched(enriched);
+    // The delegation set is the source of truth: live = delegated − revoked. A
+    // delegated device is inherently anchored and carries no expiry.
+    let devices = auths_sdk::domains::device::list_delegated_devices(&ctx)
+        .map_err(anyhow::Error::from)
+        .context("Could not list delegated devices")?;
 
     let mut entries: Vec<DeviceEntry> = Vec::new();
-    for (device_did_str, att_entries) in grouped.by_device.iter() {
-        #[allow(clippy::expect_used)] // INVARIANT: BTreeMap groups are never empty by construction
-        let enriched_latest = att_entries
-            .last()
-            .expect("Grouped attestations should not be empty");
-        let latest = &enriched_latest.attestation;
-
-        // single verifier path via auths_verifier::verify_with_keys.
-        // Callers resolve the DID and pass the typed key directly.
-        let verification_result: Result<(), auths_verifier::AttestationError> = {
-            use auths_sdk::identity::DidResolver;
-            use auths_verifier::AttestationError;
-            match resolver.resolve(latest.issuer.as_str()) {
-                Ok(resolved) => {
-                    let pk_bytes: Vec<u8> = resolved.public_key_bytes().to_vec();
-                    let resolved_curve = resolved.curve();
-                    match auths_verifier::decode_public_key_bytes(&pk_bytes, resolved_curve) {
-                        Ok(issuer_pk) => {
-                            #[allow(clippy::expect_used)]
-                            let rt = tokio::runtime::Builder::new_current_thread()
-                                .enable_all()
-                                .build()
-                                .expect("tokio runtime");
-                            rt.block_on(auths_verifier::verify_with_keys(latest, &issuer_pk))
-                                .map(|_| ())
-                        }
-                        Err(e) => Err(AttestationError::DidResolutionError(format!(
-                            "invalid issuer key: {e}"
-                        ))),
-                    }
-                }
-                Err(e) => Err(AttestationError::DidResolutionError(format!(
-                    "Resolver error for {}: {}",
-                    latest.issuer, e
-                ))),
-            }
-        };
-
-        let status_string = match verification_result {
-            Ok(()) => {
-                if latest.is_revoked() {
-                    "revoked".to_string()
-                } else if let Some(expiry) = latest.expires_at {
-                    if now > expiry {
-                        "expired".to_string()
-                    } else {
-                        format!("active (expires {})", expiry.date_naive())
-                    }
-                } else {
-                    "active".to_string()
-                }
-            }
-            Err(err) => {
-                let err_msg = err.to_string().to_lowercase();
-                if err_msg.contains("revoked") {
-                    format!(
-                        "revoked{}",
-                        latest
-                            .timestamp
-                            .map(|ts| format!(" ({})", ts.date_naive()))
-                            .unwrap_or_default()
-                    )
-                } else if err_msg.contains("expired") {
-                    format!(
-                        "expired{}",
-                        latest
-                            .expires_at
-                            .map(|ts| format!(" ({})", ts.date_naive()))
-                            .unwrap_or_default()
-                    )
-                } else {
-                    format!("invalid ({})", err)
-                }
-            }
-        };
-
-        let is_inactive = latest.is_revoked() || latest.expires_at.is_some_and(|e| now > e);
-        if !include_revoked && is_inactive {
+    for device in devices {
+        if !include_revoked && device.revoked {
             continue;
         }
-
         entries.push(DeviceEntry {
-            id: device_did_str.clone(),
-            status: status_string,
-            anchored: enriched_latest.anchor == auths_keri::AnchorStatus::Anchored,
-            public_key: hex::encode(latest.device_public_key.as_bytes()),
-            created_at: latest.timestamp.map(|ts| ts.to_rfc3339()),
-            expires_at: latest.expires_at.map(|ts| ts.to_rfc3339()),
-            note: latest.note.clone().filter(|n| !n.is_empty()),
+            id: device.device_did,
+            status: if device.revoked {
+                "revoked".to_string()
+            } else {
+                "active".to_string()
+            },
+            anchored: true,
         });
     }
+
+    let duplicity_warning = root_duplicity_warning(&ctx, identity.controller_did.as_str());
 
     if is_json_mode() {
         return JsonResponse::success(
@@ -591,27 +598,66 @@ fn list_devices(
         .map_err(anyhow::Error::from);
     }
 
+    if let Some(warning) = &duplicity_warning {
+        println!("{warning}");
+        println!();
+    }
+
     println!("Authorized devices for: {}", identity.controller_did);
     if entries.is_empty() {
         if include_revoked {
-            println!("  No authorized devices found.");
+            println!("  No delegated devices found.");
         } else {
             println!("  (No active devices. Use --include-revoked to see all.)");
         }
         return Ok(());
     }
     for (i, entry) in entries.iter().enumerate() {
-        let anchor_indicator = if entry.anchored { "" } else { " (unanchored)" };
-        println!(
-            "{:>2}. {}   {}{}",
-            i + 1,
-            entry.id,
-            entry.status,
-            anchor_indicator
-        );
-        if let Some(note) = &entry.note {
-            println!("    Note: {}", note);
-        }
+        println!("{:>2}. {}   {}", i + 1, entry.id, entry.status);
     }
     Ok(())
+}
+
+/// Run duplicity detection over the root KEL and return a non-fatal warning if the
+/// local registry has recorded a fork (concurrent rotations on different
+/// controllers). A linear KEL reports `Clean` and yields `None`.
+///
+/// Args:
+/// * `ctx`: Auths context (its registry holds the root KEL).
+/// * `controller_did`: The root identity's `did:keri:`.
+///
+/// Usage:
+/// ```ignore
+/// if let Some(w) = root_duplicity_warning(&ctx, &controller_did) { println!("{w}"); }
+/// ```
+fn root_duplicity_warning(
+    ctx: &auths_sdk::context::AuthsContext,
+    controller_did: &str,
+) -> Option<String> {
+    use auths_sdk::verify::{DuplicityReport, KelEventRef, detect_duplicity};
+
+    let prefix_str = controller_did.strip_prefix("did:keri:")?;
+    let prefix = auths_keri::Prefix::new_unchecked(prefix_str.to_string());
+    let tip = ctx.registry.get_tip(&prefix).ok()?;
+
+    let mut events = Vec::new();
+    for seq in 0..=tip.sequence {
+        events.push(ctx.registry.get_event(&prefix, seq).ok()?);
+    }
+    let refs: Vec<KelEventRef> = events
+        .iter()
+        .enumerate()
+        .map(|(seq, event)| KelEventRef {
+            prefix: controller_did,
+            seq: seq as u64,
+            said: event.said().as_str(),
+        })
+        .collect();
+
+    match detect_duplicity(&refs) {
+        DuplicityReport::Diverging { seq, .. } => {
+            Some(auths_sdk::keri::copy::format_duplicity_warning(seq))
+        }
+        _ => None,
+    }
 }

@@ -26,7 +26,7 @@ export type IdentityDID = Brand<string, 'IdentityDID'>
  * Represents a device's ephemeral key-based identity. Used for device
  * attestations and signing keys. Parse with {@link parseDeviceDid}.
  */
-export type DeviceDID = Brand<string, 'DeviceDID'>
+export type CanonicalDid = Brand<string, 'CanonicalDid'>
 
 /**
  * Parse and validate an identity DID string.
@@ -52,20 +52,20 @@ export function parseIdentityDid(raw: string): IdentityDID {
  * Parse and validate a device DID string.
  *
  * @param raw - A DID string that should start with `did:key:z`.
- * @returns The validated DID as a `DeviceDID` branded type.
+ * @returns The validated DID as a `CanonicalDid` branded type.
  * @throws Error if the string does not start with `did:key:z`.
  *
  * @example
  * ```typescript
  * const did = parseDeviceDid('did:key:z6MkDevice...')
- * // did is typed as DeviceDID
+ * // did is typed as CanonicalDid
  * ```
  */
-export function parseDeviceDid(raw: string): DeviceDID {
+export function parseDeviceDid(raw: string): CanonicalDid {
   if (!raw.startsWith('did:key:z')) {
     throw new Error(`Expected did:key:z prefix, got: ${raw.slice(0, 20)}`)
   }
-  return raw as DeviceDID
+  return raw as CanonicalDid
 }
 
 // ── Signer Type ───────────────────────────────────────────────────────

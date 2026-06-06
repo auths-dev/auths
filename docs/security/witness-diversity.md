@@ -1,5 +1,13 @@
 # Witness Diversity Policy
 
+> **Status: future layer — NOT the Epic-D mechanism.** Epic D ("witness
+> receipting & duplicity") deliberately implements the **KERI-native** `b[]`/`bt`
+> backer set + KAWA M-of-N quorum, *not* the CT/Sigsum-style organizational /
+> jurisdictional diversity quorum described below. CT-style transparency
+> diversity is an explicit **non-goal** of Epic D and a candidate for a separate
+> future epic. See `docs/architecture/ADRs/006-witness-receipting-and-duplicity.md`
+> (decision 1). This document is the design sketch for that future layer.
+
 This document describes the organizational, operational, and
 jurisdictional diversity requirements for the Auths witness set, and
 the client-side verification quorum that makes those requirements

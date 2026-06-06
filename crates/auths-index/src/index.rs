@@ -18,7 +18,7 @@ pub struct IndexedAttestation {
     pub issuer_did: IdentityDID,
     /// DID of the attestation subject (device or identity).
     pub device_did: CanonicalDid,
-    /// Git ref path (e.g., refs/auths/devices/nodes/...)
+    /// Git ref path (e.g., refs/auths/attestations/nodes/...)
     pub git_ref: String,
     /// Git commit OID for loading full attestation (None when OID is not yet known)
     pub commit_oid: Option<CommitOid>,
@@ -485,7 +485,7 @@ mod tests {
             rid: ResourceId::new(rid),
             issuer_did,
             device_did,
-            git_ref: format!("refs/auths/devices/nodes/{}/signatures", device),
+            git_ref: format!("refs/auths/attestations/nodes/{}/signatures", device),
             commit_oid: None,
             revoked_at,
             expires_at: Some(Utc::now() + Duration::days(30)),

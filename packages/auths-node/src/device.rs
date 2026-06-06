@@ -12,12 +12,29 @@ use auths_storage::git::{
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use napi_derive::napi;
 
 use crate::error::format_error;
 use crate::helpers::{make_env_config, resolve_key_alias, resolve_passphrase};
 use crate::types::{NapiExtensionResult, NapiLinkResult};
+
+/// Validate capability strings without stamping them onto an attestation.
+///
+/// Authority capabilities are resolved KEL-natively from the delegator-anchored
+/// scope seal (ACDC), never from the attestation. This rejects malformed input
+/// at the binding boundary while keeping the attestation caps-free.
+fn validate_capabilities(capabilities: &[String]) -> napi::Result<()> {
+    for c in capabilities {
+        Capability::parse(c).map_err(|e| {
+            format_error(
+                "AUTHS_INVALID_INPUT",
+                format!("Invalid capability '{c}': {e}"),
+            )
+        })?;
+    }
+    Ok(())
+}
 
 fn open_backend(repo: &PathBuf) -> napi::Result<Arc<GitRegistryBackend>> {
     let config = RegistryConfig::single_tenant(repo);
@@ -51,23 +68,12 @@ pub fn link_device_to_identity(
 
     let alias = resolve_key_alias(&identity_key_alias, keychain.as_ref())?;
 
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                format_error(
-                    "AUTHS_INVALID_INPUT",
-                    format!("Invalid capability '{c}': {e}"),
-                )
-            })
-        })
-        .collect::<napi::Result<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: alias,
         device_key_alias: None,
         device_did: None,
-        capabilities: parsed_caps,
         expires_in: expires_in.map(|s| s as u64),
         note: None,
         payload: None,
@@ -178,7 +184,7 @@ pub fn extend_device_authorization(
 
     let ext_config = DeviceExtensionConfig {
         repo_path: repo,
-        device_did: DeviceDID::parse(&device_did)
+        device_did: CanonicalDid::parse(&device_did)
             .map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?,
         expires_in: expires_in as u64,
         identity_key_alias: alias,

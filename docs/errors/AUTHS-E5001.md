@@ -1,6 +1,6 @@
 # AUTHS-E5001
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SetupError::IdentityAlreadyExists`
 
 ## Message

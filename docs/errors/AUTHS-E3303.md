@@ -1,6 +1,6 @@
 # AUTHS-E3303
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `CryptoError::PemEncoding`
 
 ## Message

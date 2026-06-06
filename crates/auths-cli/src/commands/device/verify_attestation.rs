@@ -2,11 +2,8 @@ use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
 use auths_keri::witness::SignedReceipt;
 use auths_sdk::trust::{PinnedIdentity, PinnedIdentityStore, RootsFile, TrustLevel, TrustPolicy};
-use auths_verifier::Capability;
 use auths_verifier::core::Attestation;
-use auths_verifier::verify::{
-    verify_chain_with_witnesses, verify_with_capability, verify_with_keys,
-};
+use auths_verifier::verify::{verify_chain_with_witnesses, verify_with_keys};
 use auths_verifier::witness::WitnessVerifyConfig;
 use chrono::Utc;
 use clap::{Parser, ValueEnum};
@@ -65,10 +62,6 @@ pub struct VerifyCommand {
     #[arg(long = "roots-file", value_parser)]
     pub roots_file: Option<PathBuf>,
 
-    /// Require attestation to have a specific capability (sign-commit, sign-release, manage-members, rotate-keys).
-    #[arg(long = "require-capability")]
-    pub require_capability: Option<String>,
-
     /// Path to witness signatures JSON file.
     #[arg(long = "witness-signatures")]
     pub witness_receipts: Option<PathBuf>,
@@ -91,10 +84,6 @@ struct VerifyResult {
     issuer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     subject: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    required_capability: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    available_capabilities: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     witness_quorum: Option<auths_verifier::witness::WitnessQuorum>,
 }
@@ -134,8 +123,6 @@ pub async fn handle_verify(cmd: VerifyCommand) -> Result<()> {
                     error: Some(e.to_string()),
                     issuer: None,
                     subject: None,
-                    required_capability: cmd.require_capability.clone(),
-                    available_capabilities: None,
                     witness_quorum: None,
                 };
                 println!("{}", serde_json::to_string(&error_result)?);
@@ -302,19 +289,10 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
     // 3. Resolve issuer public key
     let issuer_pk = resolve_issuer_key(now, cmd, &att)?;
 
-    let required_capability: Option<Capability> = cmd.require_capability.as_ref().map(|cap| {
-        cap.parse::<Capability>().unwrap_or_else(|e| {
-            eprintln!("error: {e}");
-            std::process::exit(2);
-        })
-    });
-
-    // 5. Verify the attestation (with or without capability check)
-    let verify_result = if let Some(ref cap) = required_capability {
-        verify_with_capability(&att, cap, &issuer_pk).await
-    } else {
-        verify_with_keys(&att, &issuer_pk).await
-    };
+    // 4. Verify the attestation's authenticity (signatures, expiry, linkage).
+    //    Capability authority is no longer gated here: a capability grant must come
+    //    from a holder-verified ACDC credential, not the attestation's caps field.
+    let verify_result = verify_with_keys(&att, &issuer_pk).await;
 
     match verify_result {
         Ok(_) => {
@@ -356,8 +334,6 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
                         )),
                         issuer: Some(att.issuer.to_string()),
                         subject: Some(att.subject.to_string()),
-                        required_capability: cmd.require_capability.clone(),
-                        available_capabilities: None,
                         witness_quorum: report.witness_quorum,
                     });
                 }
@@ -375,37 +351,13 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
 
             if !is_json_mode() {
                 println!("Attestation verified successfully.");
-                if let Some(ref cap_str) = cmd.require_capability {
-                    println!("Required capability '{}' is present.", cap_str);
-                }
             }
             Ok(VerifyResult {
                 valid: true,
                 error: None,
                 issuer: Some(att.issuer.to_string()),
                 subject: Some(att.subject.to_string()),
-                required_capability: cmd.require_capability.clone(),
-                available_capabilities: None,
                 witness_quorum,
-            })
-        }
-        Err(auths_verifier::error::AttestationError::MissingCapability {
-            required,
-            available,
-        }) => {
-            let available_strs: Vec<String> =
-                available.iter().map(|c| format!("{:?}", c)).collect();
-            Ok(VerifyResult {
-                valid: false,
-                error: Some(format!(
-                    "Missing required capability: {:?}. Available: {:?}",
-                    required, available
-                )),
-                issuer: Some(att.issuer.to_string()),
-                subject: Some(att.subject.to_string()),
-                required_capability: Some(format!("{:?}", required)),
-                available_capabilities: Some(available_strs),
-                witness_quorum: None,
             })
         }
         Err(e) => Ok(VerifyResult {
@@ -413,8 +365,6 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
             error: Some(e.to_string()),
             issuer: Some(att.issuer.to_string()),
             subject: Some(att.subject.to_string()),
-            required_capability: cmd.require_capability.clone(),
-            available_capabilities: None,
             witness_quorum: None,
         }),
     }
@@ -472,8 +422,6 @@ mod tests {
             error: None,
             issuer: Some("did:key:issuer".to_string()),
             subject: Some("did:key:subject".to_string()),
-            required_capability: None,
-            available_capabilities: None,
             witness_quorum: None,
         };
         let json = serde_json::to_string(&result).unwrap();
@@ -488,28 +436,10 @@ mod tests {
             error: Some("signature mismatch".to_string()),
             issuer: None,
             subject: None,
-            required_capability: None,
-            available_capabilities: None,
             witness_quorum: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":false"));
         assert!(json.contains("\"error\":\"signature mismatch\""));
-    }
-
-    #[test]
-    fn verify_result_with_capability_serializes_correctly() {
-        let result = VerifyResult {
-            valid: false,
-            error: Some("Missing capability".to_string()),
-            issuer: Some("did:key:issuer".to_string()),
-            subject: Some("did:key:subject".to_string()),
-            required_capability: Some("SignRelease".to_string()),
-            available_capabilities: Some(vec!["SignCommit".to_string()]),
-            witness_quorum: None,
-        };
-        let json = serde_json::to_string(&result).unwrap();
-        assert!(json.contains("\"required_capability\":\"SignRelease\""));
-        assert!(json.contains("\"available_capabilities\":[\"SignCommit\"]"));
     }
 }

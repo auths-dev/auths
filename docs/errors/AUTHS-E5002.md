@@ -1,6 +1,6 @@
 # AUTHS-E5002
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SetupError::KeychainUnavailable`
 
 ## Message

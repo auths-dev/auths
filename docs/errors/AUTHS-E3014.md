@@ -1,6 +1,6 @@
 # AUTHS-E3014
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::UserInputCancelled`
 
 ## Message

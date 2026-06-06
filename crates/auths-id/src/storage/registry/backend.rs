@@ -34,18 +34,17 @@
 //! The "latest-view" pattern means the current file represents only the latest state.
 //! Historical data is preserved separately for audit purposes.
 
-use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use auths_core::storage::keychain::IdentityDID;
-use auths_verifier::core::{Attestation, Capability, ResourceId};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::core::{Attestation, ResourceId};
+use auths_verifier::types::CanonicalDid;
 use thiserror::Error;
 
-use crate::keri::Prefix;
 use crate::keri::event::Event;
 use crate::keri::state::KeyState;
+use crate::keri::{Prefix, Said};
 
 use super::org_member::{MemberFilter, MemberStatus, MemberView, OrgMemberEntry};
 use super::schemas::{RegistryMetadata, TipInfo};
@@ -66,6 +65,35 @@ pub enum AtomicWriteOp {
         prefix: Prefix,
         event: Event,
         attachment: Vec<u8>,
+    },
+    /// Append a TEL (credential-status) event under an issuer's registry.
+    ///
+    /// Staged alongside the issuer's anchoring `ixn` (an [`AtomicWriteOp::AppendEvent`])
+    /// so the TEL event and its KEL anchor land in one commit. See the
+    /// `RegistryBackend` TEL doc-block for the atomicity justification.
+    AppendTelEvent {
+        /// Issuing AID controlling the registry.
+        issuer: Prefix,
+        /// Registry SAID (`vcp.d`).
+        registry_said: Said,
+        /// Credential SAID (`iss.i`/`rev.i`; equals the registry SAID for a `vcp`).
+        credential_said: Said,
+        /// TEL event sequence number (`0` for `vcp`/`iss`, `1` for `rev`).
+        sn: u128,
+        /// The TEL event's canonical insertion-order JSON bytes.
+        event_bytes: Vec<u8>,
+    },
+    /// Store an ACDC credential blob under an issuer's namespace.
+    ///
+    /// Staged alongside the `iss` TEL event and the issuer's anchoring `ixn` so the
+    /// blob, the TEL event, and the KEL anchor land in one commit.
+    StoreCredential {
+        /// Issuing AID.
+        issuer: Prefix,
+        /// Credential SAID (`acdc.d`).
+        credential_said: Said,
+        /// The ACDC credential's canonical insertion-order JSON bytes.
+        credential_bytes: Vec<u8>,
     },
 }
 
@@ -101,6 +129,40 @@ impl AtomicWriteBatch {
             prefix,
             event,
             attachment,
+        });
+        self
+    }
+
+    /// Stage a TEL event (`vcp`/`iss`/`rev`) under an issuer's registry.
+    pub fn stage_tel_event(
+        &mut self,
+        issuer: Prefix,
+        registry_said: Said,
+        credential_said: Said,
+        sn: u128,
+        event_bytes: Vec<u8>,
+    ) -> &mut Self {
+        self.ops.push(AtomicWriteOp::AppendTelEvent {
+            issuer,
+            registry_said,
+            credential_said,
+            sn,
+            event_bytes,
+        });
+        self
+    }
+
+    /// Stage an ACDC credential blob under an issuer's namespace.
+    pub fn stage_credential(
+        &mut self,
+        issuer: Prefix,
+        credential_said: Said,
+        credential_bytes: Vec<u8>,
+    ) -> &mut Self {
+        self.ops.push(AtomicWriteOp::StoreCredential {
+            issuer,
+            credential_said,
+            credential_bytes,
         });
         self
     }
@@ -582,7 +644,7 @@ pub trait RegistryBackend: Send + Sync {
     /// # Arguments
     ///
     /// * `did` - The device DID
-    fn load_attestation(&self, did: &DeviceDID) -> Result<Option<Attestation>, RegistryError>;
+    fn load_attestation(&self, did: &CanonicalDid) -> Result<Option<Attestation>, RegistryError>;
 
     /// Visit attestation history for a device (append-only audit trail).
     ///
@@ -595,7 +657,7 @@ pub trait RegistryBackend: Send + Sync {
     /// * `visitor` - Callback invoked for each historical attestation
     fn visit_attestation_history(
         &self,
-        did: &DeviceDID,
+        did: &CanonicalDid,
         visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError>;
 
@@ -604,7 +666,7 @@ pub trait RegistryBackend: Send + Sync {
     /// Calls `visitor` for each device DID. Return `ControlFlow::Break(())` to stop early.
     fn visit_devices(
         &self,
-        visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
+        visitor: &mut dyn FnMut(&CanonicalDid) -> ControlFlow<()>,
     ) -> Result<(), RegistryError>;
 
     // =========================================================================
@@ -654,16 +716,19 @@ pub trait RegistryBackend: Send + Sync {
     /// let actual_status = compute_status_from_view(&view, now);
     /// ```
     ///
-    /// The `include_statuses` filter is ignored (status filtering is policy).
+    /// The `include_statuses` filter is ignored (status filtering is policy). The
+    /// `roles_any`/`capabilities_*` filters are also inert: role/caps authority is
+    /// KEL-native (delegator-anchored scope seal), not the attestation, so this method
+    /// no longer reads attestation role/caps to filter or populate views.
     ///
     /// # Arguments
     ///
     /// * `org` - The org DID prefix
-    /// * `filter` - Filter criteria for members (role, capabilities)
+    /// * `_filter` - Filter criteria (retained for API stability; role/caps filters are inert)
     fn list_org_members(
         &self,
         org: &str,
-        filter: &MemberFilter,
+        _filter: &MemberFilter,
     ) -> Result<Vec<MemberView>, RegistryError> {
         let mut members = Vec::new();
 
@@ -679,37 +744,23 @@ pub trait RegistryBackend: Send + Sync {
                 ),
             };
 
-            // For valid attestations, apply data filters (role, capabilities)
-            // Note: Status filtering removed - that's policy layer responsibility
+            // For valid attestations, surface identity facts only.
+            //
+            // Role/capabilities authority is KEL-native (the delegator-anchored scope
+            // seal — see `crate::storage::registry::org_member` and the SDK org
+            // delegation path), NOT the attestation. The scope-seal-derived values are
+            // not available at this storage seam, so `MemberView.role`/`.capabilities`
+            // are left empty here (display-only, fail-closed): a consumer that needs
+            // authority must resolve it from the KEL, never from these fields.
+            // The `roles_any`/`capabilities_*` filters are no longer applied for the
+            // same reason — filtering on attestation-borne role/caps would re-introduce
+            // the retired authority reader.
             if let Some(att) = att_opt {
-                // Role filter: include if member.role is in set
-                if let Some(ref roles) = filter.roles_any {
-                    match &att.role {
-                        Some(role) if roles.contains(role) => {}
-                        _ => return ControlFlow::Continue(()),
-                    }
-                }
-
-                // Capabilities any: intersection non-empty
-                let member_caps: HashSet<&Capability> = att.capabilities.iter().collect();
-                if let Some(ref caps_any) = filter.capabilities_any
-                    && !member_caps.iter().any(|c| caps_any.contains(*c))
-                {
-                    return ControlFlow::Continue(());
-                }
-
-                // Capabilities all: filter_caps ⊆ member_caps
-                if let Some(ref caps_all) = filter.capabilities_all
-                    && !caps_all.iter().all(|c| member_caps.contains(c))
-                {
-                    return ControlFlow::Continue(());
-                }
-
                 members.push(MemberView {
                     did: entry.did.clone(),
                     status,
-                    role: att.role,
-                    capabilities: att.capabilities.clone(),
+                    role: None,
+                    capabilities: vec![],
                     #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid parsed from validated attestation JSON
                     issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
                     rid: att.rid.clone(),
@@ -797,6 +848,116 @@ pub trait RegistryBackend: Send + Sync {
     }
 
     // =========================================================================
+    // TEL (Transaction Event Log) Operations (FROZEN-TRAIT EXCEPTION)
+    //
+    // Justification (atomicity — same exception that justified the write-batch
+    // surface above): a credential issuance writes three artifacts that MUST be
+    // consistent — the ACDC blob, the `iss` TEL event, and the issuer KEL `ixn`
+    // carrying the TEL anchor seal. A crash between any two leaves a dangling
+    // state: an anchored-but-absent TEL event, or a credential blob with no
+    // status log, or a TEL event the KEL never anchored (forgeable). These three
+    // writes therefore commit together via `commit_batch`, exactly as the
+    // attestation-blob + KEL-ixn pair does. The TEL is a derived, KEL-anchored
+    // index (the registry remains a cache, not a source of truth); these methods
+    // add only persistence + retrieval of that index, never trust decisions.
+    //
+    // Reviewed and approved as a frozen-surface extension for Epic F (credential
+    // registry). Backends that do not persist a TEL may leave the default
+    // `NotImplemented` stubs.
+    // =========================================================================
+
+    /// Append a TEL event (`vcp`/`iss`/`rev`) under an issuer's registry.
+    ///
+    /// # Semantics: Append-Only
+    ///
+    /// TEL events are immutable once written. Implementations refuse to overwrite
+    /// an existing event at the same `(registry, credential, sn)` coordinate.
+    ///
+    /// Prefer staging this in an [`AtomicWriteBatch`] alongside the anchoring `ixn`
+    /// (and, for an `iss`, the ACDC blob) so all three land in one commit.
+    ///
+    /// # Arguments
+    ///
+    /// * `issuer` - Issuing AID controlling the registry.
+    /// * `registry_said` - Registry SAID (`vcp.d`).
+    /// * `credential_said` - Credential SAID (equals the registry SAID for a `vcp`).
+    /// * `sn` - TEL event sequence number.
+    /// * `event_bytes` - The TEL event's canonical insertion-order JSON bytes.
+    fn append_tel_event(
+        &self,
+        _issuer: &Prefix,
+        _registry_said: &Said,
+        _credential_said: &Said,
+        _sn: u128,
+        _event_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "append_tel_event",
+        })
+    }
+
+    /// Visit the persisted TEL events for one credential, oldest first.
+    ///
+    /// Calls `visitor` with each event's raw JSON bytes in ascending `sn` order.
+    /// Return `ControlFlow::Break(())` to stop early. A credential with no TEL
+    /// events visits nothing and returns `Ok(())`.
+    ///
+    /// # Arguments
+    ///
+    /// * `issuer` - Issuing AID.
+    /// * `registry_said` - Registry SAID.
+    /// * `credential_said` - Credential SAID.
+    /// * `visitor` - Callback invoked for each TEL event's JSON bytes.
+    fn visit_tel_events(
+        &self,
+        _issuer: &Prefix,
+        _registry_said: &Said,
+        _credential_said: &Said,
+        _visitor: &mut dyn FnMut(&[u8]) -> ControlFlow<()>,
+    ) -> Result<(), RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "visit_tel_events",
+        })
+    }
+
+    /// Store an ACDC credential blob under an issuer's namespace.
+    ///
+    /// Latest-view by credential SAID; since a credential SAID is content-addressed,
+    /// re-storing the same SAID is idempotent.
+    ///
+    /// # Arguments
+    ///
+    /// * `issuer` - Issuing AID.
+    /// * `credential_said` - Credential SAID (`acdc.d`).
+    /// * `credential_bytes` - The ACDC's canonical insertion-order JSON bytes.
+    fn store_credential(
+        &self,
+        _issuer: &Prefix,
+        _credential_said: &Said,
+        _credential_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "store_credential",
+        })
+    }
+
+    /// Load an ACDC credential blob, or `None` if absent.
+    ///
+    /// # Arguments
+    ///
+    /// * `issuer` - Issuing AID.
+    /// * `credential_said` - Credential SAID.
+    fn load_credential(
+        &self,
+        _issuer: &Prefix,
+        _credential_said: &Said,
+    ) -> Result<Option<Vec<u8>>, RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "load_credential",
+        })
+    }
+
+    // =========================================================================
     // Atomic Batch Writes (FROZEN-TRAIT EXCEPTION)
     //
     // Justification: Attestation blob + KEL ixn event must land in a single
@@ -829,6 +990,20 @@ pub trait RegistryBackend: Send + Sync {
                         self.append_signed_event(prefix, event, attachment)?;
                     }
                 }
+                AtomicWriteOp::AppendTelEvent {
+                    issuer,
+                    registry_said,
+                    credential_said,
+                    sn,
+                    event_bytes,
+                } => {
+                    self.append_tel_event(issuer, registry_said, credential_said, *sn, event_bytes)?
+                }
+                AtomicWriteOp::StoreCredential {
+                    issuer,
+                    credential_said,
+                    credential_bytes,
+                } => self.store_credential(issuer, credential_said, credential_bytes)?,
             }
         }
         Ok(())
@@ -878,13 +1053,13 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
         (**self).store_attestation(attestation)
     }
 
-    fn load_attestation(&self, did: &DeviceDID) -> Result<Option<Attestation>, RegistryError> {
+    fn load_attestation(&self, did: &CanonicalDid) -> Result<Option<Attestation>, RegistryError> {
         (**self).load_attestation(did)
     }
 
     fn visit_attestation_history(
         &self,
-        did: &DeviceDID,
+        did: &CanonicalDid,
         visitor: &mut dyn FnMut(&Attestation) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         (**self).visit_attestation_history(did, visitor)
@@ -892,7 +1067,7 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
 
     fn visit_devices(
         &self,
-        visitor: &mut dyn FnMut(&DeviceDID) -> ControlFlow<()>,
+        visitor: &mut dyn FnMut(&CanonicalDid) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
         (**self).visit_devices(visitor)
     }
@@ -915,6 +1090,44 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
 
     fn metadata(&self) -> Result<RegistryMetadata, RegistryError> {
         (**self).metadata()
+    }
+
+    fn append_tel_event(
+        &self,
+        issuer: &Prefix,
+        registry_said: &Said,
+        credential_said: &Said,
+        sn: u128,
+        event_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        (**self).append_tel_event(issuer, registry_said, credential_said, sn, event_bytes)
+    }
+
+    fn visit_tel_events(
+        &self,
+        issuer: &Prefix,
+        registry_said: &Said,
+        credential_said: &Said,
+        visitor: &mut dyn FnMut(&[u8]) -> ControlFlow<()>,
+    ) -> Result<(), RegistryError> {
+        (**self).visit_tel_events(issuer, registry_said, credential_said, visitor)
+    }
+
+    fn store_credential(
+        &self,
+        issuer: &Prefix,
+        credential_said: &Said,
+        credential_bytes: &[u8],
+    ) -> Result<(), RegistryError> {
+        (**self).store_credential(issuer, credential_said, credential_bytes)
+    }
+
+    fn load_credential(
+        &self,
+        issuer: &Prefix,
+        credential_said: &Said,
+    ) -> Result<Option<Vec<u8>>, RegistryError> {
+        (**self).load_credential(issuer, credential_said)
     }
 
     fn commit_batch(&self, batch: &AtomicWriteBatch) -> Result<(), RegistryError> {

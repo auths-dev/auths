@@ -1,6 +1,6 @@
 # AUTHS-E3202
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `PairingError::QrCodeFailed`
 
 ## Message

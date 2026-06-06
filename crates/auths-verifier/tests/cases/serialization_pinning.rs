@@ -21,7 +21,6 @@ fn make_test_icp() -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     }
 }
 
@@ -45,7 +44,6 @@ fn make_test_rot() -> RotEvent {
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     }
 }
 
@@ -57,7 +55,6 @@ fn make_test_ixn() -> IxnEvent {
         s: KeriSequence::new(2),
         p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
         a: vec![Seal::digest("ESealDigest234567890123456789012345678901")],
-        dt: None,
     }
 }
 
@@ -100,11 +97,11 @@ fn icp_field_order_is_pinned() {
 fn rot_field_order_is_pinned() {
     let rot = make_test_rot();
     let json = serde_json::to_string(&KeriEvent::Rot(rot)).unwrap();
-    // `a` is omitted when empty (canonical auths-keri format)
+    // rot carries no config-traits `c` (inception-only, per keripy); `a` is present.
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "a",
         ],
     );
 }
@@ -209,10 +206,7 @@ fn environment_claim_excluded_from_canonical_form() {
         timestamp: None,
         note: None,
         payload: None,
-        role: None,
-        capabilities: vec![],
         delegated_by: None,
-        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: Some(serde_json::json!({"provider": "aws", "region": "us-east-1"})),
         commit_sha: None,
@@ -255,10 +249,7 @@ fn environment_claim_roundtrips_through_json() {
         timestamp: None,
         note: None,
         payload: None,
-        role: None,
-        capabilities: vec![],
         delegated_by: None,
-        supersedes_attestation_rid: None,
         signer_type: None,
         environment_claim: Some(serde_json::json!({"provider": "aws"})),
         commit_sha: None,

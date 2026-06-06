@@ -1,6 +1,6 @@
 # AUTHS-E4963
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `AnchorError::Serialization`
 
 ## Message

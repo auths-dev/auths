@@ -1,6 +1,6 @@
 # AUTHS-E2015
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::OrgAttestationExpired`
 
 ## Message

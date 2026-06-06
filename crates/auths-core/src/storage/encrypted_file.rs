@@ -11,6 +11,7 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit},
 };
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 #[allow(clippy::disallowed_types)]
@@ -140,7 +141,8 @@ impl EncryptedFileStorage {
         key: &[u8; KEY_LEN],
         data: &[u8],
     ) -> Result<(Vec<u8>, [u8; XCHACHA_NONCE_LEN]), AgentError> {
-        let nonce: [u8; XCHACHA_NONCE_LEN] = rand::random();
+        let mut nonce = [0u8; XCHACHA_NONCE_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
         let cipher = XChaCha20Poly1305::new_from_slice(key)
             .map_err(|e| AgentError::CryptoError(format!("Invalid key: {}", e)))?;
 
@@ -219,7 +221,8 @@ impl EncryptedFileStorage {
             AgentError::StorageError(format!("Failed to serialize key data: {}", e))
         })?;
 
-        let salt: [u8; SALT_LEN] = rand::random();
+        let mut salt = [0u8; SALT_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut salt);
         let key = Self::derive_key(&password, &salt)?;
         let (ciphertext, nonce) = Self::encrypt(&key, &plaintext)?;
 
@@ -408,7 +411,8 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
         let password = "test_password";
-        let salt: [u8; SALT_LEN] = rand::random();
+        let mut salt = [0u8; SALT_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut salt);
         let data = b"test data for encryption";
 
         let key = EncryptedFileStorage::derive_key(password, &salt).unwrap();
@@ -420,7 +424,8 @@ mod tests {
 
     #[test]
     fn test_wrong_password_fails() {
-        let salt: [u8; SALT_LEN] = rand::random();
+        let mut salt = [0u8; SALT_LEN];
+        rand::rngs::OsRng.fill_bytes(&mut salt);
         let data = b"test data";
 
         let key1 = EncryptedFileStorage::derive_key("password1", &salt).unwrap();

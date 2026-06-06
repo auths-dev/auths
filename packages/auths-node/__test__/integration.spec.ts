@@ -180,22 +180,26 @@ describe('trust', () => {
 })
 
 describe('witness', () => {
+  const witnessAid = 'did:keri:EWitnessAidExampleForNodeBindingTests0000000'
+
   it('add and list witnesses', () => {
     const auths = makeClient()
     auths.identities.create({ label: 'witness-test' })
 
-    const w = auths.witnesses.add({ url: 'http://witness.example.com:3333' })
+    const w = auths.witnesses.add({ url: 'http://witness.example.com:3333', aid: witnessAid })
     expect(w.url).toBe('http://witness.example.com:3333')
+    expect(w.did).toBe(witnessAid)
 
     const witnesses = auths.witnesses.list()
     expect(witnesses.length).toBe(1)
+    expect(witnesses[0].did).toBe(witnessAid)
   })
 
   it('remove witness', () => {
     const auths = makeClient()
     auths.identities.create({ label: 'witness-rm' })
 
-    auths.witnesses.add({ url: 'http://witness.example.com:3333' })
+    auths.witnesses.add({ url: 'http://witness.example.com:3333', aid: witnessAid })
     auths.witnesses.remove('http://witness.example.com:3333')
 
     expect(auths.witnesses.list().length).toBe(0)
@@ -205,8 +209,8 @@ describe('witness', () => {
     const auths = makeClient()
     auths.identities.create({ label: 'witness-dup' })
 
-    auths.witnesses.add({ url: 'http://witness.example.com:3333' })
-    auths.witnesses.add({ url: 'http://witness.example.com:3333' })
+    auths.witnesses.add({ url: 'http://witness.example.com:3333', aid: witnessAid })
+    auths.witnesses.add({ url: 'http://witness.example.com:3333', aid: witnessAid })
 
     expect(auths.witnesses.list().length).toBe(1)
   })
@@ -258,17 +262,12 @@ describe('org', () => {
     admin.identities.create({ label: 'admin' })
     const org = admin.orgs.create({ label: 'team' })
 
-    const devDir = makeTmpDir()
-    const devClient = makeClient(devDir)
-    const devId = devClient.identities.create({ label: 'dev' })
-
     const member = admin.orgs.addMember({
       orgDid: org.orgDid,
-      memberDid: devId.did,
+      memberLabel: 'alice',
       role: 'member',
-      memberPublicKeyHex: devId.publicKey,
     })
-    expect(member.memberDid).toBe(devId.did)
+    expect(member.memberDid).toMatch(/^did:keri:/)
     expect(member.role).toBe('member')
     expect(member.revoked).toBe(false)
 
@@ -354,18 +353,6 @@ describe('pairing', () => {
     await expect(auths.pairing.waitForResponse()).rejects.toThrow(
       /No active pairing session/,
     )
-  })
-
-  it('complete without session throws', async () => {
-    const auths = makeClient()
-    auths.identities.create({ label: 'pair-no-session-complete' })
-
-    await expect(
-      auths.pairing.complete({
-        deviceDid: 'did:key:fake',
-        devicePublicKeyHex: 'a'.repeat(64),
-      }),
-    ).rejects.toThrow(/No active pairing session/)
   })
 })
 

@@ -5,6 +5,7 @@
   "type": "object",
   "required": [
     "bt",
+    "d",
     "i",
     "k",
     "kt",
@@ -48,20 +49,11 @@
     },
     "d": {
       "description": "SAID (Self-Addressing Identifier) — Blake3 hash of event",
-      "default": "",
       "allOf": [
         {
           "$ref": "#/definitions/Said"
         }
       ]
-    },
-    "dt": {
-      "description": "Signed-in wall-clock timestamp (ISO 8601, ms precision). When present, it is part of the SAID digest — any tampering breaks the event signature. Time-aware policy checks (rotation cooldown, clock-skew rejection) live in [`crate::validate::validate_kel_with_policy`]; `validate_kel` itself stays pure / clock-free.",
-      "type": [
-        "string",
-        "null"
-      ],
-      "format": "date-time"
     },
     "i": {
       "description": "Identifier prefix (same as `d` for self-addressing inception)",
@@ -141,13 +133,6 @@
           ]
         },
         {
-          "description": "Delegate-Is-Delegator: delegated AID treated same as delegator.",
-          "type": "string",
-          "enum": [
-            "DID"
-          ]
-        },
-        {
           "description": "Registrar Backers: backer list provides registrar backer AIDs.",
           "type": "string",
           "enum": [
@@ -171,7 +156,7 @@
       "type": "string"
     },
     "Said": {
-      "description": "KERI Self-Addressing Identifier (SAID).\n\nA Blake3 hash that uniquely identifies a KERI event. Creates the hash chain: each event's `p` (previous) field is the prior event's SAID.\n\nStructurally identical to `Prefix` (both start with 'E') but semantically distinct — a prefix identifies an *identity*, a SAID identifies an *event*.\n\nArgs: * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).\n\nUsage: ```ignore let said = Said::new(\"ESAID123\".to_string())?; assert_eq!(said.as_str(), \"ESAID123\"); ```",
+      "description": "KERI Self-Addressing Identifier (SAID).\n\nA Blake3 hash that uniquely identifies a KERI event. Creates the hash chain: each event's `p` (previous) field is the prior event's SAID.\n\nStructurally identical to `Prefix` (both start with 'E') but semantically distinct — a prefix identifies an *identity*, a SAID identifies an *event*.\n\nArgs: * Inner `String` must be non-empty (rejected on deserialize) and should start with `'E'` (the Blake3 digest derivation code, enforced by `new()`).\n\nUsage: ```ignore let said = Said::new(\"ESAID123\".to_string())?; assert_eq!(said.as_str(), \"ESAID123\"); ```",
       "type": "string"
     },
     "Seal": true,

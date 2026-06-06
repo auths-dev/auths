@@ -1,6 +1,6 @@
 # AUTHS-E4904
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InceptionError::Validation`
 
 ## Message

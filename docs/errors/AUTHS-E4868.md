@@ -1,6 +1,6 @@
 # AUTHS-E4868
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::ConcurrentModification`
 
 ## Message

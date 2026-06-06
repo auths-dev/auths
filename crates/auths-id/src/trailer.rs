@@ -181,13 +181,13 @@ fn parse_trailer_line(line: &str) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_core::witness::RECEIPT_TYPE;
+    use auths_core::witness::ReceiptTag;
     use auths_keri::{KeriSequence, Prefix, Said, VersionString};
 
     fn sample_signed_receipt() -> SignedReceipt {
         let receipt = Receipt {
             v: VersionString::placeholder(),
-            t: RECEIPT_TYPE.into(),
+            t: ReceiptTag,
             d: Said::new_unchecked("EEvent456".into()),
             i: Prefix::new_unchecked("did:key:z6MkWitness".into()),
             s: KeriSequence::new(5),

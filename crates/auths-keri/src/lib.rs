@@ -34,19 +34,30 @@
 //! let cesr_stream = export_kel_as_cesr(&codec, &events)?;
 //! ```
 
+/// ACDC (Authentic Chained Data Container) credential type, SAID-ification, and
+/// the pinned v1 capability schema.
+pub mod acdc;
 mod crypto;
 mod error;
 mod events;
 pub mod kel_io;
 mod keys;
+/// Key-State Notice (KSN) — signed snapshot of current key-state for thin clients.
+pub mod ksn;
 /// Routed KERI message types (qry, rpy, pro, bar, xip, exn).
 pub mod messages;
 mod said;
 mod state;
+/// Backerless TEL (Transaction Event Log) credential-status events: `vcp`/`iss`/`rev`.
+pub mod tel;
 mod types;
 mod validate;
 /// Witness protocol types: receipts, providers, and error reporting for split-view defense.
 pub mod witness;
+
+/// CESR-correct primitive encoding (verkeys, digests, SAIDs) via `cesride` — the
+/// byte-interoperable wire format that replaces the legacy naive base64 scheme.
+mod cesr_encode;
 
 #[cfg(feature = "cesr")]
 mod codec;
@@ -59,24 +70,41 @@ mod stream;
 #[cfg(feature = "cesr")]
 mod version;
 
+pub use acdc::{
+    ACDC_KERIPY_REVISION, ACDC_VERSION_PREFIX, Acdc, AcdcError, Attributes, CAPABILITY_SCHEMA,
+    compute_capability_schema_said, compute_schema_said,
+};
 pub use crypto::{compute_next_commitment, verify_commitment};
-pub use error::KeriTranslationError;
+pub use error::{KeriTranslationError, TelError};
 pub use events::{
-    DipEvent, DrtEvent, Event, IcpEvent, IndexedSignature, IxnEvent, KERI_VERSION_PREFIX,
-    KeriSequence, RotEvent, Seal, SealType, SignedEvent, parse_attachment, serialize_attachment,
+    AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
+    IndexedSignature, IxnEvent, KERI_VERSION_PREFIX, KeriSequence, RotEvent, RotEventInit, Seal,
+    SignedEvent, SourceSeal, decode_agent_scope, encode_agent_scope, parse_attachment,
+    parse_delegated_attachment, parse_source_seal_couples, serialize_attachment,
+    serialize_source_seal_couples,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
-pub use said::{SAID_PLACEHOLDER, compute_said, verify_said};
+pub use ksn::{KSN_TYPE, KSN_VERSION, KeyStateNotice, KsnError, SignedKsn};
+pub use said::{
+    Protocol, SAID_PLACEHOLDER, compute_said, compute_said_with_protocol, compute_section_said,
+    verify_said,
+};
 pub use state::{AnchorStatus, KeyState};
+pub use tel::{
+    Iss, Rev, TEL_KERIPY_REVISION, TRAIT_NO_BACKERS, TelAnchorSeal, TelEvent, TelState, Vcp,
+    encode_nonce as encode_tel_nonce, to_wire_bytes as tel_to_wire_bytes, validate_tel,
+};
 pub use types::{
     CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,
     VersionString,
 };
 pub use validate::{
-    KelPolicy, ValidationError, compute_event_said, finalize_icp_event, finalize_ixn_event,
+    DelegatorKelLookup, KelPolicy, ValidationError, WitnessedReplay, compute_event_said,
+    finalize_dip_event, finalize_drt_event, finalize_icp_event, finalize_ixn_event,
     finalize_rot_event, find_seal_in_kel, parse_kel_json, replay_kel, serialize_for_signing,
-    validate_delegation, validate_for_append, validate_kel, validate_kel_with_policy,
-    validate_signed_event, verify_event_crypto, verify_event_said,
+    validate_delegation, validate_for_append, validate_kel, validate_kel_with_lookup,
+    validate_kel_with_policy, validate_kel_with_receipts, validate_signed_event,
+    verify_event_crypto, verify_event_said,
 };
 
 #[cfg(feature = "cesr")]

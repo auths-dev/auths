@@ -61,15 +61,41 @@ async fn http_witness_submit_and_retrieve_receipt() {
     let prefix = Prefix::new_unchecked("ETestPrefix".to_string());
     let (event_json, said) = make_test_event("ETestPrefix", 0);
 
-    let receipt = client.submit_event(&prefix, &event_json).await.unwrap();
+    let signed = client.submit_event(&prefix, &event_json).await.unwrap();
 
-    assert_eq!(receipt.d, said);
-    assert_eq!(receipt.s, auths_keri::KeriSequence::new(0));
-    assert_eq!(receipt.t, "rct");
+    assert_eq!(signed.receipt.d, said);
+    assert_eq!(signed.receipt.s, auths_keri::KeriSequence::new(0));
+    assert_eq!(signed.receipt.t, "rct");
 
     let retrieved = client.get_receipt(&prefix, &said).await.unwrap();
     assert!(retrieved.is_some());
     assert_eq!(retrieved.unwrap().d, said);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn client_surfaces_signature() {
+    let (addr, state) = start_test_server().await;
+    let client = HttpAsyncWitnessClient::new(format!("http://{}", addr), 1);
+
+    let prefix = Prefix::new_unchecked("ETestPrefix".to_string());
+    let (event_json, said) = make_test_event("ETestPrefix", 0);
+
+    let signed = client.submit_event(&prefix, &event_json).await.unwrap();
+
+    assert_eq!(signed.receipt.d, said);
+    assert!(
+        !signed.signature.is_empty(),
+        "client must surface the witness signature from the server"
+    );
+
+    // The surfaced signature must verify against the server's witness key.
+    let key =
+        auths_keri::KeriPublicKey::from_verkey_bytes(&state.public_key(), state.curve()).unwrap();
+    let payload = serde_json::to_vec(&signed.receipt).unwrap();
+    assert!(
+        key.verify_signature(&payload, &signed.signature).is_ok(),
+        "the witness signature carried over HTTP must verify"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -104,8 +130,13 @@ async fn receipt_collector_reaches_quorum() {
     let w3: Arc<dyn AsyncWitnessProvider> =
         Arc::new(HttpAsyncWitnessClient::new(format!("http://{}", addr3), 1));
 
+    // Pin each witness's AID (resolved from its /health) so receipts are attributed.
+    let aid1 = w1.witness_aid().await.unwrap();
+    let aid2 = w2.witness_aid().await.unwrap();
+    let aid3 = w3.witness_aid().await.unwrap();
+
     let collector = ReceiptCollectorBuilder::new()
-        .witnesses(vec![w1, w2, w3])
+        .witnesses(vec![(aid1, w1), (aid2, w2), (aid3, w3)])
         .threshold(2)
         .timeout_ms(5000)
         .build();
@@ -119,6 +150,8 @@ async fn receipt_collector_reaches_quorum() {
         "Expected >= 2 receipts, got {}",
         receipts.len()
     );
+    // Every collected receipt is attributed to a witness AID.
+    assert!(receipts.iter().all(|r| !r.witness.as_str().is_empty()));
 }
 
 #[tokio::test(flavor = "multi_thread")]

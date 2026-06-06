@@ -12,11 +12,8 @@ from auths._native import (
     sign_bytes as _sign_bytes,
     verify_action_envelope as _verify_action_envelope,
     verify_at_time as _verify_at_time,
-    verify_at_time_with_capability as _verify_at_time_with_capability,
     verify_attestation as _verify_attestation,
-    verify_attestation_with_capability as _verify_attestation_with_capability,
     verify_chain as _verify_chain,
-    verify_chain_with_capability as _verify_chain_with_capability,
     verify_chain_with_witnesses as _verify_chain_with_witnesses,
     verify_device_authorization as _verify_device_authorization,
 )
@@ -139,15 +136,17 @@ class Auths:
         self,
         attestation_json: str,
         issuer_key: str,
-        required_capability: str | None = None,
         at: str | None = None,
     ) -> VerificationResult:
         """Verify a single attestation, optionally at a specific historical timestamp.
 
+        Verifies authenticity (signatures, expiry). Capability/role authority is no
+        longer checked here — that grant comes from a holder-verified ACDC credential,
+        not the attestation.
+
         Args:
             attestation_json: The attestation JSON string.
             issuer_key: Issuer's public key hex.
-            required_capability: If set, also verify the attestation grants this capability.
             at: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
                 When set, checks validity at that point in time instead of now.
 
@@ -160,21 +159,12 @@ class Auths:
 
         Examples:
             ```python
-            result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z",
-                                  required_capability="deploy:staging")
+            result = auths.verify(att_json, key, at="2024-06-15T00:00:00Z")
             ```
         """
         try:
-            if at and required_capability:
-                return _verify_at_time_with_capability(
-                    attestation_json, issuer_key, at, required_capability
-                )
             if at:
                 return _verify_at_time(attestation_json, issuer_key, at)
-            if required_capability:
-                return _verify_attestation_with_capability(
-                    attestation_json, issuer_key, required_capability
-                )
             return _verify_attestation(attestation_json, issuer_key)
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc) from exc
@@ -183,15 +173,17 @@ class Auths:
         self,
         attestations: list[str],
         root_key: str,
-        required_capability: str | None = None,
         witnesses: WitnessConfig | None = None,
     ) -> VerificationReport:
         """Verify an attestation chain, optionally with witness quorum.
 
+        Verifies authenticity (signatures, chain linkage, expiry) and, when
+        `witnesses` is set, witness receipt quorum. Capability authority is no longer
+        checked here — that grant comes from a holder-verified ACDC credential.
+
         Args:
             attestations: List of attestation JSON strings, ordered root-to-leaf.
             root_key: Root identity's public key hex.
-            required_capability: If set, verify the chain grants this capability.
             witnesses: If set, enforces witness receipt quorum.
 
         Returns:
@@ -214,10 +206,6 @@ class Auths:
                 return _verify_chain_with_witnesses(
                     attestations, root_key,
                     witnesses.receipts, keys_json, witnesses.threshold,
-                )
-            if required_capability:
-                return _verify_chain_with_capability(
-                    attestations, root_key, required_capability
                 )
             return _verify_chain(attestations, root_key)
         except (ValueError, RuntimeError) as exc:

@@ -97,7 +97,7 @@ Creates a new identity. The inception event establishes the identifier prefix an
 |-------|------|-------------|
 | `v` | string | Version: `"KERI10JSON"` |
 | `t` | string | Type: `"icp"` |
-| `d` | string | SAID (Blake3 hash of event with `d`, `i`, `x` cleared) |
+| `d` | string | SAID (Blake3 hash of the event; `d`/`i` placeholder-filled) |
 | `i` | string | Identifier prefix (same as `d` for inception) |
 | `s` | string | Sequence number: `"0"` |
 | `kt` | string | Key threshold: `"1"` for single-sig |
@@ -105,9 +105,9 @@ Creates a new identity. The inception event establishes the identifier prefix an
 | `nt` | string | Next key threshold: `"1"` |
 | `n` | string[] | Next key commitment(s) (Blake3 hash of next public key) |
 | `bt` | string | Witness threshold: `"0"` when no witnesses |
-| `b` | string[] | Witness list (empty when no witnesses) |
-| `a` | Seal[] | Anchored seals (optional) |
-| `x` | string | Ed25519 signature over canonical event (Base64url) |
+| `b` | string[] | Witness/backer list (empty when none) |
+| `c` | string[] | Configuration traits (`EO`, `DND`, `DID`, `RB`, `NRB`) |
+| `a` | Seal[] | Anchored seals |
 
 ### Rotation Event (`rot`)
 
@@ -125,10 +125,11 @@ Rotates to a pre-committed key. The new key must match the previous event's next
 | `k` | string[] | New current key(s) |
 | `nt` | string | Next key threshold |
 | `n` | string[] | New next key commitment(s) |
-| `bt` | string | Witness threshold |
-| `b` | string[] | Witness list |
-| `a` | Seal[] | Anchored seals (optional) |
-| `x` | string | Signature by the **new** key (the key that satisfied the commitment) |
+| `bt` | string | Backer threshold |
+| `br` | string[] | Backer cuts (witnesses/backers to remove) |
+| `ba` | string[] | Backer adds (witnesses/backers to add) |
+| `c` | string[] | Configuration traits (only `RB`/`NRB` may change at rotation) |
+| `a` | Seal[] | Anchored seals |
 
 Setting `nt` to `"0"` and `n` to `[]` abandons the identity -- no further rotations are possible.
 
@@ -145,7 +146,8 @@ Anchors data in the KEL without changing keys. Used to link attestations, delega
 | `s` | string | Sequence number |
 | `p` | string | Previous event SAID |
 | `a` | Seal[] | Anchored seals (the primary purpose of IXN events) |
-| `x` | string | Signature by the current key |
+
+> KEL events carry **no in-body signature** and **no in-body timestamp**. Signatures attach out-of-band as CESR indexed-signature groups; see [SPEC.md] §1 for the normative per-type field sets.
 
 ## Key Event Log (KEL)
 
@@ -165,12 +167,12 @@ Each event references the previous event's SAID via the `p` field, forming a ver
 
 The SAID is computed by:
 
-1. Clearing the `d`, `x`, and (for inception) `i` fields
-2. Serializing to JSON
-3. Computing Blake3-256 hash
-4. Encoding as `E` + Base64url (no padding)
+1. Filling `d` (and, for inception, `i`) with a placeholder of equal length
+2. Serializing to canonical JSON
+3. Computing the Blake3-256 hash
+4. Encoding as `E` + Base64url (no padding), then writing it back into `d` (and `i`)
 
-This same canonical form (with `d`, `i`, `x` cleared) is used for signature computation, avoiding circular dependencies between SAID and signature.
+Signatures are computed over the **finalized** event bytes — the event after its `v` (byte count) and `d` (SAID) have been written back — not over a cleared form. This closes the forge path where a signature over a `d: ""` skeleton could be replayed against a finalized event.
 
 ### Pre-Rotation
 
@@ -218,35 +220,32 @@ For performance, a three-tier caching strategy avoids full replay on every acces
 
 ## Seals
 
-Seals anchor external data in KERI events. They contain a digest of the anchored artifact and a type indicator:
+A seal anchors external data or another event in the `a[]` field. Seals are structural KERI seals, discriminated by their **field shape** (not by a `type` string):
 
-```json
-{ "d": "EAttestDigest...", "type": "device-attestation" }
-```
+| Variant | Shape | Purpose |
+|---------|-------|---------|
+| Digest | `{"d"}` | Anchor an artifact by its SAID (e.g. an attestation blob). |
+| Source event | `{"s","d"}` | Reference an event by sequence + SAID. |
+| Key event | `{"i","s","d"}` | Reference another identifier's key event. |
+| Event location | `{"i","s","p","t","d"}` | KERI v1.1 §7 location seal; anchors a delegated event. |
+| Latest establishment | `{"i"}` | Reference an identifier's latest establishment event. |
 
-Seal types include:
-
-| Type | Purpose |
-|------|---------|
-| `device-attestation` | Links a device attestation to the KEL |
-| `revocation` | Records a revocation in the KEL |
-| `delegation` | Records a capability delegation |
-
-Seals appear in the `a` field of any event type, binding the external artifact's integrity to the identity's event history.
+Extended shapes (`MerkleRoot`, `RegistrarBacker`) are gated behind the `seal-extensions` feature and are not part of the default wire surface. The canonical field sets are normative in [SPEC.md] §6.
 
 ## KERI Key Encoding
 
 Public keys in KERI events use CESR (Composable Event Streaming Representation) encoding:
 
-- **Prefix**: `D` -- derivation code for Ed25519
-- **Payload**: Base64url (no padding) encoded 32-byte public key
+- **Ed25519**: `D` (transferable) or `B` (non-transferable) + Base64url(32-byte key)
+- **P-256** (secp256r1): `1AAJ` (transferable) or `1AAI` (non-transferable) + Base64url(33-byte compressed SEC1 key)
 
 ```
-"D" + Base64url(ed25519_public_key_bytes)
+"D" + Base64url(ed25519_public_key_bytes)    // Ed25519, transferable
+"1AAJ" + Base64url(p256_compressed_bytes)     // P-256, transferable
 ```
 
-Parsing a KERI-encoded key (`auths-crypto/src/keri.rs`):
+The derivation code carries both the curve and the transferability in-band; verifiers never dispatch on key length. Parsing is `KeriPublicKey::parse` (`auths-keri/src/keys.rs`):
 
-1. Validate the `D` prefix
+1. Match the derivation code (`D`/`B`/`1AAJ`/`1AAI`)
 2. Base64url-decode the remaining characters
-3. Validate the result is exactly 32 bytes
+3. Validate the decoded length for the curve (32 bytes Ed25519, 33 bytes P-256)

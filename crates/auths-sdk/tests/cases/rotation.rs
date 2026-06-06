@@ -309,7 +309,6 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
     let _ = registry.append_event(&prefix, &Event::Rot(dummy_rot));
 

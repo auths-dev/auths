@@ -1,6 +1,6 @@
 # AUTHS-E3008
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `AgentError::Proto`
 
 ## Message

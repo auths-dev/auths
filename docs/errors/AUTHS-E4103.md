@@ -1,6 +1,6 @@
 # AUTHS-E4103
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `StorageError::Io`
 
 ## Message

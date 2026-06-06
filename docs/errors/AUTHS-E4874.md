@@ -1,6 +1,6 @@
 # AUTHS-E4874
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::Attestation`
 
 ## Message

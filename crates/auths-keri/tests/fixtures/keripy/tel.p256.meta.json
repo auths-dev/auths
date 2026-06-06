@@ -1,0 +1,17 @@
+{
+  "curve_code": "Q",
+  "issuer_aid": "ENiNAkQ09I2GgaAdDrao-ajKW8dMNfU8TeNJHguKSReN",
+  "issuer_verkey": "1AAJA-5HtuPmk57SZWIcTqsx94E_OeTEWG49Lh3rwf8DfUpl",
+  "nonce": "0AAHBwcHBwcHBwcHBwcHBwcH",
+  "dt": "2025-01-01T00:00:00.000000+00:00",
+  "registry_said": "EO2O8rHYbYMbh3x_dJLi8PTMKZ9bEp_9jfxqkwsw-eLO",
+  "credential_said": "EAoSzKFsWseFX-HLQPTb6_ZuXEMuHO6Eow_ejugzcCHV",
+  "vcp_said": "EO2O8rHYbYMbh3x_dJLi8PTMKZ9bEp_9jfxqkwsw-eLO",
+  "iss_said": "EL7ps-IsWDR-gQubfWlgxl2HN3gf6zQK-f7VVe4yFdJs",
+  "rev_said": "ED_HkJ4ImTsEPSMy7659yLgRcamoeCf2M8Hsk2q5Okz2",
+  "anchor_seal": {
+    "i": "EO2O8rHYbYMbh3x_dJLi8PTMKZ9bEp_9jfxqkwsw-eLO",
+    "s": 0,
+    "d": "EL7ps-IsWDR-gQubfWlgxl2HN3gf6zQK-f7VVe4yFdJs"
+  }
+}

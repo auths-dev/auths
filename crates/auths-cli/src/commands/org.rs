@@ -19,12 +19,11 @@ use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
 use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
-use auths_sdk::workflows::org::{
-    AddMemberCommand, OrgContext, RevokeMemberCommand, Role, add_organization_member,
-    member_role_order, revoke_organization_member,
-};
-use auths_verifier::types::DeviceDID;
-use auths_verifier::{Capability, Prefix, PublicKeyHex};
+use auths_sdk::workflows::org::{Role, add_member, list_members, member_role_order, revoke_member};
+
+use crate::factories::storage::build_auths_context;
+use auths_verifier::Prefix;
+use auths_verifier::types::CanonicalDid;
 
 use clap::ValueEnum;
 
@@ -46,6 +45,19 @@ impl From<CliRole> for Role {
             CliRole::Readonly => Role::Readonly,
         }
     }
+}
+
+/// Default keychain alias for an org's signing key (`org-{slug}`), derived from
+/// the org identifier when `--key` is not supplied.
+fn org_slug_alias(org: &str) -> String {
+    format!(
+        "org-{}",
+        org.chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(20)
+            .collect::<String>()
+            .to_lowercase()
+    )
 }
 
 /// The `org` subcommand, handling member authorizations.
@@ -382,13 +394,6 @@ pub fn handle_org(
             let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
             let org_curve = org_resolved.curve();
 
-            let admin_capabilities = vec![
-                Capability::sign_commit(),
-                Capability::sign_release(),
-                Capability::manage_members(),
-                Capability::rotate_keys(),
-            ];
-
             let meta = AttestationMetadata {
                 note: Some(format!("Organization '{}' root admin", name)),
                 timestamp: Some(now),
@@ -397,30 +402,29 @@ pub fn handle_org(
 
             let signer = StorageSigner::new(get_platform_keychain()?);
             #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
-            let org_did = DeviceDID::new_unchecked(controller_did.to_string());
+            let org_did = CanonicalDid::new_unchecked(controller_did.to_string());
 
             let attestation = create_signed_attestation(
                 now,
-                &rid,
-                &controller_did,
-                &org_did,
-                &org_pk_bytes,
-                org_curve,
-                Some(serde_json::json!({
-                    "org_role": "admin",
-                    "org_name": name
-                })),
-                &meta,
+                auths_sdk::attestation::AttestationInput {
+                    rid: &rid,
+                    identity_did: &controller_did,
+                    subject: &org_did,
+                    device_public_key: &org_pk_bytes,
+                    device_curve: org_curve,
+                    payload: Some(serde_json::json!({
+                        "org_role": "admin",
+                        "org_name": name
+                    })),
+                    meta: &meta,
+                    identity_alias: Some(&alias),
+                    device_alias: None, // Self-attestation, no device signature
+                    delegated_by: None,
+                    commit_sha: None,
+                    signer_type: None,
+                },
                 &signer,
                 passphrase_provider.as_ref(),
-                Some(&alias),
-                None, // Self-attestation, no device signature
-                admin_capabilities,
-                Some(Role::Admin),
-                None, // Root admin has no delegator
-                None, // commit_sha
-                None,
-                None, // supersedes_rid
             )
             .context("Failed to create admin attestation")?;
 
@@ -513,7 +517,7 @@ pub fn handle_org(
 
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: subject_did accepts both did:key and did:keri
-            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
+            let subject_device_did = CanonicalDid::new_unchecked(subject_did.clone());
 
             // --- Resolve device public key using the custom resolver IF did:key ---
             let device_resolved = resolver.resolve(&subject_did).with_context(|| {
@@ -536,23 +540,22 @@ pub fn handle_org(
             let signer = StorageSigner::new(key_storage);
             let attestation = create_signed_attestation(
                 now,
-                &rid,
-                &controller_did,
-                &subject_device_did,
-                &device_pk_bytes,
-                device_curve,
-                Some(payload),
-                &meta,
+                auths_sdk::attestation::AttestationInput {
+                    rid: &rid,
+                    identity_did: &controller_did,
+                    subject: &subject_device_did,
+                    device_public_key: &device_pk_bytes,
+                    device_curve,
+                    payload: Some(payload),
+                    meta: &meta,
+                    identity_alias: Some(&signer_alias),
+                    device_alias: None, // No device signature for org attestations
+                    delegated_by: None,
+                    commit_sha: None,
+                    signer_type: None,
+                },
                 &signer,
                 passphrase_provider.as_ref(),
-                Some(&signer_alias),
-                None, // No device signature for org attestations
-                vec![],
-                None,
-                None,
-                None, // commit_sha
-                None,
-                None, // supersedes_rid
             )
             .context("Failed to create signed attestation object")?;
 
@@ -611,7 +614,7 @@ pub fn handle_org(
             let rid = managed_identity.storage_id;
 
             #[allow(clippy::disallowed_methods)] // INVARIANT: accepts both did:key and did:keri
-            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
+            let subject_device_did = CanonicalDid::new_unchecked(subject_did.clone());
 
             // Look up the subject's public key from existing attestations
             let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
@@ -627,17 +630,19 @@ pub fn handle_org(
             println!("🔏 Creating signed revocation...");
             let signer = StorageSigner::new(get_platform_keychain()?);
             let attestation = create_signed_revocation(
-                &rid,
-                &controller_did,
-                &subject_device_did,
-                device_public_key.as_bytes(),
-                device_public_key.curve(),
-                note,
-                None,
-                now,
+                auths_sdk::attestation::RevocationInput {
+                    rid: &rid,
+                    identity_did: &controller_did,
+                    subject: &subject_device_did,
+                    device_public_key: device_public_key.as_bytes(),
+                    device_curve: device_public_key.curve(),
+                    note,
+                    payload: None,
+                    timestamp: now,
+                    identity_alias: &signer_alias,
+                },
                 &signer,
                 passphrase_provider.as_ref(),
-                &signer_alias,
             )
             .context("Failed to create revocation")?;
 
@@ -683,7 +688,7 @@ pub fn handle_org(
 
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: subject_did from CLI arg, used for lookup only
-            let subject_device_did = DeviceDID::new_unchecked(subject_did.clone());
+            let subject_device_did = CanonicalDid::new_unchecked(subject_did.clone());
             if let Some(list) = group.by_device.get(subject_device_did.as_str()) {
                 for (i, att) in list.iter().enumerate() {
                     if !include_revoked
@@ -738,103 +743,52 @@ pub fn handle_org(
 
         OrgSubcommand::AddMember {
             org,
-            member_did: member,
+            member_did: member_label,
             role: cli_role,
             capabilities,
             key,
-            note,
+            note: _note,
         } => {
             let role = Role::from(cli_role);
             println!("👥 Adding member to organization...");
-            println!("   Org:    {}", org);
-            println!("   Member: {}", member);
-            println!("   Role:   {}", role);
+            println!("   Org:   {}", org);
+            println!("   Label: {}", member_label);
+            println!("   Role:  {}", role);
 
-            let signer_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| {
-                format!(
-                    "org-{}",
-                    org.chars()
-                        .filter(|c| c.is_alphanumeric())
-                        .take(20)
-                        .collect::<String>()
-                        .to_lowercase()
-                )
-            }));
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let org_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| org_slug_alias(&org)));
+            let member_alias = KeyAlias::new_unchecked(member_label.clone());
 
-            let key_storage = get_platform_keychain()?;
-            let (stored_did, _role, _encrypted_key) = key_storage
-                .load_key(&signer_alias)
-                .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: hex::encode of resolved Ed25519 pubkey always produces valid hex
-            let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
-                resolver
-                    .resolve(stored_did.as_str())
-                    .with_context(|| {
-                        format!("Failed to resolve public key for admin: {}", stored_did)
-                    })?
-                    .public_key_bytes(),
-            ));
-
-            let member_resolved = resolver
-                .resolve(&member)
-                .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
-            let member_pk = member_resolved.public_key_bytes().to_vec();
-
-            let capability_strings = if let Some(cap_strs) = capabilities {
-                cap_strs
-            } else {
+            let capability_strings = capabilities.unwrap_or_else(|| {
                 role.default_capabilities()
                     .iter()
-                    .map(|c| format!("{:?}", c))
+                    .map(|c| c.as_str().to_string())
                     .collect()
-            };
+            });
 
-            let org_prefix = org.strip_prefix("did:keri:").unwrap_or(&org).to_string();
-
-            let signer = StorageSigner::new(key_storage);
-            let uuid_provider = auths_sdk::ports::SystemUuidProvider;
-
-            let org_ctx = OrgContext {
-                registry: &*std::sync::Arc::new(GitRegistryBackend::from_config_unchecked(
-                    RegistryConfig::single_tenant(&repo_path),
-                )),
-                clock: &auths_sdk::ports::SystemClock,
-                uuid_provider: &uuid_provider,
-                signer: &signer,
-                passphrase_provider: passphrase_provider.as_ref(),
-                witness_params: auths_sdk::witness::WitnessParams::Disabled,
-            };
-
-            let member_curve = member_resolved.curve();
-
-            let _attestation = add_organization_member(
-                &org_ctx,
-                AddMemberCommand {
-                    org_prefix: org_prefix.clone(),
-                    member_did: member.clone(),
-                    member_public_key: member_pk.clone(),
-                    member_curve,
-                    role,
-                    capabilities: capability_strings.clone(),
-                    admin_public_key_hex: admin_pk_hex,
-                    signer_alias,
-                    note,
-                },
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let result = add_member(
+                &sdk_ctx,
+                &org_prefix,
+                &org_alias,
+                &member_alias,
+                auths_crypto::CurveType::Ed25519,
+                role,
+                &capability_strings,
+                None,
             )
             .context("Failed to add member")?;
 
-            #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
-            let member_did = DeviceDID::new_unchecked(member.clone());
-
-            println!("\n✅ Member added successfully!");
-            println!("   Member ID:    {}", member);
+            println!("\n✅ Member added as a KERI delegated identifier!");
+            println!("   Member DID:   {}", result.member_did);
             println!("   Role:         {}", role);
             println!("   Capabilities: {}", capability_strings.join(", "));
-            println!(
-                "   Stored at:    {}",
-                config.org_member_ref(&org, &member_did)
-            );
+            println!("\nThe org anchored this member's delegation in its KEL.");
 
             Ok(())
         }
@@ -842,24 +796,13 @@ pub fn handle_org(
         OrgSubcommand::RevokeMember {
             org,
             member_did: member,
-            note,
+            note: _note,
             key,
             dry_run,
         } => {
             println!("🛑 Revoking member from organization...");
             println!("   Org:    {}", org);
             println!("   Member: {}", member);
-
-            let signer_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| {
-                format!(
-                    "org-{}",
-                    org.chars()
-                        .filter(|c| c.is_alphanumeric())
-                        .take(20)
-                        .collect::<String>()
-                        .to_lowercase()
-                )
-            }));
 
             let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
             let invoker_did = identity_storage
@@ -871,70 +814,21 @@ pub fn handle_org(
                 return display_dry_run_revoke_member(&org, &member, invoker_did.as_ref());
             }
 
-            let key_storage = get_platform_keychain()?;
-            let (stored_did, _role, _encrypted_key) = key_storage
-                .load_key(&signer_alias)
-                .with_context(|| format!("Failed to load signer key '{}'", signer_alias))?;
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: hex::encode of resolved Ed25519 pubkey always produces valid hex
-            let admin_pk_hex = PublicKeyHex::new_unchecked(hex::encode(
-                resolver
-                    .resolve(stored_did.as_str())
-                    .with_context(|| {
-                        format!("Failed to resolve public key for admin: {}", stored_did)
-                    })?
-                    .public_key_bytes(),
-            ));
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let org_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| org_slug_alias(&org)));
 
-            let member_resolved = resolver
-                .resolve(&member)
-                .with_context(|| format!("Failed to resolve public key for member: {}", member))?;
-            let member_pk = member_resolved.public_key_bytes().to_vec();
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            revoke_member(&sdk_ctx, &org_prefix, &org_alias, &member)
+                .context("Failed to revoke member")?;
 
-            let org_prefix = org.strip_prefix("did:keri:").unwrap_or(&org).to_string();
-
-            let signer = StorageSigner::new(key_storage);
-            let uuid_provider = auths_sdk::ports::SystemUuidProvider;
-
-            let org_ctx = OrgContext {
-                registry: &*std::sync::Arc::new(GitRegistryBackend::from_config_unchecked(
-                    RegistryConfig::single_tenant(&repo_path),
-                )),
-                clock: &auths_sdk::ports::SystemClock,
-                uuid_provider: &uuid_provider,
-                signer: &signer,
-                passphrase_provider: passphrase_provider.as_ref(),
-                witness_params: auths_sdk::witness::WitnessParams::Disabled,
-            };
-
-            #[allow(clippy::disallowed_methods)] // INVARIANT: member DID from org registry
-            let member_did = DeviceDID::new_unchecked(member.clone());
-            let member_curve = member_resolved.curve();
-
-            let _revocation = revoke_organization_member(
-                &org_ctx,
-                RevokeMemberCommand {
-                    org_prefix: org_prefix.clone(),
-                    member_did: member.clone(),
-                    member_public_key: member_pk.clone(),
-                    member_curve,
-                    admin_public_key_hex: admin_pk_hex,
-                    signer_alias,
-                    note: note.clone(),
-                },
-            )
-            .context("Failed to revoke member")?;
-
-            println!("\n✅ Member revoked successfully!");
-            println!("   Member ID:  {}", member);
+            println!("\n✅ Member revoked (revocation anchored in the org KEL):");
+            println!("   Member:     {}", member);
             println!("   Revoked by: {}", invoker_did);
-            if let Some(n) = note {
-                println!("   Note:       {}", n);
-            }
-            println!(
-                "   Stored at:  {}",
-                config.org_member_ref(&org, &member_did)
-            );
 
             Ok(())
         }
@@ -945,41 +839,23 @@ pub fn handle_org(
         } => {
             println!("📋 Listing members of organization: {}", org);
 
-            // Load all attestations
-            let attestation_storage = RegistryAttestationStorage::new(repo_path.clone());
-            let all_attestations = attestation_storage
-                .load_all_enriched()
-                .map(|v| v.into_iter().map(|e| e.attestation).collect::<Vec<_>>())?;
+            // KEL-authoritative: members are `dip`s the org anchored. Revocation and
+            // role/capabilities are read from the org KEL, never from an attestation.
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let all_members =
+                list_members(&sdk_ctx, &org_prefix).context("Failed to list members")?;
+            let revoked_count = all_members.iter().filter(|m| m.revoked).count();
 
-            // Build member list with delegation info
-            #[allow(clippy::type_complexity)]
-            let mut members: Vec<(
-                String,
-                Option<Role>,
-                Option<String>,
-                bool,
-                Vec<Capability>,
-            )> = Vec::new();
-
-            for att in &all_attestations {
-                // Skip if revoked and not including revoked
-                if att.is_revoked() && !include_revoked {
-                    continue;
-                }
-
-                // Skip expired attestations
-                if att.expires_at.is_some_and(|e| now > e) && !include_revoked {
-                    continue;
-                }
-
-                members.push((
-                    att.subject.to_string(),
-                    att.role,
-                    att.delegated_by.as_ref().map(|d| d.to_string()),
-                    att.is_revoked(),
-                    att.capabilities.clone(),
-                ));
-            }
+            let mut members: Vec<_> = all_members
+                .into_iter()
+                .filter(|m| include_revoked || !m.revoked)
+                .collect();
 
             if members.is_empty() {
                 println!("\nNo members found for organization.");
@@ -987,54 +863,35 @@ pub fn handle_org(
             }
 
             members.sort_by(|a, b| {
-                member_role_order(&a.1)
-                    .cmp(&member_role_order(&b.1))
-                    .then_with(|| a.0.cmp(&b.0))
+                member_role_order(&a.role)
+                    .cmp(&member_role_order(&b.role))
+                    .then_with(|| a.member_did.cmp(&b.member_did))
             });
 
             println!("\nOrg: {}", org);
             println!("\nMembers ({} total):", members.len());
             println!("─────────────────────────────────────────");
 
-            for (member_did, role, delegated_by, revoked, capabilities) in &members {
-                let role_str = role.as_ref().map(|r| r.as_str()).unwrap_or("unknown");
-                let status = if *revoked { " (revoked)" } else { "" };
-
-                // Determine tree prefix based on delegator
-                let prefix = if delegated_by.is_none() {
-                    "├─ "
-                } else {
-                    "│  └─ "
-                };
-
-                // Format capabilities
-                let caps: Vec<String> = capabilities.iter().map(|c| format!("{:?}", c)).collect();
-                let caps_str = if caps.is_empty() {
+            for m in &members {
+                let role_str = m.role.as_ref().map(|r| r.as_str()).unwrap_or("unknown");
+                let status = if m.revoked { " (revoked)" } else { "" };
+                let caps_str = if m.capabilities.is_empty() {
                     String::new()
                 } else {
-                    format!(" [{}]", caps.join(", "))
+                    format!(" [{}]", m.capabilities.join(", "))
                 };
 
-                println!(
-                    "{}{} [{}]{}{}",
-                    prefix, member_did, role_str, status, caps_str
-                );
-
-                if let Some(delegator) = delegated_by {
-                    println!("│     delegated by: {}", delegator);
-                }
+                println!("├─ {} [{}]{}{}", m.member_did, role_str, status, caps_str);
+                println!("│     delegated by: {}", m.delegated_by_org);
             }
 
             println!("─────────────────────────────────────────");
 
-            if !include_revoked {
-                let revoked_count = all_attestations.iter().filter(|a| a.is_revoked()).count();
-                if revoked_count > 0 {
-                    println!(
-                        "\n({} revoked member(s) hidden. Use --include-revoked to show.)",
-                        revoked_count
-                    );
-                }
+            if !include_revoked && revoked_count > 0 {
+                println!(
+                    "\n({} revoked member(s) hidden. Use --include-revoked to show.)",
+                    revoked_count
+                );
             }
 
             Ok(())

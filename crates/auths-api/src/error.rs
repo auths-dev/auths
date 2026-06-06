@@ -1,40 +1,24 @@
 use thiserror::Error;
 
+/// Errors surfaced by the API presentation layer.
+///
+/// The agent-/Redis-/bearer-token-specific variants were removed in Epic E along
+/// with the legacy agent API. Kept minimal for the current server skeleton.
 #[derive(Debug, Error)]
 pub enum ApiError {
+    /// A request signature failed verification.
     #[error("Invalid signature: {0}")]
     InvalidSignature(String),
 
+    /// The request timestamp fell outside the accepted clock-skew window.
     #[error("Clock skew too large (request timestamp outside 5-minute window)")]
     ClockSkew,
 
-    #[error("Delegator not found: {0}")]
-    DelegatorNotFound(String),
-
-    #[error("Delegation constraint violated: {0}")]
-    DelegationConstraintViolated(String),
-
-    #[error("Agent not found: {0}")]
-    AgentNotFound(String),
-
-    #[error("Agent revoked: {0}")]
-    AgentRevoked(String),
-
-    #[error("Agent expired: {0}")]
-    AgentExpired(String),
-
-    #[error("Capability not granted: {0}")]
-    CapabilityNotGranted(String),
-
-    #[error("Redis error: {0}")]
-    RedisError(String),
-
+    /// JSON (de)serialization of a request/response failed.
     #[error("Serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
 
-    #[error("UUID error: {0}")]
-    UuidError(String),
-
+    /// An unexpected internal error.
     #[error("Internal server error")]
     InternalError,
 }

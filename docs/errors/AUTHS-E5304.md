@@ -1,6 +1,6 @@
 # AUTHS-E5304
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `RotationError::KelHistoryFailed`
 
 ## Message

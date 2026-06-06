@@ -114,7 +114,6 @@ export interface NapiAttestation {
   issuer: string
   subject: string
   deviceDid: string
-  capabilities: string[]
   signerType?: string | null
   expiresAt?: string | null
   revokedAt?: string | null
@@ -165,16 +164,9 @@ export interface NapiPairingResponse {
   devicePublicKeyHex: string
 }
 
-export interface NapiPairingResult {
-  deviceDid: string
-  deviceName?: string | null
-  attestationRid: string
-}
-
 export interface NapiPairingHandleInstance {
   session: NapiPairingSession
   waitForResponse(timeoutSecs?: number | null): Promise<NapiPairingResponse>
-  complete(deviceDid: string, devicePublicKeyHex: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null): Promise<NapiPairingResult>
   stop(): Promise<void>
 }
 
@@ -207,9 +199,9 @@ export interface NativeBindings {
 
   // Org
   createOrg(label: string, repoPath: string, passphrase?: string | null): NapiOrgResult
-  addOrgMember(orgDid: string, memberDid: string, role: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null, note?: string | null, memberPublicKeyHex?: string | null): NapiOrgMember
-  revokeOrgMember(orgDid: string, memberDid: string, repoPath: string, passphrase?: string | null, note?: string | null, memberPublicKeyHex?: string | null): NapiOrgMember
-  listOrgMembers(orgDid: string, includeRevoked: boolean, repoPath: string): string
+  addOrgMember(orgDid: string, memberLabel: string, role: string, repoPath: string, capabilitiesJson?: string | null, passphrase?: string | null, expiresAt?: number | null): NapiOrgMember
+  revokeOrgMember(orgDid: string, memberDid: string, repoPath: string, passphrase?: string | null): NapiOrgMember
+  listOrgMembers(orgDid: string, includeRevoked: boolean, repoPath: string, passphrase?: string | null): string
 
   // Attestation query
   listAttestations(repoPath: string): NapiAttestation[]
@@ -223,7 +215,7 @@ export interface NativeBindings {
   getPinnedIdentity(did: string, repoPath: string): NapiPinnedIdentity | null
 
   // Witness
-  addWitness(urlStr: string, repoPath: string, label?: string | null): NapiWitnessResult
+  addWitness(urlStr: string, aid: string, repoPath: string, label?: string | null): NapiWitnessResult
   removeWitness(urlStr: string, repoPath: string): void
   listWitnesses(repoPath: string): string
 
@@ -253,10 +245,7 @@ export interface NativeBindings {
   verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
   verifyChain(attestationsJson: string[], rootPkHex: string): Promise<NapiVerificationReport>
   verifyDeviceAuthorization(identityDid: string, deviceDid: string, attestationsJson: string[], identityPkHex: string): Promise<NapiVerificationReport>
-  verifyAttestationWithCapability(attestationJson: string, issuerPkHex: string, requiredCapability: string): Promise<NapiVerificationResult>
-  verifyChainWithCapability(attestationsJson: string[], rootPkHex: string, requiredCapability: string): Promise<NapiVerificationReport>
   verifyAtTime(attestationJson: string, issuerPkHex: string, atRfc3339: string): Promise<NapiVerificationResult>
-  verifyAtTimeWithCapability(attestationJson: string, issuerPkHex: string, atRfc3339: string, requiredCapability: string): Promise<NapiVerificationResult>
   verifyChainWithWitnesses(attestationsJson: string[], rootPkHex: string, receiptsJson: string[], witnessKeysJson: string[], threshold: number): Promise<NapiVerificationReport>
 }
 

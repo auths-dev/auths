@@ -1,6 +1,6 @@
 # AUTHS-E1104
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `DidKeyError::InvalidKeyLength`
 
 ## Message

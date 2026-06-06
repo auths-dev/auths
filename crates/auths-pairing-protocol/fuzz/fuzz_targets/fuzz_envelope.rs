@@ -14,8 +14,8 @@
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|_data: &[u8]| {
-    // TODO(fn-129 follow-up): once `Envelope<Sealed>` has a stable serde
-    // wire shape, parse `_data` and feed it to `EnvelopeSession::open`.
+    // TODO: once `Envelope<Sealed>` has a stable serde wire shape, parse
+    // `_data` and feed it to `EnvelopeSession::open`.
     // For now the target is a placeholder binary that simply returns —
     // the library-level unit tests cover the envelope happy path and
     // tamper cases.

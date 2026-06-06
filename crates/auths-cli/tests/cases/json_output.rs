@@ -18,23 +18,24 @@ fn setup_signed_commit() -> TestEnv {
         String::from_utf8_lossy(&commit.stderr)
     );
 
+    // Add the in-band Auths-Id / Auths-Device trailers for KEL-native verification.
+    let sign = env.cmd("auths").args(["sign", "HEAD"]).output().unwrap();
+    assert!(
+        sign.status.success(),
+        "auths sign failed: {}",
+        String::from_utf8_lossy(&sign.stderr)
+    );
+
     env
 }
 
 #[test]
 fn test_verify_json_output_on_signed_commit() {
     let env = setup_signed_commit();
-    let signers = env.allowed_signers_path();
 
     let output = env
         .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--json",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
+        .args(["verify", "HEAD", "--json"])
         .output()
         .unwrap();
 
@@ -78,16 +79,10 @@ fn test_verify_json_output_on_unsigned_commit() {
         .unwrap();
     assert!(commit.status.success());
 
-    let signers = env.allowed_signers_path();
+    // No `auths sign` → no trailer → KEL-native verify rejects it.
     let output = env
         .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--json",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
+        .args(["verify", "HEAD", "--json"])
         .output()
         .unwrap();
 
@@ -107,16 +102,9 @@ fn test_verify_json_output_on_invalid_ref() {
     let env = TestEnv::new();
     env.init_identity();
 
-    let signers = env.allowed_signers_path();
     let output = env
         .cmd("auths")
-        .args([
-            "verify",
-            "NONEXISTENT_REF",
-            "--json",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
+        .args(["verify", "NONEXISTENT_REF", "--json"])
         .output()
         .unwrap();
 

@@ -1,6 +1,6 @@
 # AUTHS-E2016
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::OrgDidResolutionFailed`
 
 ## Message

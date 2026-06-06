@@ -1,6 +1,6 @@
 # AUTHS-E1203
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `KeriDecodeError::DecodeError`
 
 ## Message

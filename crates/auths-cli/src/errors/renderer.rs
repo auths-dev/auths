@@ -10,7 +10,6 @@ use auths_sdk::error::{
     RotationError, SdkStorageError, SetupError, TrustError,
 };
 use auths_sdk::error::{FreezeError, InitError};
-use auths_sdk::workflows::allowed_signers::AllowedSignersError;
 use auths_sdk::workflows::auth::AuthChallengeError;
 use auths_verifier::{AttestationError, CommitVerificationError};
 use colored::Colorize;
@@ -66,7 +65,6 @@ fn extract_error_info(err: &Error) -> Option<(&str, &str, Option<&str>)> {
             McpAuthError,
             OrgError,
             ApprovalError,
-            AllowedSignersError,
             ArtifactSigningError,
             SigningError,
             SdkStorageError,

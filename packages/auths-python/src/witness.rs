@@ -2,8 +2,9 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use std::path::{Path, PathBuf};
 
+use auths_id::keri::types::Prefix;
 use auths_id::storage::identity::IdentityStorage;
-use auths_id::witness_config::WitnessConfig;
+use auths_id::witness_config::{WitnessConfig, WitnessRef};
 use auths_storage::git::RegistryIdentityStorage;
 
 fn resolve_repo(repo_path: &str) -> PathBuf {
@@ -50,10 +51,11 @@ fn save_witness_config(repo_path: &Path, config: &WitnessConfig) -> PyResult<()>
 }
 
 #[pyfunction]
-#[pyo3(signature = (url, repo_path, label=None))]
+#[pyo3(signature = (url, aid, repo_path, label=None))]
 pub fn add_witness(
     _py: Python<'_>,
     url: &str,
+    aid: &str,
     repo_path: &str,
     label: Option<String>,
 ) -> PyResult<(String, Option<String>, Option<String>)> {
@@ -67,20 +69,24 @@ pub fn add_witness(
                 url_str, e
             ))
         })?;
+        let aid = Prefix::new_unchecked(aid.to_string());
 
         let mut config = load_witness_config(&repo)?;
 
-        if config.witness_urls.contains(&parsed_url) {
-            return Ok((url_str, None, label));
+        if config.witnesses.iter().any(|w| w.url == parsed_url) {
+            return Ok((url_str, Some(aid.as_str().to_string()), label));
         }
 
-        config.witness_urls.push(parsed_url);
+        config.witnesses.push(WitnessRef {
+            url: parsed_url,
+            aid: aid.clone(),
+        });
         if config.threshold == 0 {
             config.threshold = 1;
         }
 
         save_witness_config(&repo, &config)?;
-        Ok((url_str, None, label))
+        Ok((url_str, Some(aid.as_str().to_string()), label))
     }
 }
 
@@ -99,10 +105,10 @@ pub fn remove_witness(_py: Python<'_>, url: &str, repo_path: &str) -> PyResult<(
         })?;
 
         let mut config = load_witness_config(&repo)?;
-        config.witness_urls.retain(|u| u != &parsed_url);
+        config.witnesses.retain(|w| w.url != parsed_url);
 
-        if config.threshold > config.witness_urls.len() {
-            config.threshold = config.witness_urls.len();
+        if config.threshold > config.witnesses.len() {
+            config.threshold = config.witnesses.len();
         }
 
         save_witness_config(&repo, &config)?;
@@ -119,12 +125,12 @@ pub fn list_witnesses(_py: Python<'_>, repo_path: &str) -> PyResult<String> {
         let config = load_witness_config(&repo)?;
 
         let entries: Vec<serde_json::Value> = config
-            .witness_urls
+            .witnesses
             .iter()
-            .map(|u| {
+            .map(|w| {
                 serde_json::json!({
-                    "url": u.to_string(),
-                    "did": null,
+                    "url": w.url.to_string(),
+                    "did": w.aid.as_str(),
                     "label": null,
                 })
             })

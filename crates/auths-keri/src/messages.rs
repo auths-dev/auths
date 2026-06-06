@@ -252,7 +252,7 @@ mod tests {
     fn qry_message_roundtrip() {
         let msg = QryMessage {
             v: VersionString::placeholder(),
-            d: Said::default(),
+            d: Said::new_unchecked("EMessagePlaceholderSaid".into()),
             dt: "2024-01-01T00:00:00.000000+00:00".into(),
             r: "/kel".into(),
             rr: "/receipt".into(),
@@ -268,7 +268,7 @@ mod tests {
     fn rpy_message_roundtrip() {
         let msg = RpyMessage {
             v: VersionString::placeholder(),
-            d: Said::default(),
+            d: Said::new_unchecked("EMessagePlaceholderSaid".into()),
             dt: "2024-01-01T00:00:00.000000+00:00".into(),
             r: "/kel".into(),
             a: serde_json::json!({"data": "value"}),
@@ -283,7 +283,7 @@ mod tests {
     fn xip_message_roundtrip() {
         let msg = XipMessage {
             v: VersionString::placeholder(),
-            d: Said::default(),
+            d: Said::new_unchecked("EMessagePlaceholderSaid".into()),
             u: "nonce123".into(),
             i: Prefix::new_unchecked("ESender".into()),
             ri: Prefix::new_unchecked("EReceiver".into()),
@@ -302,11 +302,11 @@ mod tests {
     fn exn_message_roundtrip() {
         let msg = ExnMessage {
             v: VersionString::placeholder(),
-            d: Said::default(),
+            d: Said::new_unchecked("EMessagePlaceholderSaid".into()),
             i: Prefix::new_unchecked("ESender".into()),
             ri: Prefix::new_unchecked("EReceiver".into()),
             x: Said::new_unchecked("EExchangeSaid".into()),
-            p: Said::default(),
+            p: Said::new_unchecked("EPriorPlaceholderSaid".into()),
             dt: "2024-01-01T00:00:00.000000+00:00".into(),
             r: "/credential/present".into(),
             q: serde_json::json!({}),
@@ -323,7 +323,7 @@ mod tests {
     fn bar_message_roundtrip() {
         let msg = BarMessage {
             v: VersionString::placeholder(),
-            d: Said::default(),
+            d: Said::new_unchecked("EMessagePlaceholderSaid".into()),
             dt: "2024-01-01T00:00:00.000000+00:00".into(),
             r: "/notify".into(),
             a: serde_json::json!({"status": "ok"}),
@@ -338,7 +338,7 @@ mod tests {
     fn pro_message_roundtrip() {
         let msg = ProMessage {
             v: VersionString::placeholder(),
-            d: Said::default(),
+            d: Said::new_unchecked("EMessagePlaceholderSaid".into()),
             dt: "2024-01-01T00:00:00.000000+00:00".into(),
             r: "/prod".into(),
             rr: "/reply".into(),

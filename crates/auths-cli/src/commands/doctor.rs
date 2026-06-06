@@ -1,6 +1,6 @@
 //! Comprehensive health check command for Auths.
 
-use crate::adapters::doctor_fixes::{AllowedSignersFix, GitSigningConfigFix};
+use crate::adapters::doctor_fixes::GitSigningConfigFix;
 use crate::adapters::system_diagnostic::PosixDiagnosticAdapter;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::Result;
@@ -177,7 +177,6 @@ fn run_checks() -> Vec<Check> {
     checks.push(check_keychain_accessible());
     checks.push(check_auths_repo());
     checks.push(check_identity_valid(now));
-    checks.push(check_allowed_signers_file());
 
     // Advisory: network connectivity
     checks.push(check_registry_connectivity());
@@ -255,10 +254,6 @@ fn apply_fixes(checks: &[Check], out: Option<&Output>) -> Vec<FixApplied> {
 
 fn build_available_fixes() -> Vec<Box<dyn DiagnosticFix>> {
     let mut fixes: Vec<Box<dyn DiagnosticFix>> = Vec::new();
-
-    if let Ok(repo_path) = auths_sdk::paths::auths_home() {
-        fixes.push(Box::new(AllowedSignersFix::new(repo_path)));
-    }
 
     if let Ok(sign_path) = which::which("auths-sign") {
         let key_alias = resolve_key_alias().unwrap_or_else(|| "main".to_string());
@@ -500,78 +495,6 @@ fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
     }
 
     ExpiryStatus::Ok
-}
-
-fn check_allowed_signers_file() -> Check {
-    use auths_sdk::workflows::allowed_signers::{AllowedSigners, SignerSource};
-
-    let path = crate::factories::storage::read_git_config("gpg.ssh.allowedSignersFile")
-        .ok()
-        .flatten();
-
-    let (passed, detail, suggestion) = match path {
-        Some(path_str) => {
-            let file_path = std::path::Path::new(&path_str);
-            if file_path.exists() {
-                match AllowedSigners::load(
-                    file_path,
-                    &crate::adapters::allowed_signers_store::FileAllowedSignersStore,
-                ) {
-                    Ok(signers) => {
-                        let entries = signers.list();
-                        let attestation_count = entries
-                            .iter()
-                            .filter(|e| e.source == SignerSource::Attestation)
-                            .count();
-                        let manual_count = entries
-                            .iter()
-                            .filter(|e| e.source == SignerSource::Manual)
-                            .count();
-
-                        let has_markers = std::fs::read_to_string(file_path)
-                            .map(|c| c.contains("# auths:attestation"))
-                            .unwrap_or(false);
-
-                        let mut detail = format!(
-                            "{path_str} ({} attestation, {} manual)",
-                            attestation_count, manual_count
-                        );
-
-                        if !has_markers && !entries.is_empty() {
-                            detail.push_str(
-                                " [no auths markers — run `auths signers sync` to add them]",
-                            );
-                        }
-
-                        (true, detail, None)
-                    }
-                    Err(_) => (
-                        true,
-                        format!("{path_str} (exists, could not parse entries)"),
-                        None,
-                    ),
-                }
-            } else {
-                (
-                    false,
-                    format!("Configured but file not found: {path_str}"),
-                    Some("Run: auths doctor --fix".to_string()),
-                )
-            }
-        }
-        None => (
-            false,
-            "Not configured".into(),
-            Some("Run: auths doctor --fix".to_string()),
-        ),
-    };
-    Check {
-        name: "Allowed signers file".to_string(),
-        passed,
-        detail,
-        suggestion,
-        category: CheckCategory::Critical,
-    }
 }
 
 fn check_registry_connectivity() -> Check {

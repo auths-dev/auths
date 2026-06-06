@@ -20,6 +20,11 @@ pub enum IndexError {
 
     #[error("Invalid attestation data: {0}")]
     InvalidData(String),
+
+    /// Repo holds refs under the deprecated `refs/auths/devices/nodes/*`
+    /// namespace. Pre-launch we hard-break; the message suggests a reset.
+    #[error("{0}")]
+    DeprecatedPrefix(String),
 }
 
 pub type Result<T> = std::result::Result<T, IndexError>;

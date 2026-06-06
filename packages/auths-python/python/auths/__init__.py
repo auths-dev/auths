@@ -24,11 +24,8 @@ from auths._native import (
     sign_bytes,
     verify_action_envelope,
     verify_at_time,
-    verify_at_time_with_capability,
     verify_attestation,
-    verify_attestation_with_capability,
     verify_chain,
-    verify_chain_with_capability,
     verify_device_authorization,
 )
 from auths.agent import AgentAuth
@@ -63,7 +60,6 @@ from auths.git import (
     LayoutInfo,
     VerifyResult,
     discover_layout,
-    generate_allowed_signers,
     verify_commit_range,
 )
 

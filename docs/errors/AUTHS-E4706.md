@@ -1,6 +1,6 @@
 # AUTHS-E4706
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RotationError::CommitmentMismatch`
 
 ## Message

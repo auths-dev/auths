@@ -19,10 +19,6 @@ pub enum SdkStorageError {
     #[error(transparent)]
     Init(#[from] auths_id::error::InitError),
 
-    /// Agent provisioning failed.
-    #[error(transparent)]
-    AgentProvisioning(#[from] auths_id::agent_identity::AgentProvisioningError),
-
     /// Driver-level storage operation failed.
     #[error(transparent)]
     Driver(#[from] auths_id::storage::StorageError),
@@ -37,7 +33,6 @@ impl AuthsErrorInfo for SdkStorageError {
         match self {
             Self::Identity(e) => e.error_code(),
             Self::Init(e) => e.error_code(),
-            Self::AgentProvisioning(e) => e.error_code(),
             Self::Driver(e) => e.error_code(),
             Self::Attestation(e) => e.error_code(),
         }
@@ -47,7 +42,6 @@ impl AuthsErrorInfo for SdkStorageError {
         match self {
             Self::Identity(e) => e.suggestion(),
             Self::Init(e) => e.suggestion(),
-            Self::AgentProvisioning(e) => e.suggestion(),
             Self::Driver(e) => e.suggestion(),
             Self::Attestation(e) => e.suggestion(),
         }

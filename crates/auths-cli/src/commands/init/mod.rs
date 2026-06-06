@@ -30,7 +30,6 @@ use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::Output;
 
-use super::signers::sync_signers;
 use display::{
     display_agent_dry_run, display_agent_result, display_ci_result, display_developer_result,
 };
@@ -39,7 +38,7 @@ use gather::{
     submit_registration,
 };
 use guided::GuidedSetup;
-use helpers::{get_auths_repo_path, offer_shell_completions, write_allowed_signers};
+use helpers::{get_auths_repo_path, offer_shell_completions};
 use prompts::{prompt_platform_verification, prompt_profile};
 
 const DEFAULT_KEY_ALIAS: &str = "main";
@@ -374,23 +373,17 @@ fn run_developer_setup(
     // POST-SETUP
     guide.section("Shell & Signing Setup");
     offer_shell_completions(interactive, out)?;
-    write_allowed_signers(&result.key_alias, out)?;
 
-    // Also write repo-local .auths/allowed_signers if we're inside a git repo,
-    // so `auths verify` works immediately without extra flags.
+    // Pin the local identity as a trusted root for KEL-native verification (Epic B):
+    // the committed `<repo>/.auths/roots` is the root of trust — no allowed_signers file.
     if let Ok(output) = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"]).output()
         && output.status.success()
     {
         let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-        let repo_signers = root.join(".auths").join("allowed_signers");
-        if let Ok(auths_repo) = get_auths_repo_path()
-            && let Ok((path, report)) = sync_signers(&auths_repo, &repo_signers)
-        {
-            out.println(&format!(
-                "  Wrote {} allowed signer(s) to {}",
-                report.added,
-                path.display()
-            ));
+        let root_did = result.identity_did.to_string();
+        match auths_sdk::workflows::roots::add_pinned_root(&root.join(".auths"), &root_did) {
+            Ok(()) => out.println(&format!("  Pinned trusted root: {}", root_did)),
+            Err(e) => out.println(&format!("  Note: could not pin trusted root ({e})")),
         }
     }
 

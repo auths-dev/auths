@@ -26,16 +26,6 @@ export interface PairingResponse {
   devicePublicKeyHex: string
 }
 
-/** Result of completing a pairing and authorizing the device. */
-export interface PairingResult {
-  /** DID of the paired device. */
-  deviceDid: string
-  /** Optional name of the device, or `null`. */
-  deviceName: string | null
-  /** Resource identifier of the authorization attestation. */
-  attestationRid: string
-}
-
 /** Options for {@link PairingService.createSession}. */
 export interface CreatePairingSessionOptions {
   /** Capabilities to offer the pairing device (e.g. `['sign:commit']`). */
@@ -70,23 +60,11 @@ export interface JoinPairingOptions {
   passphrase?: string
 }
 
-/** Options for {@link PairingService.complete}. */
-export interface CompletePairingOptions {
-  /** DID of the device to authorize. */
-  deviceDid: string
-  /** Hex-encoded Ed25519 public key of the device. */
-  devicePublicKeyHex: string
-  /** Capabilities to grant the device. */
-  capabilities?: string[]
-  /** Override the client's passphrase. */
-  passphrase?: string
-}
-
 /**
  * Handles device pairing for cross-device identity authorization.
  *
  * The pairing flow: controller creates a session, device joins with the
- * short code, controller completes pairing to authorize the device.
+ * short code, the controller waits for the device's response.
  *
  * Access via {@link Auths.pairing}.
  *
@@ -223,37 +201,6 @@ export class PairingService {
         deviceDid: result.deviceDid,
         deviceName: result.deviceName ?? null,
         devicePublicKeyHex: result.devicePublicKeyHex,
-      }
-    } catch (err) {
-      throw mapNativeError(err, PairingError)
-    }
-  }
-
-  /**
-   * Completes pairing by authorizing the connected device.
-   *
-   * @param opts - Completion options with device identity and capabilities.
-   * @returns The pairing result with the device's authorization attestation.
-   * @throws {@link PairingError} if no session is active or completion fails.
-   */
-  async complete(opts: CompletePairingOptions): Promise<PairingResult> {
-    if (!this.handle) {
-      throw new PairingError('No active pairing session. Call createSession first.', 'AUTHS_PAIRING_ERROR')
-    }
-    const pp = opts.passphrase ?? this.client.passphrase
-    const capsJson = opts.capabilities ? JSON.stringify(opts.capabilities) : null
-    try {
-      const result = await this.handle.complete(
-        opts.deviceDid,
-        opts.devicePublicKeyHex,
-        this.client.repoPath,
-        capsJson,
-        pp,
-      )
-      return {
-        deviceDid: result.deviceDid,
-        deviceName: result.deviceName ?? null,
-        attestationRid: result.attestationRid,
       }
     } catch (err) {
       throw mapNativeError(err, PairingError)

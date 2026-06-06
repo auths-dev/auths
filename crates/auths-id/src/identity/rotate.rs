@@ -7,7 +7,6 @@
 //! - [`rotate_keri_identity`]: GitKel-based storage (legacy, per-identity refs)
 //! - [`rotate_registry_identity`]: Packed registry storage (single `refs/auths/registry` ref)
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -258,10 +257,10 @@ pub fn rotate_registry_identity(
 
     let next_keypair = load_keypair_from_der_or_seed(decrypted_next_pkcs8.as_ref())?;
 
-    if !verify_commitment(
-        next_keypair.public_key().as_ref(),
-        &state.next_commitment[0],
-    ) {
+    #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+    let next_verkey = auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+        .expect("ring Ed25519 public key is 32 bytes");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(InitError::InvalidData(
             "Commitment mismatch: next key does not match previous commitment".into(),
         ));
@@ -272,11 +271,18 @@ pub fn rotate_registry_identity(
     let new_next_keypair = Ed25519KeyPair::from_pkcs8(new_next_pkcs8.as_ref())
         .map_err(|e| InitError::Crypto(format!("Key generation failed: {}", e)))?;
 
-    let new_current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(next_keypair.public_key().as_ref())
-    );
-    let new_next_commitment = compute_next_commitment(new_next_keypair.public_key().as_ref());
+    #[allow(clippy::expect_used)]
+    // INVARIANT: ring Ed25519 public key is always 32 bytes; cesride encode of a valid 32-byte verkey is infallible
+    let new_current_pub_encoded =
+        auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes")
+            .to_qb64()
+            .expect("cesride verkey encode is infallible");
+    #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+    let new_next_verkey =
+        auths_keri::KeriPublicKey::ed25519(new_next_keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes");
+    let new_next_commitment = compute_next_commitment(&new_next_verkey);
 
     let bt = match witness_config {
         Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
@@ -299,7 +305,6 @@ pub fn rotate_registry_identity(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -312,6 +317,7 @@ pub fn rotate_registry_identity(
     let sig = next_keypair.sign(&canonical);
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
@@ -350,9 +356,10 @@ pub fn rotate_registry_identity(
 /// `{next_alias}--{idx}` (current) and `{next_alias}--next-{new_seq}-{idx}`
 /// (next).
 ///
-/// Removing devices (`shape.remove_indices` non-empty) requires CESR
-/// indexed-signature support and is rejected here; `validate_signed_event`
-/// enforces the same restriction at verification time.
+/// `shape.remove_indices` authors a dual-index shrink rotation (the validator
+/// binds each surviving signature to the prior commitment it reveals). Note:
+/// multi-device membership now uses KERI delegation (`keri::delegation`); this
+/// shared-`k` path is retained for single-host multi-slot identities.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn rotate_registry_identity_multi(
     backend: Arc<dyn RegistryBackend + Send + Sync>,
@@ -364,14 +371,6 @@ pub fn rotate_registry_identity_multi(
     witness_config: Option<&WitnessConfig>,
     shape: RotationShape,
 ) -> Result<RotationKeyInfo, InitError> {
-    if !shape.remove_indices.is_empty() {
-        return Err(InitError::InvalidData(
-            "Removing device slots requires CESR indexed-signature support (not yet implemented). \
-             Rotate with add-only or threshold-only changes; or use expand for migration."
-                .to_string(),
-        ));
-    }
-
     // Load the base DID from the first current slot and verify the registry.
     let first_cur = KeyAlias::new_unchecked(format!("{}--{}", current_alias, 0));
     let (did, _role, _encrypted) = keychain
@@ -400,7 +399,25 @@ pub fn rotate_registry_identity_multi(
     }
 
     let prior_key_count = state.current_keys.len();
-    let new_key_count = prior_key_count + shape.add_devices.len();
+
+    // Validate removal targets (dedup, in range). At least one prior controller
+    // must survive to authorise the rotation — a surviving signer reveals a prior
+    // commitment (dual-index). Replacing the whole set is the swap/recovery path.
+    let mut remove: Vec<usize> = shape.remove_indices.iter().map(|&i| i as usize).collect();
+    remove.sort_unstable();
+    remove.dedup();
+    if let Some(&bad) = remove.iter().find(|&&i| i >= prior_key_count) {
+        return Err(InitError::InvalidData(format!(
+            "remove index {bad} out of range (prior controller count {prior_key_count})"
+        )));
+    }
+    let surviving_count = prior_key_count - remove.len();
+    if surviving_count == 0 {
+        return Err(InitError::InvalidData(
+            "rotation must retain at least one prior controller to authorise it".to_string(),
+        ));
+    }
+    let new_key_count = surviving_count + shape.add_devices.len();
 
     let new_kt = shape.new_kt.unwrap_or_else(|| state.threshold.clone());
     let new_nt = shape.new_nt.unwrap_or_else(|| state.next_threshold.clone());
@@ -410,11 +427,13 @@ pub fn rotate_registry_identity_multi(
     crate::keri::inception::validate_threshold_for_key_count(&new_nt, new_key_count)
         .map_err(|e| InitError::InvalidData(e.to_string()))?;
 
-    // Decrypt each prior-committed next key in order. These become the new
-    // current keys at indices 0..prior_key_count.
-    let mut new_current_pkcs8s: Vec<Pkcs8Der> = Vec::with_capacity(prior_key_count);
-    let mut new_current_pubs: Vec<Vec<u8>> = Vec::with_capacity(prior_key_count);
+    // Decrypt each SURVIVING prior-committed next key in slot order. These become
+    // the new current keys at indices 0..surviving_count. `prior_indices[new_i]`
+    // records the prior `n[]` slot each survivor reveals (its dual-index ondex).
+    let mut new_current_pkcs8s: Vec<Pkcs8Der> = Vec::with_capacity(new_key_count);
+    let mut new_current_pubs: Vec<auths_keri::KeriPublicKey> = Vec::with_capacity(new_key_count);
     let mut prior_next_aliases: Vec<KeyAlias> = Vec::with_capacity(prior_key_count);
+    let mut prior_indices: Vec<u32> = Vec::with_capacity(surviving_count);
 
     let next_pass = passphrase_provider.get_passphrase(&format!(
         "Enter passphrase for pre-committed keys under alias '{}':",
@@ -426,6 +445,12 @@ pub fn rotate_registry_identity_multi(
             "{}--next-{}-{}",
             current_alias, state.sequence, idx
         ));
+        if remove.contains(&idx) {
+            // Removed controller: its pre-committed next key is dropped from the
+            // new set. Keep the alias only so the cleanup pass deletes it.
+            prior_next_aliases.push(alias);
+            continue;
+        }
         let (did_check, _role, encrypted) = keychain.load_key(&alias)?;
         if did_check != did {
             return Err(InitError::InvalidData(format!(
@@ -435,22 +460,29 @@ pub fn rotate_registry_identity_multi(
         }
         let pkcs8 = Pkcs8Der::new(decrypt_keypair(&encrypted, &next_pass)?.to_vec());
         let keypair = load_keypair_from_der_or_seed(pkcs8.as_ref())?;
-        if !verify_commitment(keypair.public_key().as_ref(), &state.next_commitment[idx]) {
+        #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+        let next_verkey = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes");
+        if !verify_commitment(&next_verkey, &state.next_commitment[idx]) {
             return Err(InitError::InvalidData(format!(
                 "Commitment mismatch at slot {idx}: next key does not match previous commitment"
             )));
         }
-        new_current_pubs.push(keypair.public_key().as_ref().to_vec());
+        new_current_pubs.push(next_verkey);
         new_current_pkcs8s.push(pkcs8);
+        prior_indices.push(idx as u32);
         prior_next_aliases.push(alias);
     }
 
-    // Generate added device keypairs and append to the new current set.
-    let added = crate::keri::inception::generate_keypairs_for_init(&shape.add_devices)
-        .map_err(|e| InitError::Crypto(e.to_string()))?;
-    for kp in &added {
-        new_current_pubs.push(kp.public_key.clone());
-        new_current_pkcs8s.push(kp.pkcs8.clone());
+    // Generate added device keypairs and append to the new current set (a pure
+    // removal adds none — skip, as the generator rejects an empty curve list).
+    if !shape.add_devices.is_empty() {
+        let added = crate::keri::inception::generate_keypairs_for_init(&shape.add_devices)
+            .map_err(|e| InitError::Crypto(e.to_string()))?;
+        for kp in &added {
+            new_current_pubs.push(kp.verkey());
+            new_current_pkcs8s.push(kp.pkcs8.clone());
+        }
     }
 
     // Generate a fresh next keypair per new slot.
@@ -462,11 +494,15 @@ pub fn rotate_registry_identity_multi(
 
     let k: Vec<CesrKey> = new_current_pubs
         .iter()
-        .map(|pk| CesrKey::new_unchecked(format!("D{}", URL_SAFE_NO_PAD.encode(pk))))
-        .collect();
+        .map(|vk| {
+            vk.to_qb64()
+                .map(CesrKey::new_unchecked)
+                .map_err(|e| InitError::InvalidData(e.to_string()))
+        })
+        .collect::<Result<_, _>>()?;
     let n: Vec<Said> = new_next_kps
         .iter()
-        .map(|kp| compute_next_commitment(&kp.public_key))
+        .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
     let bt = match witness_config {
@@ -490,7 +526,6 @@ pub fn rotate_registry_identity_multi(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -498,14 +533,18 @@ pub fn rotate_registry_identity_multi(
     rot.d = compute_said(&rot_value)
         .map_err(|e| InitError::Keri(format!("SAID computation failed: {}", e)))?;
 
-    // Sign with index 0's newly-revealed key. Multi-sig aggregation is the
-    // signing-workflow module's job.
+    // Sign with surviving slot 0's newly-revealed key (kt=1). Its `prior_index`
+    // is the prior `n[]` slot it reveals — for a shrink this drives the dual-index
+    // CESR siger so the validator can bind it; for a same-cardinality rotation it
+    // equals the index and stays byte-identical to the legacy single-index form.
+    // Multi-sig aggregation is the signing-workflow module's job.
     let canonical = serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;
     let signer_keypair = load_keypair_from_der_or_seed(new_current_pkcs8s[0].as_ref())?;
     let sig = signer_keypair.sign(&canonical);
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: prior_indices.first().copied(),
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;

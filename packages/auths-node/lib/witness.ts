@@ -16,6 +16,8 @@ export interface WitnessEntry {
 export interface AddWitnessOptions {
   /** URL of the witness endpoint (e.g. `'http://witness.example.com:3333'`). */
   url: string
+  /** AID (`did:keri:` prefix) of the witness. */
+  aid: string
   /** Optional label for the witness. */
   label?: string
 }
@@ -43,13 +45,16 @@ export class WitnessService {
    *
    * @example
    * ```typescript
-   * const w = auths.witnesses.add({ url: 'http://witness.example.com:3333' })
+   * const w = auths.witnesses.add({
+   *   url: 'http://witness.example.com:3333',
+   *   aid: 'did:keri:EWitness...',
+   * })
    * console.log(w.url) // http://witness.example.com:3333
    * ```
    */
   add(opts: AddWitnessOptions): WitnessEntry {
     try {
-      const result = native.addWitness(opts.url, this.client.repoPath, opts.label ?? null)
+      const result = native.addWitness(opts.url, opts.aid, this.client.repoPath, opts.label ?? null)
       return {
         url: result.url,
         did: result.did ?? null,

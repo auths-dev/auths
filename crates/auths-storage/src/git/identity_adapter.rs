@@ -113,7 +113,7 @@ impl RegistryIdentityStorage {
         };
         use auths_keri::compute_next_commitment;
         use auths_keri::{CesrKey, Threshold, VersionString};
-        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
         use ring::rand::SystemRandom;
         use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -134,23 +134,22 @@ impl RegistryIdentityStorage {
         let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
             .map_err(|e| InitError::Crypto(format!("Key parsing failed: {e}")))?;
 
-        // Encode current public key with derivation code prefix
-        let current_pub_encoded = format!(
-            "D{}",
-            URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
-        );
+        let current_pub_encoded =
+            auths_keri::KeriPublicKey::ed25519(current_keypair.public_key().as_ref())
+                .and_then(|k| k.to_qb64())
+                .map_err(|e| InitError::Crypto(e.to_string()))?;
 
         // Compute next-key commitment
-        let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+        #[allow(clippy::expect_used)] // INVARIANT: ring Ed25519 public key is always 32 bytes
+        let next_verkey = auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .expect("ring Ed25519 public key is 32 bytes");
+        let next_commitment = compute_next_commitment(&next_verkey);
 
         // Determine witness fields from config
         let (bt, b) = match witness_config {
             Some(cfg) if cfg.is_enabled() => (
                 Threshold::Simple(cfg.threshold as u64),
-                cfg.witness_urls
-                    .iter()
-                    .map(|u| Prefix::new_unchecked(u.to_string()))
-                    .collect(),
+                cfg.aids().cloned().collect(),
             ),
             _ => (Threshold::Simple(0), vec![]),
         };
@@ -169,7 +168,6 @@ impl RegistryIdentityStorage {
             b,
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         // Finalize event (computes SAID). Signatures for ICP events are
@@ -296,6 +294,17 @@ impl RegistryIdentityStorage {
         let mut prefix = None;
         self.backend
             .visit_identities(&mut |p| {
+                // Skip delegated (`dip`-rooted) identities — device/agent delegates
+                // are not the primary root identity.
+                let pfx = auths_keri::Prefix::new_unchecked(p.to_string());
+                if self
+                    .backend
+                    .get_event(&pfx, 0)
+                    .map(|e| e.is_delegated())
+                    .unwrap_or(false)
+                {
+                    return ControlFlow::Continue(());
+                }
                 prefix = Some(p.to_string());
                 ControlFlow::Break(())
             })

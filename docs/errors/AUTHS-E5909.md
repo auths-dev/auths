@@ -1,6 +1,6 @@
 # AUTHS-E5909
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SigningError::KeychainUnavailable`
 
 ## Message

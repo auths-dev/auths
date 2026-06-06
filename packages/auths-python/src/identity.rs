@@ -7,8 +7,6 @@ use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{
     IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
 };
-use auths_id::identity::helpers::encode_seed_as_pkcs8;
-use auths_id::identity::helpers::extract_seed_bytes;
 use auths_id::identity::initialize::initialize_registry_identity;
 use auths_id::storage::attestation::AttestationSource;
 use auths_sdk::context::AuthsContext;
@@ -20,13 +18,29 @@ use auths_storage::git::RegistryConfig;
 use auths_storage::git::RegistryIdentityStorage;
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
 #[allow(clippy::disallowed_methods)] // Presentation boundary: env var read is intentional
 pub(crate) fn resolve_passphrase(passphrase: Option<String>) -> String {
     passphrase.unwrap_or_else(|| std::env::var("AUTHS_PASSPHRASE").unwrap_or_default())
+}
+
+/// Validate capability strings without stamping them onto an attestation.
+///
+/// Authority capabilities are resolved KEL-natively from the delegator-anchored
+/// scope seal (ACDC), never from the attestation. This rejects malformed input
+/// at the binding boundary while keeping the attestation caps-free.
+pub(crate) fn validate_capabilities(capabilities: &[String]) -> PyResult<()> {
+    for c in capabilities {
+        Capability::parse(c).map_err(|e| {
+            PyRuntimeError::new_err(format!(
+                "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
+            ))
+        })?;
+    }
+    Ok(())
 }
 
 pub(crate) fn make_keychain_config(passphrase: &str, repo_path: &str) -> EnvironmentConfig {
@@ -229,21 +243,9 @@ pub fn create_agent_identity(
         PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Keychain error: {e}"))
     })?;
 
-    // Validate capabilities
-    let _parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
-                ))
-            })
-        })
-        .collect::<PyResult<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
-    let parsed_caps_for_att = _parsed_caps;
-
-    #[allow(clippy::disallowed_methods)] // Presentation boundary
+    #[allow(clippy::disallowed_methods)] // Presentation boundary: standalone agent attestation
     let now = chrono::Utc::now();
 
     {
@@ -275,14 +277,13 @@ pub fn create_agent_identity(
 
         // Build a self-attestation for the standalone agent
         let attestation_json = {
-            let device_did = DeviceDID::from_public_key(&pub_bytes, curve);
+            let device_did = CanonicalDid::from_public_key_did_key(&pub_bytes, curve);
             let att = serde_json::json!({
                 "version": 1,
                 "rid": repo.file_name().unwrap_or_default().to_string_lossy(),
                 "issuer": identity_did.to_string(),
                 "subject": device_did.to_string(),
                 "device_public_key": hex::encode(&pub_bytes),
-                "capabilities": parsed_caps_for_att.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
                 "timestamp": now.to_rfc3339(),
                 "note": format!("Agent: {}", alias),
             });
@@ -380,14 +381,11 @@ pub fn delegate_agent(
         PyRuntimeError::new_err(format!("[AUTHS_KEY_NOT_FOUND] Key load failed: {e}"))
     })?;
 
-    // Encrypt and store the agent key
-    let seed = extract_seed_bytes(pkcs8.as_ref()).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
-    })?;
-    let seed_pkcs8 = encode_seed_as_pkcs8(seed).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] PKCS8 encoding failed: {e}"))
-    })?;
-    let encrypted = encrypt_keypair(&seed_pkcs8, &passphrase_str).map_err(|e| {
+    // Encrypt and store the agent key. Store the PKCS#8 blob directly — it is already
+    // curve-aware from `generate_keypair_for_init`; Ed25519-only seed extraction would
+    // reject a P-256 key (the default curve). Mirrors the shared engine
+    // (`incept_delegated_device`) and the Node binding.
+    let encrypted = encrypt_keypair(pkcs8.as_ref(), &passphrase_str).map_err(|e| {
         PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key encryption failed: {e}"))
     })?;
     keychain
@@ -401,23 +399,12 @@ pub fn delegate_agent(
             PyRuntimeError::new_err(format!("[AUTHS_KEYCHAIN_ERROR] Key storage failed: {e}"))
         })?;
 
-    // Parse capabilities
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
-                ))
-            })
-        })
-        .collect::<PyResult<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: parent_alias,
         device_key_alias: Some(agent_alias.clone()),
         device_did: None,
-        capabilities: parsed_caps,
         expires_in,
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
@@ -445,7 +432,7 @@ pub fn delegate_agent(
         })?;
 
         #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
-        let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
+        let device_did = CanonicalDid::new_unchecked(result.device_did.to_string());
         let attestations = attestation_storage
             .load_attestations_for_device(&device_did)
             .map_err(|e| {
@@ -522,22 +509,12 @@ pub fn link_device_to_identity(
     let identity_storage = Arc::new(RegistryIdentityStorage::new(&repo));
     let attestation_storage = Arc::new(RegistryAttestationStorage::new(&repo));
 
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                PyRuntimeError::new_err(format!(
-                    "[AUTHS_INVALID_INPUT] Invalid capability '{c}': {e}"
-                ))
-            })
-        })
-        .collect::<PyResult<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: alias,
         device_key_alias: None,
         device_did: None,
-        capabilities: parsed_caps,
         expires_in,
         note: None,
         payload: None,
@@ -656,12 +633,19 @@ pub fn generate_inmemory_keypair(curve: Option<String>) -> PyResult<(String, Str
         auths_id::keri::inception::generate_keypair_for_init(curve_type).map_err(|e| {
             PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Key generation failed: {e}"))
         })?;
-    let did = auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_type);
-    let seed = extract_seed_bytes(generated.pkcs8.as_ref()).map_err(|e| {
-        PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
-    })?;
+    let did = auths_verifier::types::CanonicalDid::from_public_key_did_key(
+        &generated.public_key,
+        curve_type,
+    );
+    // Curve-aware 32-byte private key: Ed25519 seed or P-256 scalar (both 32 bytes,
+    // and both consumed by `sign_bytes`/`sign_action` as a 32-byte `TypedSeed`).
+    // `extract_seed_bytes` is Ed25519-only and rejects a P-256 PKCS#8.
+    let signer =
+        auths_crypto::TypedSignerKey::from_pkcs8(generated.pkcs8.as_ref()).map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_CRYPTO_ERROR] Seed extraction failed: {e}"))
+        })?;
     Ok((
-        hex::encode(seed),
+        hex::encode(signer.seed().as_bytes()),
         hex::encode(&generated.public_key),
         did.to_string(),
     ))

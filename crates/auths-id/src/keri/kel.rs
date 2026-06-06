@@ -605,7 +605,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         }
     }
 
@@ -690,7 +689,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         });
 
         let result = kel.append(&rot, chrono::Utc::now());
@@ -813,7 +811,6 @@ mod tests {
             ba: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         }
     }
 

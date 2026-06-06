@@ -16,16 +16,16 @@ export interface OrgResult {
 
 /** An organization member record. */
 export interface OrgMember {
-  /** DID of the member. */
+  /** Delegated `did:keri:` AID minted by the org for this member. */
   memberDid: string
   /** Role within the organization (e.g. `'admin'`, `'member'`). */
   role: string
   /** Capabilities granted to this member. */
   capabilities: string[]
-  /** DID of the admin who added this member. */
-  issuerDid: string
-  /** Resource identifier of the membership attestation. */
-  attestationRid: string
+  /** DID of the organization that owns this membership. */
+  orgDid: string
+  /** KERI prefix of the member's delegated identity. */
+  memberPrefix: string
   /** Whether the membership has been revoked. */
   revoked: boolean
   /** Expiration timestamp (RFC 3339), or `null` if no expiry. */
@@ -56,32 +56,26 @@ export interface CreateOrgOptions {
 export interface AddOrgMemberOptions {
   /** DID of the organization. */
   orgDid: string
-  /** DID of the member to add. */
-  memberDid: string
+  /** Human-readable alias for the member key minted by the org. */
+  memberLabel: string
   /** Role to assign (e.g. `'admin'`, `'member'`). */
   role: string
-  /** Capabilities to grant the member. */
+  /** Capabilities to grant the member. If omitted, role defaults are used. */
   capabilities?: string[]
   /** Override the client's passphrase. */
   passphrase?: string
-  /** Optional note for the membership record. */
-  note?: string
-  /** Hex-encoded public key of the member (required for cross-repo adds). */
-  memberPublicKeyHex?: string
+  /** Optional Unix timestamp (seconds) at which the membership expires. */
+  expiresAt?: number
 }
 
 /** Options for {@link OrgService.revokeMember}. */
 export interface RevokeOrgMemberOptions {
   /** DID of the organization. */
   orgDid: string
-  /** DID of the member to revoke. */
+  /** Delegated DID of the member to revoke. */
   memberDid: string
   /** Override the client's passphrase. */
   passphrase?: string
-  /** Optional revocation note. */
-  note?: string
-  /** Hex-encoded public key of the member. */
-  memberPublicKeyHex?: string
 }
 
 /** Options for {@link OrgService.listMembers}. */
@@ -95,6 +89,9 @@ export interface ListOrgMembersOptions {
 /**
  * Manages organizations and their membership.
  *
+ * The organization mints a fresh delegated key for each member from a label;
+ * callers do not provide member public keys.
+ *
  * Access via {@link Auths.orgs}.
  *
  * @example
@@ -102,9 +99,8 @@ export interface ListOrgMembersOptions {
  * const org = auths.orgs.create({ label: 'my-team' })
  * auths.orgs.addMember({
  *   orgDid: org.orgDid,
- *   memberDid: dev.did,
+ *   memberLabel: 'alice',
  *   role: 'member',
- *   memberPublicKeyHex: dev.publicKey,
  * })
  * ```
  */
@@ -135,7 +131,8 @@ export class OrgService {
   }
 
   /**
-   * Adds a member to an organization.
+   * Adds a member to an organization. The org mints a fresh delegated key for
+   * the member from `memberLabel`; the returned `memberDid` is the new AID.
    *
    * @param opts - Member options.
    * @returns The new member record.
@@ -145,9 +142,8 @@ export class OrgService {
    * ```typescript
    * const member = auths.orgs.addMember({
    *   orgDid: org.orgDid,
-   *   memberDid: dev.did,
+   *   memberLabel: 'alice',
    *   role: 'member',
-   *   memberPublicKeyHex: dev.publicKey,
    * })
    * ```
    */
@@ -157,23 +153,14 @@ export class OrgService {
     try {
       const result = native.addOrgMember(
         opts.orgDid,
-        opts.memberDid,
+        opts.memberLabel,
         opts.role,
         this.client.repoPath,
         capsJson,
         pp,
-        opts.note ?? null,
-        opts.memberPublicKeyHex ?? null,
+        opts.expiresAt ?? null,
       )
-      return {
-        memberDid: result.memberDid,
-        role: result.role,
-        capabilities: JSON.parse(result.capabilitiesJson || '[]'),
-        issuerDid: result.issuerDid,
-        attestationRid: result.attestationRid,
-        revoked: result.revoked,
-        expiresAt: result.expiresAt ?? null,
-      }
+      return this.toMember(result)
     } catch (err) {
       throw mapNativeError(err, OrgError)
     }
@@ -189,23 +176,8 @@ export class OrgService {
   revokeMember(opts: RevokeOrgMemberOptions): OrgMember {
     const pp = opts.passphrase ?? this.client.passphrase
     try {
-      const result = native.revokeOrgMember(
-        opts.orgDid,
-        opts.memberDid,
-        this.client.repoPath,
-        pp,
-        opts.note ?? null,
-        opts.memberPublicKeyHex ?? null,
-      )
-      return {
-        memberDid: result.memberDid,
-        role: result.role,
-        capabilities: JSON.parse(result.capabilitiesJson || '[]'),
-        issuerDid: result.issuerDid,
-        attestationRid: result.attestationRid,
-        revoked: result.revoked,
-        expiresAt: result.expiresAt ?? null,
-      }
+      const result = native.revokeOrgMember(opts.orgDid, opts.memberDid, this.client.repoPath, pp)
+      return this.toMember(result)
     } catch (err) {
       throw mapNativeError(err, OrgError)
     }
@@ -226,10 +198,36 @@ export class OrgService {
    */
   listMembers(opts: ListOrgMembersOptions): OrgMember[] {
     try {
-      const json = native.listOrgMembers(opts.orgDid, opts.includeRevoked ?? false, this.client.repoPath)
-      return JSON.parse(json)
+      const json = native.listOrgMembers(
+        opts.orgDid,
+        opts.includeRevoked ?? false,
+        this.client.repoPath,
+        this.client.passphrase,
+      )
+      const raw = JSON.parse(json) as Array<Record<string, unknown>>
+      return raw.map((m) => ({
+        memberDid: m.member_did as string,
+        role: (m.role as string) ?? 'member',
+        capabilities: (m.capabilities as string[]) ?? [],
+        orgDid: opts.orgDid,
+        memberPrefix: (m.member_prefix as string) ?? '',
+        revoked: m.revoked as boolean,
+        expiresAt: (m.expires_at as string | null) ?? null,
+      }))
     } catch (err) {
       throw mapNativeError(err, OrgError)
+    }
+  }
+
+  private toMember(result: import('./native').NapiOrgMember): OrgMember {
+    return {
+      memberDid: result.memberDid,
+      role: result.role,
+      capabilities: JSON.parse(result.capabilitiesJson || '[]'),
+      orgDid: result.issuerDid,
+      memberPrefix: result.attestationRid,
+      revoked: result.revoked,
+      expiresAt: result.expiresAt ?? null,
     }
   }
 }

@@ -28,6 +28,14 @@ ignore = [
     # Waiting for AWS SDK to ship with rustls 0.23+.
     "RUSTSEC-2026-0098",
     "RUSTSEC-2026-0099",
+
+    # rustls-webpki 0.101.7 reachable panic parsing a CRL with an empty
+    # onlySomeReasons BIT STRING — same aws-smithy-http-client -> rustls 0.21 ->
+    # rustls-webpki 0.101.7 legacy AWS SDK path. Not exploitable: auths doesn't
+    # use CRLs and the AWS SDK's TLS path doesn't parse them. The 0.103.x copy is
+    # already patched to 0.103.13; this 0.101.7 copy is pinned until the AWS SDK
+    # ships rustls 0.23+.
+    "RUSTSEC-2026-0104",
 ]
 
 [yanked]

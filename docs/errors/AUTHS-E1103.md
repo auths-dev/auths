@@ -1,6 +1,6 @@
 # AUTHS-E1103
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `DidKeyError::UnsupportedMulticodec`
 
 ## Message

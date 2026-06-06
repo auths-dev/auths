@@ -5,9 +5,9 @@ use std::sync::Arc;
 use auths_crypto::CryptoProvider;
 
 use crate::clock::ClockProvider;
-use crate::core::{Attestation, Capability, DevicePublicKey, VerifiedAttestation};
+use crate::core::{Attestation, DevicePublicKey, VerifiedAttestation};
 use crate::error::AttestationError;
-use crate::types::{DeviceDID, VerificationReport};
+use crate::types::{CanonicalDid, VerificationReport};
 use crate::verify;
 use crate::witness::WitnessVerifyConfig;
 
@@ -71,28 +71,6 @@ impl Verifier {
         Ok(VerifiedAttestation::from_verified(att.clone()))
     }
 
-    /// Verify an attestation and check that it grants a required capability.
-    ///
-    /// Args:
-    /// * `att`: The attestation to verify.
-    /// * `required`: The capability that must be present.
-    /// * `issuer_pk`: Typed issuer public key (Ed25519 or P-256).
-    pub async fn verify_with_capability(
-        &self,
-        att: &Attestation,
-        required: &Capability,
-        issuer_pk: &DevicePublicKey,
-    ) -> Result<VerifiedAttestation, AttestationError> {
-        let verified = self.verify_with_keys(att, issuer_pk).await?;
-        if !att.capabilities.contains(required) {
-            return Err(AttestationError::MissingCapability {
-                required: required.clone(),
-                available: att.capabilities.clone(),
-            });
-        }
-        Ok(verified)
-    }
-
     /// Verify an attestation against a specific point in time (skips clock-skew check).
     ///
     /// Args:
@@ -126,42 +104,6 @@ impl Verifier {
             self.clock.now(),
         )
         .await
-    }
-
-    /// Verify a chain and assert that all attestations share a required capability.
-    ///
-    /// Args:
-    /// * `attestations`: Ordered attestation chain (root first).
-    /// * `required`: The capability that must appear in every link.
-    /// * `root_pk`: Typed root identity public key (Ed25519 or P-256).
-    pub async fn verify_chain_with_capability(
-        &self,
-        attestations: &[Attestation],
-        required: &Capability,
-        root_pk: &DevicePublicKey,
-    ) -> Result<VerificationReport, AttestationError> {
-        let report = self.verify_chain(attestations, root_pk).await?;
-        if !report.is_valid() {
-            return Ok(report);
-        }
-        if attestations.is_empty() {
-            return Ok(report);
-        }
-
-        use std::collections::HashSet;
-        let mut effective: HashSet<Capability> =
-            attestations[0].capabilities.iter().cloned().collect();
-        for att in attestations.iter().skip(1) {
-            let att_caps: HashSet<Capability> = att.capabilities.iter().cloned().collect();
-            effective = effective.intersection(&att_caps).cloned().collect();
-        }
-        if !effective.contains(required) {
-            return Err(AttestationError::MissingCapability {
-                required: required.clone(),
-                available: effective.into_iter().collect(),
-            });
-        }
-        Ok(report)
     }
 
     /// Verify a chain and additionally validate witness receipts against a quorum threshold.
@@ -207,7 +149,7 @@ impl Verifier {
     pub async fn verify_device_authorization(
         &self,
         identity_did: &str,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
         attestations: &[Attestation],
         identity_pk: &DevicePublicKey,
     ) -> Result<VerificationReport, AttestationError> {

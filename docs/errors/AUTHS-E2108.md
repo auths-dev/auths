@@ -1,6 +1,6 @@
 # AUTHS-E2108
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `CommitVerificationError::UnknownSigner`
 
 ## Message

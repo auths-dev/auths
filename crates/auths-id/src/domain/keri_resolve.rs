@@ -144,7 +144,7 @@ mod tests {
         CesrKey, Event, IcpEvent, KeriSequence, Said, Threshold, VersionString, finalize_icp_event,
     };
     use auths_core::crypto::said::compute_next_commitment;
-    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -155,11 +155,15 @@ mod tests {
         let next_pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         let next_kp = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref()).unwrap();
 
-        let current_pub_encoded = format!(
-            "D{}",
-            URL_SAFE_NO_PAD.encode(current_kp.public_key().as_ref())
+        let current_pub_encoded =
+            auths_keri::KeriPublicKey::ed25519(current_kp.public_key().as_ref())
+                .expect("ed25519 verkey is 32 bytes")
+                .to_qb64()
+                .expect("cesride verkey encode is infallible");
+        let next_commitment = compute_next_commitment(
+            &auths_keri::KeriPublicKey::ed25519(next_kp.public_key().as_ref())
+                .expect("ed25519 verkey is 32 bytes"),
         );
-        let next_commitment = compute_next_commitment(next_kp.public_key().as_ref());
 
         let icp = IcpEvent {
             v: VersionString::placeholder(),
@@ -174,7 +178,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
 
         let finalized = finalize_icp_event(icp).unwrap();

@@ -9,7 +9,6 @@ use std::ops::ControlFlow;
 
 use auths_crypto::Pkcs8Der;
 use auths_keri::KeriPublicKey;
-use base64::Engine;
 
 use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
 use auths_keri::compute_said;
@@ -123,15 +122,10 @@ fn parse_next_key(
 ) -> Result<(Vec<u8>, auths_crypto::TypedSeed, String), RotationError> {
     let parsed = auths_crypto::parse_key_material(pkcs8)
         .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
-    let cesr_prefix = match parsed.seed.curve() {
-        auths_crypto::CurveType::Ed25519 => "D",
-        auths_crypto::CurveType::P256 => "1AAI",
-    };
-    let cesr_encoded = format!(
-        "{}{}",
-        cesr_prefix,
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&parsed.public_key)
-    );
+    let cesr_encoded =
+        auths_keri::KeriPublicKey::from_verkey_bytes(&parsed.public_key, parsed.seed.curve())
+            .and_then(|k| k.to_qb64())
+            .map_err(|e| RotationError::InvalidKey(e.to_string()))?;
     Ok((parsed.public_key, parsed.seed, cesr_encoded))
 }
 
@@ -163,14 +157,18 @@ pub fn rotate_keys(
     let curve = detect_curve_from_state(&state);
     let (next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
 
-    if !verify_commitment(&next_pub_bytes, &state.next_commitment[0]) {
+    #[allow(clippy::expect_used)]
+    // INVARIANT: next_cesr is produced by parse_next_key and always parses
+    let next_verkey =
+        auths_keri::KeriPublicKey::parse(&next_cesr).expect("valid CESR from parse_next_key");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::CommitmentMismatch);
     }
 
     let new_next = generate_keypair_for_init(curve)
         .map_err(|e| RotationError::KeyGeneration(e.to_string()))?;
 
-    let new_next_commitment = compute_next_commitment(&new_next.public_key);
+    let new_next_commitment = compute_next_commitment(&new_next.verkey());
 
     let bt = match witness_config {
         Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
@@ -193,7 +191,6 @@ pub fn rotate_keys(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -247,9 +244,13 @@ pub fn abandon_identity(
         return Err(RotationError::IdentityAbandoned);
     }
 
-    let (next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
+    let (_next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
 
-    if !verify_commitment(&next_pub_bytes, &state.next_commitment[0]) {
+    #[allow(clippy::expect_used)]
+    // INVARIANT: next_cesr is produced by parse_next_key and always parses
+    let next_verkey =
+        auths_keri::KeriPublicKey::parse(&next_cesr).expect("valid CESR from parse_next_key");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::CommitmentMismatch);
     }
 
@@ -274,7 +275,6 @@ pub fn abandon_identity(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -318,14 +318,18 @@ pub fn rotate_keys_with_backend(
     let curve = detect_curve_from_state(&state);
     let (next_pub_bytes, next_seed, next_cesr) = parse_next_key(next_keypair_pkcs8.as_ref())?;
 
-    if !verify_commitment(&next_pub_bytes, &state.next_commitment[0]) {
+    #[allow(clippy::expect_used)]
+    // INVARIANT: next_cesr is produced by parse_next_key and always parses
+    let next_verkey =
+        auths_keri::KeriPublicKey::parse(&next_cesr).expect("valid CESR from parse_next_key");
+    if !verify_commitment(&next_verkey, &state.next_commitment[0]) {
         return Err(RotationError::CommitmentMismatch);
     }
 
     let new_next = generate_keypair_for_init(curve)
         .map_err(|e| RotationError::KeyGeneration(e.to_string()))?;
 
-    let new_next_commitment = compute_next_commitment(&new_next.public_key);
+    let new_next_commitment = compute_next_commitment(&new_next.verkey());
 
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
@@ -343,7 +347,6 @@ pub fn rotate_keys_with_backend(
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let rot_value = serde_json::to_value(Event::Rot(rot.clone()))
@@ -353,9 +356,12 @@ pub fn rotate_keys_with_backend(
     let canonical = super::serialize_for_signing(&Event::Rot(rot.clone()))
         .map_err(|e| RotationError::Serialization(e.to_string()))?;
     let sig = sign_rotation(&next_seed, &canonical)?;
-    let attachment =
-        auths_keri::serialize_attachment(&[auths_keri::IndexedSignature { index: 0, sig }])
-            .map_err(|e| RotationError::Serialization(e.to_string()))?;
+    let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+        index: 0,
+        prior_index: None,
+        sig,
+    }])
+    .map_err(|e| RotationError::Serialization(e.to_string()))?;
 
     backend
         .append_signed_event(prefix, &Event::Rot(rot), &attachment)

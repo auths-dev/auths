@@ -1,6 +1,6 @@
 # AUTHS-E4503
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::InvalidSequence`
 
 ## Message

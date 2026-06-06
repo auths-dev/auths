@@ -1,6 +1,6 @@
 # AUTHS-E3105
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `TrustError::AlreadyExists`
 
 ## Message

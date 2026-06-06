@@ -1,6 +1,6 @@
 # AUTHS-E1201
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `KeriDecodeError::InvalidPrefix`
 
 ## Message

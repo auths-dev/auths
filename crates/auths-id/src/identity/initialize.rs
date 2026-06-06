@@ -141,15 +141,12 @@ pub fn initialize_registry_identity(
         .map_err(|e| InitError::Crypto(e.to_string()))?;
 
     let current_pub_encoded = current.cesr_encoded.clone();
-    let next_commitment = compute_next_commitment(&next.public_key);
+    let next_commitment = compute_next_commitment(&next.verkey());
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
             Threshold::Simple(cfg.threshold as u64),
-            cfg.witness_urls
-                .iter()
-                .map(|u| Prefix::new_unchecked(u.to_string()))
-                .collect(),
+            cfg.aids().cloned().collect(),
         ),
         _ => (Threshold::Simple(0), vec![]),
     };
@@ -167,7 +164,6 @@ pub fn initialize_registry_identity(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;
@@ -180,6 +176,7 @@ pub fn initialize_registry_identity(
             .map_err(|e| InitError::Crypto(e.to_string()))?;
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig_bytes,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
@@ -277,16 +274,13 @@ pub fn initialize_registry_identity_multi(
         .collect();
     let n: Vec<Said> = next_kps
         .iter()
-        .map(|kp| compute_next_commitment(&kp.public_key))
+        .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
             Threshold::Simple(cfg.threshold as u64),
-            cfg.witness_urls
-                .iter()
-                .map(|u| Prefix::new_unchecked(u.to_string()))
-                .collect(),
+            cfg.aids().cloned().collect(),
         ),
         _ => (Threshold::Simple(0), vec![]),
     };
@@ -304,7 +298,6 @@ pub fn initialize_registry_identity_multi(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;
@@ -322,6 +315,7 @@ pub fn initialize_registry_identity_multi(
     .map_err(|e| InitError::Crypto(e.to_string()))?;
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig_bytes,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;

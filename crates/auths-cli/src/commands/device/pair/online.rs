@@ -15,6 +15,7 @@ use crate::factories::storage::build_auths_context;
 use super::common::*;
 
 /// Initiate a pairing session using the registry relay.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_initiate_online(
     now: chrono::DateTime<chrono::Utc>,
     registry: &str,
@@ -22,6 +23,7 @@ pub(crate) async fn handle_initiate_online(
     expiry_secs: u64,
     capabilities: &[String],
     env_config: &EnvironmentConfig,
+    recover: Option<String>,
 ) -> Result<()> {
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
@@ -115,37 +117,39 @@ pub(crate) async fn handle_initiate_online(
         expiry_secs,
     };
 
-    match initiate_online_pairing(params, &relay, &ctx, now, Some(&on_status))
+    // Recovery: pair the replacement, then revoke the lost device's delegation.
+    if let Some(old_did) = recover {
+        let recovery = auths_sdk::pairing::recover_device(
+            params,
+            &relay,
+            &ctx,
+            now,
+            &old_did,
+            Some(&on_status),
+        )
         .await
-        .map_err(anyhow::Error::from)?
-    {
-        auths_sdk::pairing::PairingCompletionResult::Success {
-            device_did,
-            device_name,
-        } => {
-            wait_spinner.finish_and_clear();
-            print_completion(device_name.as_deref(), &device_did);
-        }
-        auths_sdk::pairing::PairingCompletionResult::Fallback {
-            device_did,
-            device_name: _,
-            error,
-        } => {
-            wait_spinner.finish_and_clear();
-            println!();
-            println!(
-                "  {}{} {}",
-                WARN,
-                style("Could not create attestation:").yellow(),
-                error
-            );
-            println!("  You can manually link this device using:");
-            println!(
-                "    {}",
-                style(format!("auths device link --device {} ...", device_did)).dim()
-            );
-        }
+        .map_err(anyhow::Error::from)?;
+        wait_spinner.finish_and_clear();
+        print_completion(
+            recovery.new_device_name.as_deref(),
+            &recovery.new_device_did,
+        );
+        println!(
+            "  {} {}",
+            style("Revoked old device:").dim(),
+            style(&recovery.revoked_old_did).yellow()
+        );
+        return Ok(());
     }
+
+    let auths_sdk::pairing::PairingCompletionResult::Success {
+        device_did,
+        device_name,
+    } = initiate_online_pairing(params, &relay, &ctx, now, Some(&on_status))
+        .await
+        .map_err(anyhow::Error::from)?;
+    wait_spinner.finish_and_clear();
+    print_completion(device_name.as_deref(), &device_did);
 
     Ok(())
 }

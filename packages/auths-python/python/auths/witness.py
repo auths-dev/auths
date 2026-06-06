@@ -32,6 +32,7 @@ class WitnessService:
     def add(
         self,
         url: str,
+        aid: str,
         label: str | None = None,
         repo_path: str | None = None,
     ) -> Witness:
@@ -39,14 +40,15 @@ class WitnessService:
 
         Args:
             url: Witness server URL (e.g. "http://127.0.0.1:3333").
+            aid: The witness's KERI AID (`did:keri:...` prefix).
             label: Optional human-readable label.
 
         Usage:
-            w = client.witnesses.add("https://witness.example.com")
+            w = client.witnesses.add("https://witness.example.com", aid)
         """
         rp = repo_path or self._client.repo_path
         try:
-            url_out, did, lbl = _add_witness(url, rp, label)
+            url_out, did, lbl = _add_witness(url, aid, rp, label)
             return Witness(url=url_out, did=did, label=lbl)
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=AuthsError) from exc

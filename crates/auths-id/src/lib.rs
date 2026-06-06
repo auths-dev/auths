@@ -47,7 +47,9 @@
 //! | Ref | Content |
 //! |-----|---------|
 //! | `refs/auths/identity` | Identity metadata |
-//! | `refs/auths/devices/nodes/<did>` | Device attestations |
+//! | `refs/auths/attestations/nodes/<did>` | Attestations keyed by subject DID |
+//! | `refs/auths/device-kel/<prefix>` | Per-device KEL state |
+//! | `refs/auths/shared-kel/<prefix>` | Shared identity KEL state |
 //! | `refs/did/keri/<prefix>/kel` | KERI Key Event Log |
 //! | `refs/did/keri/<prefix>/receipts/<said>` | Witness receipts |
 

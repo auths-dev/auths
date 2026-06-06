@@ -33,7 +33,7 @@ pub trait RefReader: Send + Sync {
     ///
     /// Usage:
     /// ```ignore
-    /// let refs = reader.list_refs("refs/auths/devices/nodes/*/signatures")?;
+    /// let refs = reader.list_refs("refs/auths/attestations/nodes/*/signatures")?;
     /// ```
     fn list_refs(&self, glob: &str) -> Result<Vec<String>, StorageError>;
 }

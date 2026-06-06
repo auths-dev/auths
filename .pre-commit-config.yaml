@@ -3,7 +3,10 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        # Byte-exact keripy oracle fixtures must not be reformatted.
+        exclude: '^crates/auths-keri/tests/fixtures/keripy/'
       - id: end-of-file-fixer
+        exclude: '^crates/auths-keri/tests/fixtures/keripy/'
       - id: check-yaml
         args: [--unsafe]
       - id: check-toml

@@ -1,6 +1,6 @@
 # AUTHS-E4801
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ResolveError::InvalidFormat`
 
 ## Message

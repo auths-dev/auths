@@ -20,7 +20,7 @@ fn stale_attestation_warning_in_observe() {
     storage.add_attestation(
         device_did.clone(),
         identity_did.clone(),
-        make_test_attestation(&identity_did, &device_did, &repo_id, false, vec![]),
+        make_test_attestation(&identity_did, &device_did, &repo_id, false),
     );
     storage.link_device_to_identity(device_did.clone(), identity_did.clone(), repo_id);
 
@@ -95,7 +95,7 @@ fn register_device_to_storage(
     storage.add_attestation(
         device_did.clone(),
         identity_did.clone(),
-        make_test_attestation(identity_did, device_did, repo_id, false, vec![]),
+        make_test_attestation(identity_did, device_did, repo_id, false),
     );
     storage.link_device_to_identity(device_did.clone(), identity_did.clone(), *repo_id);
 }

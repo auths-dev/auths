@@ -1,6 +1,6 @@
 # AUTHS-E5706
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `ApprovalError::ApprovalStorage`
 
 ## Message

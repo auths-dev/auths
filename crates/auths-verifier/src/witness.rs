@@ -17,7 +17,7 @@
 //! assert!(quorum.verified >= quorum.required);
 //! ```
 
-pub use auths_keri::witness::{Receipt, SignedReceipt};
+pub use auths_keri::witness::{Receipt, ReceiptTag, SignedReceipt};
 
 use auths_crypto::CryptoProvider;
 use auths_keri::Said;
@@ -138,7 +138,7 @@ mod tests {
     ) -> SignedReceipt {
         let receipt = Receipt {
             v: VersionString::placeholder(),
-            t: "rct".into(),
+            t: ReceiptTag,
             d: Said::new_unchecked(event_said.to_string()),
             i: Prefix::new_unchecked(witness_did.to_string()),
             s: KeriSequence::new(seq),
@@ -155,7 +155,7 @@ mod tests {
     fn receipt_body_has_no_sig_field() {
         let receipt = Receipt {
             v: VersionString::placeholder(),
-            t: "rct".into(),
+            t: ReceiptTag,
             d: Said::new_unchecked("EEvent456".into()),
             i: Prefix::new_unchecked("did:key:z6MkWitness".to_string()),
             s: KeriSequence::new(5),

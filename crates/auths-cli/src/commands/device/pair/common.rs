@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use console::{Emoji, style};
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -67,19 +67,6 @@ pub(crate) fn print_completion(device_name: Option<&str>, device_did: &str) {
     let label = device_name.unwrap_or("new device");
     println!(
         "{}Paired with {} {}",
-        CHECK,
-        style(label).bold(),
-        style(format!("({device_did})")).dim()
-    );
-    println!();
-}
-
-/// Print a styled completion footer for a device-key rotation.
-pub(crate) fn print_rotation_completion(device_name: Option<&str>, device_did: &str) {
-    println!();
-    let label = device_name.unwrap_or("device");
-    println!(
-        "{}Rotated signing key for {} {}",
         CHECK,
         style(label).bold(),
         style(format!("({device_did})")).dim()
@@ -158,8 +145,9 @@ pub(crate) fn handle_pairing_response(
     env_config: &EnvironmentConfig,
     verify_sas: bool,
 ) -> Result<()> {
-    use auths_sdk::keychain::get_platform_keychain_with_config;
-    use auths_sdk::pairing::{self, DecryptedPairingResponse, PairingCompletionResult};
+    use auths_sdk::pairing;
+
+    use crate::factories::storage::build_auths_context;
 
     println!();
     println!(
@@ -274,97 +262,41 @@ pub(crate) fn handle_pairing_response(
         return Ok(());
     }
 
-    // Resolve identity key alias and collect passphrase before spinner
-    use auths_sdk::attestation::AttestationSink;
-    use auths_sdk::ports::IdentityStorage;
-    use auths_sdk::storage::{RegistryAttestationStorage, RegistryIdentityStorage};
-    let identity_store = Arc::new(RegistryIdentityStorage::new(auths_dir.to_path_buf()));
-    let controller_did = pairing::load_controller_did(identity_store.as_ref())
-        .map_err(anyhow::Error::from)
-        .context("Failed to load identity from ~/.auths")?;
+    // Delegation model: the joining device sends its own self-signed `dip` in
+    // `responder_inception_event`. The initiator (root) anchors it. A client that
+    // did not send a dip cannot be added as a delegated device.
+    if response.responder_inception_event.is_empty() {
+        println!();
+        println!(
+            "  {}{}",
+            WARN,
+            style("The joining device did not send a delegated inception (dip).").yellow()
+        );
+        println!(
+            "  {}",
+            style("Update the joining client to pair as a KERI-delegated device.").dim()
+        );
+        save_device_info(now, auths_dir, &response)?;
+        return Ok(());
+    }
 
-    println!(
-        "  {} {}",
-        style("Identity:").dim(),
-        style(&controller_did).cyan(),
-    );
+    // Capabilities are an attestation-era concept; a delegated device's authority
+    // comes from the anchored delegation, not a capability grant.
+    let _ = capabilities;
 
-    let keychain = get_platform_keychain_with_config(env_config)?;
-    #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from managed identity
-    let controller_identity_did =
-        auths_sdk::keychain::IdentityDID::new_unchecked(controller_did.clone());
-    let aliases = keychain
-        .list_aliases_for_identity(&controller_identity_did)
-        .context("Failed to list key aliases")?;
-    let identity_key_alias = aliases
-        .into_iter()
-        .find(|a| !a.contains("--next-"))
-        .ok_or_else(|| anyhow!("No signing key found for identity {}", controller_did))?;
-
-    // `passphrase_provider` is the CLI-level provider configured by
-    // `factories::load_cli_config` — already wrapped with
-    // `KeychainPassphraseProvider` per user config, so first invocation
-    // prompts + caches and subsequent invocations surface Touch ID
-    // (or the user's configured policy) without re-prompting.
-    let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(keychain);
-
-    let attest_spinner = create_wait_spinner(&format!("{GEAR}Creating device attestation..."));
-
-    let decrypted = DecryptedPairingResponse {
-        auths_dir: auths_dir.to_path_buf(),
-        device_pubkey: device_signing_bytes,
-        curve,
-        #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from pairing protocol response
-        device_did: auths_verifier::types::DeviceDID::new_unchecked(response.device_did.to_string()),
-        device_name: response.device_name.clone(),
-        capabilities: capabilities.to_vec(),
-        identity_key_alias,
-    };
-
-    let attest_store = Arc::new(RegistryAttestationStorage::new(auths_dir));
-    let attestation_sink: Arc<dyn AttestationSink + Send + Sync> =
-        Arc::clone(&attest_store) as Arc<dyn AttestationSink + Send + Sync>;
-    let identity_storage: Arc<dyn IdentityStorage + Send + Sync> = identity_store;
-
-    match pairing::complete_pairing_from_response(
-        decrypted,
-        identity_storage,
-        attestation_sink,
-        key_storage,
-        passphrase_provider,
-        &auths_sdk::ports::SystemClock,
+    let anchor_spinner = create_wait_spinner(&format!("{GEAR}Anchoring delegated device..."));
+    let ctx = build_auths_context(auths_dir, env_config, Some(passphrase_provider))
+        .context("Failed to build auths context")?;
+    let anchor = pairing::anchor_pairing_response(
+        &ctx,
+        &response.responder_inception_event,
+        response.device_name.clone(),
     )
     .map_err(anyhow::Error::from)
-    .context("Pairing completion failed")?
-    {
-        PairingCompletionResult::Success {
-            device_did,
-            device_name,
-        } => {
-            attest_spinner.finish_with_message(format!("{CHECK}Device attestation created"));
-            print_completion(device_name.as_deref(), &device_did);
-        }
-        PairingCompletionResult::Fallback {
-            device_did,
-            device_name: _,
-            error,
-        } => {
-            attest_spinner.finish_and_clear();
-            println!();
-            println!(
-                "  {}{} {}",
-                WARN,
-                style("Could not create attestation:").yellow(),
-                error
-            );
-            println!("  You can manually link this device using:");
-            println!(
-                "    {}",
-                style(format!("auths device link --device {} ...", device_did)).dim()
-            );
-            save_device_info(now, auths_dir, &response)?;
-        }
-    }
+    .context("Failed to anchor the delegated device")?;
+    anchor_spinner.finish_with_message(format!("{CHECK}Delegated device anchored"));
+
+    print_completion(anchor.device_name.as_deref(), &anchor.device_did);
 
     Ok(())
 }

@@ -1,6 +1,6 @@
 # AUTHS-E4955
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IncrementalError::InvalidEventType`
 
 ## Message

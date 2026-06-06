@@ -1,14 +1,10 @@
-use auths_verifier::core::{
-    Attestation, Capability, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE,
-};
+use auths_verifier::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use auths_verifier::error::AuthsErrorInfo;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use auths_verifier::verify::{
     verify_at_time as rust_verify_at_time, verify_chain as rust_verify_chain,
-    verify_chain_with_capability as rust_verify_chain_with_capability,
     verify_chain_with_witnesses as rust_verify_chain_with_witnesses,
-    verify_device_authorization as rust_verify_device_authorization,
-    verify_with_capability as rust_verify_with_capability, verify_with_keys,
+    verify_device_authorization as rust_verify_device_authorization, verify_with_keys,
 };
 use auths_verifier::witness::WitnessVerifyConfig;
 use chrono::{DateTime, Utc};
@@ -155,7 +151,8 @@ pub fn verify_device_authorization(
         })
         .collect::<PyResult<Vec<_>>>()?;
 
-    let device = DeviceDID::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
+    let device =
+        CanonicalDid::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
 
     {
         match runtime().block_on(rust_verify_device_authorization(
@@ -167,120 +164,6 @@ pub fn verify_device_authorization(
             Ok(report) => Ok(report.into()),
             Err(e) => Err(PyRuntimeError::new_err(format!(
                 "[{}] Device authorization verification failed: {e}",
-                e.error_code()
-            ))),
-        }
-    }
-}
-
-/// Verify a single attestation and check that it grants a required capability.
-///
-/// Args:
-/// * `attestation_json`: The attestation as a JSON string.
-/// * `issuer_pk_hex`: The issuer's signing public key in hex format.
-/// * `required_capability`: The capability string that must be present.
-///
-/// Usage:
-/// ```ignore
-/// let result = verify_attestation_with_capability(py, "...", "abcd...", "sign")?;
-/// ```
-#[pyfunction]
-pub fn verify_attestation_with_capability(
-    _py: Python<'_>,
-    attestation_json: &str,
-    issuer_pk_hex: &str,
-    required_capability: &str,
-) -> PyResult<VerificationResult> {
-    if attestation_json.len() > MAX_ATTESTATION_JSON_SIZE {
-        return Err(PyValueError::new_err(format!(
-            "Attestation JSON too large: {} bytes, max {}",
-            attestation_json.len(),
-            MAX_ATTESTATION_JSON_SIZE
-        )));
-    }
-
-    let issuer_pk = crate::types::device_public_key_from_hex(issuer_pk_hex, "issuer")?;
-
-    let att: Attestation = match serde_json::from_str(attestation_json) {
-        Ok(att) => att,
-        Err(e) => {
-            return Ok(VerificationResult {
-                valid: false,
-                error: Some(format!("Failed to parse attestation JSON: {e}")),
-                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
-            });
-        }
-    };
-
-    let cap = Capability::parse(required_capability).map_err(|e| {
-        PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
-    })?;
-
-    {
-        match runtime().block_on(rust_verify_with_capability(&att, &cap, &issuer_pk)) {
-            Ok(_) => Ok(VerificationResult {
-                valid: true,
-                error: None,
-                error_code: None,
-            }),
-            Err(e) => Ok(VerificationResult {
-                valid: false,
-                error_code: Some(e.error_code().to_string()),
-                error: Some(e.to_string()),
-            }),
-        }
-    }
-}
-
-/// Verify a chain of attestations and check that all grant a required capability.
-///
-/// Args:
-/// * `attestations_json`: List of attestation JSON strings.
-/// * `root_pk_hex`: The root identity's signing public key in hex format.
-/// * `required_capability`: The capability string that must be present in every link.
-///
-/// Usage:
-/// ```ignore
-/// let report = verify_chain_with_capability(py, vec!["...".into()], "ab12...", "sign")?;
-/// ```
-#[pyfunction]
-pub fn verify_chain_with_capability(
-    _py: Python<'_>,
-    attestations_json: Vec<String>,
-    root_pk_hex: &str,
-    required_capability: &str,
-) -> PyResult<VerificationReport> {
-    let total: usize = attestations_json.iter().map(|s| s.len()).sum();
-    if total > MAX_JSON_BATCH_SIZE {
-        return Err(PyValueError::new_err(format!(
-            "Total attestation JSON too large: {total} bytes, max {MAX_JSON_BATCH_SIZE}",
-        )));
-    }
-
-    let root_pk = crate::types::device_public_key_from_hex(root_pk_hex, "root")?;
-
-    let attestations: Vec<Attestation> = attestations_json
-        .iter()
-        .enumerate()
-        .map(|(i, json)| {
-            serde_json::from_str(json)
-                .map_err(|e| PyValueError::new_err(format!("Failed to parse attestation {i}: {e}")))
-        })
-        .collect::<PyResult<Vec<_>>>()?;
-
-    let cap = Capability::parse(required_capability).map_err(|e| {
-        PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
-    })?;
-
-    {
-        match runtime().block_on(rust_verify_chain_with_capability(
-            &attestations,
-            &cap,
-            &root_pk,
-        )) {
-            Ok(report) => Ok(report.into()),
-            Err(e) => Err(PyRuntimeError::new_err(format!(
-                "[{}] Chain verification with capability failed: {e}",
                 e.error_code()
             ))),
         }
@@ -369,70 +252,6 @@ pub fn verify_at_time(
             error: None,
             error_code: None,
         }),
-        Err(e) => Ok(VerificationResult {
-            valid: false,
-            error_code: Some(e.error_code().to_string()),
-            error: Some(e.to_string()),
-        }),
-    }
-}
-
-/// Verify an attestation at a specific historical timestamp with capability check.
-///
-/// Args:
-/// * `attestation_json`: The attestation as a JSON string.
-/// * `issuer_pk_hex`: The issuer's signing public key in hex format.
-/// * `at_rfc3339`: RFC 3339 timestamp to verify against (e.g., "2024-06-15T00:00:00Z").
-/// * `required_capability`: The capability string that must be present.
-///
-/// Usage:
-/// ```ignore
-/// let result = verify_at_time_with_capability(py, "...", "abcd...", "2024-06-15T00:00:00Z", "sign")?;
-/// ```
-#[pyfunction]
-pub fn verify_at_time_with_capability(
-    _py: Python<'_>,
-    attestation_json: &str,
-    issuer_pk_hex: &str,
-    at_rfc3339: &str,
-    required_capability: &str,
-) -> PyResult<VerificationResult> {
-    let at = parse_rfc3339_timestamp(at_rfc3339)?;
-    let issuer_pk = validate_attestation_key(attestation_json, issuer_pk_hex)?;
-
-    let att: Attestation = match serde_json::from_str(attestation_json) {
-        Ok(att) => att,
-        Err(e) => {
-            return Ok(VerificationResult {
-                valid: false,
-                error: Some(format!("Failed to parse attestation JSON: {e}")),
-                error_code: Some("AUTHS_SERIALIZATION_ERROR".to_string()),
-            });
-        }
-    };
-
-    let cap = Capability::parse(required_capability).map_err(|e| {
-        PyValueError::new_err(format!("Invalid capability '{required_capability}': {e}"))
-    })?;
-
-    match runtime().block_on(rust_verify_at_time(&att, &issuer_pk, at)) {
-        Ok(_) => {
-            if att.capabilities.contains(&cap) {
-                Ok(VerificationResult {
-                    valid: true,
-                    error: None,
-                    error_code: None,
-                })
-            } else {
-                Ok(VerificationResult {
-                    valid: false,
-                    error: Some(format!(
-                        "Attestation does not grant required capability '{required_capability}'"
-                    )),
-                    error_code: Some("AUTHS_MISSING_CAPABILITY".to_string()),
-                })
-            }
-        }
         Err(e) => Ok(VerificationResult {
             valid: false,
             error_code: Some(e.error_code().to_string()),

@@ -1,6 +1,6 @@
 # AUTHS-E4803
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ResolveError::Kel`
 
 ## Message

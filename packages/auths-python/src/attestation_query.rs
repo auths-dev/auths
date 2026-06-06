@@ -5,7 +5,7 @@ use auths_id::attestation::group::AttestationGroup;
 use auths_id::storage::attestation::AttestationSource;
 use auths_storage::git::{GitRegistryBackend, RegistryAttestationStorage, RegistryConfig};
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -20,8 +20,6 @@ pub struct PyAttestation {
     pub subject: String,
     #[pyo3(get)]
     pub device_did: String,
-    #[pyo3(get)]
-    pub capabilities: Vec<String>,
     #[pyo3(get)]
     pub signer_type: Option<String>,
     #[pyo3(get)]
@@ -63,7 +61,6 @@ fn attestation_to_py(att: &Attestation) -> PyAttestation {
         issuer: att.issuer.to_string(),
         subject: att.subject.to_string(),
         device_did: att.subject.to_string(),
-        capabilities: att.capabilities.iter().map(|c| c.to_string()).collect(),
         signer_type: att.signer_type.as_ref().map(|s| format!("{s:?}")),
         expires_at: att.expires_at.map(|t| t.to_rfc3339()),
         revoked_at: att.revoked_at.map(|t| t.to_rfc3339()),
@@ -162,7 +159,7 @@ pub fn get_latest_attestation(
         })?;
         let group = AttestationGroup::from_list(all);
         let did =
-            DeviceDID::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
+            CanonicalDid::parse(device_did).map_err(|e| PyValueError::new_err(format!("{e}")))?;
         Ok(group.latest(&did).map(attestation_to_py))
     }
 }

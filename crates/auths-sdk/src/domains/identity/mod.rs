@@ -4,6 +4,8 @@
 
 /// Identity errors
 pub mod error;
+/// Local signer-identity resolution (root + delegate machines)
+pub mod local;
 /// Identity provisioning workflows
 pub mod provision;
 /// Identity registration on remote registries

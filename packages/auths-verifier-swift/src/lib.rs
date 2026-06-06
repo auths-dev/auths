@@ -6,7 +6,7 @@
 use ::auths_crypto::CurveType;
 use ::auths_verifier::core::{Attestation, MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE};
 use ::auths_verifier::types::{
-    ChainLink as RustChainLink, DeviceDID, VerificationReport as RustVerificationReport,
+    CanonicalDid, ChainLink as RustChainLink, VerificationReport as RustVerificationReport,
     VerificationStatus as RustVerificationStatus,
 };
 use ::auths_verifier::verify::{
@@ -298,7 +298,7 @@ pub fn verify_device_authorization(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let device = DeviceDID::parse(&device_did)
+    let device = CanonicalDid::parse(&device_did)
         .map_err(|e| VerifierError::InvalidInput(format!("Invalid device DID: {e}")))?;
 
     // Verify (bridge sync UniFFI boundary → async verifier)

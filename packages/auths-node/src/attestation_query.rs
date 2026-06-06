@@ -5,7 +5,7 @@ use auths_id::attestation::group::AttestationGroup;
 use auths_id::storage::attestation::AttestationSource;
 use auths_storage::git::{GitRegistryBackend, RegistryAttestationStorage, RegistryConfig};
 use auths_verifier::core::Attestation;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use napi_derive::napi;
 
 use crate::error::format_error;
@@ -17,7 +17,6 @@ pub struct NapiAttestation {
     pub issuer: String,
     pub subject: String,
     pub device_did: String,
-    pub capabilities: Vec<String>,
     pub signer_type: Option<String>,
     pub expires_at: Option<String>,
     pub revoked_at: Option<String>,
@@ -33,7 +32,6 @@ fn attestation_to_napi(att: &Attestation) -> NapiAttestation {
         issuer: att.issuer.to_string(),
         subject: att.subject.to_string(),
         device_did: att.subject.to_string(),
-        capabilities: att.capabilities.iter().map(|c| c.to_string()).collect(),
         signer_type: att.signer_type.as_ref().map(|s| format!("{s:?}")),
         expires_at: att.expires_at.map(|t| t.to_rfc3339()),
         revoked_at: att.revoked_at.map(|t| t.to_rfc3339()),
@@ -99,6 +97,7 @@ pub fn get_latest_attestation(
         )
     })?;
     let group = AttestationGroup::from_list(all);
-    let did = DeviceDID::parse(&device_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
+    let did =
+        CanonicalDid::parse(&device_did).map_err(|e| format_error("AUTHS_INVALID_INPUT", e))?;
     Ok(group.latest(&did).map(attestation_to_napi))
 }

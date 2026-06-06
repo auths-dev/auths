@@ -7,8 +7,7 @@ use auths_keri::witness::SignedReceipt;
 use auths_verifier::core::Attestation;
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
-    CanonicalDid, Capability, IdentityBundle, VerificationReport, verify_chain,
-    verify_chain_with_capability, verify_chain_with_witnesses,
+    CanonicalDid, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
 };
 
 use super::core::{ArtifactMetadata, ArtifactSource};
@@ -27,8 +26,6 @@ struct VerifyArtifactResult {
     chain_valid: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     chain_report: Option<VerificationReport>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    capability_valid: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     witness_quorum: Option<WitnessQuorum>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -128,7 +125,6 @@ pub async fn handle_verify(
                 digest_match: Some(false),
                 chain_valid: None,
                 chain_report: None,
-                capability_valid: None,
                 witness_quorum: None,
                 issuer: Some(attestation.issuer.to_string()),
                 commit_sha: attestation.commit_sha.clone(),
@@ -149,12 +145,13 @@ pub async fn handle_verify(
         }
     };
 
-    // 6. Verify attestation chain with sign_release capability
+    // 6. Verify attestation chain authenticity (signatures, linkage, expiry).
+    //    Capability authority is no longer gated here: an artifact-signer capability
+    //    grant must come from a holder-verified ACDC credential, not the attestation.
     let chain = vec![attestation.clone()];
-    let chain_result =
-        verify_chain_with_capability(&chain, &Capability::sign_release(), &root_pk).await;
+    let chain_result = verify_chain(&chain, &root_pk).await;
 
-    let (chain_valid, chain_report, capability_valid) = match chain_result {
+    let (chain_valid, chain_report) = match chain_result {
         Ok(mut report) => {
             if let Ok(home) = auths_sdk::paths::auths_home() {
                 let storage = auths_sdk::storage::RegistryAttestationStorage::new(&home);
@@ -176,13 +173,7 @@ pub async fn handle_verify(
                 }
             }
             let is_valid = report.is_valid();
-            (Some(is_valid), Some(report), Some(true))
-        }
-        Err(auths_verifier::error::AttestationError::MissingCapability { .. }) => {
-            // Chain signature is valid but capability is missing
-            let report = verify_chain(&chain, &root_pk).await.ok();
-            let chain_ok = report.as_ref().map(|r| r.is_valid());
-            (chain_ok, report, Some(false))
+            (Some(is_valid), Some(report))
         }
         Err(e) => {
             return output_error(&file_str, 1, &format!("Chain verification failed: {}", e));
@@ -206,7 +197,7 @@ pub async fn handle_verify(
     };
 
     // 8. Compute overall verdict
-    let mut valid = chain_valid.unwrap_or(false) && capability_valid.unwrap_or(true);
+    let mut valid = chain_valid.unwrap_or(false);
 
     if let Some(ref q) = witness_quorum
         && q.verified < q.required
@@ -315,7 +306,6 @@ pub async fn handle_verify(
             digest_match: Some(true),
             chain_valid,
             chain_report,
-            capability_valid,
             witness_quorum,
             issuer: Some(identity_did.to_string()),
             commit_sha: commit_sha_val,
@@ -418,7 +408,6 @@ fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
             digest_match: None,
             chain_valid: None,
             chain_report: None,
-            capability_valid: None,
             witness_quorum: None,
             issuer: None,
             commit_sha: None,
@@ -449,9 +438,6 @@ fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
         eprint!("Verification failed");
         if let Some(ref error) = result.error {
             eprint!(": {}", error);
-        }
-        if let Some(false) = result.capability_valid {
-            eprint!(" (missing sign_release capability)");
         }
         eprintln!();
     }

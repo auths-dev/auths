@@ -96,10 +96,6 @@ pub struct UnifiedVerifyCommand {
     #[arg(default_value = "HEAD")]
     pub target: String,
 
-    /// Path to allowed signers file (commit verification).
-    #[arg(long, default_value = ".auths/allowed_signers")]
-    pub allowed_signers: PathBuf,
-
     /// Path to identity bundle JSON (for CI/CD stateless commit verification).
     #[arg(long, value_parser)]
     pub identity_bundle: Option<PathBuf>,
@@ -128,6 +124,24 @@ pub struct UnifiedVerifyCommand {
     /// Defaults to <FILE>.auths.json.
     #[arg(long, value_name = "PATH")]
     pub signature: Option<PathBuf>,
+
+    /// Fetch a signer's KEL from this git remote when it is absent locally
+    /// (opt-in). The local registry stays the trusted floor — a remote can only
+    /// advance the key-state, never roll it back. Without it, resolution is
+    /// local-only (no network).
+    #[arg(long)]
+    pub remote: Option<String>,
+
+    /// Fetch signer KELs over HTTP from this OOBI base URL (SSRF-hardened:
+    /// HTTPS-only, no redirects, private/loopback hosts blocked). Takes
+    /// precedence over `--remote`.
+    #[arg(long)]
+    pub oobi: Option<String>,
+
+    /// Fail verification when the signer's root KEL has not reached witness
+    /// quorum (fail-closed). Default: warn and continue.
+    #[arg(long = "require-witnesses")]
+    pub require_witnesses: bool,
 }
 
 /// Handle the unified verify command.
@@ -141,11 +155,12 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
         VerifyTarget::GitRef(ref_str) => {
             let commit_cmd = VerifyCommitCommand {
                 commit: ref_str,
-                allowed_signers: cmd.allowed_signers,
-                identity_bundle: cmd.identity_bundle,
                 witness_receipts: cmd.witness_receipts,
                 witness_threshold: cmd.witness_threshold,
                 witness_keys: cmd.witness_keys,
+                remote: cmd.remote,
+                oobi: cmd.oobi,
+                require_witnesses: cmd.require_witnesses,
             };
             handle_verify_commit(commit_cmd).await
         }
@@ -156,7 +171,6 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
                 issuer_did: cmd.issuer_did,
                 trust: None,
                 roots_file: None,
-                require_capability: None,
                 witness_receipts: cmd.witness_receipts,
                 witness_threshold: cmd.witness_threshold,
                 witness_keys: cmd.witness_keys,

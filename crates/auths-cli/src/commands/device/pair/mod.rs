@@ -11,8 +11,6 @@ mod lan;
 mod lan_server;
 mod offline;
 mod online;
-#[cfg(feature = "lan-pairing")]
-mod rotate;
 
 use std::sync::Arc;
 
@@ -95,15 +93,12 @@ pub struct PairCommand {
     #[clap(long)]
     pub verify: bool,
 
-    /// Re-issue this controller's attestation for an already-paired
-    /// device under a new signing key. The phone side generates a new
-    /// Secure Enclave key, signs the rotation with its old key, and
-    /// this command creates a superseding attestation that points to
-    /// the new key.
-    ///
-    /// Requires an existing pair for the device being rotated.
-    #[clap(long)]
-    pub rotate: bool,
+    /// Lost/stolen-device recovery: pair a replacement delegated device, then
+    /// revoke the old device's delegation (by `did:keri:`). The replacement is
+    /// authorized before the old one is revoked, so the identity is never left
+    /// with zero usable devices. Supported over the relay path (with `--registry`).
+    #[clap(long, value_name = "OLD_DID")]
+    pub recover: Option<String>,
 }
 
 /// Dispatch table:
@@ -168,6 +163,7 @@ pub fn handle_pair(
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
+                cmd.recover.clone(),
             ))
         }
 
@@ -180,7 +176,7 @@ pub fn handle_pair(
                 cmd.no_qr,
                 cmd.no_mdns,
                 cmd.verify,
-                cmd.rotate,
+                cmd.recover.clone(),
                 cmd.timeout,
                 &cmd.capabilities,
                 passphrase_provider,
@@ -199,6 +195,7 @@ pub fn handle_pair(
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
+                cmd.recover.clone(),
             ))
         }
     }

@@ -1,6 +1,6 @@
 # AUTHS-E1001
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `CryptoError::InvalidSignature`
 
 ## Message

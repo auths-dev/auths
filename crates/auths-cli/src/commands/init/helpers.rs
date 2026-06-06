@@ -7,8 +7,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use auths_sdk::storage::RegistryAttestationStorage;
-use auths_sdk::workflows::allowed_signers::AllowedSigners;
 use auths_sdk::workflows::diagnostics::{MIN_GIT_VERSION, parse_git_version};
 
 use crate::subprocess::git_command;
@@ -73,57 +71,6 @@ pub(crate) fn detect_ci_environment() -> Option<String> {
     } else {
         None
     }
-}
-
-pub(crate) fn write_allowed_signers(key_alias: &str, out: &Output) -> Result<()> {
-    let _ = key_alias;
-
-    let repo_path = get_auths_repo_path()?;
-    let storage = RegistryAttestationStorage::new(&repo_path);
-
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
-    let ssh_dir = home.join(".ssh");
-    std::fs::create_dir_all(&ssh_dir)
-        .with_context(|| format!("Failed to create SSH directory: {}", ssh_dir.display()))?;
-    let signers_path = ssh_dir.join("allowed_signers");
-
-    let store = crate::adapters::allowed_signers_store::FileAllowedSignersStore;
-    let mut signers = AllowedSigners::load(&signers_path, &store)
-        .unwrap_or_else(|_| AllowedSigners::new(&signers_path));
-    let report = signers
-        .sync(&storage, None)
-        .map_err(|e| anyhow!("Failed to sync allowed signers: {}", e))?;
-    signers
-        .save(&store)
-        .map_err(|e| anyhow!("Failed to write allowed signers: {}", e))?;
-
-    let signers_str = signers_path
-        .to_str()
-        .ok_or_else(|| anyhow!("allowed signers path is not valid UTF-8"))?;
-    set_git_config("gpg.ssh.allowedSignersFile", signers_str, "--global")?;
-
-    out.println(&format!(
-        "  Wrote {} allowed signer(s) to {}",
-        report.added,
-        signers_path.display()
-    ));
-    out.println(&format!(
-        "  Set gpg.ssh.allowedSignersFile = {}",
-        signers_path.display()
-    ));
-
-    Ok(())
-}
-
-fn set_git_config(key: &str, value: &str, scope: &str) -> Result<()> {
-    let status = git_command(&["config", scope, key, value])
-        .status()
-        .with_context(|| format!("Failed to run git config {scope} {key} {value}"))?;
-
-    if !status.success() {
-        return Err(anyhow!("Failed to set git config {key} = {value}"));
-    }
-    Ok(())
 }
 
 // --- GitHub Action Scaffolding ---

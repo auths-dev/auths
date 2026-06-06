@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::keys::{KeriDecodeError, KeriPublicKey};
 
@@ -80,7 +80,7 @@ fn validate_said_derivation_code(s: &str) -> Result<(), KeriTypeError> {
 /// let prefix = Prefix::new("ETest123abc".to_string())?;
 /// assert_eq!(prefix.as_str(), "ETest123abc");
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 pub struct Prefix(String);
@@ -113,6 +113,19 @@ impl Prefix {
     /// Returns true if the inner string is empty (placeholder during event construction).
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+// Wire deserialization rejects an empty prefix: a present-but-empty identifier is
+// never valid on the wire, and `#[serde(default)]` removal only catches a *missing*
+// field. Internal placeholders go through `Default`/`new_unchecked`, not this path.
+impl<'de> Deserialize<'de> for Prefix {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Err(serde::de::Error::custom("Prefix must not be empty"));
+        }
+        Ok(Self(s))
     }
 }
 
@@ -173,14 +186,15 @@ impl PartialEq<Prefix> for &str {
 /// distinct — a prefix identifies an *identity*, a SAID identifies an *event*.
 ///
 /// Args:
-/// * Inner `String` should start with `'E'` (enforced by `new()`, not by serde).
+/// * Inner `String` must be non-empty (rejected on deserialize) and should start
+///   with `'E'` (the Blake3 digest derivation code, enforced by `new()`).
 ///
 /// Usage:
 /// ```ignore
 /// let said = Said::new("ESAID123".to_string())?;
 /// assert_eq!(said.as_str(), "ESAID123");
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[repr(transparent)]
 pub struct Said(String);
@@ -212,6 +226,19 @@ impl Said {
     /// Returns true if the inner string is empty (placeholder during event construction).
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+}
+
+// Wire deserialization rejects an empty SAID: an event must carry a real `d`/`n`
+// on the wire (removing `#[serde(default)]` on `d` only catches a *missing* field).
+// `compute_said`'s placeholder and other internal uses go through `new_unchecked`.
+impl<'de> Deserialize<'de> for Said {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        if s.is_empty() {
+            return Err(serde::de::Error::custom("Said must not be empty"));
+        }
+        Ok(Self(s))
     }
 }
 
@@ -405,6 +432,48 @@ impl Threshold {
         }
     }
 
+    /// Check that this threshold is structurally satisfiable against a key
+    /// (or commitment / backer) list of length `count`.
+    ///
+    /// This is a structural guard run at validation entry — it rejects events
+    /// whose threshold can never be met regardless of which signatures arrive:
+    /// a `Simple(n)` with `n > count`, a non-zero `Simple` over an empty list,
+    /// or a `Weighted` clause whose length doesn't match `count`.
+    ///
+    /// Args:
+    /// * `count` - Length of the list the threshold governs (`k`, `n`, or `b`).
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_keri::Threshold;
+    /// assert!(Threshold::Simple(2).validate_satisfiable(3).is_ok());
+    /// assert!(Threshold::Simple(5).validate_satisfiable(1).is_err());
+    /// ```
+    pub fn validate_satisfiable(&self, count: usize) -> Result<(), KeriTypeError> {
+        match self {
+            Threshold::Simple(0) => Ok(()),
+            Threshold::Simple(n) if *n as usize > count => Err(KeriTypeError {
+                type_name: "Threshold",
+                reason: format!("simple threshold {n} exceeds list length {count}"),
+            }),
+            Threshold::Simple(_) => Ok(()),
+            Threshold::Weighted(clauses) => {
+                for clause in clauses {
+                    if clause.len() != count {
+                        return Err(KeriTypeError {
+                            type_name: "Threshold",
+                            reason: format!(
+                                "weighted clause length {} != list length {count}",
+                                clause.len()
+                            ),
+                        });
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// Check if the threshold is satisfied by the given set of verified key indices.
     ///
     /// For `Simple(n)`: at least `n` unique indices must be verified.
@@ -579,9 +648,6 @@ pub enum ConfigTrait {
     /// Do-Not-Delegate: cannot act as delegator.
     #[serde(rename = "DND")]
     DoNotDelegate,
-    /// Delegate-Is-Delegator: delegated AID treated same as delegator.
-    #[serde(rename = "DID")]
-    DelegateIsDelegator,
     /// Registrar Backers: backer list provides registrar backer AIDs.
     #[serde(rename = "RB")]
     RegistrarBackers,
@@ -657,11 +723,10 @@ impl<'de> Deserialize<'de> for VersionString {
             })?;
             let kind = s[6..10].to_string();
             Ok(Self { kind, size })
-        } else if s.starts_with("KERI10") && s.len() >= 10 {
-            // Legacy format without size — accept for backwards compat
-            let kind = s[6..s.len().min(10)].to_string();
-            Ok(Self { kind, size: 0 })
         } else {
+            // KERI v1.1 mandates the full 17-char form (`KERI10JSON{size:06x}_`).
+            // Short/legacy strings are rejected — they are wire-incompatible
+            // with spec verifiers, which parse the declared size from `v`.
             Err(serde::de::Error::custom(format!(
                 "invalid KERI version string: {s:?}"
             )))
@@ -942,12 +1007,11 @@ mod tests {
         let all = vec![
             ConfigTrait::EstablishmentOnly,
             ConfigTrait::DoNotDelegate,
-            ConfigTrait::DelegateIsDelegator,
             ConfigTrait::RegistrarBackers,
             ConfigTrait::NoRegistrarBackers,
         ];
         let json = serde_json::to_string(&all).unwrap();
-        assert_eq!(json, r#"["EO","DND","DID","RB","NRB"]"#);
+        assert_eq!(json, r#"["EO","DND","RB","NRB"]"#);
         let parsed: Vec<ConfigTrait> = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, all);
     }
@@ -975,10 +1039,12 @@ mod tests {
     }
 
     #[test]
-    fn version_string_parse_legacy() {
-        let vs: VersionString = serde_json::from_str("\"KERI10JSON\"").unwrap();
-        assert_eq!(vs.kind, "JSON");
-        assert_eq!(vs.size, 0); // legacy has no size
+    fn version_string_rejects_legacy_short() {
+        // KERI v1.1 mandates the 17-char form; the legacy short form
+        // (`KERI10JSON` with no size/terminator) must be rejected, not
+        // silently accepted with size 0.
+        assert!(serde_json::from_str::<VersionString>("\"KERI10JSON\"").is_err());
+        assert!(serde_json::from_str::<VersionString>("\"KERI10JSON0001\"").is_err());
     }
 
     #[test]

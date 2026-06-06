@@ -1,6 +1,6 @@
 # AUTHS-E4504
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `ValidationError::CommitmentMismatch`
 
 ## Message

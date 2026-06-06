@@ -1,6 +1,6 @@
 # AUTHS-E1004
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `CryptoError::OperationFailed`
 
 ## Message

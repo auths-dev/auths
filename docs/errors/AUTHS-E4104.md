@@ -1,6 +1,6 @@
 # AUTHS-E4104
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `StorageError::NotFound`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E4951
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IncrementalError::Kel`
 
 ## Message

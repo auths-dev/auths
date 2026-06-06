@@ -1,6 +1,6 @@
 # AUTHS-E5703
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `ApprovalError::RequestExpired`
 
 ## Message

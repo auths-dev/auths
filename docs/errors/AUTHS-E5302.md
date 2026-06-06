@@ -1,6 +1,6 @@
 # AUTHS-E5302
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `RotationError::KeyNotFound`
 
 ## Message

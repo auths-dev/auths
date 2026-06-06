@@ -1,6 +1,6 @@
 # AUTHS-E5904
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SigningError::InvalidPassphrase`
 
 ## Message

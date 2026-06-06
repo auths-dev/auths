@@ -1,6 +1,6 @@
 # AUTHS-E5006
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SetupError::PlatformVerificationFailed`
 
 ## Message

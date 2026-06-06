@@ -36,7 +36,7 @@ Constants exported for curve dimensions: `ED25519_PUBLIC_KEY_LEN`, `ED25519_SIGN
 
 | Scheme | Shape | Parser | Preferred for |
 |--------|-------|--------|---------------|
-| **CESR prefix** | `D{base64}` (Ed25519 verkey) · `1AAI{base64}` (P-256 compressed verkey) | `KeriPublicKey::parse` in `auths-keri/src/keys.rs` | KEL / event payloads |
+| **CESR prefix** | `D`/`B`+base64 (Ed25519 transferable/non-transferable verkey) · `1AAJ`/`1AAI`+base64 (P-256 transferable/non-transferable, 33-byte compressed) | `KeriPublicKey::parse` in `auths-keri/src/keys.rs` | KEL / event payloads |
 | **Multicodec varint (`did:key:`)** | `z6Mk…` (Ed25519) · `zDna…` (P-256) | `DecodedDidKey::decode` in `auths-crypto/src/did_key.rs` | Identity DIDs |
 | **Explicit `curve` field** | Sibling field naming the curve (`"ed25519"` / `"p256"`) | Caller-owned match | FFI / JSON wire formats where CESR or multibase is awkward |
 
@@ -122,7 +122,7 @@ pub enum TypedSeed {
 
 - `typed.curve() -> CurveType`
 - `typed.public_key() -> &[u8]` — raw bytes (32 for Ed25519, 33 for P-256 compressed)
-- `typed.cesr_encoded_pubkey() -> String` — CESR-tagged string (`D…` or `1AAI…`), suitable for direct wire emission
+- `typed.cesr_encoded_pubkey() -> String` — CESR-tagged string (`D…`/`B…` Ed25519, `1AAJ…`/`1AAI…` P-256), suitable for direct wire emission
 
 Prefer `cesr_encoded_pubkey()` at any FFI or on-disk boundary that emits a pubkey.
 
@@ -162,8 +162,10 @@ KERI public keys on the wire use CESR (Composable Event Streaming Representation
 
 | Key type | Prefix | Total length | Decoded bytes |
 |----------|--------|--------------|---------------|
-| Ed25519 verkey | `D` | 44 chars | 32 bytes |
-| P-256 verkey (compressed SEC1) | `1AAI` | 48 chars | 33 bytes |
+| Ed25519 verkey | `D` / `B` | 44 chars | 32 bytes |
+| P-256 verkey (compressed SEC1) | `1AAJ` / `1AAI` | 48 chars | 33 bytes |
+
+(`D`/`1AAJ` are the transferable codes; `B`/`1AAI` the non-transferable.)
 
 Parsing via `KeriPublicKey::parse(encoded)` returns a typed `KeriPublicKey::{Ed25519([u8; 32]), P256([u8; 33])}` enum. Signature verification via `key.verify_signature(message, sig)` dispatches on the variant.
 
@@ -292,7 +294,7 @@ This table is the source of truth for which wire boundaries carry a curve tag an
 
 | Wire boundary | Tagging scheme | Tag location |
 |---------------|----------------|--------------|
-| KERI event verkey (`k[]`, `n[]`) | CESR prefix | Per-key string (`D…` / `1AAI…`) |
+| KERI event verkey (`k[]`, `n[]`) | CESR prefix | Per-key string (`D…`/`B…` · `1AAJ…`/`1AAI…`) |
 | KERI event signature attachment | CESR indexed-siger group | `-A##` counter + per-siger CESR prefix |
 | Device DID (`did:key:z…`) | Multicodec varint | Inside base58-decoded bytes |
 | Identity DID (`did:keri:…`) | Indirect (via KEL inception event) | Inception event `k[0]` |
@@ -301,3 +303,5 @@ This table is the source of truth for which wire boundaries carry a curve tag an
 | Node FFI `sign_bytes_raw(private_key_hex, msg, curve)` | Explicit `curve` field | Sibling param |
 | Node FFI action-envelope verify | Explicit `curve` field | Sibling param |
 | On-disk `known_identities.json` pinned entries | Curve field on the JSON record | `curve` key |
+| OOBI static KEL export (`.well-known/keri/oobi/<aid>/keri.cesr`) | CESR prefix (verbatim event bodies) | Per-key string (`k[]`/`n[]`) within each serialized event |
+| Key-State Notice (`.well-known/keri/oobi/<aid>/ksn.json`) | CESR prefix (verbatim in the signed `KeyState`) | Per-key string in `state.current_keys` / `state.next_commitment` |

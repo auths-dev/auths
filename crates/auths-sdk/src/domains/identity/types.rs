@@ -1,6 +1,6 @@
 use auths_core::storage::keychain::{IdentityDID, KeyAlias};
 use auths_verifier::Capability;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use std::path::PathBuf;
 
 use crate::domains::ci::types::{CiEnvironment, CiIdentityConfig};
@@ -527,7 +527,7 @@ pub struct DeveloperIdentityResult {
     /// The controller DID of the created identity.
     pub identity_did: IdentityDID,
     /// The device DID bound to this identity.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// The keychain alias used for the signing key.
     pub key_alias: KeyAlias,
     /// Result of platform verification, if performed.
@@ -552,7 +552,7 @@ pub struct CiIdentityResult {
     /// The controller DID of the CI identity.
     pub identity_did: IdentityDID,
     /// The device DID bound to this CI identity.
-    pub device_did: DeviceDID,
+    pub device_did: CanonicalDid,
     /// Shell `export` lines for configuring CI environment variables.
     pub env_block: Vec<String>,
 }

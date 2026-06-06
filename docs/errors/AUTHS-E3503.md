@@ -1,6 +1,6 @@
 # AUTHS-E3503
 
-**Crate:** `auths-core`  
+**Crate:** `auths-core`
 **Type:** `StorageError::CasConflict`
 
 ## Message

@@ -36,14 +36,12 @@
 //! }
 //! ```
 //!
-//! ## With Capability Checking
+//! ## Authority via Credentials
 //!
-//! ```rust,ignore
-//! use auths_verifier::{verify_with_capability, Capability};
-//!
-//! // Verify device has sign-commit permission
-//! let report = verify_with_capability(&chain, Capability::SignCommit)?;
-//! ```
+//! The verifier checks **authenticity** only — signatures, chain linkage, expiry,
+//! and witness quorum. Capability/role **authority** is no longer read from the
+//! attestation; it flows exclusively through a holder-verified ACDC credential
+//! presentation (see `auths_id::policy::context_from_credential`).
 //!
 //! ## Feature Flags
 //!
@@ -53,11 +51,15 @@ pub mod action;
 pub mod clock;
 pub mod commit;
 pub mod commit_error;
+pub mod commit_kel;
 pub mod core;
+pub mod credential;
+pub mod duplicity;
 pub mod error;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
+pub mod presentation;
 pub mod ssh_sig;
 pub mod types;
 pub mod verifier;
@@ -69,9 +71,9 @@ pub mod witness;
 
 // Re-export verification types for convenience
 pub use types::{
-    AssuranceLevel, AssuranceLevelParseError, CanonicalDid, ChainLink, DeviceDID,
-    DidConversionError, DidParseError, IdentityDID, VerificationReport, VerificationStatus,
-    signer_hex_to_did, validate_did,
+    AssuranceLevel, AssuranceLevelParseError, CanonicalDid, ChainLink, DidConversionError,
+    DidParseError, IdentityDID, VerificationReport, VerificationStatus, signer_hex_to_did,
+    validate_did,
 };
 
 // Re-export action envelope
@@ -105,8 +107,8 @@ pub use verifier::Verifier;
 // Re-export verification functions (native-only, async)
 #[cfg(feature = "native")]
 pub use verify::{
-    verify_at_time, verify_chain, verify_chain_with_capability, verify_chain_with_witnesses,
-    verify_device_authorization, verify_with_capability, verify_with_keys,
+    verify_at_time, verify_chain, verify_chain_with_witnesses, verify_device_authorization,
+    verify_with_keys,
 };
 
 // Re-export sync utility functions (always available)
@@ -126,7 +128,20 @@ pub use auths_keri::{
 
 // Re-export commit verification types
 pub use commit::VerifiedCommit;
+pub use commit_kel::{
+    ANCHOR_SEQ_TRAILER, CommitVerdict, SCOPE_TRAILER, VerifierWitnessPolicy, WitnessGateStatus,
+    WitnessedVerdict, anchor_seq_trailer, scope_trailer, verify_commit_against_kel,
+    verify_commit_against_kel_scoped, verify_commit_against_kel_witnessed,
+};
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
+
+// Re-export ACDC credential verification (Epic F.5)
+pub use credential::{CredentialVerdict, LifecycleEvent, SignedAcdc, verify_credential};
+
+// Re-export holder-binding presentation verification (Epic F.8)
+pub use presentation::{
+    PresentationBinding, PresentationEnvelope, PresentationVerdict, verify_presentation,
+};
 
 // Re-export crypto provider trait for downstream consumers
 pub use auths_crypto::CryptoProvider;
@@ -212,6 +227,7 @@ mod tests {
             warnings: vec!["Key expires soon".to_string()],
             witness_quorum: None,
             anchored: None,
+            duplicity_warning: None,
         };
 
         let json = serde_json::to_string(&report).expect("serialization failed");

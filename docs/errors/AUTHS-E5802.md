@@ -1,6 +1,6 @@
 # AUTHS-E5802
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `AllowedSignersError::InvalidKey`
 
 ## Message

@@ -1,6 +1,6 @@
 # AUTHS-E5908
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `SigningError::PassphraseExhausted`
 
 ## Message

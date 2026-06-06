@@ -7,8 +7,6 @@ use auths_id::keri::event::{Event, IcpEvent, KeriSequence};
 use auths_id::keri::finalize_icp_event;
 use auths_id::keri::types::{Prefix, Said};
 use auths_keri::{CesrKey, Threshold, VersionString};
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
 // Each inception event needs two keypairs: current (signing) + next (pre-rotation commitment).
@@ -232,10 +230,15 @@ pub fn mock_inception_event(index: usize) -> Event {
     let next_pkcs8 = ALL_PKCS8[index * 2 + 1];
 
     let keypair = Ed25519KeyPair::from_pkcs8(current_pkcs8).unwrap();
-    let key_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(keypair.public_key().as_ref()));
+    let key_encoded = auths_keri::KeriPublicKey::ed25519(keypair.public_key().as_ref())
+        .unwrap()
+        .to_qb64()
+        .unwrap();
 
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8).unwrap();
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref()).unwrap(),
+    );
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),
@@ -250,7 +253,6 @@ pub fn mock_inception_event(index: usize) -> Event {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp).expect("fixture event must finalize");

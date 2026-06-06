@@ -1,6 +1,6 @@
 # AUTHS-E4877
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::BatchValidationFailed`
 
 ## Message

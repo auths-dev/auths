@@ -1,139 +1,155 @@
 # Delegation
 
-How authority flows from a human operator to an AI agent (or any automated system), and how verifiers trace actions back to the authorizing human.
+How authority flows from a human (or organization) to an AI agent, and how
+verifiers trace actions back to the authorizing identity — entirely through the
+Key Event Log (KEL), not through bearer tokens or stand-alone attestations.
 
 ## The delegation model
 
-Auths delegation is a cryptographic chain of signed attestations. Each link in the chain grants a subset of the parent's capabilities to a child entity. Capabilities can only narrow at each hop — never widen.
+An agent is a **KERI delegated identifier**. It has its own KEL, incepted with a
+`dip` (delegated inception) event that names the delegator's identity as its
+delegator (`di`). The delegator **anchors** that `dip` in its own KEL with an `ixn`
+whose seal points at the agent's inception event. Authority is therefore a fact in
+the delegator's KEL, provable by replay — there is no attestation to trust and no
+token to leak.
+
+Capabilities and expiry ride a **delegator-anchored scope seal** in the delegator's
+KEL: the delegator asserts what the agent may do. A delegate can only **narrow** the
+delegator's scope, never widen it.
 
 ```mermaid
 graph TD
-    H["<b>Human</b><br/>did:keri:EHuman..."]
+    H["<b>Human / Org</b><br/>did:keri:EHuman…<br/>(delegator KEL)"]
 
-    H -- "signs attestation" --> A
+    H -- "anchors dip + scope seal (ixn)" --> A
 
-    A["<b>AI Agent</b><br/>did:keri:EAgent...<br/><br/>capabilities: sign:commit, deploy:staging<br/>signer_type: Agent<br/>delegated_by: did:keri:EHuman..."]
-
-    A -- "delegates subset" --> S
-
-    S["<b>Sub-Agent</b><br/>did:keri:ESubAgent...<br/><br/>capabilities: deploy:staging<br/>signer_type: Agent<br/>delegated_by: did:keri:EAgent..."]
+    A["<b>AI Agent</b><br/>did:keri:EAgent…<br/>(its own KEL, incepted via dip)<br/><br/>scope: sign_commit, deploy_staging<br/>delegated by: did:keri:EHuman…"]
 ```
 
-## Step 1: Human creates identity and links a device
+## Step 1: Create the delegator identity
 
-The human operator creates a KERI identity and links their device:
+The human operator (or organization) creates a KERI identity:
 
 ```bash
 auths init
 ```
 
-This produces an inception event and a device attestation:
+This produces the delegator's inception event (`icp`). The delegator's `did:keri`
+is the root of authority; its signing key is what anchors every delegation.
 
-```json
-{
-  "version": 1,
-  "issuer": "did:keri:EHuman123...",
-  "subject": "did:key:z6MkHumanDevice...",
-  "capabilities": ["sign:commit", "deploy:staging", "deploy:production"],
-  "signer_type": "Human",
-  "expires_at": null
-}
-```
+## Step 2: Delegate an agent (`dip`, anchored by the delegator)
 
-The human's attestation has no `delegated_by` — this is the root of the chain.
-
-## Step 2: Human issues attestation to an AI agent
-
-The human creates a scoped, time-limited attestation granting specific capabilities to an agent:
+The delegator mints an agent as a delegated identifier and anchors it:
 
 ```bash
-auths device link \
-  --device did:key:z6MkAgentDevice... \
+auths id agent add \
+  --label deploy-bot \
   --key my-key \
-  --capabilities "sign:commit,deploy:staging" \
-  --expires-in 24h
+  --scope sign_commit --scope deploy_staging \
+  --expires-in 86400
 ```
 
-The resulting attestation:
+What happens:
 
-```json
-{
-  "version": 1,
-  "issuer": "did:keri:EHuman123...",
-  "subject": "did:key:z6MkAgentDevice...",
-  "capabilities": ["sign:commit", "deploy:staging"],
-  "signer_type": "Agent",
-  "delegated_by": "did:keri:EHuman123...",
-  "expires_at": "2026-03-05T12:00:00Z",
-  "identity_signature": "aabb...",
-  "device_signature": "ccdd..."
-}
-```
+- A fresh agent key is generated; the agent's `dip` names the delegator as `di`.
+- The delegator authors an `ixn` in its **own** KEL whose `Seal::KeyEvent` anchors
+  the agent's `dip`. The `dip`/`drt` carry the reciprocal `-G` source seal, so the
+  binding is **bilateral** (delegator-side seal + delegate-side back-reference) and
+  byte-interoperable with keripy.
+- The delegator anchors a **scope seal** carrying the requested capabilities and
+  optional expiry. The requested scope must be a subset of the delegator's own.
 
-Notice:
+The agent's `did:keri` is self-addressing — derived from its `dip` SAID.
 
-- **Capabilities narrowed**: The agent gets `sign:commit` and `deploy:staging`, but not `deploy:production`.
-- **Time-bounded**: The attestation expires in 24 hours.
-- **`delegated_by`** points to the human's identity, creating the accountability link.
-- **Dual-signed**: Both the human's identity key and the agent's device key sign the attestation.
+## Step 3: Agent acts and rotates its own key
 
-## Step 3: Agent acts and signs artifacts
-
-The agent uses its attestation to sign commits, deploy to staging, or perform any action within its granted capabilities. Each signature is produced by the agent's own private key.
-
-If the agent needs to delegate further — for example, spawning a sub-agent for a specific task — it issues a new attestation with further-narrowed capabilities:
-
-```json
-{
-  "version": 1,
-  "issuer": "did:keri:EAgent456...",
-  "subject": "did:key:z6MkSubAgent...",
-  "capabilities": ["deploy:staging"],
-  "signer_type": "Agent",
-  "delegated_by": "did:keri:EAgent456...",
-  "expires_at": "2026-03-05T06:00:00Z"
-}
-```
-
-The sub-agent's capabilities are a strict subset of the parent agent's. The expiration is shorter. The chain grows but authority only shrinks.
-
-## Step 4: Verifier walks the chain
-
-When a relying party receives a signed artifact, it verifies the full attestation chain using `verify_chain()`:
+The agent signs commits and artifacts with its **own** private key, within its
+delegator-anchored scope. It rotates its key without involving the delegator's key
+material beyond the anchoring `ixn`:
 
 ```bash
-auths verify chain.json
+auths id agent rotate did:keri:EAgent… --key my-key
 ```
 
-The verifier checks, from leaf to root:
+This authors a `drt` on the agent's KEL (revealing its pre-committed next key) which
+the delegator anchors. Replay holds; the old key stops verifying.
 
-1. **Sub-Agent → Agent**: Is the sub-agent's attestation signed by the agent? Are the sub-agent's capabilities a subset of the agent's? Is it expired?
-2. **Agent → Human**: Is the agent's attestation signed by the human? Are the capabilities valid? Is it expired?
-3. **Human → KEL**: Does the human's identity key match the current key in the Key Event Log?
+## Step 4: Verifier walks the KEL
 
-If any link fails — invalid signature, expired attestation, capability not granted — the entire chain is rejected.
+A relying party verifies an agent-signed commit purely by KEL replay — no network
+call, no central authority:
 
-The verification is a pure computation. No network call. No central authority. The verifier needs only the attestation chain and the root public key.
+1. **Agent KEL valid?** The `dip`/`drt` chain replays and the signing key is the
+   agent's current key.
+2. **Delegated by the claimed root?** The delegator's KEL anchors the agent's `dip`
+   (bilateral seal check).
+3. **Not revoked?** No revocation seal precedes the signing event **by KEL
+   position** (revocation is ordered against the signing event by KEL position, not
+   wall-clock — a commit signed before revocation stays valid; one signed after
+   fails).
+4. **In scope and unexpired?** The signed action is within the delegator-anchored
+   scope, and the injected verification time is before any anchored expiry.
 
-## Capability narrowing
+```bash
+auths verify HEAD
+```
 
-Capabilities follow a strict narrowing rule across delegation hops:
+If any check fails — unanchored `dip`, revoked agent, out-of-scope action, expiry
+passed — the commit is rejected (`OutsideAgentScope` / `AgentExpired` /
+`SignedAfterRevocation`).
 
-| Hop | Entity | Capabilities |
-|-----|--------|-------------|
-| Root | Human | `sign:commit`, `deploy:staging`, `deploy:production` |
-| Hop 1 | Agent | `sign:commit`, `deploy:staging` |
-| Hop 2 | Sub-Agent | `deploy:staging` |
+## Capability narrowing (delegator-anchored)
 
-A child can never grant capabilities it does not possess. The OIDC bridge enforces this at token exchange time through intersection-based scope-down: the issued JWT contains only the intersection of the chain-granted capabilities and the capabilities the agent requests.
+Scope follows a strict narrowing rule, enforced at delegation time against the
+delegator's own anchored scope:
+
+| Level | Entity | Scope |
+|-------|--------|-------|
+| Root | Human / Org | `sign_commit`, `deploy_staging`, `deploy_production` |
+| Agent | `deploy-bot` | `sign_commit`, `deploy_staging` |
+
+A delegate can never be granted a capability the delegator does not itself hold; the
+SDK rejects an over-broad request with `OutsideDelegatorScope`.
+
+## Revoking an agent
+
+The delegator anchors a revocation seal in its KEL:
+
+```bash
+auths id agent revoke did:keri:EAgent… --key my-key
+auths id agent list                      # the live set excludes it
+```
+
+Existing signatures from before the revocation's KEL position remain valid (they
+were valid when authored); signatures ordered after it fail.
+
+## Organization members
+
+An organization member is the same primitive: a `dip` delegated by the **org AID**.
+The org anchors the member's `dip` and a scope seal carrying the member's role and
+capabilities:
+
+```bash
+auths org add-member --org did:keri:EOrg… --member alice --role member --key org-myorg
+auths org list-members --org did:keri:EOrg…
+auths org revoke-member --org did:keri:EOrg… --member did:keri:EAlice… --key org-myorg
+```
+
+Org authority is read **fail-closed from the KEL**: a member the org revoked on its
+KEL is unauthorized even if a stale attestation is still present. (`kt≥2` org
+delegators are not yet supported and return a typed error — see
+[ADR 007](../architecture/ADRs/007-agent-identity-via-delegation.md).)
 
 ## Cloud access via OIDC
 
-Once an agent has a valid attestation chain, it can exchange it for a standard JWT through the [OIDC bridge](../architecture/oidc-bridge.md):
+Once an agent has a valid, KEL-anchored delegation, it can exchange it for a standard
+JWT through the [OIDC bridge](../architecture/oidc-bridge.md): the bridge verifies the
+delegation by KEL replay (no IdP callback) and issues an RS256 JWT carrying the
+agent's `keri_prefix`, capabilities, and delegator provenance — so cloud-side audit
+logs trace the action back through the KEL to the authorizing human or org.
 
-1. Agent presents its attestation chain to the bridge's `/token` endpoint
-2. Bridge verifies the chain cryptographically (no IdP callback)
-3. Bridge issues a standard RS256 JWT with the agent's capabilities as claims
-4. Agent uses the JWT with AWS STS, GCP Workload Identity, or Azure AD
+## See also
 
-The JWT includes `keri_prefix`, `capabilities`, and `delegated_by` provenance — so cloud-side audit logs can trace the action back through the full delegation chain to the originating human.
+- [ADR 007 — Agent identity via delegation](../architecture/ADRs/007-agent-identity-via-delegation.md)
+- [Device model](../architecture/device-model.md) (devices and agents share the `dip`/`drt` mechanism)
+- [Agent provisioning](../AGENT_PROVISIONING.md)

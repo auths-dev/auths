@@ -45,6 +45,7 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 auths-crypto = { workspace = true, features = ["test-utils"] }
 proptest = "1.4"
 pkcs8 = { version = "0.10", features = ["alloc"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
 ring.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 

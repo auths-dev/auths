@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use auths_crypto::{CurveType, SecureSeed, TypedSignerKey};
 use auths_keri::{Prefix, Said};
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use axum::{
     Json, Router,
     extract::{Path as AxumPath, State},
@@ -34,7 +34,7 @@ use std::sync::Mutex;
 use auths_keri::{KeriSequence, VersionString};
 
 use super::error::{DuplicityEvidence, WitnessError};
-use super::receipt::{RECEIPT_TYPE, Receipt, SignedReceipt};
+use super::receipt::{Receipt, ReceiptTag, SignedReceipt};
 use super::storage::WitnessStorage;
 
 /// Shared server state.
@@ -46,7 +46,7 @@ pub struct WitnessServerState {
 #[allow(dead_code)]
 struct WitnessServerInner {
     /// Witness identifier (DID)
-    witness_did: DeviceDID,
+    witness_did: CanonicalDid,
     /// Curve-tagged signing key (fn-116.1/B1a). Carries curve so sign/DID
     /// paths dispatch correctly; replaces the historical
     /// `{seed: SecureSeed, public_key: [u8; 32]}` pair that was Ed25519-locked.
@@ -60,7 +60,7 @@ struct WitnessServerInner {
 /// Configuration for the witness server.
 pub struct WitnessServerConfig {
     /// Witness identifier (DID)
-    pub witness_did: DeviceDID,
+    pub witness_did: CanonicalDid,
     /// Curve-tagged signing key (fn-116.1/B1a).
     pub signer: TypedSignerKey,
     /// Path to SQLite database
@@ -125,8 +125,8 @@ fn generate_keypair_for_curve(curve: CurveType) -> Result<([u8; 32], Vec<u8>), W
 }
 
 /// Derive a `did:key:` for the witness from a curve-tagged public key.
-fn derive_witness_did(curve: CurveType, pubkey_bytes: &[u8]) -> Result<DeviceDID, WitnessError> {
-    Ok(DeviceDID::from_public_key(pubkey_bytes, curve))
+fn derive_witness_did(curve: CurveType, pubkey_bytes: &[u8]) -> Result<CanonicalDid, WitnessError> {
+    Ok(CanonicalDid::from_public_key_did_key(pubkey_bytes, curve))
 }
 
 /// Event submission request.
@@ -149,7 +149,7 @@ pub struct HealthResponse {
     /// Witness server status string.
     pub status: String,
     /// DID of this witness.
-    pub witness_did: DeviceDID,
+    pub witness_did: CanonicalDid,
     /// Number of first-seen events recorded.
     pub first_seen_count: usize,
     /// Total receipts issued.
@@ -194,7 +194,10 @@ impl WitnessServerState {
 
     /// Create a new server state with in-memory storage (for testing).
     #[allow(clippy::disallowed_methods)] // Server constructor is a clock boundary
-    pub fn in_memory(witness_did: DeviceDID, signer: TypedSignerKey) -> Result<Self, WitnessError> {
+    pub fn in_memory(
+        witness_did: CanonicalDid,
+        signer: TypedSignerKey,
+    ) -> Result<Self, WitnessError> {
         let storage = WitnessStorage::in_memory()?;
 
         Ok(Self {
@@ -210,7 +213,7 @@ impl WitnessServerState {
     /// Legacy helper for tests that have an Ed25519 seed + pubkey.
     #[allow(clippy::disallowed_methods)]
     pub fn in_memory_ed25519(
-        witness_did: DeviceDID,
+        witness_did: CanonicalDid,
         seed: SecureSeed,
         public_key: [u8; 32],
     ) -> Result<Self, WitnessError> {
@@ -263,7 +266,7 @@ impl WitnessServerState {
     ) -> Result<Receipt, WitnessError> {
         let receipt = Receipt {
             v: VersionString::placeholder(),
-            t: RECEIPT_TYPE.into(),
+            t: ReceiptTag,
             d: event_said.clone(),
             i: prefix.clone(),
             s: KeriSequence::new(seq),
@@ -518,7 +521,7 @@ async fn submit_event(
     State(state): State<WitnessServerState>,
     AxumPath(prefix_str): AxumPath<String>,
     Json(event): Json<serde_json::Value>,
-) -> Result<Json<Receipt>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<SignedReceipt>, (StatusCode, Json<ErrorResponse>)> {
     let prefix = Prefix::new_unchecked(prefix_str);
 
     // Validate event structure
@@ -594,9 +597,11 @@ async fn submit_event(
     // Check for duplicity
     match storage.check_duplicity(now, &prefix, event_s, &event_d) {
         Ok(None) => {
-            // No duplicity - create and store receipt
-            let receipt = state
-                .create_receipt(&prefix, event_s, &event_d)
+            // No duplicity - sign and store the receipt. The wire `rct` body
+            // stays spec-shaped; the witness signature travels detached in the
+            // `SignedReceipt` so the collector can attribute and verify it.
+            let signed = state
+                .create_signed_receipt(&prefix, event_s, &event_d)
                 .map_err(|e| {
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -607,7 +612,7 @@ async fn submit_event(
                     )
                 })?;
 
-            if let Err(e) = storage.store_receipt(now, &prefix, &receipt) {
+            if let Err(e) = storage.store_receipt(now, &prefix, &signed.receipt) {
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(ErrorResponse {
@@ -617,7 +622,7 @@ async fn submit_event(
                 ));
             }
 
-            Ok(Json(receipt))
+            Ok(Json(signed))
         }
         Ok(Some(existing_said)) => {
             // Duplicity detected!
@@ -799,6 +804,47 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn server_signs_receipt() {
+        let state = test_state();
+        let app = router(state.clone());
+
+        let event = make_valid_icp_event("EPrefix", 0);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/witness/EPrefix/event")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&event).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let signed: SignedReceipt =
+            serde_json::from_slice(&body).expect("witness response must be a SignedReceipt");
+
+        assert!(
+            !signed.signature.is_empty(),
+            "witness must attach a signature"
+        );
+
+        // The signature must verify against the witness's own key.
+        let key = auths_keri::KeriPublicKey::from_verkey_bytes(&state.public_key(), state.curve())
+            .unwrap();
+        let payload = serde_json::to_vec(&signed.receipt).unwrap();
+        assert!(
+            key.verify_signature(&payload, &signed.signature).is_ok(),
+            "witness signature must verify against its advertised key"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

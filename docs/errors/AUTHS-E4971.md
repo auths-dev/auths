@@ -1,6 +1,6 @@
 # AUTHS-E4971
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `WitnessIntegrationError::Collection`
 
 ## Message

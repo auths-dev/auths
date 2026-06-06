@@ -402,13 +402,49 @@ pub struct SignatureLengthError(pub usize);
 /// Accepted byte lengths per curve:
 /// - Ed25519: 32
 /// - P-256: 33 (compressed SEC1) or 65 (uncompressed SEC1)
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct DevicePublicKey {
     #[cfg_attr(feature = "schema", schemars(skip))]
     curve: auths_crypto::CurveType,
     #[cfg_attr(feature = "schema", schemars(with = "String"))]
     bytes: Vec<u8>,
+}
+
+impl DevicePublicKey {
+    /// Canonical SEC1 bytes for equality + hashing. P-256 is normalized to its 33-byte
+    /// compressed form, so two encodings of the *same point* compare equal — the SSH
+    /// wire format is 65-byte uncompressed while the KEL/CESR form is 33-byte compressed.
+    /// Pure byte math: a compressed point is `[0x02|0x03 by Y-parity] || X`, and the
+    /// Y-parity is the uncompressed point's final-byte LSB. Ed25519 is unchanged.
+    fn canonical_sec1(&self) -> std::borrow::Cow<'_, [u8]> {
+        if self.curve == auths_crypto::CurveType::P256
+            && self.bytes.len() == 65
+            && self.bytes[0] == 0x04
+        {
+            let mut compressed = vec![0u8; 33];
+            compressed[0] = if self.bytes[64] & 1 == 0 { 0x02 } else { 0x03 };
+            compressed[1..].copy_from_slice(&self.bytes[1..33]);
+            std::borrow::Cow::Owned(compressed)
+        } else {
+            std::borrow::Cow::Borrowed(&self.bytes)
+        }
+    }
+}
+
+impl PartialEq for DevicePublicKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.curve == other.curve && self.canonical_sec1() == other.canonical_sec1()
+    }
+}
+
+impl Eq for DevicePublicKey {}
+
+impl std::hash::Hash for DevicePublicKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.curve.hash(state);
+        self.canonical_sec1().hash(state);
+    }
 }
 
 /// Error returned when constructing a `DevicePublicKey` with invalid key material.
@@ -1234,29 +1270,9 @@ pub struct Attestation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oidc_binding: Option<OidcBinding>,
 
-    /// Role for org membership attestations.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub role: Option<Role>,
-
-    /// Capabilities this attestation grants.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub capabilities: Vec<Capability>,
-
     /// DID of the attestation that delegated authority (for chain tracking).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delegated_by: Option<CanonicalDid>,
-
-    /// Identifier of the prior attestation this one supersedes (device-key
-    /// rotation). Holds the *subject DID* of the predecessor — that's
-    /// the unique-per-device anchor the attestation storage is keyed by;
-    /// `Attestation::rid` is repo-scoped (shared across every attestation
-    /// under one identity) and doesn't disambiguate on its own.
-    ///
-    /// Absent on non-rotation attestations. Included in the canonical
-    /// JSON before signing, so a malicious intermediary cannot strip it
-    /// to make a superseded attestation look current.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub supersedes_attestation_rid: Option<ResourceId>,
 
     /// The type of entity that produced this signature (human, agent, workload).
     /// Included in the canonical JSON before signing — the signature covers this field.
@@ -1316,7 +1332,7 @@ pub enum SignerType {
 ///
 /// This type enforces at compile time that an attestation's signatures were verified
 /// before it can be stored. It can only be constructed by:
-/// - Verification functions (`verify_with_keys`, `verify_with_capability`)
+/// - Verification functions (`verify_with_keys`, `verify_chain`)
 /// - The `dangerous_from_unchecked` escape hatch (for self-signed attestations)
 ///
 /// Does NOT implement `Deserialize` to prevent bypassing verification by
@@ -1383,18 +1399,9 @@ pub struct CanonicalAttestationData<'a> {
     /// Optional human-readable note.
     pub note: &'a Option<String>,
 
-    /// Org membership role (included in signed envelope).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub role: Option<&'a str>,
-    /// Capabilities granted by this attestation (included in signed envelope).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub capabilities: Option<&'a Vec<Capability>>,
     /// DID of the delegating attestation (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delegated_by: Option<&'a CanonicalDid>,
-    /// RID of a prior attestation this one supersedes (included in signed envelope).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub supersedes_attestation_rid: Option<&'a str>,
     /// Type of signer (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signer_type: Option<&'a SignerType>,
@@ -1463,14 +1470,7 @@ impl Attestation {
             expires_at: &self.expires_at,
             revoked_at: &self.revoked_at,
             note: &self.note,
-            role: self.role.as_ref().map(|r| r.as_str()),
-            capabilities: if self.capabilities.is_empty() {
-                None
-            } else {
-                Some(&self.capabilities)
-            },
             delegated_by: self.delegated_by.as_ref(),
-            supersedes_attestation_rid: self.supersedes_attestation_rid.as_deref(),
             signer_type: self.signer_type.as_ref(),
             commit_sha: self.commit_sha.as_deref(),
         }
@@ -1482,7 +1482,7 @@ impl Attestation {
             "RID: {}\nIssuer DID: {}\nSubject DID: {}\nDevice PK: {}\nIdentity Sig: {}\nDevice Sig: {}\nRevoked At: {:?}\nExpires: {:?}\nNote: {:?}",
             self.rid,
             self.issuer,
-            self.subject, // DeviceDID implements Display
+            self.subject, // CanonicalDid implements Display
             hex::encode(self.device_public_key.as_bytes()),
             hex::encode(self.identity_signature.as_bytes()),
             hex::encode(self.device_signature.as_bytes()),
@@ -2158,11 +2158,11 @@ mod tests {
         }
     }
 
-    // Tests for Attestation org fields (fn-6.2)
+    // Tests for Attestation delegation field
 
     #[test]
-    fn attestation_old_json_without_org_fields_deserializes() {
-        // Simulates an old attestation JSON without role, capabilities, delegated_by
+    fn attestation_old_json_without_delegated_by_deserializes() {
+        // Simulates an attestation JSON without the delegated_by field.
         let old_json = r#"{
             "version": 1,
             "rid": "test-rid",
@@ -2177,37 +2177,26 @@ mod tests {
 
         let att: Attestation = serde_json::from_str(old_json).unwrap();
 
-        // New fields should have defaults
-        assert_eq!(att.role, None);
-        assert!(att.capabilities.is_empty());
         assert_eq!(att.delegated_by, None);
     }
 
     #[test]
-    fn attestation_with_org_fields_serializes_correctly() {
+    fn attestation_delegated_by_serializes_correctly() {
         let att = AttestationBuilder::default()
             .rid("test-rid")
             .issuer("did:keri:Eissuer")
             .subject("did:key:zSubject")
-            .role(Some(Role::Admin))
-            .capabilities(vec![
-                Capability::sign_commit(),
-                Capability::manage_members(),
-            ])
             .delegated_by(Some(CanonicalDid::new_unchecked("did:keri:Edelegator")))
             .build();
 
         let json = serde_json::to_string(&att).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed["role"], "admin");
-        assert_eq!(parsed["capabilities"][0], "sign_commit");
-        assert_eq!(parsed["capabilities"][1], "manage_members");
         assert_eq!(parsed["delegated_by"], "did:keri:Edelegator");
     }
 
     #[test]
-    fn attestation_without_org_fields_omits_them_in_json() {
+    fn attestation_omits_delegated_by_when_absent() {
         let att = AttestationBuilder::default()
             .rid("test-rid")
             .issuer("did:keri:Eissuer")
@@ -2217,28 +2206,21 @@ mod tests {
         let json = serde_json::to_string(&att).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        // These fields should not be present in JSON
-        assert!(parsed.get("role").is_none());
-        assert!(parsed.get("capabilities").is_none());
         assert!(parsed.get("delegated_by").is_none());
     }
 
     #[test]
-    fn attestation_with_org_fields_roundtrips() {
+    fn attestation_delegated_by_roundtrips() {
         let original = AttestationBuilder::default()
             .rid("test-rid")
             .issuer("did:keri:Eissuer")
             .subject("did:key:zSubject")
-            .role(Some(Role::Member))
-            .capabilities(vec![Capability::sign_commit(), Capability::sign_release()])
             .delegated_by(Some(CanonicalDid::new_unchecked("did:keri:Eadmin")))
             .build();
 
         let json = serde_json::to_string(&original).unwrap();
         let deserialized: Attestation = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(original.role, deserialized.role);
-        assert_eq!(original.capabilities, deserialized.capabilities);
         assert_eq!(original.delegated_by, deserialized.delegated_by);
     }
 

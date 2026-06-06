@@ -17,8 +17,7 @@ pub use hooks::{
 };
 pub use org_member::{
     MemberFilter, MemberInvalidReason, MemberStatus, MemberStatusKind, MemberView, OrgMemberEntry,
-    attestation_capability_strings, attestation_capability_vec, compute_status,
-    expected_org_issuer,
+    compute_status, expected_org_issuer,
 };
 pub use schemas::{CachedStateJson, RegistryMetadata, TipInfo};
 pub use shard::{path_parts, shard_device_did, shard_prefix};

@@ -1,6 +1,6 @@
 # AUTHS-E4954
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IncrementalError::MalformedSequence`
 
 ## Message

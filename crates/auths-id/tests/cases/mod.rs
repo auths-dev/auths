@@ -1,4 +1,7 @@
 mod anchor_lifecycle;
+mod attestation_input_golden;
+mod credential_registry;
+mod delegation;
 mod keri;
 mod lifecycle;
 mod proptest_keri;
@@ -6,3 +9,5 @@ mod recovery;
 mod registry_contract;
 mod rotation_edge_cases;
 mod serialization_pinning;
+mod shared_kel_removal;
+mod witness_convergence;

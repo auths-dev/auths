@@ -1,6 +1,6 @@
 # AUTHS-E4701
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RotationError::KeyGeneration`
 
 ## Message

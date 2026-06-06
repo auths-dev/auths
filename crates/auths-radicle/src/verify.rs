@@ -277,27 +277,13 @@ impl<S: AuthsStorage> RadicleAuthsBridge for DefaultBridge<S> {
             }
         })?;
 
-        // Step 7: Capability check
-        if let Some(required_cap) = request.required_capability
-            && decision.outcome == Outcome::Allow
-        {
-            let has_cap = attestation
-                .capabilities
-                .iter()
-                .any(|c| c.to_string() == required_cap);
-            if !has_cap && !attestation.capabilities.is_empty() {
-                return Ok(apply_mode(
-                    request.mode,
-                    VerifyResult::Rejected {
-                        reason: RejectReason::MissingCapability {
-                            capability: required_cap.to_string(),
-                        },
-                    },
-                ));
-            }
-        }
+        // Capability authority is no longer read from the attestation (caps/role →
+        // ACDC migration). auths-radicle is deprecated; this path verifies authenticity
+        // and revocation/expiry only. `request.required_capability` is retained on the
+        // request type but is intentionally not consulted here.
+        let _ = &request.required_capability;
 
-        // Step 8: Map decision to VerifyResult with mode
+        // Map decision to VerifyResult with mode
         let result = decision_to_verify_result(decision);
         Ok(apply_mode(request.mode, result))
     }
@@ -472,7 +458,7 @@ mod tests {
     use auths_keri::{Prefix, Said};
     use auths_verifier::IdentityDID;
     use auths_verifier::types::CanonicalDid;
-    use auths_verifier::types::DeviceDID as VerifierDeviceDID;
+    use auths_verifier::types::CanonicalDid as VerifierDeviceDID;
     use chrono::{DateTime, Utc};
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -593,7 +579,6 @@ mod tests {
         issuer: &Did,
         device_did: &Did,
         revoked_at: Option<DateTime<Utc>>,
-        capabilities: Vec<String>,
     ) -> Attestation {
         use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
 
@@ -614,13 +599,7 @@ mod tests {
             commit_message: None,
             author: None,
             oidc_binding: None,
-            role: None,
-            capabilities: capabilities
-                .into_iter()
-                .filter_map(|c| c.parse().ok())
-                .collect(),
             delegated_by: None,
-            supersedes_attestation_rid: None,
             signer_type: None,
             environment_claim: None,
         }
@@ -637,7 +616,7 @@ mod tests {
         storage.add_attestation(
             device_did.clone(),
             identity_did.clone(),
-            make_attestation(&identity_did, &device_did, None, vec![]),
+            make_attestation(&identity_did, &device_did, None),
         );
         storage.link_device_to_identity(device_did.clone(), identity_did.clone(), repo_id);
         storage.set_identity_tip(identity_did.clone(), [0xAA; 20]);

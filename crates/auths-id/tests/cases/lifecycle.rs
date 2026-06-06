@@ -10,7 +10,7 @@ use auths_id::storage::layout::StorageLayoutConfig;
 use auths_id::testing::fakes::FakeIdentityStorage;
 use auths_verifier::verify::{verify_at_time, verify_with_keys};
 use auths_verifier::{
-    DeviceDID, DevicePublicKey, VerificationStatus, verify_chain, verify_device_authorization,
+    CanonicalDid, DevicePublicKey, VerificationStatus, verify_chain, verify_device_authorization,
 };
 
 /// Wrap a raw Ed25519 public key (32 bytes) into a `DevicePublicKey` for tests.
@@ -61,7 +61,7 @@ fn generate_device_keypair(
     device_alias: &str,
     passphrase: &str,
     keychain: &IsolatedKeychainHandle,
-) -> (DeviceDID, [u8; 32]) {
+) -> (CanonicalDid, [u8; 32]) {
     let rng = SystemRandom::new();
     let device_pkcs8 =
         Ed25519KeyPair::generate_pkcs8(&rng).expect("Failed to generate device keypair");
@@ -73,7 +73,8 @@ fn generate_device_keypair(
         .try_into()
         .expect("Public key should be 32 bytes");
 
-    let device_did = DeviceDID::from_public_key(&device_pk, auths_crypto::CurveType::Ed25519);
+    let device_did =
+        CanonicalDid::from_public_key_did_key(&device_pk, auths_crypto::CurveType::Ed25519);
 
     let encrypted = auths_core::crypto::signer::encrypt_keypair(device_pkcs8.as_ref(), passphrase)
         .expect("Failed to encrypt device key");
@@ -96,7 +97,7 @@ fn create_test_attestation(
     rid: &str,
     identity_did: &str,
     identity_alias: &str,
-    device_did: &DeviceDID,
+    subject: &CanonicalDid,
     device_pk: &[u8],
     device_alias: Option<&str>,
     passphrase: &str,
@@ -116,24 +117,23 @@ fn create_test_attestation(
 
     create_signed_attestation(
         now,
-        rid,
-        &identity_did,
-        device_did,
-        device_pk,
-        // Test fixture: ring Ed25519KeyPair pubkey (32 bytes by construction).
-        auths_crypto::CurveType::Ed25519,
-        None,
-        &meta,
+        auths_id::attestation::create::AttestationInput {
+            rid,
+            identity_did: &identity_did,
+            subject,
+            device_public_key: device_pk,
+            // Test fixture: ring Ed25519KeyPair pubkey (32 bytes by construction).
+            device_curve: auths_crypto::CurveType::Ed25519,
+            payload: None,
+            meta: &meta,
+            identity_alias: Some(&identity_alias),
+            device_alias: device_alias.as_ref(),
+            delegated_by: None,
+            commit_sha: None,
+            signer_type: None,
+        },
         &signer,
         &provider,
-        Some(&identity_alias),
-        device_alias.as_ref(),
-        vec![],
-        None,
-        None,
-        None, // commit_sha
-        None, // signer_type
-        None, // supersedes_rid
     )
     .expect("Failed to create signed attestation")
 }

@@ -39,6 +39,9 @@ cnsa = ["native", "dep:p384", "dep:aes-gcm"]
 [dependencies]
 async-trait = "0.1"
 base64.workspace = true
+# CESR-correct verkey qb64 encoding (byte-identical to keripy). WASM-safe; the
+# same version auths-keri pins. Used by `key_ops::cesr_encoded_pubkey`.
+cesride = "0.6"
 serde = { version = "1.0", features = ["derive"] }
 bs58 = "0.5.1"
 hex = "0.4"
@@ -51,7 +54,7 @@ zeroize.workspace = true
 # P-256 (secp256r1) for ECDSA key generation and signing.
 # Pinned to 0.13: RustCrypto ecosystem, pure Rust (WASM-safe), matches cesride reference.
 # ring cannot export SEC1 compressed public keys (33 bytes) which CESR requires.
-p256 = { version = "0.13", features = ["ecdsa"], optional = true }
+p256 = { version = "=0.13.2", features = ["ecdsa"], optional = true }
 # P-384 (secp384r1) for CNSA-mode ECDSA keygen and signing. Same shape as
 # p256. Pulled only with `--features cnsa`.
 p384 = { version = "0.13", features = ["ecdsa", "pkcs8"], optional = true }

@@ -1,6 +1,6 @@
 # AUTHS-E4953
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IncrementalError::SequenceError`
 
 ## Message

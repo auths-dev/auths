@@ -87,10 +87,6 @@ impl TestEnv {
             .current_dir(&self.repo_path);
     }
 
-    pub fn allowed_signers_path(&self) -> PathBuf {
-        self.home.path().join(".ssh").join("allowed_signers")
-    }
-
     pub fn init_identity(&self) {
         let output = self
             .cmd("auths")

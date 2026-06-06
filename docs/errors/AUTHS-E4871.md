@@ -1,6 +1,6 @@
 # AUTHS-E4871
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::Io`
 
 ## Message

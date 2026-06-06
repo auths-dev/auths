@@ -11,7 +11,9 @@ pub use auths_keri::{
     Threshold, VersionString,
 };
 
-use auths_core::witness::Receipt;
+use auths_core::witness::StoredReceipt;
+#[cfg(test)]
+use auths_core::witness::{Receipt, ReceiptTag, SignedReceipt};
 use std::collections::HashSet;
 
 use super::types::Said;
@@ -19,26 +21,28 @@ use super::types::Said;
 /// Receipts attached to a KEL event.
 ///
 /// Receipts are witness acknowledgments that prove an event was observed.
-/// They are stored separately from the event itself, linked by SAID.
+/// They are stored separately from the event itself, linked by SAID. Each
+/// receipt carries the **witness AID** that produced it ([`StoredReceipt`]);
+/// dedupe and quorum key on that AID, not on the receipt body's controller `i`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct EventReceipts {
     /// Event SAID these receipts are for
     pub event_said: Said,
     /// Collected receipts from witnesses
-    pub receipts: Vec<Receipt>,
+    pub receipts: Vec<StoredReceipt>,
 }
 
 impl EventReceipts {
-    /// Create a new EventReceipts collection, deduplicating by witness identifier.
+    /// Create a new EventReceipts collection, deduplicating by witness AID.
     ///
     /// Args:
     /// * `event_said`: SAID of the event these receipts are for.
-    /// * `receipts`: Receipts from witnesses.
-    pub fn new(event_said: impl Into<String>, receipts: Vec<Receipt>) -> Self {
+    /// * `receipts`: Provenance-carrying receipts from witnesses.
+    pub fn new(event_said: impl Into<String>, receipts: Vec<StoredReceipt>) -> Self {
         let mut seen = HashSet::new();
-        let deduped: Vec<Receipt> = receipts
+        let deduped: Vec<StoredReceipt> = receipts
             .into_iter()
-            .filter(|r| seen.insert(r.i.clone()))
+            .filter(|r| seen.insert(r.witness.clone()))
             .collect();
         Self {
             event_said: Said::new_unchecked(event_said.into()),
@@ -67,7 +71,7 @@ impl EventReceipts {
 
     /// Number of unique witnesses that provided receipts.
     pub fn unique_witness_count(&self) -> usize {
-        let seen: HashSet<&str> = self.receipts.iter().map(|r| r.i.as_str()).collect();
+        let seen: HashSet<&str> = self.receipts.iter().map(|r| r.witness.as_str()).collect();
         seen.len()
     }
 
@@ -83,13 +87,19 @@ mod tests {
     use super::*;
     use crate::keri::{Prefix, Seal};
 
-    fn make_receipt(witness_id: &str) -> Receipt {
-        Receipt {
-            v: VersionString::placeholder(),
-            t: "rct".into(),
-            d: Said::new_unchecked("EReceipt".into()),
-            i: Prefix::new_unchecked(witness_id.into()),
-            s: KeriSequence::new(0),
+    fn make_receipt(witness_id: &str) -> StoredReceipt {
+        StoredReceipt {
+            signed: SignedReceipt {
+                receipt: Receipt {
+                    v: VersionString::placeholder(),
+                    t: ReceiptTag,
+                    d: Said::new_unchecked("EReceipt".into()),
+                    i: Prefix::new_unchecked("EController".into()),
+                    s: KeriSequence::new(0),
+                },
+                signature: vec![],
+            },
+            witness: Prefix::new_unchecked(witness_id.into()),
         }
     }
 
@@ -150,7 +160,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![Seal::digest("EAttest")],
-            dt: None,
         };
         let json = serde_json::to_string(&icp).unwrap();
         assert!(json.contains("\"s\":\"0\""));

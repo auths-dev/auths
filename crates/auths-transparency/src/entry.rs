@@ -1,5 +1,5 @@
 use auths_verifier::{
-    CanonicalDid, Capability, DeviceDID, Ed25519PublicKey, Ed25519Signature, IdentityDID, Role,
+    CanonicalDid, Capability, Ed25519PublicKey, Ed25519Signature, IdentityDID, Role,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -82,11 +82,11 @@ pub enum EntryBody {
         member_did: IdentityDID,
     },
     DeviceBind {
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
         public_key: Ed25519PublicKey,
     },
     DeviceRevoke {
-        device_did: DeviceDID,
+        device_did: CanonicalDid,
     },
     Attest(Value),
     NamespaceClaim {
@@ -203,7 +203,7 @@ mod tests {
         let content = EntryContent {
             entry_type: EntryType::DeviceBind,
             body: EntryBody::DeviceBind {
-                device_did: DeviceDID::new_unchecked(
+                device_did: CanonicalDid::new_unchecked(
                     "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
                 ),
                 public_key: Ed25519PublicKey::from_bytes([0u8; 32]),

@@ -37,8 +37,13 @@ pub enum AgreementStatus {
 /// let prefix = Prefix::new_unchecked("ETest".into());
 /// let said = Said::new_unchecked("ESAID".into());
 /// let bt = Threshold::Simple(2);
+/// let backers = [
+///     Prefix::new_unchecked("witness1".into()),
+///     Prefix::new_unchecked("witness2".into()),
+///     Prefix::new_unchecked("witness3".into()),
+/// ];
 ///
-/// agreement.submit_event(&prefix, 0, &said, &bt, 3);
+/// agreement.submit_event(&prefix, 0, &said, &bt, &backers);
 /// agreement.add_receipt(&prefix, 0, &said, "witness1");
 /// agreement.add_receipt(&prefix, 0, &said, "witness2");
 /// assert!(agreement.is_accepted(&prefix, 0, &said));
@@ -59,10 +64,30 @@ struct AgreementState {
 }
 
 struct PendingEvent {
-    witnesses: HashSet<String>,
-    threshold: u64,
-    #[allow(dead_code)]
-    witness_count: usize,
+    /// Designated backer AIDs in `b[]` order; the index is the backer position.
+    witness_list: Vec<String>,
+    /// Backer AIDs that have receipted (deduplicated).
+    received: HashSet<String>,
+    /// Typed backer threshold, evaluated over the receipted backers' indices.
+    threshold: Threshold,
+}
+
+impl PendingEvent {
+    /// Whether the receipted backers satisfy the typed threshold over `b[]`.
+    ///
+    /// Each receipted backer AID is mapped to its position in `b[]`; the typed
+    /// [`Threshold`] then decides over those indices. A receipt whose AID is not
+    /// a designated backer contributes no index and cannot count toward quorum.
+    fn is_satisfied(&self) -> bool {
+        let indices: Vec<u32> = self
+            .received
+            .iter()
+            .filter_map(|aid| self.witness_list.iter().position(|w| w == aid))
+            .map(|pos| pos as u32)
+            .collect();
+        self.threshold
+            .is_satisfied(&indices, self.witness_list.len())
+    }
 }
 
 impl WitnessAgreement {
@@ -84,18 +109,24 @@ impl WitnessAgreement {
     /// * `prefix` - Identity prefix.
     /// * `sn` - Sequence number.
     /// * `said` - Event SAID.
-    /// * `bt` - Backer threshold (simple only for now).
-    /// * `witness_count` - Total number of designated witnesses.
+    /// * `bt` - Typed backer threshold (simple or weighted).
+    /// * `witnesses` - Designated backer AIDs in `b[]` order. A receipt counts
+    ///   toward quorum only when its witness AID appears here; its position is
+    ///   the index the typed threshold is evaluated over.
     pub fn submit_event(
         &self,
         prefix: &Prefix,
         sn: u64,
         said: &Said,
         bt: &Threshold,
-        witness_count: usize,
+        witnesses: &[Prefix],
     ) {
         let key = (prefix.as_str().to_string(), sn, said.as_str().to_string());
-        let threshold = bt.simple_value().unwrap_or(0);
+        let pending = PendingEvent {
+            witness_list: witnesses.iter().map(|w| w.as_str().to_string()).collect(),
+            received: HashSet::new(),
+            threshold: bt.clone(),
+        };
 
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -104,8 +135,9 @@ impl WitnessAgreement {
             return;
         }
 
-        // Zero threshold = immediately accepted
-        if threshold == 0 {
+        // A threshold already satisfied by zero receipts (e.g. a 0-of-n backer
+        // threshold) is accepted immediately.
+        if pending.is_satisfied() {
             state.accepted.insert(key);
             return;
         }
@@ -121,14 +153,7 @@ impl WitnessAgreement {
 
         if !state.pending.contains_key(&key) {
             state.eviction_order.push_back(key.clone());
-            state.pending.insert(
-                key,
-                PendingEvent {
-                    witnesses: HashSet::new(),
-                    threshold,
-                    witness_count,
-                },
-            );
+            state.pending.insert(key, pending);
         }
     }
 
@@ -151,15 +176,15 @@ impl WitnessAgreement {
         }
 
         if let Some(pending) = state.pending.get_mut(&key) {
-            pending.witnesses.insert(witness_id.to_string());
-            if pending.witnesses.len() as u64 >= pending.threshold {
+            pending.received.insert(witness_id.to_string());
+            let satisfied = pending.is_satisfied();
+            let collected = pending.received.len();
+            if satisfied {
                 state.pending.remove(&key);
                 state.accepted.insert(key);
                 return AgreementStatus::Accepted;
             }
-            AgreementStatus::Pending {
-                collected: pending.witnesses.len(),
-            }
+            AgreementStatus::Pending { collected }
         } else {
             AgreementStatus::Pending { collected: 0 }
         }
@@ -180,7 +205,7 @@ impl WitnessAgreement {
             AgreementStatus::Accepted
         } else if let Some(pending) = state.pending.get(&key) {
             AgreementStatus::Pending {
-                collected: pending.witnesses.len(),
+                collected: pending.received.len(),
             }
         } else {
             AgreementStatus::Pending { collected: 0 }
@@ -193,6 +218,13 @@ impl WitnessAgreement {
 mod tests {
     use super::*;
 
+    /// Designated backers `witness1..witnessN`, in `b[]` order.
+    fn backers(n: usize) -> Vec<Prefix> {
+        (1..=n)
+            .map(|i| Prefix::new_unchecked(format!("witness{i}")))
+            .collect()
+    }
+
     #[test]
     fn event_accepted_after_threshold_receipts() {
         let agreement = WitnessAgreement::new(100);
@@ -200,7 +232,7 @@ mod tests {
         let said = Said::new_unchecked("ESAID".into());
         let bt = Threshold::Simple(2);
 
-        agreement.submit_event(&prefix, 0, &said, &bt, 3);
+        agreement.submit_event(&prefix, 0, &said, &bt, &backers(3));
 
         let s1 = agreement.add_receipt(&prefix, 0, &said, "witness1");
         assert_eq!(s1, AgreementStatus::Pending { collected: 1 });
@@ -218,7 +250,7 @@ mod tests {
         let said = Said::new_unchecked("ESAID".into());
         let bt = Threshold::Simple(3);
 
-        agreement.submit_event(&prefix, 0, &said, &bt, 5);
+        agreement.submit_event(&prefix, 0, &said, &bt, &backers(5));
         agreement.add_receipt(&prefix, 0, &said, "witness1");
         agreement.add_receipt(&prefix, 0, &said, "witness2");
 
@@ -232,7 +264,7 @@ mod tests {
         let said = Said::new_unchecked("ESAID".into());
         let bt = Threshold::Simple(0);
 
-        agreement.submit_event(&prefix, 0, &said, &bt, 0);
+        agreement.submit_event(&prefix, 0, &said, &bt, &backers(0));
         assert!(agreement.is_accepted(&prefix, 0, &said));
     }
 
@@ -243,7 +275,7 @@ mod tests {
         let said = Said::new_unchecked("ESAID".into());
         let bt = Threshold::Simple(2);
 
-        agreement.submit_event(&prefix, 0, &said, &bt, 3);
+        agreement.submit_event(&prefix, 0, &said, &bt, &backers(3));
         agreement.add_receipt(&prefix, 0, &said, "witness1");
         agreement.add_receipt(&prefix, 0, &said, "witness1"); // duplicate
 
@@ -259,12 +291,44 @@ mod tests {
         // Submit 3 events with capacity 2
         for i in 0..3 {
             let said = Said::new_unchecked(format!("ESAID{i}"));
-            agreement.submit_event(&prefix, i as u64, &said, &bt, 3);
+            agreement.submit_event(&prefix, i as u64, &said, &bt, &backers(3));
         }
 
         // First event should have been evicted
         let said0 = Said::new_unchecked("ESAID0".into());
         let status = agreement.status(&prefix, 0, &said0);
         assert_eq!(status, AgreementStatus::Pending { collected: 0 });
+    }
+
+    #[test]
+    fn weighted_bt_requires_quorum() {
+        // F-31: a weighted bt must be honored, not collapsed to a counter.
+        // `[[1/2, 1/2, 1/2]]` over 3 backers needs any two (1/2 + 1/2 = 1).
+        // Under the old `simple_value().unwrap_or(0)` collapse the threshold
+        // became 0 and the event was accepted immediately with zero receipts.
+        use crate::types::Fraction;
+        let half = || Fraction {
+            numerator: 1,
+            denominator: 2,
+        };
+        let bt = Threshold::Weighted(vec![vec![half(), half(), half()]]);
+
+        let agreement = WitnessAgreement::new(100);
+        let prefix = Prefix::new_unchecked("ETest".into());
+        let said = Said::new_unchecked("ESAID".into());
+
+        agreement.submit_event(&prefix, 0, &said, &bt, &backers(3));
+        assert!(
+            !agreement.is_accepted(&prefix, 0, &said),
+            "zero receipts must not satisfy a weighted bt"
+        );
+
+        // One receipt: 1/2 < 1 -> still pending.
+        agreement.add_receipt(&prefix, 0, &said, "witness1");
+        assert!(!agreement.is_accepted(&prefix, 0, &said));
+
+        // Second receipt: 1/2 + 1/2 = 1 -> quorum reached.
+        agreement.add_receipt(&prefix, 0, &said, "witness2");
+        assert!(agreement.is_accepted(&prefix, 0, &said));
     }
 }

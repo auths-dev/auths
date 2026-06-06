@@ -1,6 +1,6 @@
 # AUTHS-E1302
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `SshKeyError::UnsupportedKeyType`
 
 ## Message

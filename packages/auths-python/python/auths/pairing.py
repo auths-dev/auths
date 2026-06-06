@@ -7,7 +7,6 @@ from typing import Optional
 
 from auths._native import (
     PyPairingHandle,
-    complete_pairing_ffi as _complete_pairing,
     create_pairing_session_ffi as _create_session,
     join_pairing_session_ffi as _join_session,
 )
@@ -180,38 +179,6 @@ class PairingService:
                 device_did=device_did,
                 device_name=name,
                 attestation_rid=None,
-            )
-        except (ValueError, RuntimeError) as exc:
-            raise _map_error(exc, default_cls=PairingError) from exc
-
-    def complete(
-        self,
-        session: PairingSession,
-        response: PairingResponse,
-        repo_path: str | None = None,
-        passphrase: str | None = None,
-    ) -> PairingResult:
-        """Complete pairing by creating the device attestation.
-
-        Args:
-            session: The active PairingSession.
-            response: The PairingResponse from wait_for_response().
-
-        Usage:
-            result = controller.pairing.complete(session, response)
-        """
-        rp = repo_path or self._client.repo_path
-        pp = passphrase or self._client._passphrase
-        caps_json = json.dumps(response.capabilities) if response.capabilities else None
-        try:
-            device_did, name, rid = _complete_pairing(
-                response.device_did, response.device_public_key_hex,
-                rp, caps_json, pp,
-            )
-            return PairingResult(
-                device_did=device_did,
-                device_name=name,
-                attestation_rid=rid,
             )
         except (ValueError, RuntimeError) as exc:
             raise _map_error(exc, default_cls=PairingError) from exc

@@ -1,6 +1,6 @@
 # AUTHS-E4403
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `IdentityError::Pkcs8DecodeError`
 
 ## Message

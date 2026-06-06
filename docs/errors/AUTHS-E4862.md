@@ -1,6 +1,6 @@
 # AUTHS-E4862
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `RegistryError::InvalidPrefix`
 
 ## Message

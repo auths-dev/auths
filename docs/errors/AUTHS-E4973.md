@@ -1,6 +1,6 @@
 # AUTHS-E4973
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `WitnessIntegrationError::Runtime`
 
 ## Message

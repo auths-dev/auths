@@ -21,7 +21,9 @@ use std::collections::HashMap;
 use auths_keri::{Prefix, Said};
 
 use super::error::{DuplicityEvidence, WitnessReport};
-use super::receipt::Receipt;
+#[cfg(test)]
+use super::receipt::ReceiptTag;
+use super::receipt::{Receipt, StoredReceipt};
 
 /// Duplicity detector implementing first-seen-always-seen policy.
 ///
@@ -201,6 +203,51 @@ impl DuplicityDetector {
     }
 }
 
+/// Detect conflicting witness receipts: two stored receipts attesting **different**
+/// event SAIDs for the same controller event.
+///
+/// Unlike [`DuplicityDetector::verify_receipts`] (which keys on the receipt body's
+/// controller `i`), this keys provenance on the real **witness AID**
+/// ([`StoredReceipt::witness`]), so the resulting [`DuplicityEvidence::witness_reports`]
+/// names *which witnesses* disagree. A conflict is irreconcilable — the controller
+/// equivocated and at least one witness receipted a fork.
+///
+/// Args:
+/// * `receipts`: The stored receipts collected for one controller event.
+///
+/// Returns `Some(evidence)` with populated `witness_reports` on a SAID conflict,
+/// or `None` when every receipt attests the same SAID.
+///
+/// Usage:
+/// ```ignore
+/// if let Some(evidence) = detect_receipt_conflict(&stored) {
+///     refuse_trust(evidence);
+/// }
+/// ```
+pub fn detect_receipt_conflict(receipts: &[StoredReceipt]) -> Option<DuplicityEvidence> {
+    let first = receipts.first()?;
+    let expected_said = &first.signed.receipt.d;
+
+    let conflict = receipts
+        .iter()
+        .find(|r| r.signed.receipt.d != *expected_said)?;
+
+    Some(DuplicityEvidence {
+        prefix: first.signed.receipt.i.clone(),
+        sequence: first.signed.receipt.s.value(),
+        event_a_said: expected_said.clone(),
+        event_b_said: conflict.signed.receipt.d.clone(),
+        witness_reports: receipts
+            .iter()
+            .map(|r| WitnessReport {
+                witness_id: r.witness.as_str().to_string(),
+                observed_said: r.signed.receipt.d.clone(),
+                observed_at: None,
+            })
+            .collect(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +258,53 @@ mod tests {
 
     fn said(s: &str) -> Said {
         Said::new_unchecked(s.into())
+    }
+
+    fn stored_receipt(witness: &str, event_said: &str) -> StoredReceipt {
+        use crate::witness::SignedReceipt;
+        use auths_keri::{KeriSequence, VersionString};
+        StoredReceipt {
+            signed: SignedReceipt {
+                receipt: Receipt {
+                    v: VersionString::placeholder(),
+                    t: ReceiptTag,
+                    d: said(event_said),
+                    i: prefix("EController"),
+                    s: KeriSequence::new(0),
+                },
+                signature: vec![],
+            },
+            witness: prefix(witness),
+        }
+    }
+
+    #[test]
+    fn conflicting_witness_receipts_irreconcilable() {
+        // Two witnesses receipt different SAIDs for the same controller event.
+        let receipts = vec![
+            stored_receipt("BWit1", "ESAID_A"),
+            stored_receipt("BWit2", "ESAID_B"),
+        ];
+        let evidence = detect_receipt_conflict(&receipts).expect("conflict must be detected");
+        assert_eq!(evidence.event_a_said, said("ESAID_A"));
+        assert_eq!(evidence.event_b_said, said("ESAID_B"));
+        // witness_reports names the real witness AIDs, not the controller `i`.
+        assert_eq!(evidence.witness_reports.len(), 2);
+        let ids: Vec<&str> = evidence
+            .witness_reports
+            .iter()
+            .map(|w| w.witness_id.as_str())
+            .collect();
+        assert!(ids.contains(&"BWit1") && ids.contains(&"BWit2"));
+    }
+
+    #[test]
+    fn agreeing_witness_receipts_no_conflict() {
+        let receipts = vec![
+            stored_receipt("BWit1", "ESAID_A"),
+            stored_receipt("BWit2", "ESAID_A"),
+        ];
+        assert!(detect_receipt_conflict(&receipts).is_none());
     }
 
     #[test]
@@ -295,14 +389,14 @@ mod tests {
         let receipts = vec![
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("EEVENT_SAID".into()),
                 i: Prefix::new_unchecked("W1".into()),
                 s: KeriSequence::new(5),
             },
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("EEVENT_SAID".into()),
                 i: Prefix::new_unchecked("W2".into()),
                 s: KeriSequence::new(5),
@@ -320,14 +414,14 @@ mod tests {
         let receipts = vec![
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("ESAID_A".into()),
                 i: Prefix::new_unchecked("W1".into()),
                 s: KeriSequence::new(5),
             },
             Receipt {
                 v: VersionString::placeholder(),
-                t: "rct".into(),
+                t: ReceiptTag,
                 d: Said::new_unchecked("ESAID_B".into()),
                 i: Prefix::new_unchecked("W2".into()),
                 s: KeriSequence::new(5),

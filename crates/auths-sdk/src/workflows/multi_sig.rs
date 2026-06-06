@@ -166,6 +166,7 @@ pub fn sign_partial(
 
     Ok(IndexedSignature {
         index: signer_index,
+        prior_index: None,
         sig: sig.as_ref().to_vec(),
     })
 }
@@ -235,8 +236,7 @@ mod tests {
     use auths_keri::{
         CesrKey, Fraction, IcpEvent, KeriSequence, Prefix, Said, VersionString, finalize_icp_event,
     };
-    use base64::Engine;
-    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
     use ring::rand::SystemRandom;
     use ring::signature::{Ed25519KeyPair, KeyPair};
     use tempfile::tempdir;
@@ -248,7 +248,10 @@ mod tests {
     }
 
     fn cesr_pub(kp: &Ed25519KeyPair) -> String {
-        format!("D{}", URL_SAFE_NO_PAD.encode(kp.public_key().as_ref()))
+        auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap()
     }
 
     fn half() -> Fraction {
@@ -285,7 +288,6 @@ mod tests {
             b: vec![],
             c: vec![],
             a: vec![],
-            dt: None,
         };
         (finalize_icp_event(icp).unwrap(), kps)
     }
@@ -312,6 +314,7 @@ mod tests {
         let canonical = serialize_for_signing(&event).unwrap();
         let partial0 = IndexedSignature {
             index: 0,
+            prior_index: None,
             sig: kps[0].sign(&canonical).as_ref().to_vec(),
         };
 
@@ -346,10 +349,12 @@ mod tests {
         let partials = vec![
             IndexedSignature {
                 index: 0,
+                prior_index: None,
                 sig: kps[0].sign(&canonical).as_ref().to_vec(),
             },
             IndexedSignature {
                 index: 2,
+                prior_index: None,
                 sig: kps[2].sign(&canonical).as_ref().to_vec(),
             },
         ];
@@ -363,6 +368,7 @@ mod tests {
     fn partial_roundtrip_via_disk() {
         let sig = IndexedSignature {
             index: 1,
+            prior_index: None,
             sig: vec![7u8; 64],
         };
         let dir = tempdir().unwrap();

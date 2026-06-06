@@ -9,7 +9,7 @@ use crate::storage::attestation::AttestationSource;
 use crate::storage::layout::StorageLayoutConfig;
 use auths_index::{AttestationIndex, IndexedAttestation, rebuild_attestations_from_git};
 use auths_verifier::core::{Attestation, CommitOid};
-use auths_verifier::types::{DeviceDID, IdentityDID};
+use auths_verifier::types::{CanonicalDid, IdentityDID};
 use chrono::{DateTime, Utc};
 use std::path::{Path, PathBuf};
 
@@ -107,11 +107,11 @@ impl IndexedAttestationStorage {
     /// then fetching full data from Git.
     pub fn load_attestations_indexed(
         &self,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
     ) -> Result<Vec<Attestation>, StorageError> {
         let indexed = self
             .index
-            .query_by_device(&device_did.to_string())
+            .query_by_device(device_did.as_str())
             .map_err(|e| StorageError::Index(e.to_string()))?;
 
         if indexed.is_empty() {
@@ -131,7 +131,7 @@ impl IndexedAttestationStorage {
 impl AttestationSource for IndexedAttestationStorage {
     fn load_attestations_for_device(
         &self,
-        device_did: &DeviceDID,
+        device_did: &CanonicalDid,
     ) -> Result<Vec<Attestation>, StorageError> {
         self.load_attestations_indexed(device_did)
     }
@@ -140,7 +140,7 @@ impl AttestationSource for IndexedAttestationStorage {
         self.inner.load_all_attestations()
     }
 
-    fn discover_device_dids(&self) -> Result<Vec<DeviceDID>, StorageError> {
+    fn discover_device_dids(&self) -> Result<Vec<CanonicalDid>, StorageError> {
         let active = self
             .index
             .query_active()
@@ -152,9 +152,9 @@ impl AttestationSource for IndexedAttestationStorage {
         }
 
         // Collect unique device DIDs from the index (filter to did:key: only)
-        let mut dids: Vec<DeviceDID> = active
+        let mut dids: Vec<CanonicalDid> = active
             .into_iter()
-            .filter_map(|a| DeviceDID::parse(a.device_did.as_str()).ok())
+            .filter_map(|a| CanonicalDid::parse(a.device_did.as_str()).ok())
             .collect();
         dids.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         dids.dedup();

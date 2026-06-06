@@ -1,6 +1,6 @@
 # AUTHS-E2005
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::TimestampInFuture`
 
 ## Message

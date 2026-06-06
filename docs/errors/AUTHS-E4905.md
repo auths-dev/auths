@@ -1,6 +1,6 @@
 # AUTHS-E4905
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `InceptionError::Serialization`
 
 ## Message

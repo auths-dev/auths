@@ -1,12 +1,17 @@
-//! Join mode — join an existing pairing session via short code.
+//! Join mode — join an existing pairing session via short code, as a KERI-delegated device.
+
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
+use auths_crypto::CurveType;
 use auths_infra_http::HttpPairingRelayClient;
 use auths_pairing_protocol::sas;
 use auths_sdk::core_config::EnvironmentConfig;
-use auths_sdk::pairing::Base64UrlEncoded;
-use auths_sdk::pairing::{PairingResponse, PairingToken};
-use auths_sdk::pairing::{load_device_signing_material, validate_short_code};
+use auths_sdk::keychain::KeyAlias;
+use auths_sdk::pairing::{
+    PairingToken, build_delegated_join_response, finalize_delegated_join, validate_short_code,
+};
 use auths_sdk::ports::pairing::PairingRelayClient;
 use console::style;
 
@@ -15,7 +20,12 @@ use crate::factories::storage::build_auths_context;
 
 use super::common::*;
 
-/// Join an existing pairing session using a short code.
+/// Join an existing pairing session using a short code, as a KERI-delegated device.
+///
+/// The joining device generates its own key, ships a self-signed `dip` (delegated by
+/// the session's controller), and — after the SAS ceremony — waits for the controller
+/// to anchor it, then verifies the anchor and persists its own KEL + key. No
+/// pre-existing identity is required; the device's registry is provisioned on first use.
 pub(crate) async fn handle_join(
     now: chrono::DateTime<chrono::Utc>,
     code: &str,
@@ -23,7 +33,6 @@ pub(crate) async fn handle_join(
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
     let normalized = validate_short_code(code).map_err(anyhow::Error::from)?;
-
     let formatted = format!("{}-{}", &normalized[..3], &normalized[3..]);
 
     println!();
@@ -45,31 +54,12 @@ pub(crate) async fn handle_join(
     let auths_dir = auths_sdk::paths::auths_home_with_config(env_config)
         .context("Could not determine Auths home directory. Check $AUTHS_HOME or $HOME.")?;
 
-    if !auths_dir.exists() {
-        anyhow::bail!("No local identity found. Run 'auths init' first.");
-    }
-
-    let passphrase_provider: std::sync::Arc<
-        dyn auths_sdk::signing::PassphraseProvider + Send + Sync,
-    > = std::sync::Arc::new(CliPassphraseProvider::new());
-
-    let key_spinner = create_wait_spinner(&format!("{GEAR}Loading local device key..."));
-
+    let passphrase_provider: Arc<dyn auths_sdk::signing::PassphraseProvider + Send + Sync> =
+        Arc::new(CliPassphraseProvider::new());
     let ctx = build_auths_context(&auths_dir, env_config, Some(passphrase_provider))
         .context("Failed to build auths context")?;
 
-    let material = load_device_signing_material(&ctx).map_err(anyhow::Error::from)?;
-
-    key_spinner.finish_with_message(format!("{CHECK}Device key loaded"));
-
-    println!(
-        "  {} {}",
-        style("Device DID:").dim(),
-        style(&material.device_did).dim()
-    );
-    println!();
-
-    // Look up the session by short code
+    // Look up the session by short code → token (the controller is the delegating root).
     let session_data = relay
         .lookup_by_code(registry, &normalized)
         .await
@@ -97,27 +87,36 @@ pub(crate) async fn handle_join(
         );
     }
 
-    let create_spinner = create_wait_spinner(&format!("{GEAR}Creating pairing response..."));
+    println!(
+        "  {} {}",
+        style("Controller:").dim(),
+        style(&token.controller_did).cyan()
+    );
+    println!();
 
-    // Create the response + ECDH
-    let (pairing_response, shared_secret) = PairingResponse::create(
+    // Generate our own key + a self-signed delegated inception, and sign the ECDH
+    // response with that same key (so SAS + verify_response prove custody of the dip key).
+    let create_spinner =
+        create_wait_spinner(&format!("{GEAR}Creating delegated pairing response..."));
+    let device_alias = KeyAlias::new_unchecked("device");
+    let (submit_req, pending, shared_secret) = build_delegated_join_response(
         now,
         &token,
-        &material.seed,
-        &material.public_key,
-        material.device_did.to_string(),
+        CurveType::Ed25519,
+        device_alias,
         Some(hostname()),
     )
-    .map_err(|e| anyhow::anyhow!("Failed to create pairing response: {}", e))?;
+    .map_err(anyhow::Error::from)
+    .context("Failed to build delegated pairing response")?;
 
-    // Derive SAS from shared secret with transcript binding
+    // Derive SAS over the transcript-bound shared secret (MITM defence — unchanged).
     let initiator_ecdh_pub = token
         .ephemeral_pubkey_bytes()
         .map_err(|e| anyhow::anyhow!("Invalid initiator pubkey: {}", e))?;
-    let responder_ecdh_pub = pairing_response
-        .device_ephemeral_pubkey_bytes()
+    let responder_ecdh_pub = submit_req
+        .device_ephemeral_pubkey
+        .decode()
         .map_err(|e| anyhow::anyhow!("Invalid responder pubkey: {}", e))?;
-
     let sas_bytes = sas::derive_sas(
         &shared_secret,
         &initiator_ecdh_pub,
@@ -125,103 +124,46 @@ pub(crate) async fn handle_join(
         &token.session_id,
         &normalized,
     );
-    let transport_key = sas::derive_transport_key(
-        &shared_secret,
-        &initiator_ecdh_pub,
-        &responder_ecdh_pub,
-        &token.session_id,
-        &normalized,
-    );
-
-    // Submit the response to the relay
-    let submit_req = auths_sdk::pairing::SubmitResponseRequest {
-        device_ephemeral_pubkey: Base64UrlEncoded::from_raw(
-            pairing_response.device_ephemeral_pubkey.clone(),
-        ),
-        device_signing_pubkey: Base64UrlEncoded::from_raw(
-            pairing_response.device_signing_pubkey.clone(),
-        ),
-        curve: pairing_response.curve,
-        device_did: pairing_response.device_did.clone(),
-        signature: Base64UrlEncoded::from_raw(pairing_response.signature.clone()),
-        device_name: pairing_response.device_name.clone(),
-        subkey_chain: None,
-        new_device_signing_pubkey: None,
-    };
 
     relay
         .submit_response(registry, &session_data.session_id, &submit_req)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to submit response: {}", e))?;
-
     create_spinner.finish_with_message(format!("{CHECK}Response submitted"));
 
-    // SAS verification ceremony
+    // SAS verification ceremony.
     let confirmed = prompt_sas_confirmation(&sas_bytes)?;
     if !confirmed {
         display_sas_mismatch_warning();
-        drop(transport_key);
         anyhow::bail!(
             "Security codes didn't match — the connection may not be secure. Restart pairing with `auths pair`."
         );
     }
 
-    // Wait for encrypted attestation from initiator
+    // Wait for the controller to anchor our delegation, then verify it + persist locally.
     let wait_spinner = create_wait_spinner(&format!(
-        "{GEAR}Waiting for initiator to confirm and send attestation..."
+        "{GEAR}Waiting for the controller to anchor this device..."
     ));
-
     let confirmation = relay
-        .get_confirmation(registry, &session_data.session_id)
+        .wait_for_confirmation(registry, &session_data.session_id, Duration::from_secs(120))
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to get confirmation: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to get confirmation: {}", e))?
+        .ok_or_else(|| {
+            anyhow::anyhow!("Timed out waiting for the controller to anchor this device")
+        })?;
 
     if confirmation.aborted {
         wait_spinner.finish_and_clear();
-        println!();
-        println!(
-            "  {}{}",
-            WARN,
-            style("The other device rejected the pairing.").red().bold()
-        );
-        println!("  {}", style("No attestation was created.").dim());
-        println!();
-        drop(transport_key);
-        anyhow::bail!("Initiator rejected SAS — pairing aborted");
+        anyhow::bail!("The controller rejected the pairing — no delegation was anchored.");
     }
 
-    if let Some(encrypted) = confirmation.encrypted_attestation {
-        let ciphertext = base64::Engine::decode(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
-            &encrypted,
-        )
-        .context("Invalid base64 in encrypted attestation")?;
+    let device_did = finalize_delegated_join(&ctx, pending, &confirmation)
+        .map_err(anyhow::Error::from)
+        .context("Failed to verify and persist the delegation")?;
+    wait_spinner.finish_with_message(format!("{CHECK}Delegation anchored and persisted"));
 
-        let _attestation_json = sas::decrypt_from_transport(&ciphertext, transport_key.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Failed to decrypt attestation: {}", e))?;
-
-        wait_spinner.finish_with_message(format!("{CHECK}Attestation received and decrypted"));
-
-        // TODO(fn-43.6): verify and store attestation locally
-    } else {
-        wait_spinner.finish_and_clear();
-        println!();
-        println!(
-            "  {}{}",
-            WARN,
-            style("No attestation received from initiator.").yellow()
-        );
-        println!();
-    }
-
-    println!();
-    println!(
-        "{}",
-        style(format!("━━━ {CHECK}Pairing Complete ━━━"))
-            .green()
-            .bold()
-    );
-    println!();
+    let device_name = hostname();
+    print_completion(Some(&device_name), &device_did);
 
     Ok(())
 }

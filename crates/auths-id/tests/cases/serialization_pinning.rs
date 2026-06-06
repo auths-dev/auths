@@ -21,7 +21,6 @@ fn make_test_icp() -> IcpEvent {
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     }
 }
 
@@ -45,7 +44,6 @@ fn make_test_rot() -> RotEvent {
         ba: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     }
 }
 
@@ -57,7 +55,6 @@ fn make_test_ixn() -> IxnEvent {
         s: KeriSequence::new(2),
         p: Said::new_unchecked("ETestRotSaid23456789012345678901234567890".into()),
         a: vec![Seal::digest("ESealDigest234567890123456789012345678901")],
-        dt: None,
     }
 }
 
@@ -103,7 +100,7 @@ fn rot_field_order_is_pinned() {
     assert_key_order(
         &json,
         &[
-            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "c", "a",
+            "v", "t", "d", "i", "s", "p", "kt", "k", "nt", "n", "bt", "br", "ba", "a",
         ],
     );
 }

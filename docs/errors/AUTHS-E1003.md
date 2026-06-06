@@ -1,6 +1,6 @@
 # AUTHS-E1003
 
-**Crate:** `auths-crypto`  
+**Crate:** `auths-crypto`
 **Type:** `CryptoError::InvalidPrivateKey`
 
 ## Message

@@ -1,6 +1,7 @@
-//! Integration test cases
+//! Integration test cases.
+//!
+//! The legacy bearer-token agent flow tests were removed in Epic E. Only the
+//! server-skeleton health smoke test remains until a domain HTTP surface is
+//! mounted over the SDK.
 
-pub mod full_flow;
-pub mod helpers;
-
-pub use helpers::*;
+mod health;

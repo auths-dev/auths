@@ -1,6 +1,6 @@
 # AUTHS-E4964
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `AnchorError::InvalidDid`
 
 ## Message

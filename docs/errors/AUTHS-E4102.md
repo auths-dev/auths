@@ -1,6 +1,6 @@
 # AUTHS-E4102
 
-**Crate:** `auths-id`  
+**Crate:** `auths-id`
 **Type:** `StorageError::Serialization`
 
 ## Message

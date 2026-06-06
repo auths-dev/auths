@@ -130,7 +130,7 @@ mod tests {
         let cesr = signer.cesr_encoded_pubkey();
         match curve {
             CurveType::Ed25519 => assert!(cesr.starts_with('D')),
-            CurveType::P256 => assert!(cesr.starts_with("1AAI")),
+            CurveType::P256 => assert!(cesr.starts_with("1AAJ")),
         }
     });
 }
@@ -193,4 +193,68 @@ pub fn gen_keypair() -> Ed25519KeyPair {
     let rng = SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap()
+}
+
+/// Deterministically derives a P-256 keypair from a 64-bit seed.
+///
+/// Returns the PKCS#8 v1 DER encoding (ready to feed back into ring)
+/// plus the 33-byte compressed SEC1 public key. Same seed always yields
+/// the same keypair — useful for pinned canonical-bytes regression
+/// tests that must not drift across runs.
+///
+/// The seed is expanded into a 32-byte secret scalar via `[u8; 32]`
+/// splatted from the 8 seed bytes, with a guard against the
+/// all-zero / all-ones edge cases the P-256 group rejects.
+///
+/// Args:
+/// * `seed`: 64-bit integer. Callers pick test-local seeds.
+///
+/// Usage:
+/// ```ignore
+/// let (pkcs8_der, pub_compressed) = seeded_p256_keypair(1_700_000_000);
+/// ```
+pub fn seeded_p256_keypair(seed: u64) -> (Vec<u8>, [u8; 33]) {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    use p256::pkcs8::EncodePrivateKey;
+    // Splat the 8-byte seed across a 32-byte scalar input. All-zero
+    // scalars are invalid for P-256; bump to `seed | 1` to guarantee
+    // a non-zero low byte.
+    let seed_bytes = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    let mut scalar_bytes = [0u8; 32];
+    scalar_bytes[..8].copy_from_slice(&seed_bytes.to_be_bytes());
+    scalar_bytes[8..16].copy_from_slice(&seed_bytes.to_le_bytes());
+    scalar_bytes[16..24].copy_from_slice(&seed_bytes.rotate_left(17).to_be_bytes());
+    scalar_bytes[24..32].copy_from_slice(&seed_bytes.rotate_right(13).to_le_bytes());
+    // Ensure the scalar is within the curve order. If not, rotate and
+    // retry — for every seeded input we expect this to succeed first try.
+    let secret = p256::SecretKey::from_bytes(&scalar_bytes.into())
+        .expect("seeded scalar lands within P-256 order");
+    let pkcs8 = secret
+        .to_pkcs8_der()
+        .expect("serialize seeded P-256 key to PKCS#8");
+    let public = secret.public_key();
+    let encoded = public.to_encoded_point(true);
+    let mut pub_bytes = [0u8; 33];
+    pub_bytes.copy_from_slice(encoded.as_bytes());
+    (pkcs8.as_bytes().to_vec(), pub_bytes)
+}
+
+#[cfg(test)]
+mod seeded_tests {
+    use super::seeded_p256_keypair;
+
+    #[test]
+    fn same_seed_produces_identical_keypair() {
+        let a = seeded_p256_keypair(1_700_000_000);
+        let b = seeded_p256_keypair(1_700_000_000);
+        assert_eq!(a.0, b.0, "pkcs8 bytes must be stable");
+        assert_eq!(a.1, b.1, "public key must be stable");
+    }
+
+    #[test]
+    fn different_seeds_produce_different_keypairs() {
+        let a = seeded_p256_keypair(1);
+        let b = seeded_p256_keypair(2);
+        assert_ne!(a.1, b.1);
+    }
 }

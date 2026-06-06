@@ -33,17 +33,10 @@ fn test_golden_path_init_sign_verify() {
         String::from_utf8_lossy(&sign_output.stderr)
     );
 
-    // Verify with JSON output
-    let signers = env.allowed_signers_path();
+    // Verify with JSON output — KEL-native, no allowlist.
     let verify_output = env
         .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--json",
-            "--allowed-signers",
-            signers.to_str().unwrap(),
-        ])
+        .args(["verify", "HEAD", "--json"])
         .output()
         .unwrap();
     assert!(

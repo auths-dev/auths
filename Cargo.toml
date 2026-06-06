@@ -50,7 +50,6 @@ schemars = "0.8"
 # version and the `rand::thread_rng` / `rand::random` clippy bans cannot be
 # bypassed by version skew.
 rand = "0.8"
-
 # -------------------------------------------------------------------------
 # fn-128.T9: EXACT-PINNED crypto crates.
 #

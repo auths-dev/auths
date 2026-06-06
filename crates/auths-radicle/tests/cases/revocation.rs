@@ -18,7 +18,7 @@ fn revoked_device_rejected_in_enforce() {
     storage.add_identity(identity_did.clone(), make_key_state("EAlice", 1));
 
     // Register device as REVOKED
-    register_device(&mut storage, &device, &identity_did, &repo_id, true, vec![]);
+    register_device(&mut storage, &device, &identity_did, &repo_id, true);
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
@@ -44,7 +44,7 @@ fn revoked_device_warns_in_observe() {
     let device = DeviceFixture::new(1);
 
     storage.add_identity(identity_did.clone(), make_key_state("EAlice", 1));
-    register_device(&mut storage, &device, &identity_did, &repo_id, true, vec![]);
+    register_device(&mut storage, &device, &identity_did, &repo_id, true);
 
     let bridge = DefaultBridge::with_storage(storage);
     let request = VerifyRequest {
@@ -77,7 +77,7 @@ fn expired_attestation_rejected() {
 
     // Create an attestation that EXPIRES in the past
     let mut attestation =
-        super::helpers::make_test_attestation(&identity_did, &device.did, &repo_id, false, vec![]);
+        super::helpers::make_test_attestation(&identity_did, &device.did, &repo_id, false);
     attestation.expires_at = Some(Utc::now() - Duration::days(1));
 
     storage.add_attestation(device.did.clone(), identity_did.clone(), attestation);

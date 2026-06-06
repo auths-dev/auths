@@ -1,17 +1,67 @@
 use crate::error::KeriTranslationError;
 use crate::types::Said;
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
 /// The 44-character `#` placeholder injected into the `d` field (and `i` field
 /// for inception events) before hashing. Matches the length of a CESR-qualified
 /// Blake3-256 digest (`E` + 43 chars base64url = 44 chars).
 pub const SAID_PLACEHOLDER: &str = "############################################";
 
-/// Computes a spec-compliant SAID for a KERI event.
+/// The 17-character protocol/version tag families used by SAID-ification.
+///
+/// KERI events (KEL: `icp`/`rot`/`ixn`/`dip`/`drt`) carry `KERI10JSON…`; ACDC
+/// credentials carry `ACDC10JSON…`. Both share the identical 17-char layout
+/// (`<TAG>10JSON{size:06x}_`), so the two-pass size assertion in
+/// [`compute_said_with_protocol`] holds unchanged for either family.
+///
+/// Usage:
+/// ```ignore
+/// let said = compute_said_with_protocol(&acdc_json, Protocol::Acdc)?;
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Protocol {
+    /// KERI key-event protocol (`KERI10JSON…`) — the default for all KEL events.
+    Keri,
+    /// ACDC credential protocol (`ACDC10JSON…`).
+    Acdc,
+}
+
+impl Protocol {
+    /// The 17-char placeholder version string for this protocol (size field zeroed).
+    fn version_placeholder(self) -> &'static str {
+        match self {
+            Protocol::Keri => "KERI10JSON000000_",
+            Protocol::Acdc => "ACDC10JSON000000_",
+        }
+    }
+
+    /// The 4-char protocol code prefixing the version string (`KERI` / `ACDC`).
+    fn code(self) -> &'static str {
+        match self {
+            Protocol::Keri => "KERI",
+            Protocol::Acdc => "ACDC",
+        }
+    }
+
+    /// Whether the `i` field is self-addressing (blanked during SAID-ification).
+    ///
+    /// KERI inception events (`icp`/`dip`) and backerless TEL registry inception
+    /// (`vcp`) derive their prefix from the SAID, so `i` is blanked. ACDC `i` is
+    /// the *issuer* AID (an external reference), so it is never blanked — only
+    /// event protocols consult the `t` field.
+    fn blanks_inception_prefix(self) -> bool {
+        matches!(self, Protocol::Keri)
+    }
+}
+
+/// Computes a spec-compliant SAID for a KERI event (`KERI10JSON` protocol tag).
+///
+/// Thin wrapper over [`compute_said_with_protocol`] pinned to [`Protocol::Keri`];
+/// every existing KEL call site stays on this default so KEL SAIDs are unchanged.
 ///
 /// The algorithm (Trust over IP KERI v0.9):
 /// 1. Set `d` to the 44-char `#` placeholder.
-/// 2. For inception events (`t == "icp"`), also set `i` to the placeholder.
+/// 2. For self-addressing inception events (`t` in `icp`/`dip`/`vcp`), also set
+///    `i` to the placeholder.
 /// 3. Remove the `x` field entirely (signatures are detached from the digest).
 /// 4. Serialize with `serde_json::to_vec` (insertion-order, NOT json-canon).
 /// 5. Blake3-256 hash the bytes.
@@ -31,6 +81,28 @@ pub const SAID_PLACEHOLDER: &str = "############################################
 /// Args:
 /// * `event`: The event as a JSON object.
 pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationError> {
+    compute_said_with_protocol(event, Protocol::Keri)
+}
+
+/// Computes a spec-compliant SAID for a SAID'd JSON object under a chosen protocol.
+///
+/// Generalises [`compute_said`] over the protocol/version tag (D7): KEL events use
+/// [`Protocol::Keri`] (`KERI10JSON…`); ACDC credentials use [`Protocol::Acdc`]
+/// (`ACDC10JSON…`). The placeholder + two-pass size machinery is identical because
+/// both tags are exactly 17 chars wide.
+///
+/// Args:
+/// * `event`: The SAID'd object as JSON (must contain or accept a `d` field).
+/// * `protocol`: Which protocol/version tag and self-addressing rules to apply.
+///
+/// Usage:
+/// ```ignore
+/// let said = compute_said_with_protocol(&acdc_json, Protocol::Acdc)?;
+/// ```
+pub fn compute_said_with_protocol(
+    event: &serde_json::Value,
+    protocol: Protocol,
+) -> Result<Said, KeriTranslationError> {
     let obj = event
         .as_object()
         .ok_or(KeriTranslationError::MissingField {
@@ -39,6 +111,8 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
 
     let placeholder = serde_json::Value::String(SAID_PLACEHOLDER.to_string());
     let event_type = obj.get("t").and_then(|v| v.as_str()).unwrap_or("");
+    let blank_prefix =
+        protocol.blanks_inception_prefix() && matches!(event_type, "icp" | "dip" | "vcp");
 
     // Rebuild the map with spec-compliant placeholders and field ordering.
     let mut new_obj = serde_json::Map::new();
@@ -49,7 +123,11 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
             continue;
         } else if k == "d" {
             new_obj.insert("d".to_string(), placeholder.clone());
-        } else if k == "i" && event_type == "icp" {
+        } else if k == "i" && blank_prefix {
+            // Inception events are self-addressing (prefix == SAID), including
+            // delegated inception (`dip`) and backerless TEL registry inception
+            // (`vcp`): blank `i` so the digest is computed over the placeholder,
+            // not the derived prefix.
             new_obj.insert("i".to_string(), placeholder.clone());
         } else {
             new_obj.insert(k.clone(), v.clone());
@@ -62,7 +140,7 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
     }
 
     // Two-pass version string: compute byte count then re-serialize
-    let version_placeholder = "KERI10JSON000000_";
+    let version_placeholder = protocol.version_placeholder();
     new_obj.insert(
         "v".to_string(),
         serde_json::Value::String(version_placeholder.to_string()),
@@ -72,7 +150,7 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
         .map_err(KeriTranslationError::SerializationFailed)?;
 
     // Size is stable: placeholder and real version string are both 17 chars
-    let version_string = format!("KERI10JSON{:06x}_", pass1.len());
+    let version_string = format!("{}10JSON{:06x}_", protocol.code(), pass1.len());
     debug_assert_eq!(version_string.len(), version_placeholder.len());
     new_obj.insert("v".to_string(), serde_json::Value::String(version_string));
 
@@ -80,10 +158,54 @@ pub fn compute_said(event: &serde_json::Value) -> Result<Said, KeriTranslationEr
         .map_err(KeriTranslationError::SerializationFailed)?;
 
     let hash = blake3::hash(&serialized);
-    Ok(Said::new_unchecked(format!(
-        "E{}",
-        URL_SAFE_NO_PAD.encode(hash.as_bytes())
-    )))
+    // CESR-encode the digest (keripy-identical alignment), not naive `E`+base64url.
+    #[allow(clippy::expect_used)] // INVARIANT: a 32-byte Blake3 digest always CESR-encodes
+    let said = crate::cesr_encode::encode_blake3_digest(hash.as_bytes())
+        .expect("32-byte Blake3 digest always encodes as a CESR Blake3_256 SAID");
+    Ok(Said::new_unchecked(said))
+}
+
+/// Computes the SAID of a nested SAID'd section that carries no version string.
+///
+/// Unlike [`compute_said`], a section (e.g. an ACDC `a` attributes block) has no
+/// `v` field — its SAID is a plain Blake3-256 over the insertion-order
+/// serialization with `d` placeholder-filled. This mirrors keripy's
+/// `Saider.saidify(sad=section, label="d")` for blockless sub-objects.
+///
+/// Args:
+/// * `section`: The section as a JSON object (`d` is placeholder-filled before hashing).
+///
+/// Usage:
+/// ```ignore
+/// let attr_said = compute_section_said(&attributes_json)?;
+/// ```
+pub fn compute_section_said(section: &serde_json::Value) -> Result<Said, KeriTranslationError> {
+    let obj = section
+        .as_object()
+        .ok_or(KeriTranslationError::MissingField {
+            field: "section object",
+        })?;
+
+    let placeholder = serde_json::Value::String(SAID_PLACEHOLDER.to_string());
+    let mut new_obj = serde_json::Map::new();
+    for (k, v) in obj {
+        if k == "d" {
+            new_obj.insert("d".to_string(), placeholder.clone());
+        } else {
+            new_obj.insert(k.clone(), v.clone());
+        }
+    }
+    if !new_obj.contains_key("d") {
+        new_obj.insert("d".to_string(), placeholder.clone());
+    }
+
+    let serialized = serde_json::to_vec(&serde_json::Value::Object(new_obj))
+        .map_err(KeriTranslationError::SerializationFailed)?;
+    let hash = blake3::hash(&serialized);
+    #[allow(clippy::expect_used)] // INVARIANT: a 32-byte Blake3 digest always CESR-encodes
+    let said = crate::cesr_encode::encode_blake3_digest(hash.as_bytes())
+        .expect("32-byte Blake3 digest always encodes as a CESR Blake3_256 SAID");
+    Ok(Said::new_unchecked(said))
 }
 
 /// Verifies that an event's `d` field matches the spec-compliant SAID.

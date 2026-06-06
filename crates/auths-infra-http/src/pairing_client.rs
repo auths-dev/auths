@@ -210,6 +210,47 @@ impl PairingRelayClient for HttpPairingRelayClient {
         }
     }
 
+    fn wait_for_confirmation(
+        &self,
+        registry_url: &str,
+        session_id: &str,
+        timeout: Duration,
+    ) -> impl Future<Output = Result<Option<GetConfirmationResponse>, NetworkError>> + Send {
+        let url = format!(
+            "{}/v1/pairing/sessions/{}/confirmation",
+            registry_url.trim_end_matches('/'),
+            session_id
+        );
+        let endpoint = registry_url.to_string();
+        let client = self.client.clone();
+
+        async move {
+            let deadline = tokio::time::Instant::now() + timeout;
+            loop {
+                let resp = client
+                    .get(&url)
+                    .send()
+                    .await
+                    .map_err(|e| map_reqwest_error(e, &endpoint))?;
+                if resp.status().is_success() {
+                    let confirmation =
+                        resp.json::<GetConfirmationResponse>().await.map_err(|e| {
+                            NetworkError::InvalidResponse {
+                                detail: e.to_string(),
+                            }
+                        })?;
+                    if confirmation.aborted || confirmation.encrypted_attestation.is_some() {
+                        return Ok(Some(confirmation));
+                    }
+                }
+                if tokio::time::Instant::now() >= deadline {
+                    return Ok(None);
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
+
     fn wait_for_update(
         &self,
         registry_url: &str,

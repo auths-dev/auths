@@ -1,28 +1,16 @@
-//! Auths API Server
+//! Auths API Server — thin HTTP presentation layer.
 //!
-//! HTTP server for agent provisioning and authorization using cryptographic identity.
-//!
-//! # Architecture
-//!
-//! - **Domains**: Feature-driven modules (agents, developers, etc)
-//! - **Shared Infrastructure**: error handling, persistence, middleware
-//! - **Services**: Business logic layer (separate from HTTP handlers)
-//! - **Handlers**: HTTP request/response handling
-//! - **Routes**: Endpoint definitions
+//! The legacy bearer-token agent API (`/v1/agents`, Redis sessions, in-memory
+//! `AgentRegistry`) was removed in Epic E: the real agent surface is the SDK/CLI
+//! (`auths id agent …`, agents as KERI `dip`-delegated identifiers). This crate is
+//! currently a minimal server skeleton exposing only a health check; domain routes
+//! will be (re)mounted over the SDK as an HTTP surface is needed (tracked in E.9).
 
+pub mod app;
 pub mod error;
 
 #[path = "middleware.rs"]
 pub mod middleware;
 
-#[path = "persistence.rs"]
-pub mod persistence;
-
-pub mod app;
-pub mod domains;
-
-// Re-export public API
 pub use app::{build_router, AppState};
-pub use auths_sdk::domains::agents::{AgentRegistry, AgentService, AgentSession, AgentStatus};
 pub use error::ApiError;
-pub use persistence::AgentPersistence;

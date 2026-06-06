@@ -1,11 +1,14 @@
 //! KERI CESR public key parsing for Ed25519 and P-256.
 //!
 //! Decodes KERI-encoded public keys from their CESR-qualified string form.
-//! Ed25519: 'D' prefix + base64url(32 bytes) = 44 chars.
-//! P-256:   '1AAI' prefix + base64url(33 bytes) = 48 chars. (`1AAJ` is the
-//! CESR spec's P-256 *signature* code, NOT a verkey code; parser rejects it.)
-
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+//! Ed25519: 'D' prefix (transferable) / 'B' (non-transferable) + base64url(32 bytes).
+//! P-256:   '1AAJ' prefix (transferable) / '1AAI' (non-transferable) + base64url(33 bytes).
+//!
+//! Per the CESR master code table (cesride / keripy `MatterCodex`):
+//! `1AAJ` = `ECDSA_256r1` = transferable secp256r1 verification key;
+//! `1AAI` = `ECDSA_256r1N` = the non-transferable variant. This mirrors the
+//! Ed25519 `D`/`B` pair. Auths identities rotate, so they encode verkeys with
+//! the transferable `1AAJ` code.
 
 /// Errors from decoding a KERI-encoded public key.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -43,7 +46,7 @@ impl auths_crypto::AuthsErrorInfo for KeriDecodeError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::UnsupportedKeyType(_) => Some(
-                "Supported key prefixes: 'D' (Ed25519), '1AAI' (P-256). '1AAJ' is the P-256 SIGNATURE code per CESR spec; do not use as a verkey prefix.",
+                "Supported verkey prefixes: 'D'/'B' (Ed25519), '1AAJ'/'1AAI' (P-256 transferable/non-transferable).",
             ),
             Self::EmptyInput => Some("Provide a non-empty KERI-encoded key string"),
             _ => None,
@@ -54,7 +57,7 @@ impl auths_crypto::AuthsErrorInfo for KeriDecodeError {
 /// A validated KERI public key supporting Ed25519 and P-256.
 ///
 /// Parsed from a CESR-qualified string. The derivation code prefix
-/// determines the curve and key size.
+/// determines the curve, key size, and transferability.
 ///
 /// Usage:
 /// ```
@@ -64,81 +67,79 @@ impl auths_crypto::AuthsErrorInfo for KeriDecodeError {
 /// let key = KeriPublicKey::parse("DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap();
 /// assert_eq!(key.as_bytes().len(), 32);
 ///
-/// // P-256 uses "1AAI" prefix (33 bytes compressed SEC1) per CESR spec
+/// // P-256 transferable uses the "1AAJ" prefix (33 bytes compressed SEC1).
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeriPublicKey {
     /// Ed25519 public key (32 bytes).
     Ed25519([u8; 32]),
     /// P-256 compressed public key (33 bytes, SEC1: 0x02/0x03 + x-coordinate).
-    P256([u8; 33]),
+    ///
+    /// `transferable` records which CESR code qualified it: `1AAJ` (true) is
+    /// the rotating verkey code; `1AAI` (false) is the non-transferable one.
+    P256 {
+        /// Compressed SEC1 point (33 bytes).
+        key: [u8; 33],
+        /// Whether the key was qualified with the transferable code (`1AAJ`).
+        transferable: bool,
+    },
 }
 
 impl KeriPublicKey {
     /// Parse a CESR-qualified key string, dispatching on the derivation code prefix.
     ///
     /// - `D` prefix → Ed25519 (32 bytes)
-    /// - `1AAI` prefix → P-256 (33 bytes compressed)
+    /// - `1AAJ` prefix → P-256 transferable (33 bytes compressed)
+    /// - `1AAI` prefix → P-256 non-transferable (33 bytes compressed)
     ///
-    /// strict per CESR spec. `1AAJ` (which is the spec's P-256 SIGNATURE
-    /// code, not a verkey code) is rejected with `UnsupportedKeyType`. Prior to
-    /// some repo sites emitted `1AAJ` for verkeys; those are spec-invalid
-    /// and must be regenerated.
+    /// Per the CESR master code table, `1AAJ`/`1AAI` are the transferable /
+    /// non-transferable secp256r1 verkey codes (the P-256 analogue of Ed25519
+    /// `D`/`B`). Both decode to the same 33-byte compressed point.
     ///
-    /// Unknown prefixes return `Err(UnsupportedKeyType)`.
+    /// Keys qualified with a non-transferable Ed25519 code (`B`) or any other
+    /// matter code return `Err(UnsupportedKeyType)`; malformed CESR returns
+    /// `Err(DecodeError)`.
     pub fn parse(encoded: &str) -> Result<Self, KeriDecodeError> {
         if encoded.is_empty() {
             return Err(KeriDecodeError::EmptyInput);
         }
 
-        // P-256 verkey: `1AAI` only per CESR spec. `1AAJ` is the spec's P-256
-        // *signature* code — reject loudly if someone supplies it as a verkey.
-        if let Some(payload) = encoded.strip_prefix("1AAI") {
-            let bytes = decode_base64url(payload)?;
-            if bytes.len() != 33 {
-                return Err(KeriDecodeError::InvalidLength {
-                    expected: 33,
-                    actual: bytes.len(),
-                });
-            }
-            let mut arr = [0u8; 33];
-            arr.copy_from_slice(&bytes);
-            return Ok(KeriPublicKey::P256(arr));
-        }
-        if encoded.starts_with("1AAJ") {
-            return Err(KeriDecodeError::UnsupportedKeyType(
-                "1AAJ is the P-256 signature code; use 1AAI for P-256 verkeys (CESR spec).".into(),
-            ));
-        }
+        let (bytes, code) = crate::cesr_encode::decode_verkey(encoded)?;
 
-        // Try Ed25519 1-char prefix
-        if let Some(payload) = encoded.strip_prefix('D') {
-            let bytes = decode_base64url(payload)?;
-            if bytes.len() != 32 {
-                return Err(KeriDecodeError::InvalidLength {
-                    expected: 32,
-                    actual: bytes.len(),
-                });
-            }
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&bytes);
-            return Ok(KeriPublicKey::Ed25519(arr));
-        }
-
-        // Unknown prefix
-        let prefix = if encoded.len() >= 4 {
-            &encoded[..4]
+        use cesride::matter::Codex;
+        if code.as_str() == Codex::Ed25519 {
+            let arr: [u8; 32] =
+                bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| KeriDecodeError::InvalidLength {
+                        expected: 32,
+                        actual: bytes.len(),
+                    })?;
+            Ok(KeriPublicKey::Ed25519(arr))
+        } else if code.as_str() == Codex::ECDSA_256r1 || code.as_str() == Codex::ECDSA_256r1N {
+            let arr: [u8; 33] =
+                bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| KeriDecodeError::InvalidLength {
+                        expected: 33,
+                        actual: bytes.len(),
+                    })?;
+            Ok(KeriPublicKey::P256 {
+                key: arr,
+                transferable: code.as_str() == Codex::ECDSA_256r1,
+            })
         } else {
-            encoded
-        };
-        Err(KeriDecodeError::UnsupportedKeyType(prefix.to_string()))
+            Err(KeriDecodeError::UnsupportedKeyType(code))
+        }
     }
 
     /// Returns the raw public key bytes (32 for Ed25519, 33 for P-256).
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             KeriPublicKey::Ed25519(b) => b,
-            KeriPublicKey::P256(b) => b,
+            KeriPublicKey::P256 { key, .. } => key,
         }
     }
 
@@ -146,7 +147,7 @@ impl KeriPublicKey {
     pub fn into_bytes(self) -> Vec<u8> {
         match self {
             KeriPublicKey::Ed25519(b) => b.to_vec(),
-            KeriPublicKey::P256(b) => b.to_vec(),
+            KeriPublicKey::P256 { key, .. } => key.to_vec(),
         }
     }
 
@@ -154,18 +155,107 @@ impl KeriPublicKey {
     pub fn curve(&self) -> auths_crypto::CurveType {
         match self {
             KeriPublicKey::Ed25519(_) => auths_crypto::CurveType::Ed25519,
-            KeriPublicKey::P256(_) => auths_crypto::CurveType::P256,
+            KeriPublicKey::P256 { .. } => auths_crypto::CurveType::P256,
+        }
+    }
+
+    /// Whether this key is transferable (rotating).
+    ///
+    /// Ed25519 keys parsed via the `D` code are transferable. P-256 keys carry
+    /// the transferability recorded from their `1AAJ`/`1AAI` code.
+    pub fn is_transferable(&self) -> bool {
+        match self {
+            KeriPublicKey::Ed25519(_) => true,
+            KeriPublicKey::P256 { transferable, .. } => *transferable,
         }
     }
 
     /// Returns the CESR derivation code prefix for this key type.
     ///
-    /// Per CESR spec: `D` for Ed25519, `1AAI` for P-256 verkeys. The parser is
-    /// strict about this post-fn-116.5 — legacy `1AAJ` emissions are rejected.
+    /// `D` for Ed25519; `1AAJ` for a transferable P-256 verkey and `1AAI` for a
+    /// non-transferable one (per the CESR master code table).
     pub fn cesr_prefix(&self) -> &'static str {
         match self {
             KeriPublicKey::Ed25519(_) => "D",
-            KeriPublicKey::P256(_) => "1AAI",
+            KeriPublicKey::P256 {
+                transferable: true, ..
+            } => "1AAJ",
+            KeriPublicKey::P256 {
+                transferable: false,
+                ..
+            } => "1AAI",
+        }
+    }
+
+    /// Encode this key as a CESR-qualified qb64 string, byte-identical to keripy.
+    ///
+    /// Ed25519 → `D…`; transferable P-256 → `1AAJ…`; non-transferable P-256 → `1AAI…`.
+    /// This is the CESR-correct encoding (proper lead-byte alignment), not the legacy
+    /// naive `D` + base64url(raw) form.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let qb64 = key.to_qb64()?;
+    /// ```
+    pub fn to_qb64(&self) -> Result<String, KeriDecodeError> {
+        let code = crate::cesr_encode::verkey_code(self.curve(), self.is_transferable());
+        crate::cesr_encode::encode_verkey(self.as_bytes(), code)
+    }
+
+    /// Construct a transferable Ed25519 verkey from a 32-byte slice.
+    ///
+    /// Ergonomic bridge for raw-byte sources (e.g. a `ring` public key) into the
+    /// typed key. Returns `Err(InvalidLength)` if the slice is not 32 bytes.
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_keri::KeriPublicKey;
+    /// let key = KeriPublicKey::ed25519(&[0u8; 32]).unwrap();
+    /// assert!(matches!(key, KeriPublicKey::Ed25519(_)));
+    /// ```
+    pub fn ed25519(bytes: &[u8]) -> Result<Self, KeriDecodeError> {
+        let arr: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| KeriDecodeError::InvalidLength {
+                expected: 32,
+                actual: bytes.len(),
+            })?;
+        Ok(KeriPublicKey::Ed25519(arr))
+    }
+
+    /// Construct a transferable verkey from raw bytes plus an explicit curve.
+    ///
+    /// The complement of [`Self::as_bytes`] + [`Self::curve`]: rebuilds the typed key
+    /// when you hold curve-tagged bytes (a `CurveType` carried alongside a `Vec<u8>`),
+    /// instead of re-guessing the curve from byte length. Encodes as transferable
+    /// (`D` / `1AAJ`). Returns `Err(InvalidLength)` if the length doesn't match the curve.
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_keri::KeriPublicKey;
+    /// use auths_crypto::CurveType;
+    /// let key = KeriPublicKey::from_verkey_bytes(&[0u8; 32], CurveType::Ed25519).unwrap();
+    /// assert_eq!(key.curve(), CurveType::Ed25519);
+    /// ```
+    pub fn from_verkey_bytes(
+        bytes: &[u8],
+        curve: auths_crypto::CurveType,
+    ) -> Result<Self, KeriDecodeError> {
+        match curve {
+            auths_crypto::CurveType::Ed25519 => Self::ed25519(bytes),
+            auths_crypto::CurveType::P256 => {
+                let arr: [u8; 33] =
+                    bytes
+                        .try_into()
+                        .map_err(|_| KeriDecodeError::InvalidLength {
+                            expected: 33,
+                            actual: bytes.len(),
+                        })?;
+                Ok(KeriPublicKey::P256 {
+                    key: arr,
+                    transferable: true,
+                })
+            }
         }
     }
 
@@ -186,7 +276,7 @@ impl KeriPublicKey {
                     .verify(message, signature)
                     .map_err(|_| "Ed25519 signature verification failed".to_string())
             }
-            KeriPublicKey::P256(pk) => {
+            KeriPublicKey::P256 { key: pk, .. } => {
                 use p256::ecdsa::{Signature, VerifyingKey, signature::Verifier};
                 // p256 crate handles compressed SEC1 (33 bytes) natively
                 let vk = VerifyingKey::from_sec1_bytes(pk)
@@ -200,15 +290,10 @@ impl KeriPublicKey {
     }
 }
 
-fn decode_base64url(payload: &str) -> Result<Vec<u8>, KeriDecodeError> {
-    URL_SAFE_NO_PAD
-        .decode(payload)
-        .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 
     #[test]
     fn parse_ed25519_all_zeros() {
@@ -221,25 +306,31 @@ mod tests {
 
     #[test]
     fn parse_p256_key() {
-        // strict — `1AAI` is the spec-correct P-256 verkey prefix.
+        // `1AAJ` is the transferable P-256 verkey code (the rotating default).
         let zeros_33 = [0u8; 33];
-        let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(zeros_33));
+        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(zeros_33));
         let key = KeriPublicKey::parse(&encoded).unwrap();
         assert_eq!(key.as_bytes().len(), 33);
-        assert!(matches!(key, KeriPublicKey::P256(_)));
+        assert!(matches!(key, KeriPublicKey::P256 { .. }));
         assert_eq!(key.curve(), auths_crypto::CurveType::P256);
-        assert_eq!(key.cesr_prefix(), "1AAI");
+        assert!(key.is_transferable());
+        assert_eq!(key.cesr_prefix(), "1AAJ");
     }
 
     #[test]
-    fn rejects_legacy_1aaj_verkey() {
-        // `1AAJ` is the CESR spec's P-256 *signature* code. Reject loudly
-        // when supplied as a verkey — the parser previously tolerated this for
-        // pre-fn-114.37 on-disk identities. Pre-launch posture removes the grace.
+    fn parses_both_1aai_and_1aaj() {
+        // Both P-256 codes decode to the same 33-byte point; transferability
+        // and the round-tripped prefix differ.
         let zeros_33 = [0u8; 33];
-        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(zeros_33));
-        let err = KeriPublicKey::parse(&encoded).unwrap_err();
-        assert!(matches!(err, KeriDecodeError::UnsupportedKeyType(_)));
+        let transferable =
+            KeriPublicKey::parse(&format!("1AAJ{}", URL_SAFE_NO_PAD.encode(zeros_33))).unwrap();
+        let non_transferable =
+            KeriPublicKey::parse(&format!("1AAI{}", URL_SAFE_NO_PAD.encode(zeros_33))).unwrap();
+        assert_eq!(transferable.as_bytes(), non_transferable.as_bytes());
+        assert!(transferable.is_transferable());
+        assert!(!non_transferable.is_transferable());
+        assert_eq!(transferable.cesr_prefix(), "1AAJ");
+        assert_eq!(non_transferable.cesr_prefix(), "1AAI");
     }
 
     #[test]
@@ -247,7 +338,13 @@ mod tests {
         let zeros_33 = [0u8; 33];
         let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(zeros_33));
         let key = KeriPublicKey::parse(&encoded).unwrap();
-        assert!(matches!(key, KeriPublicKey::P256(_)));
+        assert!(matches!(
+            key,
+            KeriPublicKey::P256 {
+                transferable: false,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -258,7 +355,26 @@ mod tests {
 
     #[test]
     fn rejects_unknown_prefix() {
+        // Not valid CESR for any verkey code: rejected either as undecodable or
+        // (if it parses to some other matter code) as an unsupported key type.
         let err = KeriPublicKey::parse("Xsomething").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                KeriDecodeError::DecodeError(_) | KeriDecodeError::UnsupportedKeyType(_)
+            ),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_non_transferable_ed25519_code() {
+        // `B` (Ed25519N) is valid CESR, but this enum models only transferable
+        // Ed25519, so it must surface as UnsupportedKeyType rather than mis-decode.
+        let b_code =
+            crate::cesr_encode::encode_verkey(&[0u8; 32], cesride::matter::Codex::Ed25519N)
+                .unwrap();
+        let err = KeriPublicKey::parse(&b_code).unwrap_err();
         assert!(matches!(err, KeriDecodeError::UnsupportedKeyType(_)));
     }
 
@@ -270,32 +386,22 @@ mod tests {
 
     #[test]
     fn rejects_wrong_length_ed25519() {
-        // 31 bytes instead of 32
+        // A naive `D` + base64(31 bytes) has the wrong qb64 length for the
+        // Ed25519 code, so cesride rejects it as malformed CESR.
         let short = [0u8; 31];
         let encoded = format!("D{}", URL_SAFE_NO_PAD.encode(short));
         let err = KeriPublicKey::parse(&encoded).unwrap_err();
-        assert!(matches!(
-            err,
-            KeriDecodeError::InvalidLength {
-                expected: 32,
-                actual: 31
-            }
-        ));
+        assert!(matches!(err, KeriDecodeError::DecodeError(_)));
     }
 
     #[test]
     fn rejects_wrong_length_p256() {
-        // 32 bytes instead of 33
+        // A naive `1AAJ` + base64(32 bytes) has the wrong qb64 length for the
+        // ECDSA_256r1 code, so cesride rejects it as malformed CESR.
         let short = [0u8; 32];
-        let encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(short));
+        let encoded = format!("1AAJ{}", URL_SAFE_NO_PAD.encode(short));
         let err = KeriPublicKey::parse(&encoded).unwrap_err();
-        assert!(matches!(
-            err,
-            KeriDecodeError::InvalidLength {
-                expected: 33,
-                actual: 32
-            }
-        ));
+        assert!(matches!(err, KeriDecodeError::DecodeError(_)));
     }
 
     // Backward compatibility: the old API had `as_bytes()` returning `&[u8; 32]`.
@@ -309,5 +415,41 @@ mod tests {
         // Can still convert to [u8; 32] for backward compat
         let arr: [u8; 32] = bytes.try_into().unwrap();
         assert_eq!(arr, [0u8; 32]);
+    }
+
+    /// keripy 1.3.4 reference: `Verfer(bytes(0..32), Ed25519).qb64`. `parse` must
+    /// decode it to the exact 32 raw bytes via CESR alignment (lead-byte aware),
+    /// NOT naive base64-after-`D` (which would recover shifted, wrong bytes).
+    #[test]
+    fn parse_matches_keripy_ed25519_vector() {
+        let raw: Vec<u8> = (0u8..32).collect();
+        let key = KeriPublicKey::parse("DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f").unwrap();
+        assert_eq!(key.as_bytes(), raw.as_slice());
+        assert_eq!(key.curve(), auths_crypto::CurveType::Ed25519);
+    }
+
+    /// `parse` must invert `to_qb64` (cesride) for a non-zero Ed25519 key.
+    #[test]
+    fn parse_inverts_to_qb64_ed25519() {
+        let raw: Vec<u8> = (0u8..32).collect();
+        let key = KeriPublicKey::ed25519(&raw).unwrap();
+        let qb64 = key.to_qb64().unwrap();
+        let parsed = KeriPublicKey::parse(&qb64).unwrap();
+        assert_eq!(parsed, key, "parse must invert to_qb64 (CESR round-trip)");
+    }
+
+    /// `parse` must invert `to_qb64` for a non-zero transferable P-256 key.
+    #[test]
+    fn parse_inverts_to_qb64_p256() {
+        let mut point = [0u8; 33];
+        point[0] = 0x02;
+        for (i, b) in point.iter_mut().enumerate().skip(1) {
+            *b = i as u8;
+        }
+        let key = KeriPublicKey::from_verkey_bytes(&point, auths_crypto::CurveType::P256).unwrap();
+        let qb64 = key.to_qb64().unwrap();
+        let parsed = KeriPublicKey::parse(&qb64).unwrap();
+        assert_eq!(parsed, key, "P-256 parse must invert to_qb64");
+        assert!(parsed.is_transferable());
     }
 }

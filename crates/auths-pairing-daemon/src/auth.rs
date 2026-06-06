@@ -271,7 +271,7 @@ pub fn pubkey_kid(pk: &auths_keri::KeriPublicKey) -> [u8; 16] {
     let mut h = Sha256::new();
     match pk {
         auths_keri::KeriPublicKey::Ed25519(arr) => h.update(arr),
-        auths_keri::KeriPublicKey::P256(arr) => h.update(arr),
+        auths_keri::KeriPublicKey::P256 { key, .. } => h.update(key),
     }
     let full = h.finalize();
     let mut out = [0u8; 16];
@@ -392,9 +392,10 @@ fn keri_pubkeys_equal(a: &auths_keri::KeriPublicKey, b: &auths_keri::KeriPublicK
         (auths_keri::KeriPublicKey::Ed25519(x), auths_keri::KeriPublicKey::Ed25519(y)) => {
             bool::from(x[..].ct_eq(&y[..]))
         }
-        (auths_keri::KeriPublicKey::P256(x), auths_keri::KeriPublicKey::P256(y)) => {
-            bool::from(x[..].ct_eq(&y[..]))
-        }
+        (
+            auths_keri::KeriPublicKey::P256 { key: x, .. },
+            auths_keri::KeriPublicKey::P256 { key: y, .. },
+        ) => bool::from(x[..].ct_eq(&y[..])),
         _ => false,
     }
 }
@@ -547,7 +548,10 @@ mod tests {
     fn pubkey_binding_different_curve_rejected() {
         let b = PubkeyBinding::new();
         let pk_ed = auths_keri::KeriPublicKey::Ed25519([0x11; 32]);
-        let pk_p256 = auths_keri::KeriPublicKey::P256([0x11; 33]);
+        let pk_p256 = auths_keri::KeriPublicKey::P256 {
+            key: [0x11; 33],
+            transferable: true,
+        };
         b.bind_or_match(&pk_ed).unwrap();
         let r = b.bind_or_match(&pk_p256);
         assert!(matches!(r, Err(AuthError::KeyBindingMismatch)));

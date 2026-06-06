@@ -1,6 +1,6 @@
 # AUTHS-E2007
 
-**Crate:** `auths-verifier`  
+**Crate:** `auths-verifier`
 **Type:** `AttestationError::SigningError`
 
 ## Message

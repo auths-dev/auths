@@ -346,7 +346,6 @@ version = "0.0.1-rc.12"
 name = "auths-api"
 version = "0.0.1-rc.12"
 dependencies = [
- "async-trait",
  "auths-core",
  "auths-crypto",
  "auths-id",
@@ -356,8 +355,6 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
- "dashmap",
- "redis",
  "reqwest",
  "ring",
  "serde",
@@ -369,7 +366,6 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -508,6 +504,7 @@ dependencies = [
  "aws-lc-rs",
  "base64",
  "bs58",
+ "cesride",
  "chacha20poly1305",
  "hex",
  "hkdf",
@@ -985,6 +982,7 @@ dependencies = [
  "json-canon",
  "libc",
  "log",
+ "p256 0.13.2",
  "pkcs8 0.10.2",
  "proptest",
  "ring",
@@ -1642,7 +1640,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2049,11 +2047,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
- "futures-core",
  "memchr",
- "pin-project-lite",
- "tokio",
- "tokio-util",
 ]
 
 [[package]]
@@ -5382,29 +5376,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redis"
-version = "0.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e902a69d09078829137b4a5d9d082e0490393537badd7c91a3d69d14639e115f"
-dependencies = [
- "arc-swap",
- "async-trait",
- "bytes",
- "combine",
- "futures-util",
- "itoa",
- "num-bigint",
- "percent-encoding",
- "pin-project-lite",
- "ryu",
- "sha1_smol",
- "socket2 0.5.10",
- "tokio",
- "tokio-util",
- "url",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5705,7 +5676,7 @@ dependencies = [
  "aws-lc-rs",
  "once_cell",
  "rustls-pki-types",
- "rustls-webpki 0.103.12",
+ "rustls-webpki 0.103.13",
  "subtle",
  "zeroize",
 ]
@@ -5755,7 +5726,7 @@ dependencies = [
  "rustls 0.23.38",
  "rustls-native-certs",
  "rustls-platform-verifier-android",
- "rustls-webpki 0.103.12",
+ "rustls-webpki 0.103.13",
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
@@ -5780,9 +5751,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.12"
+version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8279bb85272c9f10811ae6a6c547ff594d6a7f3c6c6b02ee9726d1d0dcfcdd06"
+checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -6173,12 +6144,6 @@ dependencies = [
  "cpufeatures 0.2.17",
  "digest",
 ]
-
-[[package]]
-name = "sha1_smol"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"

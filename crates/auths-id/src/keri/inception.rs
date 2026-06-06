@@ -6,7 +6,6 @@
 //! 3. Building and finalizing inception event with SAID
 //! 4. Storing event in Git-backed KEL
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use git2::Repository;
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -53,6 +52,19 @@ pub struct GeneratedKeypair {
     pub public_key: Vec<u8>,
     /// CESR-encoded public key string (e.g., "D..." or "1AAJ...").
     pub cesr_encoded: String,
+}
+
+impl GeneratedKeypair {
+    /// The public key as a typed [`auths_keri::KeriPublicKey`], curve carried in
+    /// the type. Bridges the raw bytes + CESR tag into the typed key that KERI
+    /// functions (e.g. `compute_next_commitment`) consume, so the curve is never
+    /// re-guessed from byte length.
+    pub fn verkey(&self) -> auths_keri::KeriPublicKey {
+        #[allow(clippy::expect_used)]
+        // INVARIANT: cesr_encoded comes from our own keygen and always parses
+        auths_keri::KeriPublicKey::parse(&self.cesr_encoded)
+            .expect("self-generated keypair has a valid CESR-encoded public key")
+    }
 }
 
 /// Public alias for single-curve keypair generation.
@@ -105,7 +117,10 @@ fn generate_keypair(curve: CurveType) -> Result<GeneratedKeypair, InceptionError
             let keypair = Ed25519KeyPair::from_pkcs8(pkcs8_doc.as_ref())
                 .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
             let public_key = keypair.public_key().as_ref().to_vec();
-            let cesr_encoded = format!("D{}", URL_SAFE_NO_PAD.encode(&public_key));
+            let cesr_encoded =
+                auths_keri::KeriPublicKey::from_verkey_bytes(&public_key, CurveType::Ed25519)
+                    .and_then(|k| k.to_qb64())
+                    .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
             Ok(GeneratedKeypair {
                 pkcs8: Pkcs8Der::new(pkcs8_doc.as_ref().to_vec()),
                 public_key,
@@ -124,8 +139,11 @@ fn generate_keypair(curve: CurveType) -> Result<GeneratedKeypair, InceptionError
             let compressed = verifying_key.to_encoded_point(true);
             let public_key = compressed.as_bytes().to_vec();
 
-            // CESR encode with 1AAJ prefix (P-256 transferable)
-            let cesr_encoded = format!("1AAI{}", URL_SAFE_NO_PAD.encode(&public_key));
+            // CESR encode with 1AAJ prefix (P-256 transferable verkey)
+            let cesr_encoded =
+                auths_keri::KeriPublicKey::from_verkey_bytes(&public_key, CurveType::P256)
+                    .and_then(|k| k.to_qb64())
+                    .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
 
             // PKCS8 DER encoding
             let pkcs8_doc = signing_key
@@ -382,16 +400,13 @@ pub fn create_keri_identity_multi(
         .collect();
     let n: Vec<Said> = next_kps
         .iter()
-        .map(|kp| compute_next_commitment(&kp.public_key))
+        .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
             Threshold::Simple(cfg.threshold as u64),
-            cfg.witness_urls
-                .iter()
-                .map(|u| Prefix::new_unchecked(u.to_string()))
-                .collect(),
+            cfg.aids().cloned().collect(),
         ),
         _ => (Threshold::Simple(0), vec![]),
     };
@@ -409,7 +424,6 @@ pub fn create_keri_identity_multi(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -478,16 +492,13 @@ pub fn create_keri_identity_with_curve(
 
     // Compute next-key commitment (Blake3 hash of the CESR-qualified next public key bytes)
     // The commitment is curve-agnostic: Blake3(raw_public_key_bytes)
-    let next_commitment = compute_next_commitment(&next.public_key);
+    let next_commitment = compute_next_commitment(&next.verkey());
 
     // Determine witness fields from config
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
             Threshold::Simple(cfg.threshold as u64),
-            cfg.witness_urls
-                .iter()
-                .map(|u| Prefix::new_unchecked(u.to_string()))
-                .collect(),
+            cfg.aids().cloned().collect(),
         ),
         _ => (Threshold::Simple(0), vec![]),
     };
@@ -506,7 +517,6 @@ pub fn create_keri_identity_with_curve(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     // Finalize event (computes and sets SAID)
@@ -574,11 +584,14 @@ pub fn create_keri_identity_with_backend(
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
         .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
 
-    let current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
+    let current_pub_encoded =
+        auths_keri::KeriPublicKey::ed25519(current_keypair.public_key().as_ref())
+            .and_then(|k| k.to_qb64())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?;
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?,
     );
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),
@@ -593,7 +606,6 @@ pub fn create_keri_identity_with_backend(
         b: vec![],
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -603,6 +615,7 @@ pub fn create_keri_identity_with_backend(
     let sig = current_keypair.sign(&canonical);
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
+        prior_index: None,
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InceptionError::Serialization(e.to_string()))?;
@@ -649,19 +662,19 @@ pub fn create_keri_identity_from_key(
     let next_keypair = Ed25519KeyPair::from_pkcs8(next_pkcs8.as_ref())
         .map_err(|e| InceptionError::KeyGeneration(e.to_string()))?;
 
-    let current_pub_encoded = format!(
-        "D{}",
-        URL_SAFE_NO_PAD.encode(current_keypair.public_key().as_ref())
+    let current_pub_encoded =
+        auths_keri::KeriPublicKey::ed25519(current_keypair.public_key().as_ref())
+            .and_then(|k| k.to_qb64())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?;
+    let next_commitment = compute_next_commitment(
+        &auths_keri::KeriPublicKey::ed25519(next_keypair.public_key().as_ref())
+            .map_err(|e| InceptionError::KeyGeneration(format!("ed25519 verkey: {e}")))?,
     );
-    let next_commitment = compute_next_commitment(next_keypair.public_key().as_ref());
 
     let (bt, b) = match witness_config {
         Some(cfg) if cfg.is_enabled() => (
             Threshold::Simple(cfg.threshold as u64),
-            cfg.witness_urls
-                .iter()
-                .map(|u| Prefix::new_unchecked(u.to_string()))
-                .collect(),
+            cfg.aids().cloned().collect(),
         ),
         _ => (Threshold::Simple(0), vec![]),
     };
@@ -679,7 +692,6 @@ pub fn create_keri_identity_from_key(
         b,
         c: vec![],
         a: vec![],
-        dt: None,
     };
 
     let finalized = finalize_icp_event(icp)?;
@@ -798,6 +810,66 @@ mod tests {
         assert!(!state.is_abandoned);
     }
 
+    fn witness_cfg(threshold: usize, aids: &[&str]) -> WitnessConfig {
+        use crate::witness_config::{WitnessPolicy, WitnessRef};
+        WitnessConfig {
+            witnesses: aids
+                .iter()
+                .enumerate()
+                .map(|(i, aid)| WitnessRef {
+                    url: format!("http://w{i}:3333").parse().unwrap(),
+                    aid: Prefix::new_unchecked((*aid).to_string()),
+                })
+                .collect(),
+            threshold,
+            timeout_ms: 5000,
+            // Warn (not Enforce): inception designates b[] regardless, but the
+            // test witnesses are unreachable — Enforce would (correctly) fail
+            // receipt collection. We assert designation, not live collection.
+            policy: WitnessPolicy::Warn,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn icp_designates_configured_witnesses_and_replays_backers() {
+        let (_dir, repo) = setup_repo();
+        let aids = [
+            "BWitnessOne00000000000000000000000000000000",
+            "BWitnessTwo00000000000000000000000000000000",
+        ];
+        let cfg = witness_cfg(2, &aids);
+        let result = create_keri_identity_with_curve(
+            &repo,
+            Some(&cfg),
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
+        let kel = GitKel::new(&repo, result.prefix.as_str());
+        // The designated witnesses survive replay into the key-state.
+        let state = validate_kel(&kel.get_events().unwrap()).unwrap();
+        let designated: Vec<&str> = state.backers.iter().map(|p| p.as_str()).collect();
+        assert_eq!(designated, aids);
+        assert_eq!(state.backer_threshold, Threshold::Simple(2));
+    }
+
+    #[test]
+    fn icp_zero_witness_path_is_valid() {
+        let (_dir, repo) = setup_repo();
+        let result = create_keri_identity_with_curve(
+            &repo,
+            None,
+            chrono::Utc::now(),
+            auths_crypto::CurveType::Ed25519,
+        )
+        .unwrap();
+        let kel = GitKel::new(&repo, result.prefix.as_str());
+        let state = validate_kel(&kel.get_events().unwrap()).unwrap();
+        assert!(state.backers.is_empty());
+        assert_eq!(state.backer_threshold, Threshold::Simple(0));
+    }
+
     #[test]
     fn inception_event_has_correct_structure() {
         let (_dir, repo) = setup_repo();
@@ -855,7 +927,10 @@ mod tests {
 
         if let Event::Icp(icp) = &events[0] {
             // Verify the next commitment matches the next public key
-            let expected_commitment = compute_next_commitment(&result.next_public_key);
+            let expected_commitment = compute_next_commitment(
+                &auths_keri::KeriPublicKey::ed25519(&result.next_public_key)
+                    .expect("ed25519 verkey is 32 bytes"),
+            );
             assert_eq!(icp.n[0], expected_commitment);
         } else {
             panic!("Expected inception event");
@@ -915,12 +990,12 @@ mod tests {
         // shape as the legacy single-curve entry point.
         let kps = generate_keypairs_for_init(&[auths_crypto::CurveType::P256]).unwrap();
         assert_eq!(kps.len(), 1);
-        assert!(kps[0].cesr_encoded.starts_with("1AAI"));
+        assert!(kps[0].cesr_encoded.starts_with("1AAJ"));
         assert_eq!(kps[0].public_key.len(), 33);
 
         let legacy = generate_keypair_for_init(auths_crypto::CurveType::P256).unwrap();
         assert_eq!(legacy.public_key.len(), 33);
-        assert!(legacy.cesr_encoded.starts_with("1AAI"));
+        assert!(legacy.cesr_encoded.starts_with("1AAJ"));
     }
 
     #[test]
@@ -929,12 +1004,12 @@ mod tests {
         let kps = generate_keypairs_for_init(&[P256, P256, Ed25519]).unwrap();
         assert_eq!(kps.len(), 3);
 
-        // Per-entry curve dispatch: P-256 entries are 33 bytes with "1AAI"
+        // Per-entry curve dispatch: P-256 entries are 33 bytes with "1AAJ"
         // CESR prefix; Ed25519 is 32 bytes with "D".
         assert_eq!(kps[0].public_key.len(), 33);
-        assert!(kps[0].cesr_encoded.starts_with("1AAI"));
+        assert!(kps[0].cesr_encoded.starts_with("1AAJ"));
         assert_eq!(kps[1].public_key.len(), 33);
-        assert!(kps[1].cesr_encoded.starts_with("1AAI"));
+        assert!(kps[1].cesr_encoded.starts_with("1AAJ"));
         assert_eq!(kps[2].public_key.len(), 32);
         assert!(kps[2].cesr_encoded.starts_with('D'));
 

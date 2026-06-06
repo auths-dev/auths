@@ -15,7 +15,7 @@ use auths_storage::git::{
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use napi_derive::napi;
 
 use crate::error::format_error;
@@ -24,6 +24,23 @@ use crate::types::{
     NapiAgentIdentityBundle, NapiDelegatedAgentBundle, NapiIdentityResult, NapiInMemoryKeypair,
     NapiRotationResult,
 };
+
+/// Validate capability strings without stamping them onto an attestation.
+///
+/// Authority capabilities are resolved KEL-natively from the delegator-anchored
+/// scope seal (ACDC), never from the attestation. This rejects malformed input
+/// at the binding boundary while keeping the attestation caps-free.
+fn validate_capabilities(capabilities: &[String]) -> napi::Result<()> {
+    for c in capabilities {
+        Capability::parse(c).map_err(|e| {
+            format_error(
+                "AUTHS_INVALID_INPUT",
+                format!("Invalid capability '{c}': {e}"),
+            )
+        })?;
+    }
+    Ok(())
+}
 
 fn init_backend(repo: &PathBuf) -> napi::Result<Arc<GitRegistryBackend>> {
     let config = RegistryConfig::single_tenant(repo);
@@ -121,17 +138,7 @@ pub fn create_agent_identity(
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                format_error(
-                    "AUTHS_INVALID_INPUT",
-                    format!("Invalid capability '{c}': {e}"),
-                )
-            })
-        })
-        .collect::<napi::Result<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let (identity_did, result_alias) = initialize_registry_identity(
         backend.clone(),
@@ -166,7 +173,6 @@ pub fn create_agent_identity(
         identity_key_alias: result_alias.clone(),
         device_key_alias: Some(result_alias.clone()),
         device_did: None,
-        capabilities: parsed_caps,
         expires_in: None,
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
@@ -196,7 +202,7 @@ pub fn create_agent_identity(
     })?;
 
     #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
-    let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
+    let device_did = CanonicalDid::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .map_err(|e| {
@@ -294,23 +300,12 @@ pub fn delegate_agent(
         )
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Key storage failed: {e}")))?;
 
-    let parsed_caps: Vec<Capability> = capabilities
-        .iter()
-        .map(|c| {
-            Capability::parse(c).map_err(|e| {
-                format_error(
-                    "AUTHS_INVALID_INPUT",
-                    format!("Invalid capability '{c}': {e}"),
-                )
-            })
-        })
-        .collect::<napi::Result<Vec<_>>>()?;
+    validate_capabilities(&capabilities)?;
 
     let link_config = DeviceLinkConfig {
         identity_key_alias: parent_alias,
         device_key_alias: Some(agent_alias.clone()),
         device_did: None,
-        capabilities: parsed_caps,
         expires_in: expires_in.map(|s| s as u64),
         note: Some(format!("Agent: {}", agent_name)),
         payload: None,
@@ -339,7 +334,7 @@ pub fn delegate_agent(
     })?;
 
     #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
-    let device_did = DeviceDID::new_unchecked(result.device_did.to_string());
+    let device_did = CanonicalDid::new_unchecked(result.device_did.to_string());
     let attestations = attestation_storage
         .load_attestations_for_device(&device_did)
         .map_err(|e| {
@@ -501,9 +496,11 @@ pub fn generate_inmemory_keypair(curve: Option<String>) -> napi::Result<NapiInMe
     let parsed = auths_crypto::parse_key_material(generated.pkcs8.as_ref())
         .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key parse failed: {e}")))?;
 
-    let did =
-        auths_verifier::types::DeviceDID::from_public_key(&generated.public_key, curve_choice)
-            .to_string();
+    let did = auths_verifier::types::CanonicalDid::from_public_key_did_key(
+        &generated.public_key,
+        curve_choice,
+    )
+    .to_string();
 
     Ok(NapiInMemoryKeypair {
         private_key_hex: hex::encode(parsed.seed.as_bytes()),

@@ -1,6 +1,6 @@
 use crate::error::StorageError;
 use crate::storage::layout;
-use auths_verifier::types::DeviceDID;
+use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use git2::Repository;
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ pub struct AttestationMetadata {
 /// Returns a canonical merged view of refname -> commit hash.
 pub fn aggregate_canonical_refs(
     repo: &Repository,
-    device_dids: &[DeviceDID],
+    device_dids: &[CanonicalDid],
 ) -> Result<HashMap<String, String>, StorageError> {
     let mut canonical = HashMap::new();
 

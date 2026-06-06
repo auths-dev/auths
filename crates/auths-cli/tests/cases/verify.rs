@@ -4,7 +4,7 @@ use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{
     Attestation, Ed25519PublicKey, Ed25519Signature, canonicalize_attestation_data,
 };
-use auths_verifier::types::{CanonicalDid, DeviceDID};
+use auths_verifier::types::CanonicalDid;
 use chrono::{Duration, Utc};
 use ring::signature::KeyPair;
 use std::io::Write;
@@ -17,13 +17,15 @@ fn create_signed_attestation(
     let device_pk: [u8; 32] = device_kp.public_key().as_ref().try_into().unwrap();
     let issuer_pk: [u8; 32] = issuer_kp.public_key().as_ref().try_into().unwrap();
 
-    let device_did = DeviceDID::from_public_key(&device_pk, auths_crypto::CurveType::Ed25519);
-    let issuer_did = DeviceDID::from_public_key(&issuer_pk, auths_crypto::CurveType::Ed25519);
+    let device_did =
+        CanonicalDid::from_public_key_did_key(&device_pk, auths_crypto::CurveType::Ed25519);
+    let issuer_did =
+        CanonicalDid::from_public_key_did_key(&issuer_pk, auths_crypto::CurveType::Ed25519);
 
     let mut att = AttestationBuilder::default()
         .rid("test-rid")
-        .issuer(CanonicalDid::from(issuer_did).as_str())
-        .subject(&device_did.to_string())
+        .issuer(issuer_did.as_str())
+        .subject(device_did.as_ref())
         .device_public_key(Ed25519PublicKey::from_bytes(device_pk))
         .expires_at(Some(Utc::now() + Duration::days(365)))
         .timestamp(Some(Utc::now()))
@@ -302,6 +304,5 @@ fn test_verify_help_shows_unified_options() {
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("--signer"))
-        .stdout(predicates::str::contains("--signer-key"))
-        .stdout(predicates::str::contains("--allowed-signers"));
+        .stdout(predicates::str::contains("--signer-key"));
 }

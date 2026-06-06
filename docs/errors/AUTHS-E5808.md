@@ -1,6 +1,6 @@
 # AUTHS-E5808
 
-**Crate:** `auths-sdk`  
+**Crate:** `auths-sdk`
 **Type:** `AllowedSignersError::Storage`
 
 ## Message
