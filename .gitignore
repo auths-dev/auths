@@ -137,6 +137,12 @@ my-artifact.txt.auths.json
 tests/e2e/.auths-ci/
 .capsec-cache
 
+# === Auths trust anchors ===
+# .auths/roots (pinned trusted roots) and .auths/ci-bundle.json are committed.
+# .auths/allowed_signers is an auths-managed local file from the legacy
+# ssh-keygen verification model — unused by KEL-native commit verification.
+.auths/allowed_signers
+
 # jnkn
 .jnkn/
 jnkn.db
