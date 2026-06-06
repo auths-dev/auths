@@ -2,6 +2,8 @@ mod agents;
 mod artifact;
 mod audit;
 mod authenticate;
+#[cfg(feature = "backend-git")]
+mod commit_trust;
 
 mod credential_present;
 mod credentials;
