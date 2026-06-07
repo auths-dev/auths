@@ -5,3 +5,4 @@
 //! mounted over the SDK.
 
 mod health;
+mod rp_auth;

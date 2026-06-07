@@ -15,10 +15,12 @@ path = "src/main.rs"
 # Auths workspace crates
 auths-id = { workspace = true }
 auths-crypto = { workspace = true }
-auths-sdk = { workspace = true }
+auths-sdk = { workspace = true, features = ["backend-git"] }
 auths-core = { workspace = true }
 auths-policy = { workspace = true }
 auths-storage = { workspace = true }
+auths-verifier = { workspace = true }
+auths-rp = { path = "../auths-rp" }
 
 # HTTP & async
 axum = "0.8"

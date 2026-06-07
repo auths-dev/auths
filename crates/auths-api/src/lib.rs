@@ -11,6 +11,11 @@ pub mod error;
 
 #[path = "middleware.rs"]
 pub mod middleware;
+pub mod rp_auth;
 
 pub use app::{build_router, AppState};
 pub use error::ApiError;
+pub use rp_auth::{
+    challenge_handler, rp_auth_middleware, AuthedPrincipal, ChallengeMintState, ChallengeResponse,
+    KeriPresentationVerifier, PresentationVerifier, RpAuthState,
+};
