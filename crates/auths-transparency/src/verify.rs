@@ -232,6 +232,30 @@ pub fn verify_checkpoint_signature(
     verify_checkpoint(signed, trust_root)
 }
 
+/// Verify only the witness-cosignature dimension of a [`SignedCheckpoint`] against a
+/// [`TrustRoot`], returning the quorum + independence verdict.
+///
+/// Each cosignature is checked against a trusted witness (matched in constant time)
+/// and the present cosigning quorum is evaluated for independence under the trust
+/// root's policy. Exposed for the monitor, which holds a checkpoint without
+/// assembling a full [`OfflineBundle`] and must not re-implement Ed25519 cosignature
+/// verification itself.
+///
+/// Args:
+/// * `signed` — The signed checkpoint whose witness cosignatures to verify.
+/// * `trust_root` — The pinned trust root (witness roster + independence policy).
+///
+/// Usage:
+/// ```ignore
+/// let status = verify_witness_cosignatures(&signed, &trust_root);
+/// ```
+pub fn verify_witness_cosignatures(
+    signed: &SignedCheckpoint,
+    trust_root: &TrustRoot,
+) -> WitnessStatus {
+    verify_witnesses(signed, trust_root)
+}
+
 fn verify_witnesses(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> WitnessStatus {
     if trust_root.witnesses.is_empty() {
         return WitnessStatus::NotProvided;

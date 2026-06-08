@@ -71,7 +71,7 @@ pub use s3_store::S3TileStore;
 #[cfg(feature = "native")]
 pub use store::TileStore;
 #[cfg(feature = "native")]
-pub use verify::{verify_bundle, verify_checkpoint_signature};
+pub use verify::{verify_bundle, verify_checkpoint_signature, verify_witness_cosignatures};
 
 #[cfg(feature = "native")]
 pub use witness::{

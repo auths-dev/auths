@@ -4,17 +4,16 @@
 //! verifies checkpoint signatures, entry inclusion proofs, and consistency
 //! between consecutive checkpoints. Alerts on anomalies via `tracing::error`.
 
-// CT checkpoint cosignatures are Ed25519-only per C2SP; `ring` is the verification
-// primitive here (as in `auths-transparency::verify`), not curve drift.
+// Checkpoint and witness-cosignature crypto is delegated to `auths-transparency`
+// (the sanctioned verification crate) — this monitor never names a curve itself.
 #![allow(clippy::disallowed_methods)]
 
 use std::path::{Path, PathBuf};
 
 use auths_transparency::{
-    ConsistencyProof, Entry, HonestyCeiling, InclusionProof, SignedCheckpoint, TrustRoot,
-    hash_leaf, verify_consistency, verify_inclusion,
+    CheckpointStatus, ConsistencyProof, Entry, HonestyCeiling, InclusionProof, SignedCheckpoint,
+    TrustRoot, WitnessStatus, hash_leaf, verify_consistency, verify_inclusion,
 };
-use ring::signature::{ED25519, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 
 /// Cross-operator equivocation detection + portable, third-party-verifiable evidence.
@@ -209,13 +208,18 @@ fn verify_checkpoint_signature(
         return;
     }
 
-    let note_body = checkpoint.checkpoint.to_note_body();
-    let peer_key = UnparsedPublicKey::new(&ED25519, trust_root.log_public_key.as_bytes());
-    if peer_key
-        .verify(note_body.as_bytes(), checkpoint.log_signature.as_bytes())
-        .is_err()
-    {
-        errors.push("checkpoint signature verification failed".into());
+    // Delegate the signature crypto to auths-transparency, which dispatches on the
+    // trust root's algorithm (Ed25519 / ECDSA-P256) — no curve is named here.
+    match auths_transparency::verify_checkpoint_signature(checkpoint, trust_root) {
+        CheckpointStatus::Verified => {}
+        CheckpointStatus::NotProvided => {
+            errors.push("no checkpoint signature to verify".into());
+        }
+        other => {
+            errors.push(format!(
+                "checkpoint signature verification failed: {other:?}"
+            ));
+        }
     }
 }
 
@@ -224,35 +228,29 @@ fn verify_witness_cosignatures(
     trust_root: &TrustRoot,
     warnings: &mut Vec<String>,
 ) {
-    if trust_root.witnesses.is_empty() {
-        return;
-    }
-
-    let note_body = checkpoint.checkpoint.to_note_body();
-    let required = trust_root.witnesses.len() / 2 + 1;
-    let mut verified = 0usize;
-
-    for cosig in &checkpoint.witnesses {
-        let trusted = trust_root
-            .witnesses
-            .iter()
-            .find(|w| w.public_key.as_bytes() == cosig.witness_public_key.as_bytes());
-
-        if let Some(_witness) = trusted {
-            let peer_key = UnparsedPublicKey::new(&ED25519, cosig.witness_public_key.as_bytes());
-            if peer_key
-                .verify(note_body.as_bytes(), cosig.signature.as_bytes())
-                .is_ok()
-            {
-                verified += 1;
-            }
+    // Delegate to auths-transparency: constant-time witness matching, Ed25519
+    // cosignature verification, and independence evaluation in one place.
+    match auths_transparency::verify_witness_cosignatures(checkpoint, trust_root) {
+        WitnessStatus::Quorum { .. } | WitnessStatus::NotProvided => {}
+        WitnessStatus::Insufficient { verified, required } => {
+            warnings.push(format!(
+                "witness quorum not met: {verified}/{required} verified"
+            ));
         }
-    }
-
-    if verified < required {
-        warnings.push(format!(
-            "witness quorum not met: {verified}/{required} verified"
-        ));
+        WitnessStatus::NotIndependent {
+            verified,
+            required,
+            shortfalls,
+        } => {
+            warnings.push(format!(
+                "witness quorum reached ({verified}/{required}) but the cosigning set is \
+                 not independent: {}",
+                shortfalls.join("; ")
+            ));
+        }
+        other => {
+            warnings.push(format!("witness verification inconclusive: {other:?}"));
+        }
     }
 }
 
