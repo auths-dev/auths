@@ -16,6 +16,7 @@ pub mod compliance;
 pub mod credentials;
 pub mod device;
 pub mod diagnostics;
+pub mod federation;
 pub mod identity;
 pub mod namespace;
 pub mod org;

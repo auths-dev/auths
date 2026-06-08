@@ -414,6 +414,7 @@ dependencies = [
  "auths-pairing-protocol",
  "auths-policy",
  "auths-rp",
+ "auths-scim-server",
  "auths-sdk",
  "auths-telemetry",
  "auths-transparency",
@@ -889,6 +890,7 @@ dependencies = [
 name = "auths-scim"
 version = "0.0.1-rc.12"
 dependencies = [
+ "auths-verifier",
  "chrono",
  "nom 8.0.0",
  "serde",
@@ -901,8 +903,14 @@ name = "auths-scim-server"
 version = "0.0.1-rc.12"
 dependencies = [
  "anyhow",
+ "auths-core",
+ "auths-crypto",
+ "auths-id",
  "auths-scim",
+ "auths-sdk",
+ "auths-verifier",
  "axum",
+ "chrono",
  "http-body-util",
  "serde",
  "serde_json",

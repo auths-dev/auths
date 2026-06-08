@@ -110,6 +110,7 @@ fn run() -> Result<()> {
         RootCommand::Policy(cmd) => cmd.execute(&ctx),
         RootCommand::Namespace(cmd) => cmd.execute(&ctx),
         RootCommand::Org(cmd) => cmd.execute(&ctx),
+        RootCommand::Compliance(cmd) => cmd.execute(&ctx),
         RootCommand::Credential(cmd) => cmd.execute(&ctx),
         RootCommand::Audit(cmd) => cmd.execute(&ctx),
         RootCommand::Auth(cmd) => cmd.execute(&ctx),

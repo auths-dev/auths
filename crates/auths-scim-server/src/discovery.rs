@@ -1,16 +1,12 @@
-//! Read-only SCIM discovery endpoints (RFC 7644 §4) and the auth-gated `/Users`
-//! list stub.
+//! Read-only SCIM discovery endpoints (RFC 7644 §4).
 //!
 //! Discovery serves the shipped `auths_scim::schema` types directly and is
-//! unauthenticated, as Okta/Entra expect. `/Users` is auth-gated and returns an
-//! empty list until the Joiner/Leaver lifecycle wiring lands.
+//! unauthenticated, as Okta/Entra expect. The auth-gated `/Users` resource
+//! handlers live in [`crate::users`].
 
-use auths_scim::resource::ScimUser;
 use auths_scim::schema::{ResourceType, SchemaDefinition, SchemaExtension, ServiceProviderConfig};
 use auths_scim::{ScimListResponse, constants};
 use axum::Json;
-
-use crate::auth::AuthenticatedTenant;
 
 /// `GET /scim/v2/ServiceProviderConfig` — advertised server capabilities.
 pub async fn service_provider_config() -> Json<ServiceProviderConfig> {
@@ -29,12 +25,6 @@ pub async fn schemas() -> Json<ScimListResponse<SchemaDefinition>> {
     let schemas = vec![user_schema()];
     let total = schemas.len() as u64;
     Json(ScimListResponse::new(schemas, total, 1))
-}
-
-/// `GET /scim/v2/Users` — auth-gated. Returns an empty list until provisioning
-/// is wired (the Joiner task replaces this with real, filterable listing).
-pub async fn list_users(_tenant: AuthenticatedTenant) -> Json<ScimListResponse<ScimUser>> {
-    Json(ScimListResponse::new(vec![], 0, 1))
 }
 
 fn user_resource_type() -> ResourceType {

@@ -11,7 +11,7 @@ use std::ops::ControlFlow;
 
 use auths_id::keri::Event;
 use auths_id::keri::types::Prefix;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::context::AuthsContext;
 use crate::domains::org::delegation::{list_members, resolve_member_authority};
@@ -22,7 +22,7 @@ use crate::domains::org::offboarding::{
 
 /// A member's authority at the moment an artifact was signed — a closed sum ordered
 /// strictly by **KEL position** (never wall-clock).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "authority_at_signing", rename_all = "snake_case")]
 pub enum AuthorityAtSigning {
     /// The member's authority was live at the signing position — the artifact was
@@ -32,6 +32,7 @@ pub enum AuthorityAtSigning {
     /// position. Carries the exact revocation position.
     RejectedAfterRevocation {
         /// The KEL position at which the org anchored the revocation.
+        #[serde(with = "u128_str")]
         revoked_at: u128,
     },
     /// The org revoked the member but the artifact carries no in-band signing
@@ -39,10 +40,29 @@ pub enum AuthorityAtSigning {
     /// verifier's no-position default).
     RejectedRevokedPositionUnknown {
         /// The KEL position at which the org anchored the revocation.
+        #[serde(with = "u128_str")]
         revoked_at: u128,
     },
     /// The org never delegated this member — there is no authority to classify.
     NeverDelegated,
+}
+
+/// (De)serialize a `u128` KEL position as a decimal string.
+///
+/// JSON numbers lose precision above 2^53, and serde's internally-tagged-enum
+/// buffer cannot round-trip 128-bit integers — so KEL positions travel as strings
+/// (the same convention [`auths_keri::KeriSequence`] uses for its hex form).
+mod u128_str {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &u128, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 /// Collect an org's KEL into a `Vec<Event>` (oldest first).

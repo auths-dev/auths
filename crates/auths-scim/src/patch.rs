@@ -97,6 +97,11 @@ pub fn apply_patch_operations(
                 user.display_name = Some(name.to_string());
             }
             (PatchOpType::Remove, Some("displayName")) => {
+                if user.display_name.is_none() {
+                    return Err(ScimError::NoTarget {
+                        path: "displayName".to_string(),
+                    });
+                }
                 user.display_name = None;
             }
             (PatchOpType::Replace, Some("externalId")) | (PatchOpType::Add, Some("externalId")) => {
@@ -160,8 +165,9 @@ fn apply_extension_patch(
     let ext = user
         .auths_extension
         .get_or_insert_with(|| AuthsAgentExtension {
-            identity_did: String::new(),
+            identity_did: None,
             capabilities: Vec::new(),
+            revoked: false,
         });
 
     let effective_path = if path.contains(':') {
@@ -196,6 +202,13 @@ fn apply_extension_patch(
         (_, "identityDid") => {
             return Err(ScimError::Mutability {
                 attribute: "identityDid".into(),
+            });
+        }
+        (_, "revoked") => {
+            // Revocation is a server-authoritative cryptographic act, never an
+            // IdP-set attribute — hard-revoke is an explicit, separate operation.
+            return Err(ScimError::Mutability {
+                attribute: "revoked".into(),
             });
         }
         _ => {
@@ -234,8 +247,9 @@ mod tests {
                 location: "/Users/test-123".into(),
             },
             auths_extension: Some(AuthsAgentExtension {
-                identity_did: "did:keri:Etest".into(),
+                identity_did: Some(auths_verifier::IdentityDID::parse("did:keri:Etest").unwrap()),
                 capabilities: vec!["sign:commit".into()],
+                revoked: false,
             }),
         }
     }
@@ -313,6 +327,44 @@ mod tests {
         let patched = apply_patch_operations(user, &ops).unwrap();
         let ext = patched.auths_extension.unwrap();
         assert_eq!(ext.capabilities, vec!["deploy:prod", "sign:commit"]);
+    }
+
+    #[test]
+    fn patch_remove_absent_display_name_is_no_target() {
+        let mut user = test_user();
+        user.display_name = None;
+        let ops = vec![PatchOperation {
+            op: "remove".into(),
+            path: Some("displayName".into()),
+            value: None,
+        }];
+        let err = apply_patch_operations(user, &ops).unwrap_err();
+        assert!(matches!(err, ScimError::NoTarget { .. }));
+        assert_eq!(err.scim_type(), Some("noTarget"));
+    }
+
+    #[test]
+    fn patch_revoked_flag_is_rejected() {
+        // `revoked` is server-authoritative — an IdP cannot set it via PATCH.
+        let user = test_user();
+        let ops = vec![PatchOperation {
+            op: "replace".into(),
+            path: Some("revoked".into()),
+            value: Some(serde_json::Value::Bool(false)),
+        }];
+        assert!(apply_patch_operations(user, &ops).is_err());
+    }
+
+    #[test]
+    fn patch_revoked_via_extension_path_is_mutability() {
+        let user = test_user();
+        let ops = vec![PatchOperation {
+            op: "replace".into(),
+            path: Some("urn:ietf:params:scim:schemas:extension:auths:2.0:Agent.revoked".into()),
+            value: Some(serde_json::Value::Bool(false)),
+        }];
+        let err = apply_patch_operations(user, &ops).unwrap_err();
+        assert!(matches!(err, ScimError::Mutability { .. }));
     }
 
     #[test]

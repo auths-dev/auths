@@ -64,6 +64,27 @@ fn is_delegated(org_kel: &[Event], member_prefix: &Prefix) -> bool {
     })
 }
 
+/// Classify a member's authority at `signed_at` from an air-gapped bundle's org KEL —
+/// the offline mirror of [`crate::domains::org::audit::classify_authority_at_signing`],
+/// for re-deriving compliance evidence-pack rows with zero network.
+///
+/// Args:
+/// * `bundle`: The air-gapped org bundle (its org KEL is the authority source).
+/// * `member_prefix`: The member to classify.
+/// * `signed_at`: The artifact's in-band signing position, if any.
+///
+/// Usage:
+/// ```ignore
+/// let verdict = classify_authority_in_bundle(&bundle, &member, Some(41));
+/// ```
+pub fn classify_authority_in_bundle(
+    bundle: &AirGappedOrgBundle,
+    member_prefix: &Prefix,
+    signed_at: Option<u128>,
+) -> AuthorityAtSigning {
+    classify_from_bundle(&bundle.org_kel.events, member_prefix, signed_at)
+}
+
 /// Classify a member's authority at `signed_at`, read purely from the bundle's org
 /// KEL — the offline mirror of [`crate::domains::org::audit::classify_authority_at_signing`].
 fn classify_from_bundle(

@@ -1,5 +1,6 @@
 //! SCIM 2.0 User resource type and custom Auths extension.
 
+use auths_verifier::IdentityDID;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -59,17 +60,31 @@ pub struct ScimMeta {
 /// Auths-specific SCIM extension attributes.
 ///
 /// Exposed under `urn:ietf:params:scim:schemas:extension:auths:2.0:Agent`.
-/// The `identity_did` is the KERI DID (did:keri:E...) — read-only, assigned
-/// by the server during provisioning. The `capabilities` list is writable
-/// by the IdP.
+/// The `identity_did` is the KERI DID (`did:keri:E…`) — **read-only**, assigned by
+/// the server during provisioning, so it is absent on an inbound IdP create/PATCH
+/// and present on every server response. It is the typed [`IdentityDID`] newtype
+/// (validate-on-deserialize, fail-closed) rather than a bare `String`. The
+/// `capabilities` list is writable by the IdP.
+///
+/// `revoked` is the honest deprovision-vs-revocation signal: a member soft-disabled
+/// via `PATCH {active:false}` reports `active:false revoked:false` — still
+/// KERI-authoritative until an explicit hard-revoke flips `revoked:true`. It is
+/// server-authoritative (the IdP cannot set it through PATCH) so a deprovisioned
+/// member is never silently presented as cryptographically off-boarded.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthsAgentExtension {
-    /// KERI DID assigned by Auths (read-only for IdP).
-    pub identity_did: String,
+    /// KERI DID assigned by Auths (read-only for IdP; absent until provisioned).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_did: Option<IdentityDID>,
     /// Capabilities granted to this agent.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Whether the underlying KERI identity has been cryptographically revoked
+    /// (irreversible hard-revoke). `false` for a merely soft-disabled member.
+    /// Server-authoritative; read-only for the IdP.
+    #[serde(default)]
+    pub revoked: bool,
 }
 
 #[cfg(test)]
@@ -97,8 +112,9 @@ mod tests {
                 location: "/Users/abc-123".into(),
             },
             auths_extension: Some(AuthsAgentExtension {
-                identity_did: "did:keri:Eabc123".into(),
+                identity_did: Some(IdentityDID::parse("did:keri:Eabc123").unwrap()),
                 capabilities: vec!["sign:commit".into(), "deploy:staging".into()],
+                revoked: false,
             }),
         }
     }

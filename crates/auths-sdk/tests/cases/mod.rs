@@ -6,14 +6,17 @@ mod authenticate;
 mod commit_policy;
 #[cfg(feature = "backend-git")]
 mod commit_trust;
+mod compliance_query;
 
 mod credential_present;
 mod credentials;
 mod device;
 mod diagnostics;
 mod ephemeral_signing;
+mod federation;
 mod fleet_metrics;
 pub mod helpers;
+mod honesty_surface;
 mod kill_switch;
 mod local_signer;
 mod org;

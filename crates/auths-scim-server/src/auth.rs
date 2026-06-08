@@ -20,13 +20,19 @@ use crate::state::ScimServerState;
 ///
 /// Extracting this in a handler proves the caller presented a valid per-tenant
 /// bearer token; the resolved `org_prefix` is the Auths org the request may
-/// provision into.
+/// provision into, signed by `org_key_alias`.
 #[derive(Debug, Clone)]
 pub struct AuthenticatedTenant {
     /// The authenticated tenant's id.
     pub tenant_id: String,
     /// The Auths org prefix this tenant provisions into.
     pub org_prefix: String,
+    /// Keychain alias of the org signing key that anchors delegations.
+    pub org_key_alias: String,
+    /// Capabilities this tenant may grant (empty = permit all).
+    pub allowed_capabilities: Vec<String>,
+    /// Base URL used for SCIM `meta.location`.
+    pub base_url: String,
 }
 
 impl FromRequestParts<ScimServerState> for AuthenticatedTenant {
@@ -57,6 +63,9 @@ impl FromRequestParts<ScimServerState> for AuthenticatedTenant {
                     .map(|t| AuthenticatedTenant {
                         tenant_id: t.tenant_id,
                         org_prefix: t.org_prefix,
+                        org_key_alias: t.org_key_alias,
+                        allowed_capabilities: t.allowed_capabilities,
+                        base_url: t.base_url,
                     })
                     .ok_or_else(|| unauthorized("invalid bearer token"))
             });

@@ -9,10 +9,26 @@ use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
+use crate::provisioner::ProvisionError;
+
 /// Presentation-layer SCIM error: a domain [`ScimError`] plus its HTTP rendering.
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct ScimServerError(#[from] ScimError);
+
+impl From<ProvisionError> for ScimServerError {
+    /// Map a provisioning failure to the SCIM error envelope: an unprovisioned org
+    /// is a client-config problem (4xx `invalidValue`); a backend failure is 5xx.
+    fn from(err: ProvisionError) -> Self {
+        match err {
+            ProvisionError::OrgNotProvisioned(org) => ScimError::InvalidValue {
+                message: format!("org '{org}' is not provisioned on this server"),
+            }
+            .into(),
+            ProvisionError::Backend(message) => ScimError::Internal { message }.into(),
+        }
+    }
+}
 
 impl IntoResponse for ScimServerError {
     fn into_response(self) -> Response {

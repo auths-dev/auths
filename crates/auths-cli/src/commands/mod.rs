@@ -11,6 +11,7 @@ pub mod cache;
 
 pub mod commit;
 pub mod completions;
+pub mod compliance;
 pub mod config;
 pub mod credential;
 pub mod debug;

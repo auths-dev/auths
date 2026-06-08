@@ -25,6 +25,9 @@ pub enum ScimError {
     #[error("Invalid PATCH operation: {message}")]
     InvalidPatch { message: String },
 
+    #[error("PATCH target has no value to operate on: {path}")]
+    NoTarget { path: String },
+
     #[error("Missing required attribute: {attribute}")]
     MissingAttribute { attribute: String },
 
@@ -75,6 +78,7 @@ impl ScimError {
             Self::InvalidValue { .. }
             | Self::InvalidFilter { .. }
             | Self::InvalidPatch { .. }
+            | Self::NoTarget { .. }
             | Self::MissingAttribute { .. }
             | Self::InvalidSchema { .. } => 400,
             Self::Mutability { .. } => 400,
@@ -97,6 +101,7 @@ impl ScimError {
             Self::InvalidValue { .. } => Some("invalidValue"),
             Self::TooMany { .. } => Some("tooMany"),
             Self::InvalidPatch { .. } => Some("invalidSyntax"),
+            Self::NoTarget { .. } => Some("noTarget"),
             Self::MissingAttribute { .. } => Some("invalidValue"),
             _ => None,
         }
@@ -124,6 +129,7 @@ impl ScimError {
             Self::Mutability { .. } => "mutability",
             Self::InvalidFilter { .. } => "invalid-filter",
             Self::InvalidPatch { .. } => "invalid-patch",
+            Self::NoTarget { .. } => "no-target",
             Self::MissingAttribute { .. } => "missing-attribute",
             Self::InvalidSchema { .. } => "invalid-schema",
             Self::PreconditionFailed => "precondition-failed",
