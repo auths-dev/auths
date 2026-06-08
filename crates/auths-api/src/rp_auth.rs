@@ -64,7 +64,7 @@ pub trait PresentationVerifier: Send + Sync + 'static {
 pub struct KeriPresentationVerifier {
     ctx: Arc<AuthsContext>,
     issuer_alias: KeyAlias,
-    challenges: Arc<ChallengeStore>,
+    challenges: Arc<dyn ChallengeStore>,
     audience: Audience,
 }
 
@@ -84,7 +84,7 @@ impl KeriPresentationVerifier {
     pub fn new(
         ctx: Arc<AuthsContext>,
         issuer_alias: KeyAlias,
-        challenges: Arc<ChallengeStore>,
+        challenges: Arc<dyn ChallengeStore>,
         audience: Audience,
     ) -> Self {
         Self {
@@ -105,7 +105,7 @@ impl PresentationVerifier for KeriPresentationVerifier {
         authenticate_presentation(
             &self.ctx,
             &self.issuer_alias,
-            &self.challenges,
+            &*self.challenges,
             &self.audience,
             wire,
             now,
@@ -222,13 +222,13 @@ pub async fn rp_auth_middleware<V: PresentationVerifier>(
 /// Shared state for the [`challenge_handler`] mint route.
 #[derive(Clone)]
 pub struct ChallengeMintState {
-    challenges: Arc<ChallengeStore>,
+    challenges: Arc<dyn ChallengeStore>,
     audience: Audience,
 }
 
 impl ChallengeMintState {
     /// Build mint state over the (shared) challenge store and this RP's audience.
-    pub fn new(challenges: Arc<ChallengeStore>, audience: Audience) -> Self {
+    pub fn new(challenges: Arc<dyn ChallengeStore>, audience: Audience) -> Self {
         Self {
             challenges,
             audience,

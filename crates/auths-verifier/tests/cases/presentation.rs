@@ -16,8 +16,9 @@ use auths_keri::{
 };
 use auths_verifier::{
     CredentialVerdict, PresentationBinding, PresentationEnvelope, PresentationVerdict, SignedAcdc,
-    VerifierWitnessPolicy, verify_presentation,
+    VerifierWitnessPolicy, verify_presentation, verify_presentation_json, verify_presentation_sync,
 };
+use base64::Engine as _;
 use chrono::{TimeZone, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
@@ -583,4 +584,248 @@ async fn invalid_subject_kel_rejected() {
 
     let verdict = verify(&envelope, &cred, &[], AUDIENCE, Some(&nonce)).await;
     assert_eq!(verdict, PresentationVerdict::SubjectKelInvalid);
+}
+
+/// The executor-free `verify_presentation_sync` must return exactly the same verdict as
+/// the async `verify_presentation` for identical inputs — the contract the FFI/WASM/Node/
+/// Python/Go bindings rely on. Exercised across both curves and across honored, wrong-key,
+/// wrong-audience, and revoked outcomes so the parity is not just on the happy path.
+#[tokio::test]
+async fn sync_and_async_presentation_verdicts_match() {
+    for curve in [CurveType::P256, CurveType::Ed25519] {
+        let subject = Subject::incept(curve, 40);
+        let cred = credential_for(&subject.aid, false);
+        let nonce = vec![5u8; 32];
+
+        // Honored happy path.
+        let honored = subject.present(
+            &cred.credential_said,
+            AUDIENCE,
+            PresentationBinding::Challenge {
+                nonce: nonce.clone(),
+            },
+        );
+        // Wrong-audience binding → WrongAudience.
+        let wrong_audience = subject.present(
+            &cred.credential_said,
+            "other.example",
+            PresentationBinding::Challenge {
+                nonce: nonce.clone(),
+            },
+        );
+        // A possessor who cannot produce the subject signature → HolderNotCurrentKey.
+        let bearer = PresentationEnvelope {
+            credential_said: cred.credential_said.clone(),
+            audience: AUDIENCE.to_string(),
+            binding: PresentationBinding::Challenge {
+                nonce: nonce.clone(),
+            },
+            signature: vec![0u8; 64],
+        };
+
+        let cases = [
+            (&honored, AUDIENCE, Some(nonce.as_slice())),
+            (&wrong_audience, AUDIENCE, Some(nonce.as_slice())),
+            (&bearer, AUDIENCE, Some(nonce.as_slice())),
+        ];
+
+        for (envelope, audience, challenge) in cases {
+            let async_verdict = verify_presentation(
+                envelope,
+                &cred.signed,
+                &cred.issuer_kel,
+                &cred.tel,
+                &[],
+                VerifierWitnessPolicy::Warn,
+                &subject.kel,
+                &[],
+                audience,
+                challenge,
+                now(),
+                &provider(),
+            )
+            .await;
+
+            let sync_verdict = verify_presentation_sync(
+                envelope,
+                &cred.signed,
+                &cred.issuer_kel,
+                &cred.tel,
+                &[],
+                VerifierWitnessPolicy::Warn,
+                &subject.kel,
+                &[],
+                audience,
+                challenge,
+                now(),
+            );
+
+            assert_eq!(
+                async_verdict, sync_verdict,
+                "sync/async verdict parity must hold on {curve:?}"
+            );
+        }
+    }
+}
+
+/// Build a `VerifyPresentationRequest` JSON bundle from the same typed inputs
+/// `load_presentation_inputs` produces (Vec<Event>/Vec<TelEvent>/SignedAcdc), with all
+/// bytes base64-encoded. This is the wire shape the FFI/WASM/Node/Python/Go bindings send.
+fn presentation_request_json(
+    envelope: &PresentationEnvelope,
+    cred: &Credentialed,
+    subject_kel: &[Event],
+    audience: &str,
+    expected_challenge: Option<&[u8]>,
+) -> String {
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let binding = match &envelope.binding {
+        PresentationBinding::Challenge { nonce } => serde_json::json!({
+            "mode": "challenge",
+            "nonceB64": b64.encode(nonce),
+        }),
+        PresentationBinding::Ttl { nonce, not_after } => serde_json::json!({
+            "mode": "ttl",
+            "nonceB64": b64.encode(nonce),
+            "notAfter": not_after.to_rfc3339(),
+        }),
+    };
+    serde_json::json!({
+        "schemaVersion": 1,
+        "envelope": {
+            "credentialSaid": envelope.credential_said,
+            "audience": envelope.audience,
+            "binding": binding,
+            "signatureB64": b64.encode(&envelope.signature),
+        },
+        "credential": {
+            "acdc": cred.signed.acdc,
+            "signatureB64": b64.encode(&cred.signed.signature),
+        },
+        "issuerKel": cred.issuer_kel,
+        "subjectKel": subject_kel,
+        "tel": cred.tel,
+        "receipts": [],
+        "witnessPolicy": "warn",
+        "audience": audience,
+        "expectedChallengeB64": expected_challenge.map(|c| b64.encode(c)),
+        "now": now().to_rfc3339(),
+    })
+    .to_string()
+}
+
+/// The JSON contract must round-trip (typed inputs → bundle JSON → request) and produce a
+/// tagged verdict whose `kind` matches the typed `verify_presentation_sync` outcome — across
+/// honored, wrong-audience, and not-current-key cases, on both curves.
+#[test]
+fn presentation_json_contract_matches_sync() {
+    for curve in [CurveType::P256, CurveType::Ed25519] {
+        let subject = Subject::incept(curve, 42);
+        let cred = credential_for(&subject.aid, false);
+        let nonce = vec![5u8; 32];
+
+        let honored = subject.present(
+            &cred.credential_said,
+            AUDIENCE,
+            PresentationBinding::Challenge {
+                nonce: nonce.clone(),
+            },
+        );
+        let wrong_audience = subject.present(
+            &cred.credential_said,
+            "other.example",
+            PresentationBinding::Challenge {
+                nonce: nonce.clone(),
+            },
+        );
+        let bearer = PresentationEnvelope {
+            credential_said: cred.credential_said.clone(),
+            audience: AUDIENCE.to_string(),
+            binding: PresentationBinding::Challenge {
+                nonce: nonce.clone(),
+            },
+            signature: vec![0u8; 64],
+        };
+
+        for (envelope, expected_kind) in [
+            (&honored, "valid"),
+            (&wrong_audience, "wrongAudience"),
+            (&bearer, "holderNotCurrentKey"),
+        ] {
+            let request =
+                presentation_request_json(envelope, &cred, &subject.kel, AUDIENCE, Some(&nonce));
+            let verdict: serde_json::Value =
+                serde_json::from_str(&verify_presentation_json(&request)).expect("verdict json");
+
+            assert_eq!(verdict["schemaVersion"], 1);
+            assert_eq!(
+                verdict["kind"], expected_kind,
+                "JSON verdict kind must match the sync outcome on {curve:?}"
+            );
+            if expected_kind == "valid" {
+                assert_eq!(
+                    verdict["subject"],
+                    format!("did:keri:{}", subject.aid),
+                    "valid verdict carries the holder subject DID"
+                );
+                assert_eq!(verdict["caps"], serde_json::json!(["sign"]));
+            }
+        }
+    }
+}
+
+/// Emit a deterministic valid presentation-request bundle as a cross-language test vector
+/// (consumed by the WASM/Node/Python/Go binding tests). Inert unless `AUTHS_EMIT_FIXTURES=1`.
+#[test]
+fn emit_presentation_fixture() {
+    if std::env::var("AUTHS_EMIT_FIXTURES").is_err() {
+        return;
+    }
+    let subject = Subject::incept(CurveType::P256, 50);
+    let cred = credential_for(&subject.aid, false);
+    let nonce = vec![5u8; 32];
+    let envelope = subject.present(
+        &cred.credential_said,
+        AUDIENCE,
+        PresentationBinding::Challenge {
+            nonce: nonce.clone(),
+        },
+    );
+    let request = presentation_request_json(&envelope, &cred, &subject.kel, AUDIENCE, Some(&nonce));
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/presentation_valid.json"
+    );
+    std::fs::write(path, request).unwrap();
+}
+
+/// Malformed, oversize, and wrong-version requests must each return a typed error verdict
+/// (never a panic, never a bare string).
+#[test]
+fn presentation_json_typed_errors() {
+    // Not JSON at all.
+    let malformed: serde_json::Value =
+        serde_json::from_str(&verify_presentation_json("{not json")).expect("verdict json");
+    assert_eq!(malformed["kind"], "malformedRequest");
+
+    // Over the 1 MiB request ceiling → inputTooLarge on the whole request.
+    let huge = " ".repeat(1024 * 1024 + 1);
+    let too_large: serde_json::Value =
+        serde_json::from_str(&verify_presentation_json(&huge)).expect("verdict json");
+    assert_eq!(too_large["kind"], "inputTooLarge");
+    assert_eq!(too_large["field"], "request");
+
+    // A schema version this build does not understand.
+    let bad_version = serde_json::json!({
+        "schemaVersion": 999,
+        "envelope": {"credentialSaid":"E","audience":"a","binding":{"mode":"challenge","nonceB64":""},"signatureB64":""},
+        "credential": {"acdc": {}, "signatureB64": ""},
+        "issuerKel": [], "subjectKel": [], "tel": [], "receipts": [],
+        "witnessPolicy": "warn", "audience": "a", "now": "2025-06-01T00:00:00+00:00"
+    })
+    .to_string();
+    let unsupported: serde_json::Value =
+        serde_json::from_str(&verify_presentation_json(&bad_version)).expect("verdict json");
+    assert_eq!(unsupported["kind"], "unsupportedSchemaVersion");
+    assert_eq!(unsupported["got"], 999);
 }

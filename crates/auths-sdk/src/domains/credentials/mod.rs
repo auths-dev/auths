@@ -14,6 +14,8 @@
 pub mod authenticate;
 /// Credential error type (`thiserror`, no `anyhow`).
 pub mod error;
+/// First-party revocation freshness: delegator refresh port + staleness policy.
+pub mod freshness;
 /// Issuance, revocation, and listing workflows.
 pub mod issue;
 /// Holder-binding presentation + challenge issuance (F.8).
@@ -27,6 +29,10 @@ pub mod verify;
 
 pub use authenticate::{PresentationAuthError, authenticate_presentation};
 pub use error::CredentialError;
+pub use freshness::{
+    DelegatorLogSource, FreshnessDecision, FreshnessPolicy, RefreshError, RefreshOutcome,
+    RootRefresh, enforce_freshness,
+};
 pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
 pub use present::{ChallengeSession, PresentationChallenge, present_credential};
 pub use present_inputs::{PresentationInputs, load_presentation_inputs};

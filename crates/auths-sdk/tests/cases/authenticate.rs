@@ -16,7 +16,7 @@ use auths_core::testing::IsolatedKeychainHandle;
 use auths_crypto::CurveType;
 use auths_id::keri::parse_did_keri;
 use auths_id::keri::types::Prefix;
-use auths_rp::{Audience, ChallengeStore, WirePresentation};
+use auths_rp::{Audience, ChallengeStore, InMemoryChallengeStore, WirePresentation};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::credentials::{
     PresentationChallenge, authenticate_presentation, issue, present_credential, revoke,
@@ -99,7 +99,7 @@ fn present_with_store(
     subject_alias: &KeyAlias,
     cred: &str,
     issued_audience: &Audience,
-    store: &ChallengeStore,
+    store: &InMemoryChallengeStore,
     now: chrono::DateTime<chrono::Utc>,
 ) -> WirePresentation {
     let issued = store.issue(issued_audience, now).expect("issue challenge");
@@ -121,7 +121,7 @@ async fn valid_presentation_authenticates_and_replay_rejected() {
     let h = setup();
     let (subject_alias, subject_prefix, cred) = issue_to_subject(&h, "agent", CurveType::P256);
     let audience = Audience::parse(AUDIENCE).unwrap();
-    let store = ChallengeStore::new(16);
+    let store = InMemoryChallengeStore::new(16);
     let now = chrono::Utc::now();
 
     let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
@@ -154,7 +154,7 @@ async fn presentation_for_audience_a_rejected_at_server_b() {
     let h = setup();
     let (subject_alias, _subject_prefix, cred) = issue_to_subject(&h, "agent", CurveType::Ed25519);
     let real = Audience::parse(AUDIENCE).unwrap();
-    let store = ChallengeStore::new(16);
+    let store = InMemoryChallengeStore::new(16);
     let now = chrono::Utc::now();
 
     let wire = present_with_store(&h, &subject_alias, &cred, &real, &store, now);
@@ -174,7 +174,7 @@ async fn revoked_credential_presentation_rejected() {
     let h = setup();
     let (subject_alias, _subject_prefix, cred) = issue_to_subject(&h, "agent", CurveType::P256);
     let audience = Audience::parse(AUDIENCE).unwrap();
-    let store = ChallengeStore::new(16);
+    let store = InMemoryChallengeStore::new(16);
     let now = chrono::Utc::now();
 
     revoke(&h.ctx, &h.issuer_alias, &cred).expect("revoke credential");
@@ -193,7 +193,7 @@ async fn valid_then_revoked_presentation_transition() {
     let h = setup();
     let (subject_alias, _subject_prefix, cred) = issue_to_subject(&h, "agent", CurveType::P256);
     let audience = Audience::parse(AUDIENCE).unwrap();
-    let store = ChallengeStore::new(16);
+    let store = InMemoryChallengeStore::new(16);
     let now = chrono::Utc::now();
 
     // Before revocation: a fresh presentation authenticates.

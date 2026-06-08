@@ -27,7 +27,7 @@ use crate::types::VerifiedAgent;
 pub struct KeriToolAuth {
     ctx: Arc<AuthsContext>,
     issuer_alias: KeyAlias,
-    challenges: Arc<ChallengeStore>,
+    challenges: Arc<dyn ChallengeStore>,
     audience: Audience,
     tool_capabilities: HashMap<String, String>,
 }
@@ -50,7 +50,7 @@ impl KeriToolAuth {
     pub fn new(
         ctx: Arc<AuthsContext>,
         issuer_alias: KeyAlias,
-        challenges: Arc<ChallengeStore>,
+        challenges: Arc<dyn ChallengeStore>,
         audience: Audience,
         tool_capabilities: HashMap<String, String>,
     ) -> Self {
@@ -82,7 +82,7 @@ impl KeriToolAuth {
         let principal = authenticate_presentation(
             &self.ctx,
             &self.issuer_alias,
-            &self.challenges,
+            &*self.challenges,
             &self.audience,
             presentation,
             now,

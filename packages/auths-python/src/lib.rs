@@ -19,6 +19,7 @@ pub mod identity_sign;
 pub mod org;
 pub mod pairing;
 pub mod policy;
+pub mod presentation;
 pub mod rotation;
 pub mod runtime;
 pub mod sign;
@@ -42,6 +43,13 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(verify::verify_device_authorization, m)?)?;
     m.add_function(wrap_pyfunction!(verify::verify_at_time, m)?)?;
     m.add_function(wrap_pyfunction!(verify::verify_chain_with_witnesses, m)?)?;
+
+    m.add_class::<presentation::PresentationStatus>()?;
+    m.add_class::<presentation::CredentialStatus>()?;
+    m.add_class::<presentation::PresentationReport>()?;
+    m.add_class::<presentation::CredentialReport>()?;
+    m.add_function(wrap_pyfunction!(presentation::verify_presentation, m)?)?;
+    m.add_function(wrap_pyfunction!(presentation::verify_credential, m)?)?;
 
     m.add_function(wrap_pyfunction!(sign::sign_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_action, m)?)?;

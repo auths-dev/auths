@@ -449,3 +449,39 @@ pub async fn wasm_verify_device_link(
     serde_json::to_string(&result)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
 }
+
+/// Verify a credential **presentation** from a bundled JSON request (the fn-153.3 contract),
+/// returning the tagged discriminated-union verdict as a JSON string.
+///
+/// Synchronous by construction: the verify core (fn-153.1/.3) runs the pure-Rust
+/// `software_verify` path, so there is no `block_on`/executor — which is mandatory in
+/// single-threaded browser WASM. Keys travel CESR-tagged inside the request JSON; there is
+/// no raw-pubkey argument and no byte-length curve dispatch (`pk_from_hex_wasm` is not used).
+///
+/// Args:
+/// * `bundle_json`: A `VerifyPresentationRequest` JSON document (see `contract` module docs).
+///
+/// Usage (TypeScript):
+/// ```ignore
+/// import { verifyPresentationJson } from "auths-verifier";
+/// import type { PresentationVerdictEnvelope } from "auths-verifier/ts/verdict";
+/// const verdict = JSON.parse(verifyPresentationJson(bundle)) as PresentationVerdictEnvelope;
+/// if (verdict.kind === "valid") {
+///   // verdict.subject and verdict.caps are now available, fully typed
+/// }
+/// ```
+#[wasm_bindgen(js_name = verifyPresentationJson)]
+pub fn wasm_verify_presentation_json(bundle_json: &str) -> String {
+    crate::contract::verify_presentation_json(bundle_json)
+}
+
+/// Verify an issued **credential** from a bundled JSON request (the fn-153.3 contract),
+/// returning the tagged discriminated-union verdict as a JSON string. Same synchronous,
+/// executor-free, CESR-tagged-key contract as [`wasm_verify_presentation_json`].
+///
+/// Args:
+/// * `bundle_json`: A `VerifyCredentialRequest` JSON document (see `contract` module docs).
+#[wasm_bindgen(js_name = verifyCredentialJson)]
+pub fn wasm_verify_credential_json(bundle_json: &str) -> String {
+    crate::contract::verify_credential_json(bundle_json)
+}

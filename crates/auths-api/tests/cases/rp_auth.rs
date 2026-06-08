@@ -21,7 +21,8 @@ use auths_api::rp_auth::{
     PresentationVerifier, RpAuthState,
 };
 use auths_rp::{
-    Audience, ChallengeStore, Denied, Nonce, VerifiedPrincipal, WireBinding, WirePresentation,
+    Audience, ChallengeStore, Denied, InMemoryChallengeStore, Nonce, VerifiedPrincipal,
+    WireBinding, WirePresentation,
 };
 use auths_sdk::domains::credentials::PresentationAuthError;
 use auths_verifier::{CanonicalDid, Capability, IdentityDID, PresentationVerdict};
@@ -37,7 +38,7 @@ enum FakeOutcome {
 /// A verifier that runs the REAL challenge consume (replay/audience are real), then applies
 /// a configured crypto outcome — so the middleware can be tested without a live registry.
 struct FakeVerifier {
-    challenges: Arc<ChallengeStore>,
+    challenges: Arc<InMemoryChallengeStore>,
     outcome: FakeOutcome,
 }
 
@@ -92,7 +93,7 @@ fn protected_app(state: RpAuthState<FakeVerifier>) -> Router {
 
 /// Issue a real challenge from `store` and build a wire presentation carrying its nonce,
 /// bound to `bind_audience` (use a different audience than issued to test the mismatch).
-fn header_for(store: &ChallengeStore, issue_audience: &str, bind_audience: &str) -> String {
+fn header_for(store: &InMemoryChallengeStore, issue_audience: &str, bind_audience: &str) -> String {
     let audience = Audience::parse(issue_audience).expect("audience");
     let issued = store.issue(&audience, Utc::now()).expect("issue challenge");
     let wire = WirePresentation {
@@ -124,7 +125,7 @@ async fn get_with_auth(app: Router, header: Option<&str>) -> (StatusCode, String
 
 #[tokio::test]
 async fn valid_presentation_authenticates_and_exposes_subject() {
-    let store = Arc::new(ChallengeStore::new(16));
+    let store = Arc::new(InMemoryChallengeStore::new(16));
     let header = header_for(&store, AUDIENCE, AUDIENCE);
     let state = RpAuthState::new(Arc::new(FakeVerifier {
         challenges: Arc::clone(&store),
@@ -138,7 +139,7 @@ async fn valid_presentation_authenticates_and_exposes_subject() {
 
 #[tokio::test]
 async fn replayed_presentation_is_rejected() {
-    let store = Arc::new(ChallengeStore::new(16));
+    let store = Arc::new(InMemoryChallengeStore::new(16));
     let header = header_for(&store, AUDIENCE, AUDIENCE);
     let make_app = || {
         protected_app(RpAuthState::new(Arc::new(FakeVerifier {
@@ -159,7 +160,7 @@ async fn replayed_presentation_is_rejected() {
 
 #[tokio::test]
 async fn presentation_bound_to_other_audience_is_rejected() {
-    let store = Arc::new(ChallengeStore::new(16));
+    let store = Arc::new(InMemoryChallengeStore::new(16));
     // Challenge issued for the real audience, but the presentation claims a different one →
     // there is no live challenge under (other-audience, nonce).
     let header = header_for(&store, AUDIENCE, "evil.example.com");
@@ -174,7 +175,7 @@ async fn presentation_bound_to_other_audience_is_rejected() {
 
 #[tokio::test]
 async fn expired_credential_maps_to_401() {
-    let store = Arc::new(ChallengeStore::new(16));
+    let store = Arc::new(InMemoryChallengeStore::new(16));
     let header = header_for(&store, AUDIENCE, AUDIENCE);
     let state = RpAuthState::new(Arc::new(FakeVerifier {
         challenges: Arc::clone(&store),
@@ -187,7 +188,7 @@ async fn expired_credential_maps_to_401() {
 
 #[tokio::test]
 async fn missing_capability_maps_to_403() {
-    let store = Arc::new(ChallengeStore::new(16));
+    let store = Arc::new(InMemoryChallengeStore::new(16));
     let header = header_for(&store, AUDIENCE, AUDIENCE);
     // Principal holds no capabilities, but the route requires `deploy`.
     let state = RpAuthState::new(Arc::new(FakeVerifier {
@@ -202,7 +203,7 @@ async fn missing_capability_maps_to_403() {
 
 #[tokio::test]
 async fn missing_header_is_unauthorized_and_handler_unreached() {
-    let store = Arc::new(ChallengeStore::new(16));
+    let store = Arc::new(InMemoryChallengeStore::new(16));
     let state = RpAuthState::new(Arc::new(FakeVerifier {
         challenges: store,
         outcome: FakeOutcome::Grant(principal(&["deploy"])),
@@ -216,7 +217,7 @@ async fn missing_header_is_unauthorized_and_handler_unreached() {
 #[tokio::test]
 async fn challenge_mint_returns_nonce_and_full_store_is_503() {
     // A live store mints a fresh nonce.
-    let store = Arc::new(ChallengeStore::new(4));
+    let store: Arc<dyn ChallengeStore> = Arc::new(InMemoryChallengeStore::new(4));
     let app = Router::new()
         .route("/v1/auth/challenge", get(challenge_handler))
         .with_state(ChallengeMintState::new(
@@ -235,7 +236,7 @@ async fn challenge_mint_returns_nonce_and_full_store_is_503() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // A store at capacity fails closed with 503 rather than evicting a live nonce.
-    let full = Arc::new(ChallengeStore::new(0));
+    let full: Arc<dyn ChallengeStore> = Arc::new(InMemoryChallengeStore::new(0));
     let app = Router::new()
         .route("/v1/auth/challenge", get(challenge_handler))
         .with_state(ChallengeMintState::new(

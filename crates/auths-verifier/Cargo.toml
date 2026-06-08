@@ -25,6 +25,13 @@ json-canon.workspace = true
 async-trait = "0.1"
 log = "0.4"
 ring = { workspace = true, optional = true }
+# Pure-Rust, executor-free signature verification for the synchronous verifier core
+# (`software_verify`). Both crates compile on wasm32 (no ring, no WebCrypto, no async),
+# which is what lets `verify_presentation_sync`/`verify_credential_sync` run with no
+# executor on every binding target. P-256 matches the workspace default curve and the
+# `p256` crate the signing side already uses, so verification is byte-for-byte in parity.
+p256 = { version = "0.13", features = ["ecdsa"] }
+ed25519-dalek = { version = "2", default-features = false }
 schemars = { workspace = true, optional = true, features = ["chrono"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.149"

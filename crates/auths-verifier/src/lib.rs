@@ -52,6 +52,8 @@ pub mod clock;
 pub mod commit;
 pub mod commit_error;
 pub mod commit_kel;
+/// The single cross-boundary verify contract (JSON request → tagged verdict).
+pub mod contract;
 pub mod core;
 pub mod credential;
 pub mod duplicity;
@@ -60,6 +62,7 @@ pub mod error;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 pub mod presentation;
+mod software_verify;
 pub mod ssh_sig;
 pub mod types;
 pub mod verifier;
@@ -135,13 +138,23 @@ pub use commit_kel::{
 };
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 
-// Re-export ACDC credential verification (Epic F.5)
-pub use credential::{CredentialVerdict, LifecycleEvent, SignedAcdc, verify_credential};
+// Re-export ACDC credential verification (Epic F.5). The `_sync` entrypoint is the
+// executor-free core every non-Rust binding target (C-ABI, WASM, Node, Python, Go)
+// calls directly; the `async fn` is a thin wrapper kept for native Rust callers.
+pub use credential::{
+    CredentialVerdict, LifecycleEvent, SignedAcdc, verify_credential, verify_credential_sync,
+};
 
-// Re-export holder-binding presentation verification (Epic F.8)
+// Re-export holder-binding presentation verification (Epic F.8). `verify_presentation_sync`
+// is the executor-free core; `verify_presentation` is the thin async wrapper over it.
 pub use presentation::{
     PresentationBinding, PresentationEnvelope, PresentationVerdict, verify_presentation,
+    verify_presentation_sync,
 };
+
+// Re-export the cross-boundary JSON verify contract (Epic D2). One bundled request in, one
+// tagged discriminated-union verdict out — the single surface FFI/WASM/Node/Python/Go share.
+pub use contract::{SCHEMA_VERSION, verify_credential_json, verify_presentation_json};
 
 // Re-export crypto provider trait for downstream consumers
 pub use auths_crypto::CryptoProvider;

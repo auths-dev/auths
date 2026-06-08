@@ -7,10 +7,11 @@ AUTHS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "=== Building auths-verifier for Go CGo ==="
 echo ""
 
-# Build the Rust library
-echo "Building Rust library..."
+# Build the Rust library with the FFI exports (the C-ABI lives behind the `ffi` feature;
+# without it the cdylib has no auths_verify_*/ffi_verify_* symbols to link).
+echo "Building Rust library (--features ffi)..."
 cd "$AUTHS_ROOT"
-cargo build --release -p auths_verifier
+cargo build --release -p auths_verifier --features ffi
 
 # Check library output
 LIB_PATH="$AUTHS_ROOT/target/release"
@@ -32,6 +33,9 @@ echo ""
 echo "=== Build Complete ==="
 echo ""
 echo "Library built at: $LIB_PATH/$LIB_FILE"
+echo ""
+echo "NOTE: this package requires CGO_ENABLED=1 and a C toolchain — a CGO_ENABLED=0"
+echo "      (static-Go / distroless) build cannot link the native verifier."
 echo ""
 echo "To use the Go package, set CGO environment variables:"
 echo ""

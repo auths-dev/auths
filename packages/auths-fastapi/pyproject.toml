@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "auths-fastapi"
+version = "0.1.0"
+description = "FastAPI dependency authenticating an Auths-Presentation request into a typed Principal"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Typing :: Typed",
+    "Topic :: Security :: Cryptography",
+]
+keywords = ["fastapi", "auth", "identity", "keri", "did", "presentation"]
+dependencies = ["fastapi>=0.110"]
+
+[project.urls]
+Homepage = "https://auths.dev"
+Repository = "https://github.com/auths-dev/auths"
+Documentation = "https://docs.auths.dev"
+"Bug Tracker" = "https://github.com/auths-dev/auths/issues"
+
+[project.optional-dependencies]
+# The native verify binding. Only the PRODUCTION verifier needs it; tests inject a fake.
+native = ["auths>=0.1"]
+client = ["httpx>=0.27"]
+
+[dependency-groups]
+dev = ["pytest>=7", "httpx>=0.27", "mypy>=1.8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["auths_fastapi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_any_generics = true
+# The `auths` native binding is an optional extra; its absence must not fail typing.
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "auths.*"
+ignore_missing_imports = true

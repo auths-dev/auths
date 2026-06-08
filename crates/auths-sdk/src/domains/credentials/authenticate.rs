@@ -76,7 +76,7 @@ impl PresentationAuthError {
 pub async fn authenticate_presentation(
     ctx: &AuthsContext,
     issuer_alias: &KeyAlias,
-    challenges: &ChallengeStore,
+    challenges: &dyn ChallengeStore,
     config_audience: &Audience,
     wire: WirePresentation,
     now: DateTime<Utc>,

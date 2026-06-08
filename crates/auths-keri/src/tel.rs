@@ -373,8 +373,15 @@ impl TelState {
 
 /// A single backerless TEL event, tagged by its event type.
 ///
-/// `validate_tel` consumes an ordered slice of these. Deserializes from the wire
-/// by dispatching on the `t` field — never on byte length or field count.
+/// `validate_tel` consumes an ordered slice of these. Deserializes from the wire by
+/// dispatching on the `t` field — never on byte length or field count. The hand-written
+/// serde impls let a `Vec<TelEvent>` round-trip through serde for the cross-boundary verify
+/// contract: `Serialize` delegates to the inner variant (whose canonical form already carries
+/// `t`), and `Deserialize` peeks `t` then decodes the **full** object into the variant.
+///
+/// A derived internally-`t`-tagged enum cannot be used here (unlike [`crate::Event`]): serde
+/// strips the tag before handing the content to the variant, but `Vcp`/`Iss`/`Rev` each carry
+/// their own `t` field, so the strip would surface as a spurious "missing field `t`".
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TelEvent {
     /// Registry inception.
@@ -383,6 +390,41 @@ pub enum TelEvent {
     Iss(Iss),
     /// Credential revocation.
     Rev(Rev),
+}
+
+impl Serialize for TelEvent {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            TelEvent::Vcp(e) => e.serialize(serializer),
+            TelEvent::Iss(e) => e.serialize(serializer),
+            TelEvent::Rev(e) => e.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TelEvent {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let event_type = value
+            .get("t")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| D::Error::missing_field("t"))?;
+        match event_type {
+            "vcp" => serde_json::from_value(value)
+                .map(TelEvent::Vcp)
+                .map_err(D::Error::custom),
+            "iss" => serde_json::from_value(value)
+                .map(TelEvent::Iss)
+                .map_err(D::Error::custom),
+            "rev" => serde_json::from_value(value)
+                .map(TelEvent::Rev)
+                .map_err(D::Error::custom),
+            other => Err(D::Error::custom(format!(
+                "unknown TEL event type '{other}'"
+            ))),
+        }
+    }
 }
 
 impl TelEvent {

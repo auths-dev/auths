@@ -19,6 +19,58 @@ export declare function createIdentity(keyAlias: string, repoPath: string, passp
 
 export declare function createOrg(label: string, repoPath: string, passphrase?: string | undefined | null): NapiOrgResult
 
+/** A typed credential verdict report (the F.5 outcome). */
+export interface CredentialReport {
+  /** The discriminated status. */
+  status: CredentialStatus
+  /** Issuer AID (`did:keri:`) — present on `Valid`. */
+  issuer?: string
+  /** Subject (holder) AID — present on `Valid`. */
+  subject?: string
+  /** Granted capabilities — present on `Valid`. Never silently dropped (fn-153.2). */
+  caps?: Array<string>
+  /** The KEL position the verdict is as-of — present on `Valid`. */
+  asOf?: number
+  /** The KEL position a revocation was anchored at — present on `CredentialRevoked`. */
+  revokedAt?: number
+  /** The expiry instant — present on `Expired`. */
+  expiredAt?: string
+  /** Failure detail — present on `MalformedRequest`. */
+  message?: string
+  /** The offending request field — present on `InputTooLarge`. */
+  field?: string
+}
+
+/** The outcome of [`verify_credential`] — mirrors the Rust `CredentialVerdict` wire kinds. */
+export declare const enum CredentialStatus {
+  /** Authentic, anchored, witnessed per policy, unexpired, and not revoked. */
+  Valid = 'Valid',
+  /** Recomputed ACDC SAID did not match the embedded one. */
+  SaidMismatch = 'SaidMismatch',
+  /** Attributes failed schema validation, or the schema SAID is not the pinned one. */
+  SchemaInvalid = 'SchemaInvalid',
+  /** The issuance was unanchored or the issuer signature did not verify. */
+  IssuerSignatureInvalid = 'IssuerSignatureInvalid',
+  /** The registry (`vcp`) was never anchored in the issuer KEL. */
+  RegistryNotEstablished = 'RegistryNotEstablished',
+  /** A qualifying revocation is anchored at/before the presentation; see `revokedAt`. */
+  CredentialRevoked = 'CredentialRevoked',
+  /** The credential expired; see `expiredAt`. */
+  Expired = 'Expired',
+  /** A lifecycle anchor missed witness quorum under `RequireWitnesses`. */
+  WitnessQuorumNotMet = 'WitnessQuorumNotMet',
+  /** The issuer KEL forks (fail-closed in both witness policies). */
+  IssuerKelDuplicitous = 'IssuerKelDuplicitous',
+  /** The request JSON could not be parsed; see `message`. */
+  MalformedRequest = 'MalformedRequest',
+  /** A request slice exceeded its bound; see `field`. */
+  InputTooLarge = 'InputTooLarge',
+  /** The request schema version is not understood by this build. */
+  UnsupportedSchemaVersion = 'UnsupportedSchemaVersion',
+  /** Unrecognized verdict kind (forward-compat guard). */
+  Unknown = 'Unknown'
+}
+
 export declare function delegateAgent(agentName: string, capabilities: Array<string>, parentRepoPath: string, passphrase?: string | undefined | null, expiresIn?: number | undefined | null, identityDid?: string | undefined | null, curve?: string | undefined | null): NapiDelegatedAgentBundle
 
 export declare function evaluatePolicy(policyJson: string, issuer: string, subject: string, capabilities?: Array<string> | undefined | null, role?: string | undefined | null, revoked?: boolean | undefined | null, expiresAt?: string | undefined | null, repo?: string | undefined | null, environment?: string | undefined | null, signerType?: string | undefined | null, delegatedBy?: string | undefined | null, chainDepth?: number | undefined | null): NapiPolicyDecision
@@ -226,6 +278,54 @@ export interface NapiWitnessResult {
 
 export declare function pinIdentity(did: string, repoPath: string, label?: string | undefined | null, trustLevel?: string | undefined | null): NapiPinnedIdentity
 
+/** A typed presentation verdict report (holder-binding outcome). */
+export interface PresentationReport {
+  /** The discriminated status. */
+  status: PresentationStatus
+  /** Issuer AID (`did:keri:`) — present on `Valid`. */
+  issuer?: string
+  /** Subject (holder) AID whose current key signed — present on `Valid`. */
+  subject?: string
+  /** Granted capabilities — present on `Valid`. Never silently dropped (fn-153.2). */
+  caps?: Array<string>
+  /** Optional informational role claim — present on `Valid`. */
+  role?: string
+  /** Optional credential expiry — present on `Valid`. */
+  expiresAt?: string
+  /** The nested credential verdict — present on `CredentialNotValid`. */
+  credential?: CredentialReport
+  /** Failure detail — present on `MalformedRequest`. */
+  message?: string
+  /** The offending request field — present on `InputTooLarge`. */
+  field?: string
+}
+
+/** The outcome of [`verify_presentation`] — mirrors the Rust `PresentationVerdict` wire kinds. */
+export declare const enum PresentationStatus {
+  /** Holder-binding proven: the credential is valid and the presentation is current-key signed. */
+  Valid = 'Valid',
+  /** The presentation signature is not the subject AID's current key. */
+  HolderNotCurrentKey = 'HolderNotCurrentKey',
+  /** Bound to a different audience than expected. */
+  WrongAudience = 'WrongAudience',
+  /** Challenge mismatched or already consumed (single-use replay protection). */
+  NonceMismatchOrConsumed = 'NonceMismatchOrConsumed',
+  /** Non-interactive TTL presentation expired. */
+  Expired = 'Expired',
+  /** The subject KEL could not be replayed. */
+  SubjectKelInvalid = 'SubjectKelInvalid',
+  /** The credential itself is not valid; see `credential` for the nested verdict. */
+  CredentialNotValid = 'CredentialNotValid',
+  /** The request JSON could not be parsed; see `message`. */
+  MalformedRequest = 'MalformedRequest',
+  /** A request slice exceeded its bound; see `field`. */
+  InputTooLarge = 'InputTooLarge',
+  /** The request schema version is not understood by this build. */
+  UnsupportedSchemaVersion = 'UnsupportedSchemaVersion',
+  /** Unrecognized verdict kind (forward-compat guard). */
+  Unknown = 'Unknown'
+}
+
 export declare function removePinnedIdentity(did: string, repoPath: string): void
 
 export declare function removeWitness(urlStr: string, repoPath: string): void
@@ -335,6 +435,39 @@ export declare function verifyChain(attestationsJson: Array<string>, rootPkHex: 
 
 export declare function verifyChainWithWitnesses(attestationsJson: Array<string>, rootPkHex: string, receiptsJson: Array<string>, witnessKeysJson: Array<string>, threshold: number): Promise<NapiVerificationReport>
 
+/**
+ * Verify an issued **credential** from a bundled JSON request, returning a typed report.
+ *
+ * Args:
+ * * `request_json`: A `VerifyCredentialRequest` JSON document.
+ *
+ * Usage (TypeScript):
+ * ```ignore
+ * import { verifyCredential, CredentialStatus } from "@auths-dev/sdk";
+ * const report = verifyCredential(bundleJson);
+ * if (report.status === CredentialStatus.CredentialRevoked) { /* report.revokedAt *\/ }
+ * ```
+ */
+export declare function verifyCredential(requestJson: string): CredentialReport
+
 export declare function verifyDeviceAuthorization(identityDid: string, deviceDid: string, attestationsJson: Array<string>, identityPkHex: string): Promise<NapiVerificationReport>
+
+/**
+ * Verify a credential **presentation** from a bundled JSON request, returning a typed report.
+ *
+ * The request is the fn-153.3 `VerifyPresentationRequest` bundle (keys CESR-tagged inside).
+ * Denials and malformed input are returned as a `status`, not thrown.
+ *
+ * Args:
+ * * `request_json`: A `VerifyPresentationRequest` JSON document.
+ *
+ * Usage (TypeScript):
+ * ```ignore
+ * import { verifyPresentation, PresentationStatus } from "@auths-dev/sdk";
+ * const report = verifyPresentation(bundleJson);
+ * if (report.status === PresentationStatus.Valid) { /* report.subject, report.caps *\/ }
+ * ```
+ */
+export declare function verifyPresentation(requestJson: string): PresentationReport
 
 export declare function version(): string

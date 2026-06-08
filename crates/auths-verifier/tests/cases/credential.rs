@@ -772,3 +772,182 @@ async fn expired_credential_rejected() {
     .await;
     assert!(matches!(verdict, CredentialVerdict::Expired { .. }));
 }
+
+/// The JSON contract (`verify_credential_json`) must round-trip the same typed inputs the
+/// resolver produces (Vec<Event>/Vec<TelEvent>/SignedAcdc) and return a tagged verdict whose
+/// `kind` matches the typed sync outcome — valid and expired, both curves.
+#[tokio::test]
+async fn credential_json_contract_matches_sync() {
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD;
+
+    for curve in [CurveType::P256, CurveType::Ed25519] {
+        let valid = build_fixture(&FixtureSpec::basic(curve, false));
+        let mut expired_spec = FixtureSpec::basic(curve, false);
+        expired_spec.expiry = Some("2025-03-01T00:00:00+00:00".to_string());
+        let expired = build_fixture(&expired_spec);
+
+        for (f, expected_kind) in [(&valid, "valid"), (&expired, "expired")] {
+            let request = serde_json::json!({
+                "schemaVersion": 1,
+                "credential": {
+                    "acdc": f.signed.acdc,
+                    "signatureB64": b64.encode(&f.signed.signature),
+                },
+                "issuerKel": f.issuer_kel,
+                "tel": f.tel,
+                "receipts": [],
+                "witnessPolicy": "warn",
+                "now": now().to_rfc3339(),
+            })
+            .to_string();
+
+            let raw = auths_verifier::verify_credential_json(&request);
+            let verdict: serde_json::Value = serde_json::from_str(&raw).expect("verdict json");
+            assert_eq!(verdict["schemaVersion"], 1);
+            assert_eq!(
+                verdict["kind"], expected_kind,
+                "JSON verdict kind must match the sync outcome on {curve:?}; got {raw}"
+            );
+            if expected_kind == "valid" {
+                assert_eq!(verdict["caps"], serde_json::json!(["sign"]));
+            }
+            if expected_kind == "expired" {
+                // Multi-word struct-variant fields must be camelCase on the wire (matches the
+                // TS union and every binding) — guards the `rename_all_fields` contract.
+                assert!(
+                    verdict["expiredAt"].is_string(),
+                    "expired verdict must carry camelCase `expiredAt`, got {raw}"
+                );
+            }
+        }
+    }
+}
+
+/// Emit deterministic valid + revoked credential-request bundles as cross-language test
+/// vectors (consumed by the WASM/Node/Python/Go binding tests). Inert unless
+/// `AUTHS_EMIT_FIXTURES=1`.
+#[tokio::test]
+async fn emit_credential_fixtures() {
+    use base64::Engine as _;
+    if std::env::var("AUTHS_EMIT_FIXTURES").is_err() {
+        return;
+    }
+    let b64 = base64::engine::general_purpose::STANDARD;
+    for (revoke, name) in [
+        (false, "credential_valid.json"),
+        (true, "credential_revoked.json"),
+    ] {
+        let f = build_fixture(&FixtureSpec::basic(CurveType::P256, revoke));
+        let request = serde_json::json!({
+            "schemaVersion": 1,
+            "credential": { "acdc": f.signed.acdc, "signatureB64": b64.encode(&f.signed.signature) },
+            "issuerKel": f.issuer_kel,
+            "tel": f.tel,
+            "receipts": [],
+            "witnessPolicy": "warn",
+            "now": now().to_rfc3339(),
+        })
+        .to_string();
+        let path = format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
+        std::fs::write(path, request).unwrap();
+    }
+}
+
+/// Drive the C-ABI `auths_verify_credential_json` end-to-end against a known-valid and a
+/// revoked fixture, asserting the verdict tag — and that buffer-too-small reports the required
+/// length so a sized retry succeeds.
+#[cfg(feature = "ffi")]
+#[test]
+fn credential_ffi_c_abi_end_to_end() {
+    use auths_verifier::ffi::{
+        ERR_VERIFY_BUFFER_TOO_SMALL, VERIFY_SUCCESS, auths_verify_credential_json,
+    };
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD;
+
+    for (revoke, expected_kind) in [(false, "valid"), (true, "credentialRevoked")] {
+        let f = build_fixture(&FixtureSpec::basic(CurveType::P256, revoke));
+        let request = serde_json::json!({
+            "schemaVersion": 1,
+            "credential": { "acdc": f.signed.acdc, "signatureB64": b64.encode(&f.signed.signature) },
+            "issuerKel": f.issuer_kel,
+            "tel": f.tel,
+            "receipts": [],
+            "witnessPolicy": "warn",
+            "now": now().to_rfc3339(),
+        })
+        .to_string();
+
+        // Undersized buffer → distinct too-small status + required length written back.
+        let mut tiny = [0u8; 1];
+        let mut len = tiny.len();
+        let rc = unsafe {
+            auths_verify_credential_json(
+                request.as_ptr(),
+                request.len(),
+                tiny.as_mut_ptr(),
+                &mut len,
+            )
+        };
+        assert_eq!(rc, ERR_VERIFY_BUFFER_TOO_SMALL);
+        assert!(len > tiny.len(), "required length reported back");
+
+        // Retry at the reported size → success, and the verdict tag matches.
+        let mut buf = vec![0u8; len];
+        let mut buf_len = buf.len();
+        let rc = unsafe {
+            auths_verify_credential_json(
+                request.as_ptr(),
+                request.len(),
+                buf.as_mut_ptr(),
+                &mut buf_len,
+            )
+        };
+        assert_eq!(rc, VERIFY_SUCCESS);
+        let verdict: serde_json::Value =
+            serde_json::from_slice(&buf[..buf_len]).expect("verdict json");
+        assert_eq!(verdict["schemaVersion"], 1);
+        assert_eq!(verdict["kind"], expected_kind, "revoke={revoke}");
+    }
+}
+
+/// The executor-free `verify_credential_sync` must return exactly the same verdict as the
+/// async `verify_credential` for identical inputs — the parity every binding target relies
+/// on. Covers a valid credential and an expired one, on both curves.
+#[tokio::test]
+async fn sync_and_async_credential_verdicts_match() {
+    for curve in [CurveType::P256, CurveType::Ed25519] {
+        let valid = build_fixture(&FixtureSpec::basic(curve, false));
+        let mut expired_spec = FixtureSpec::basic(curve, false);
+        expired_spec.expiry = Some("2025-03-01T00:00:00+00:00".to_string());
+        let expired = build_fixture(&expired_spec);
+
+        for f in [&valid, &expired] {
+            let async_verdict = auths_verifier::verify_credential(
+                &f.signed,
+                &f.issuer_kel,
+                &f.tel,
+                &[],
+                VerifierWitnessPolicy::Warn,
+                now(),
+                &provider(),
+            )
+            .await;
+
+            let sync_verdict = auths_verifier::verify_credential_sync(
+                &f.signed,
+                &f.issuer_kel,
+                &f.tel,
+                &[],
+                VerifierWitnessPolicy::Warn,
+                now(),
+            );
+
+            assert_eq!(
+                async_verdict, sync_verdict,
+                "sync/async credential verdict parity must hold on {curve:?}"
+            );
+        }
+    }
+}

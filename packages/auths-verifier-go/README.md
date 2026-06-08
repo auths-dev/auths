@@ -1,6 +1,11 @@
 # auths-verifier-go
 
-Go bindings for the Auths attestation verification library, powered by Rust via CGo.
+Go bindings for the Auths attestation + KERI credential/presentation verification library,
+powered by Rust via CGo. Every verdict is computed by the **same Rust core** the CLI and the
+other language bindings use — there is no pure-Go re-implementation, so Go cannot diverge.
+
+> **CGO_ENABLED=1 required.** This package links the native cdylib and needs a C toolchain. A
+> `CGO_ENABLED=0` (static-Go / distroless) build **cannot** use it.
 
 ## Installation
 
@@ -85,9 +90,47 @@ func main() {
 }
 ```
 
+### KERI credential & presentation verdicts
+
+The keyless service-to-service path verifies a bundled JSON request (issuer/subject/delegator
+KELs, TEL, receipts, the holder proof) and returns a **typed discriminated-union verdict** — a
+`Kind` constant plus the fields for that kind — never a bare bool or magic int. A malformed
+request is a typed `KindMalformedRequest` verdict, not a panic.
+
+```go
+verdict, err := verifier.VerifyPresentation(requestJSON) // *_json from the fn-153.3 contract
+if err != nil {
+    // transport failure only (null/oversize/panic) — NOT a verification "no"
+}
+switch verdict.Kind {
+case verifier.KindValid:
+    fmt.Printf("authorized %s with caps %v\n", verdict.Subject, verdict.Caps)
+case verifier.KindCredentialNotValid:
+    fmt.Printf("credential rejected: %s\n", verdict.Credential.Kind)
+default:
+    fmt.Printf("denied: %s\n", verdict.Kind)
+}
+
+cred, _ := verifier.VerifyCredential(credentialRequestJSON)
+if cred.Kind == verifier.KindCredentialRevoked {
+    fmt.Printf("revoked at issuer KEL seq %d\n", cred.RevokedAt)
+}
+```
+
 ## API Reference
 
 ### Functions
+
+#### `VerifyPresentation(requestJSON []byte) (PresentationVerdict, error)`
+
+Verify a credential presentation from a bundled JSON request; returns a typed
+`PresentationVerdict` (`Kind` + fields). A malformed request yields `KindMalformedRequest`, not
+an error — `error` is non-nil only for transport failures.
+
+#### `VerifyCredential(requestJSON []byte) (CredentialVerdict, error)`
+
+Verify an issued credential from a bundled JSON request; returns a typed `CredentialVerdict`.
+
 
 #### `VerifyAttestation(attestationJSON []byte, issuerPK []byte) VerificationResult`
 

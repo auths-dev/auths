@@ -19,7 +19,8 @@ pub mod challenge;
 pub mod principal;
 
 pub use challenge::{
-    ChallengeError, ChallengeStore, DEFAULT_CHALLENGE_TTL_SECS, ExpectedNonce, IssuedChallenge,
+    ChallengeError, ChallengeStore, DEFAULT_CHALLENGE_TTL_SECS, ExpectedNonce,
+    InMemoryChallengeStore, IssuedChallenge,
 };
 pub use principal::{Denied, Grant, VerifiedPrincipal};
 
