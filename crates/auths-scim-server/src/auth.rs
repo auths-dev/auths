@@ -1,0 +1,66 @@
+//! Bearer-token tenant authentication.
+//!
+//! SCIM clients (Okta/Entra) authenticate with a static bearer token — an
+//! accepted risk documented in the crate README. The token authenticates the
+//! provisioning channel only; the provisioned identity is a real delegated KERI
+//! identity. Discovery endpoints are unauthenticated; resource endpoints extract
+//! [`AuthenticatedTenant`], which fails closed (401) without a valid token.
+
+use std::future::Future;
+
+use auths_scim::ScimError;
+use axum::extract::FromRequestParts;
+use axum::http::header::AUTHORIZATION;
+use axum::http::request::Parts;
+
+use crate::error::ScimServerError;
+use crate::state::ScimServerState;
+
+/// A request authenticated as a specific SCIM tenant.
+///
+/// Extracting this in a handler proves the caller presented a valid per-tenant
+/// bearer token; the resolved `org_prefix` is the Auths org the request may
+/// provision into.
+#[derive(Debug, Clone)]
+pub struct AuthenticatedTenant {
+    /// The authenticated tenant's id.
+    pub tenant_id: String,
+    /// The Auths org prefix this tenant provisions into.
+    pub org_prefix: String,
+}
+
+impl FromRequestParts<ScimServerState> for AuthenticatedTenant {
+    type Rejection = ScimServerError;
+
+    fn from_request_parts(
+        parts: &mut Parts,
+        state: &ScimServerState,
+    ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
+        let unauthorized = |detail: &str| {
+            ScimServerError::from(ScimError::Unauthorized {
+                message: detail.to_string(),
+            })
+        };
+
+        let result = parts
+            .headers
+            .get(AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| unauthorized("missing bearer token"))
+            .and_then(|raw| {
+                raw.strip_prefix("Bearer ")
+                    .ok_or_else(|| unauthorized("expected Bearer authorization scheme"))
+            })
+            .and_then(|token| {
+                state
+                    .authenticate_token(token)
+                    .map(|t| AuthenticatedTenant {
+                        tenant_id: t.tenant_id,
+                        org_prefix: t.org_prefix,
+                    })
+                    .ok_or_else(|| unauthorized("invalid bearer token"))
+            });
+
+        async move { result }
+    }
+}

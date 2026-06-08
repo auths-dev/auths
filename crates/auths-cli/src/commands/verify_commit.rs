@@ -3,6 +3,7 @@ use anyhow::{Context, Result, anyhow};
 use auths_infra_http::HttpOobiResolver;
 use auths_keri::Event;
 use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
+use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::ports::RegistryBackend;
 use auths_sdk::storage::{GitRegistryBackend, GitWitnessReceiptLookup, RegistryConfig};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
@@ -131,13 +132,29 @@ impl VerifyCommitResult {
 /// Handle verify-commit command.
 /// Exit codes: 0=valid, 1=invalid/unsigned, 2=error
 #[allow(clippy::disallowed_methods)]
-pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
+pub async fn handle_verify_commit(
+    cmd: VerifyCommitCommand,
+    env_config: &EnvironmentConfig,
+) -> Result<()> {
     // KEL-native verification: the trust root is the replayed KEL + the `.auths/roots`
     // pin, not an allowlist. No `ssh-keygen` subprocess, no `allowed_signers`.
     let auths_home = match auths_sdk::paths::auths_home() {
         Ok(h) => h,
         Err(e) => return handle_error(&cmd, 2, &format!("Could not locate ~/.auths: {e}")),
     };
+    // Read-only SDK context over the same global registry, for org-policy evaluation
+    // (E1.1). No passphrase — loading a policy never decrypts keys.
+    let sdk_ctx =
+        match crate::factories::storage::build_auths_context(&auths_home, env_config, None) {
+            Ok(c) => c,
+            Err(e) => {
+                return handle_error(
+                    &cmd,
+                    2,
+                    &format!("Could not build context for org-policy evaluation: {e}"),
+                );
+            }
+        };
     // The registry backend holds every identity's KEL events (in the `refs/auths/registry`
     // tree) — the source we replay to decide trust.
     let registry =
@@ -173,6 +190,7 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
                 &pinned_roots,
                 &provider,
                 &receipt_lookup,
+                &sdk_ctx,
                 &cmd,
                 commit_ref,
             )
@@ -328,11 +346,13 @@ async fn resolve_signer_kel(
 /// KELs from the local identity repository, and checks the SSH signature in-process
 /// (no `ssh-keygen`, no `allowed_signers`). The KEL verdict is authoritative; witness
 /// receipts (Epic D) remain an orthogonal opt-in check layered on top.
+#[allow(clippy::too_many_arguments)]
 async fn verify_one_commit(
     registry: &dyn RegistryBackend,
     pinned_roots: &[String],
     provider: &dyn auths_crypto::CryptoProvider,
     receipt_lookup: &dyn WitnessReceiptLookup,
+    sdk_ctx: &auths_sdk::context::AuthsContext,
     cmd: &VerifyCommitCommand,
     commit_ref: &str,
 ) -> VerifyCommitResult {
@@ -433,6 +453,36 @@ async fn verify_one_commit(
 
     result.oidc_binding =
         try_load_attestation_from_ref(&sha).and_then(|att| extract_oidc_binding_display(&att));
+
+    // E1.1 — org policy is enforced AFTER the cryptographic verdict (fail-closed
+    // ordering). It can only turn a valid result into a denial, never the reverse. A
+    // root that anchored no policy leaves the result unchanged (legacy allow).
+    if result.valid {
+        let now = chrono::Utc::now();
+        match auths_sdk::workflows::commit_trust::evaluate_commit_policy(
+            sdk_ctx,
+            &root_did,
+            &device_did,
+            now,
+        ) {
+            Ok(auths_sdk::workflows::commit_trust::PolicyOutcome::Evaluated(decision))
+                if !decision.is_allowed() =>
+            {
+                result.valid = false;
+                result.chain_valid = Some(false);
+                result.error = Some(format!(
+                    "Org policy denied this commit: {} [{}]",
+                    decision.message, decision.reason
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                // Fail closed: if policy cannot be evaluated, do not certify the commit.
+                result.valid = false;
+                result.error = Some(format!("Org policy could not be evaluated: {e}"));
+            }
+        }
+    }
 
     result
 }
@@ -792,9 +842,9 @@ fn handle_error(cmd: &VerifyCommitCommand, exit_code: i32, message: &str) -> Res
 }
 
 impl crate::commands::executable::ExecutableCommand for VerifyCommitCommand {
-    fn execute(&self, _ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
+    fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
         let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(handle_verify_commit(self.clone()))
+        rt.block_on(handle_verify_commit(self.clone(), &ctx.env_config))
     }
 }
 

@@ -18,10 +18,11 @@ use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
 use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
+use auths_sdk::workflows::commit_trust::commit_signer_trailers;
 use auths_sdk::workflows::org::{
     AuthorityAtSigning, Role, add_member, build_org_bundle, classify_authority_at_signing,
-    create_org, list_members, list_offboarding_records, load_offboarding_record, member_role_order,
-    revoke_member,
+    create_org, fleet_metrics, list_members, list_offboarding_records, load_offboarding_record,
+    load_org_policy, member_role_order, revoke_member, set_org_policy, walk_delegation_chain,
 };
 
 use crate::factories::storage::build_auths_context;
@@ -255,6 +256,74 @@ pub enum OrgSubcommand {
         /// Registry URL to contact
         #[arg(long, default_value = "https://auths-registry.fly.dev")]
         registry: String,
+    },
+
+    /// Manage the org-wide authorization policy (anchored on the org KEL)
+    Policy {
+        /// Policy action (set/show)
+        #[command(subcommand)]
+        action: PolicyAction,
+    },
+
+    /// Show fleet governance metrics for an organization
+    Metrics {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Emit the metrics as JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+    },
+
+    /// Trace an agent's delegation chain to the authorizing root + live-at-signing
+    Trace {
+        /// A signed commit SHA — traces its signer (`Auths-Device`) at its anchor-seq
+        #[arg(long)]
+        commit: Option<String>,
+
+        /// A member/agent identity ID to trace directly
+        #[arg(long = "member", visible_alias = "member-did")]
+        member: Option<String>,
+
+        /// The in-band signing KEL position (used with `--member`; `--commit` reads it
+        /// from the commit's `Auths-Anchor-Seq` trailer)
+        #[arg(long)]
+        signed_at: Option<u128>,
+
+        /// Emit the chain as JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+    },
+}
+
+/// Actions for the org-wide authorization policy.
+#[derive(Subcommand, Debug, Clone)]
+pub enum PolicyAction {
+    /// Anchor a new org-wide policy from a JSON file (a serialized policy `Expr`)
+    Set {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Path to the policy JSON file (a serialized `Expr`)
+        #[arg(long)]
+        file: PathBuf,
+
+        /// Org signing key alias (defaults to the org slug alias)
+        #[arg(long)]
+        key: Option<String>,
+    },
+
+    /// Show the org's currently-anchored policy
+    Show {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Emit the raw policy JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
     },
 }
 
@@ -969,7 +1038,184 @@ pub fn handle_org(
         OrgSubcommand::Join { code, registry } => {
             handle_join(&code, &registry, passphrase_provider.as_ref())
         }
+
+        OrgSubcommand::Policy { action } => match action {
+            PolicyAction::Set { org, file, key } => {
+                let org_prefix = Prefix::new_unchecked(
+                    org.strip_prefix("did:keri:").unwrap_or(&org).to_string(),
+                );
+                let org_alias =
+                    KeyAlias::new_unchecked(key.unwrap_or_else(|| org_slug_alias(&org)));
+                let policy_json = fs::read(&file)
+                    .with_context(|| format!("Failed to read policy file {file:?}"))?;
+
+                let sdk_ctx = build_auths_context(
+                    &repo_path,
+                    &ctx.env_config,
+                    Some(passphrase_provider.clone()),
+                )?;
+                let result = set_org_policy(&sdk_ctx, &org_prefix, &org_alias, &policy_json)
+                    .context("Failed to set org policy")?;
+
+                println!("✅ Org policy anchored on the KEL:");
+                println!("   Org:         {}", result.org_did);
+                println!("   Policy hash: {}", result.policy_hash);
+                println!("   Requires:\n{}", result.description);
+                Ok(())
+            }
+
+            PolicyAction::Show { org, json } => {
+                let org_prefix = Prefix::new_unchecked(
+                    org.strip_prefix("did:keri:").unwrap_or(&org).to_string(),
+                );
+                let sdk_ctx = build_auths_context(
+                    &repo_path,
+                    &ctx.env_config,
+                    Some(passphrase_provider.clone()),
+                )?;
+
+                match load_org_policy(&sdk_ctx, &org_prefix).context("Failed to load org policy")? {
+                    Some(policy) => {
+                        if json {
+                            println!("{}", policy.source_json);
+                        } else {
+                            println!("Org:         did:keri:{}", org_prefix.as_str());
+                            println!("Policy hash: {}", policy.policy_hash);
+                            println!("Requires:\n{}", policy.compiled.describe());
+                        }
+                    }
+                    None => println!("No policy anchored for organization {org}."),
+                }
+                Ok(())
+            }
+        },
+
+        OrgSubcommand::Metrics { org, json } => {
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let m =
+                fleet_metrics(&sdk_ctx, &org_prefix).context("Failed to compute fleet metrics")?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&m)?);
+                return Ok(());
+            }
+            println!("Fleet metrics for {}", m.org_did);
+            println!("  Agents (total):           {}", m.agents_total);
+            println!("  Agents (live):            {}", m.agents_live);
+            println!("  Agents (revoked):         {}", m.agents_revoked);
+            println!(
+                "  Traceable to a human:     {}/{} ({:.0}%)",
+                m.agents_traceable_to_human,
+                m.agents_live,
+                m.traceability_fraction * 100.0
+            );
+            println!(
+                "  Revocation-to-effect:     {} KEL positions (positional — effective at the anchor)",
+                m.revocation_effect_latency_positions
+            );
+            Ok(())
+        }
+
+        OrgSubcommand::Trace {
+            commit,
+            member,
+            signed_at,
+            json,
+        } => {
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+
+            let (leaf_prefix, position) = if let Some(sha) = commit {
+                let raw = read_commit_object(&sha)?;
+                let (_root, device) = commit_signer_trailers(&raw).ok_or_else(|| {
+                    anyhow!("commit {sha} carries no Auths-Id/Auths-Device trailer")
+                })?;
+                let pos = parse_anchor_seq_trailer(&raw);
+                let prefix = Prefix::new_unchecked(
+                    device
+                        .strip_prefix("did:keri:")
+                        .unwrap_or(&device)
+                        .to_string(),
+                );
+                (prefix, pos)
+            } else if let Some(m) = member {
+                let prefix =
+                    Prefix::new_unchecked(m.strip_prefix("did:keri:").unwrap_or(&m).to_string());
+                (prefix, signed_at)
+            } else {
+                return Err(anyhow!("provide --commit <sha> or --member <did> to trace"));
+            };
+
+            let chain = walk_delegation_chain(&sdk_ctx, &leaf_prefix, position)
+                .context("Failed to walk the delegation chain")?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&chain)?);
+                return Ok(());
+            }
+
+            println!("Trace: {}", chain.leaf_did);
+            match position {
+                Some(p) => println!("  Signed at:       KEL position {p}"),
+                None => println!(
+                    "  Signed at:       (no in-band position — upstream revocations fail closed)"
+                ),
+            }
+            println!("  Root:            {}", chain.root_did);
+            println!("  Depth:           {} hop(s)", chain.depth);
+            for hop in &chain.hops {
+                let role = hop.role.as_deref().unwrap_or("-");
+                let caps = if hop.capabilities.is_empty() {
+                    String::new()
+                } else {
+                    format!(" caps=[{}]", hop.capabilities.join(", "))
+                };
+                println!(
+                    "    {} ← {} [{}]{}  authority={:?}",
+                    hop.child_did, hop.delegator_did, role, caps, hop.authority_at_signing
+                );
+            }
+            if chain.live_at_signing {
+                println!("  Live at signing: ✅ yes");
+            } else {
+                println!(
+                    "  Live at signing: 🛑 no (a chain authority was revoked at/by the signing position)"
+                );
+            }
+            Ok(())
+        }
     }
+}
+
+/// Read a raw git commit object (`git cat-file commit <sha>`).
+fn read_commit_object(sha: &str) -> Result<String> {
+    let out = std::process::Command::new("git")
+        .args(["cat-file", "commit", sha])
+        .output()
+        .context("failed to run git cat-file")?;
+    if !out.status.success() {
+        return Err(anyhow!(
+            "git cat-file commit {sha} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    String::from_utf8(out.stdout).context("commit object is not valid UTF-8")
+}
+
+/// Parse the `Auths-Anchor-Seq` trailer value from a raw commit, if present.
+fn parse_anchor_seq_trailer(raw: &str) -> Option<u128> {
+    raw.lines()
+        .rev()
+        .find_map(|l| l.strip_prefix("Auths-Anchor-Seq:"))
+        .and_then(|v| v.trim().parse().ok())
 }
 
 /// Handles the `org join` subcommand by looking up and accepting an invite

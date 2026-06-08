@@ -50,6 +50,10 @@ pub enum CommitTrustError {
         /// The underlying resolver error, rendered for display.
         reason: String,
     },
+
+    /// Loading or evaluating the root's org policy failed.
+    #[error("org policy evaluation failed: {0}")]
+    Policy(#[from] crate::domains::org::error::OrgError),
 }
 
 /// Extract `(root_did, device_did)` from a commit's `Auths-Id` / `Auths-Device`
@@ -156,6 +160,193 @@ pub async fn verify_commit_local(
         })?;
 
     Ok(verify_commit_against_kel(raw_commit, &device_kel, &root_kel, pinned_roots, provider).await)
+}
+
+/// The org-policy outcome layered on a cryptographically-valid commit verdict.
+///
+/// Policy is evaluated **after** the cryptographic verdict (fail-closed ordering: an
+/// unverified commit never reaches policy). It is a sum, never a bool.
+#[derive(Debug, Clone)]
+pub enum PolicyOutcome {
+    /// The cryptographic verdict was not `Valid`; policy was not evaluated (the commit
+    /// is already rejected by the verdict).
+    CryptoFailed,
+    /// The commit's root anchored no org policy — legacy allow, recorded (not silently
+    /// skipped). Pre-policy behavior is preserved for roots without a policy.
+    NoPolicy,
+    /// The org policy was evaluated; carries the typed [`auths_id::policy::Decision`].
+    Evaluated(auths_id::policy::Decision),
+}
+
+/// A commit's cryptographic verdict plus the org-policy decision layered on it.
+#[cfg(feature = "backend-git")]
+#[derive(Debug, Clone)]
+pub struct CommitDecision {
+    /// The cryptographic commit verdict (signature + KEL delegation + revocation).
+    pub verdict: CommitVerdict,
+    /// The org-policy outcome (only meaningful when `verdict.is_valid()`).
+    pub policy: PolicyOutcome,
+}
+
+#[cfg(feature = "backend-git")]
+impl CommitDecision {
+    /// True iff the commit is cryptographically valid **and** org policy authorizes it
+    /// (or the root anchored no policy). Fail-closed: any policy deny/indeterminate, or
+    /// a non-`Valid` verdict, is unauthorized.
+    pub fn is_authorized(&self) -> bool {
+        if !self.verdict.is_valid() {
+            return false;
+        }
+        match &self.policy {
+            PolicyOutcome::CryptoFailed => false,
+            PolicyOutcome::NoPolicy => true,
+            PolicyOutcome::Evaluated(decision) => decision.is_allowed(),
+        }
+    }
+}
+
+/// Map a delegated identifier's role marker to a policy signer type: an agent is an
+/// `Agent`; an unmarked device is the human's workstation (`Human`).
+fn signer_type_of(
+    ctx: &crate::context::AuthsContext,
+    root_prefix: &auths_id::keri::types::Prefix,
+    signer_prefix: &auths_id::keri::types::Prefix,
+) -> Result<auths_id::policy::SignerType, CommitTrustError> {
+    use auths_id::keri::delegation::{DelegatedRole, list_delegated_devices};
+    let delegated = list_delegated_devices(ctx.registry.as_ref(), root_prefix).map_err(|e| {
+        CommitTrustError::Policy(crate::domains::org::error::OrgError::Delegation(e))
+    })?;
+    let is_agent = delegated.iter().any(|d| {
+        d.device_prefix.as_str() == signer_prefix.as_str() && d.role == DelegatedRole::Agent
+    });
+    Ok(if is_agent {
+        auths_id::policy::SignerType::Agent
+    } else {
+        auths_id::policy::SignerType::Human
+    })
+}
+
+/// Build the policy evaluation context for a verified commit signer.
+///
+/// Caps/role come from the signer's delegator-anchored grant; `revoked = false`
+/// because a `Valid` verdict already certified the signer's authority was live at the
+/// signing position (positional revocation yields a non-`Valid` verdict). `signer_type`
+/// is read from the delegation role marker.
+fn commit_policy_context(
+    ctx: &crate::context::AuthsContext,
+    root_prefix: &auths_id::keri::types::Prefix,
+    signer_prefix: &auths_id::keri::types::Prefix,
+    now: DateTime<Utc>,
+) -> Result<auths_id::policy::EvalContext, CommitTrustError> {
+    use auths_id::policy::context_from_delegated_member;
+    use auths_verifier::core::Role;
+
+    let root_did = format!("did:keri:{}", root_prefix.as_str());
+    let signer_did = format!("did:keri:{}", signer_prefix.as_str());
+
+    let authority =
+        crate::domains::org::delegation::resolve_member_authority(ctx, root_prefix, signer_prefix)?;
+    let (role, caps, expires) = match &authority {
+        Some(a) => (
+            a.role.as_ref().map(Role::as_str),
+            a.capabilities.clone(),
+            a.expires_at,
+        ),
+        None => (None, Vec::new(), None),
+    };
+    let expires_dt = expires.and_then(|s| DateTime::from_timestamp(s, 0));
+
+    let mut eval_ctx =
+        context_from_delegated_member(&root_did, &signer_did, false, role, &caps, expires_dt, now)
+            .map_err(|e| {
+                CommitTrustError::Policy(crate::domains::org::error::OrgError::InvalidDid(
+                    e.to_string(),
+                ))
+            })?;
+    eval_ctx = eval_ctx.signer_type(signer_type_of(ctx, root_prefix, signer_prefix)?);
+    Ok(eval_ctx)
+}
+
+/// Evaluate the commit signer against the root's org policy (if any).
+///
+/// Loads the policy anchored by `root_did` and evaluates a grant-based context for
+/// `signer_did`. A root with no anchored policy yields [`PolicyOutcome::NoPolicy`]
+/// (legacy allow, recorded). Pure over the registry + injected `now`.
+///
+/// Args:
+/// * `ctx`: Auths context (registry).
+/// * `root_did`: The commit's `Auths-Id` (the policy authority).
+/// * `signer_did`: The commit's `Auths-Device` (the signer being gated).
+/// * `now`: Current time, injected at the boundary.
+pub fn evaluate_commit_policy(
+    ctx: &crate::context::AuthsContext,
+    root_did: &str,
+    signer_did: &str,
+    now: DateTime<Utc>,
+) -> Result<PolicyOutcome, CommitTrustError> {
+    use auths_id::keri::types::Prefix;
+    let root_prefix = Prefix::new_unchecked(
+        root_did
+            .strip_prefix("did:keri:")
+            .unwrap_or(root_did)
+            .to_string(),
+    );
+    let signer_prefix = Prefix::new_unchecked(
+        signer_did
+            .strip_prefix("did:keri:")
+            .unwrap_or(signer_did)
+            .to_string(),
+    );
+
+    let Some(policy) = crate::domains::org::policy::load_org_policy(ctx, &root_prefix)? else {
+        return Ok(PolicyOutcome::NoPolicy);
+    };
+    let eval_ctx = commit_policy_context(ctx, &root_prefix, &signer_prefix, now)?;
+    let decision = crate::domains::org::policy::evaluate_with_org_policy(&policy, &eval_ctx);
+    // A5: record every enforcement decision (allow + deny) for the audit trail. The
+    // gate stays pure; emission happens here at the caller.
+    crate::audit::emit_policy_decision(ctx, "commit", signer_did, &decision);
+    Ok(PolicyOutcome::Evaluated(decision))
+}
+
+/// Verify a commit cryptographically **and** against the root's org policy.
+///
+/// Runs [`verify_commit_local`] then, only on a `Valid` verdict, layers the root's org
+/// policy ([`evaluate_commit_policy`]). The result is a typed [`CommitDecision`]: the
+/// crypto verdict + the policy outcome. Fail-closed throughout — crypto gates policy,
+/// and policy is a sum, never a bool.
+///
+/// Args:
+/// * `ctx`: Auths context (registry, clock).
+/// * `pinned_roots`: Trusted root `did:keri:` strings.
+/// * `raw_commit`: The raw git commit object bytes.
+/// * `provider`: Crypto provider for in-process signature verification.
+/// * `now`: Current time, injected at the boundary.
+///
+/// Usage:
+/// ```ignore
+/// let decision = verify_commit_with_policy(&ctx, &roots, commit, &provider, now).await?;
+/// assert!(decision.is_authorized());
+/// ```
+#[cfg(feature = "backend-git")]
+pub async fn verify_commit_with_policy(
+    ctx: &crate::context::AuthsContext,
+    pinned_roots: &[String],
+    raw_commit: &[u8],
+    provider: &dyn CryptoProvider,
+    now: DateTime<Utc>,
+) -> Result<CommitDecision, CommitTrustError> {
+    let verdict =
+        verify_commit_local(ctx.registry.as_ref(), pinned_roots, raw_commit, provider).await?;
+    let policy = match &verdict {
+        CommitVerdict::Valid {
+            signer_did,
+            root_did,
+            ..
+        } => evaluate_commit_policy(ctx, root_did, signer_did, now)?,
+        _ => PolicyOutcome::CryptoFailed,
+    };
+    Ok(CommitDecision { verdict, policy })
 }
 
 #[cfg(test)]

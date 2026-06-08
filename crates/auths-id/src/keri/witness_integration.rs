@@ -5,19 +5,22 @@
 //! - `ReceiptCollector` (auths-core) for parallel k-of-n collection
 //! - `GitReceiptStorage` (auths-id) for persisting receipts in Git
 //!
-//! Collected receipts are **verified against their pinned witness key** before
-//! storage: a forged signature, a receipt attributed to a witness not in the
-//! configured set, or a receipt for an event other than the one just authored is
-//! dropped and never counts toward quorum.
+//! Receipts are verified at the auths-core chokepoint (`verify_receipt`) *inside*
+//! `ReceiptCollector::collect`, which yields only `VerifiedReceipt`s: a forged
+//! signature, a key that is not the pinned witness, or a receipt for an event
+//! other than the one just authored is dropped and never counts toward quorum.
+//! This module therefore only orchestrates collection and storage — it does not
+//! re-implement verification.
 //!
 //! Feature-gated behind `witness-client`.
 
 use std::path::Path;
 use std::sync::Arc;
 
-use auths_core::witness::{AsyncWitnessProvider, CollectionError, ReceiptCollector, StoredReceipt};
+use auths_core::witness::{
+    AsyncWitnessProvider, CollectionError, ReceiptCollector, StoredReceipt, VerifiedReceipt,
+};
 use auths_infra_http::HttpAsyncWitnessClient;
-use auths_keri::KeriPublicKey;
 
 use super::types::{Prefix, Said};
 use crate::keri::event::EventReceipts;
@@ -85,9 +88,10 @@ impl auths_core::error::AuthsErrorInfo for WitnessIntegrationError {
 
 /// Collect witness receipts for an event and store the verified ones in Git.
 ///
-/// Builds `(witness_aid, HttpAsyncWitnessClient)` pairs from the config, runs the
-/// `ReceiptCollector`, verifies each collected receipt against its pinned witness
-/// key, and persists the survivors via `GitReceiptStorage`.
+/// Builds `(witness_aid, HttpAsyncWitnessClient)` pairs from the config and runs the
+/// `ReceiptCollector`, which verifies each receipt against its pinned witness key at
+/// the auths-core chokepoint before returning it; survivors are persisted via
+/// `GitReceiptStorage`.
 ///
 /// Respects `WitnessPolicy`:
 /// - **Enforce**: collection failure, or too few *verified* receipts, is a hard error
@@ -140,14 +144,21 @@ pub fn collect_and_store_receipts(
         let prefix_newtype = Prefix::new_unchecked(prefix.as_str().to_string());
         let event_json = event_json.to_vec();
         let rt = shared_runtime();
-        rt.block_on(async { collector.collect(&prefix_newtype, &event_json).await })
+        rt.block_on(async {
+            collector
+                .collect(&prefix_newtype, event_said, &event_json)
+                .await
+        })
     };
 
     match result {
         Ok(collected) => {
-            // Drop forged / foreign / wrong-event receipts before they can reach
-            // storage or count toward quorum.
-            let valid = verify_collected_receipts(collected, event_said, config);
+            // `collect` already verified every receipt at the auths-core chokepoint;
+            // unwrap the `VerifiedReceipt`s to their storable form.
+            let valid: Vec<StoredReceipt> = collected
+                .into_iter()
+                .map(VerifiedReceipt::into_stored)
+                .collect();
 
             if valid.len() < config.threshold {
                 match config.policy {
@@ -197,153 +208,6 @@ pub fn collect_and_store_receipts(
     }
 }
 
-/// Keep only the receipts that are cryptographically attributable to a configured
-/// witness for *this* event.
-///
-/// A receipt is dropped unless all three hold:
-/// 1. its witness AID is in the configured set (`config.contains_aid`),
-/// 2. its body's `d` equals the authored `event_said`, and
-/// 3. its signature verifies against the witness's pinned (curve-tagged) key.
-fn verify_collected_receipts(
-    collected: Vec<StoredReceipt>,
-    event_said: &Said,
-    config: &WitnessConfig,
-) -> Vec<StoredReceipt> {
-    collected
-        .into_iter()
-        .filter(|stored| receipt_is_attributable(stored, event_said, config))
-        .collect()
-}
-
-/// Whether a single collected receipt is a valid, in-set attestation of `event_said`.
-fn receipt_is_attributable(
-    stored: &StoredReceipt,
-    event_said: &Said,
-    config: &WitnessConfig,
-) -> bool {
-    if !config.contains_aid(&stored.witness) {
-        return false;
-    }
-    if stored.signed.receipt.d.as_str() != event_said.as_str() {
-        return false;
-    }
-    let Ok(key) = KeriPublicKey::parse(stored.witness.as_str()) else {
-        return false;
-    };
-    let Ok(payload) = serde_json::to_vec(&stored.signed.receipt) else {
-        return false;
-    };
-    key.verify_signature(&payload, &stored.signed.signature)
-        .is_ok()
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests {
-    use super::*;
-    use auths_core::witness::{Receipt, ReceiptTag, SignedReceipt};
-    use auths_keri::{KeriSequence, VersionString};
-    use ring::signature::{Ed25519KeyPair, KeyPair};
-    use url::Url;
-
-    /// A fresh Ed25519 witness keypair and its CESR AID (`D…` prefix).
-    fn witness_keypair() -> (Ed25519KeyPair, Prefix) {
-        let rng = ring::rand::SystemRandom::new();
-        let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
-        let kp = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-        let aid = KeriPublicKey::ed25519(kp.public_key().as_ref())
-            .unwrap()
-            .to_qb64()
-            .unwrap();
-        (kp, Prefix::new_unchecked(aid))
-    }
-
-    /// A receipt for `event_said` signed by `kp`.
-    fn signed_for(kp: &Ed25519KeyPair, event_said: &str) -> SignedReceipt {
-        let receipt = Receipt {
-            v: VersionString::placeholder(),
-            t: ReceiptTag,
-            d: Said::new_unchecked(event_said.to_string()),
-            i: Prefix::new_unchecked("EController00000000000000000000000000000000".to_string()),
-            s: KeriSequence::new(0),
-        };
-        let payload = serde_json::to_vec(&receipt).unwrap();
-        let signature = kp.sign(&payload).as_ref().to_vec();
-        SignedReceipt { receipt, signature }
-    }
-
-    /// A one-witness config pinning `aid` with threshold 1.
-    fn config_pinning(aid: &Prefix) -> WitnessConfig {
-        WitnessConfig {
-            witnesses: vec![crate::witness_config::WitnessRef {
-                url: Url::parse("http://witness:3333").unwrap(),
-                aid: aid.clone(),
-            }],
-            threshold: 1,
-            timeout_ms: 5000,
-            policy: WitnessPolicy::Enforce,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn stored_receipt_carries_witness_aid() {
-        let (kp, aid) = witness_keypair();
-        let stored = StoredReceipt {
-            signed: signed_for(&kp, "EEvent000000000000000000000000000000000000"),
-            witness: aid.clone(),
-        };
-        let said = Said::new_unchecked("EEvent000000000000000000000000000000000000".to_string());
-
-        let valid = verify_collected_receipts(vec![stored], &said, &config_pinning(&aid));
-
-        assert_eq!(valid.len(), 1);
-        assert_eq!(valid[0].witness, aid);
-    }
-
-    #[test]
-    fn receipt_signature_rejected_when_forged() {
-        let (kp, aid) = witness_keypair();
-        let mut stored = StoredReceipt {
-            signed: signed_for(&kp, "EEvent000000000000000000000000000000000000"),
-            witness: aid.clone(),
-        };
-        stored.signed.signature = vec![0u8; 64]; // forged
-        let said = Said::new_unchecked("EEvent000000000000000000000000000000000000".to_string());
-
-        let valid = verify_collected_receipts(vec![stored], &said, &config_pinning(&aid));
-
-        assert!(valid.is_empty());
-    }
-
-    #[test]
-    fn receipt_from_unconfigured_witness_ignored() {
-        let (kp, aid) = witness_keypair();
-        let (_other_kp, other_aid) = witness_keypair();
-        // Signature is genuine, but the witness is not the one the config pins.
-        let stored = StoredReceipt {
-            signed: signed_for(&kp, "EEvent000000000000000000000000000000000000"),
-            witness: aid,
-        };
-        let said = Said::new_unchecked("EEvent000000000000000000000000000000000000".to_string());
-
-        let valid = verify_collected_receipts(vec![stored], &said, &config_pinning(&other_aid));
-
-        assert!(valid.is_empty());
-    }
-
-    #[test]
-    fn receipt_for_wrong_said_ignored() {
-        let (kp, aid) = witness_keypair();
-        // Genuinely signed, in-set witness — but receipts a different event.
-        let stored = StoredReceipt {
-            signed: signed_for(&kp, "EOtherEvent00000000000000000000000000000000"),
-            witness: aid.clone(),
-        };
-        let said = Said::new_unchecked("EEvent000000000000000000000000000000000000".to_string());
-
-        let valid = verify_collected_receipts(vec![stored], &said, &config_pinning(&aid));
-
-        assert!(valid.is_empty());
-    }
-}
+// Receipt verification (signature, pinned-key, wrong-event drops) lives at the
+// single auths-core chokepoint `verify_receipt`, exercised by `collect`. It is
+// unit-tested in `auths-core::witness::verify`; this module only orchestrates.

@@ -813,6 +813,26 @@ impl EcdsaP256PublicKey {
     pub fn as_der(&self) -> &[u8] {
         &self.0
     }
+
+    /// Returns the public key as a raw uncompressed SEC1 point
+    /// (`0x04 || X || Y`, 65 bytes).
+    ///
+    /// This is the form `ring`'s `ECDSA_P256_SHA256_ASN1` verifier consumes — it
+    /// does NOT accept the DER SPKI returned by [`Self::as_der`]. For a
+    /// well-formed P-256 SPKI the point is the trailing 65 bytes (the BIT STRING
+    /// value, sans its `0x00` unused-bits prefix). Returns `None` for a
+    /// compressed or malformed key.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let point = key.as_sec1_uncompressed().ok_or(/* malformed */)?;
+    /// let verifier = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, point);
+    /// ```
+    pub fn as_sec1_uncompressed(&self) -> Option<&[u8]> {
+        let start = self.0.len().checked_sub(65)?;
+        let point = &self.0[start..];
+        (point[0] == 0x04).then_some(point)
+    }
 }
 
 impl Serialize for EcdsaP256PublicKey {

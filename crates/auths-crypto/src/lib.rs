@@ -1,10 +1,20 @@
 //! Cryptographic primitives for Auths.
 //!
-//! This crate isolates key parsing, DID encoding, and pluggable verification
-//! from concrete backends, keeping the core dependency-light.
+//! Layer 0: a curve-agnostic provider abstraction (sign / verify / keygen /
+//! AEAD / KDF), key parsing, and `did:key` encoding, isolated from concrete
+//! backends to keep everything above dependency-light. The default curve is
+//! **P-256** (the iOS Secure Enclave only supports P-256); Ed25519 is a
+//! fully-supported peer. Keys, seeds, and signatures carry their curve tag
+//! in-band — never dispatch on byte length. See `README.md` for the full
+//! curve policy and build profiles.
 //!
-//! - [`provider`] — Pluggable [`CryptoProvider`] trait for Ed25519 verification
-//! - [`did_key`] — DID:key ↔ Ed25519 encoding (`DidKeyError`, `did_key_to_ed25519`, etc.)
+//! - [`provider`] — Pluggable [`CryptoProvider`] trait (curve-agnostic
+//!   `sign_typed` / `verify_typed` / `generate_typed_keypair`), [`CurveType`],
+//!   and `default_provider`
+//! - [`key_ops`] — [`TypedSignerKey`], the curve-tagged signer that replaces
+//!   `(SecureSeed, CurveType)` pairs
+//! - [`did_key`] — DID:key ↔ raw key, auto-detecting the curve from the
+//!   multicodec ([`DidKeyError`], [`did_key_decode`], [`did_key_to_p256`])
 
 #[cfg(all(feature = "fips", not(target_arch = "wasm32")))]
 pub mod aws_lc_provider;

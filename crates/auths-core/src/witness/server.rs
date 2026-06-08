@@ -85,10 +85,30 @@ impl WitnessServerConfig {
             CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(seed_bytes),
             CurveType::P256 => auths_crypto::TypedSeed::P256(seed_bytes),
         };
-        let signer = TypedSignerKey::from_parts(typed_seed, pubkey_bytes.clone())
+        let signer = TypedSignerKey::from_parts(typed_seed, pubkey_bytes)
             .map_err(|e| WitnessError::Network(format!("invalid witness signer: {e}")))?;
-        let witness_did = derive_witness_did(curve, &pubkey_bytes)?;
+        Self::from_signer(db_path, signer)
+    }
 
+    /// Create a config from an already-constructed signer (e.g. a persisted
+    /// witness identity loaded from a keystore).
+    ///
+    /// The advertised `/health` AID derives from the signer's curve-tagged public
+    /// key, so a loaded key and its published identity cannot diverge.
+    ///
+    /// Args:
+    /// * `db_path`: Path to the SQLite database for witness storage.
+    /// * `signer`: The witness's persisted signing key.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let cfg = WitnessServerConfig::from_signer(db_path, signer)?;
+    /// ```
+    pub fn from_signer(
+        db_path: std::path::PathBuf,
+        signer: TypedSignerKey,
+    ) -> Result<Self, WitnessError> {
+        let witness_did = derive_witness_did(signer.curve(), signer.public_key())?;
         Ok(Self {
             witness_did,
             signer,
@@ -103,7 +123,9 @@ impl WitnessServerConfig {
 ///
 /// Ed25519: 32-byte seed + 32-byte pubkey. P-256: 32-byte scalar + 33-byte
 /// compressed SEC1 pubkey.
-fn generate_keypair_for_curve(curve: CurveType) -> Result<([u8; 32], Vec<u8>), WitnessError> {
+pub(crate) fn generate_keypair_for_curve(
+    curve: CurveType,
+) -> Result<([u8; 32], Vec<u8>), WitnessError> {
     match curve {
         CurveType::Ed25519 => {
             use crate::crypto::provider_bridge;
@@ -163,6 +185,21 @@ pub struct HeadResponse {
     pub prefix: Prefix,
     /// Latest observed sequence number.
     pub latest_seq: Option<u64>,
+}
+
+/// First-seen SAID at a chosen sequence number.
+///
+/// Lets a monitor compare witnesses by CONTENT (the SAID each first saw at a
+/// sequence), not just by HEAD number — so a same-seq/different-SAID fork is
+/// visible where two `/head` calls would return the identical `latest_seq`.
+#[derive(Debug, Serialize)]
+pub struct SaidAtSeqResponse {
+    /// KERI prefix of the identity.
+    pub prefix: Prefix,
+    /// The queried sequence number.
+    pub seq: u64,
+    /// SAID of the event this witness first saw at `seq`.
+    pub said: Said,
 }
 
 /// Error response.
@@ -318,6 +355,7 @@ pub fn router(state: WitnessServerState) -> Router {
     Router::new()
         .route("/witness/{prefix}/event", post(submit_event))
         .route("/witness/{prefix}/head", get(get_head))
+        .route("/witness/{prefix}/said/{seq}", get(get_said_at_seq))
         .route("/witness/{prefix}/receipt/{said}", get(get_receipt))
         .route("/health", get(health))
         .with_state(state)
@@ -432,30 +470,83 @@ fn validate_event_structure(event: &serde_json::Value) -> Result<(), String> {
     Ok(())
 }
 
-/// Validate that the signature field is valid hex encoding of 64 bytes (Ed25519 signature).
-fn validate_signature_format(event: &serde_json::Value) -> Result<(), String> {
+/// Typed failure from inbound event signature/key validation.
+///
+/// Separates **routing** faults — material we cannot even dispatch to a curve
+/// (an untagged or unknown-curve `k[0]`) — from **cryptographic** faults — a
+/// well-formed, curve-tagged signature that fails to verify. Collapsing the two
+/// into one "invalid signature" hides which bug actually occurred and which side
+/// (emitter format vs. key mismatch) must change.
+#[derive(Debug, thiserror::Error)]
+enum EventSignatureError {
+    /// The `x` field is present but not a JSON string.
+    #[error("'x' (signature) must be a string")]
+    SignatureNotString,
+
+    /// The `x` field is not valid hex.
+    #[error("'x' (signature) is not valid hex: {0}")]
+    SignatureNotHex(String),
+
+    /// An inception event has no `x` signature.
+    #[error("inception event missing 'x' (signature)")]
+    SignatureMissing,
+
+    /// `k` is absent or empty on an inception event.
+    #[error("inception event 'k' must be a non-empty array")]
+    MissingKeys,
+
+    /// `k[0]` is present but not a JSON string.
+    #[error("'k[0]' must be a string")]
+    KeyNotString,
+
+    /// Routing fault: `k[0]` is not a curve-tagged CESR verkey, so verification
+    /// cannot dispatch to a curve. Byte-length guessing is deliberately refused.
+    #[error(
+        "'k[0]' is not a curve-tagged CESR verkey (expected `D…` Ed25519 or \
+         `1AAI…`/`1AAJ…` P-256); untagged or unknown-curve keys are rejected: {0}"
+    )]
+    UnroutableKey(String),
+
+    /// The event JSON is not an object (cannot build the signing payload).
+    #[error("event is not a JSON object")]
+    NotAnObject,
+
+    /// The signing payload could not be serialized.
+    #[error("failed to serialize signing payload: {0}")]
+    PayloadSerialization(String),
+
+    /// Cryptographic fault: a curve-tagged signature that does not verify against
+    /// `k[0]` (wrong key, wrong curve, or malformed for that curve).
+    #[error("inception self-signature did not verify against k[0]: {0}")]
+    SelfSignatureInvalid(String),
+}
+
+/// Validate that the `x` signature field, if present, is well-formed hex.
+///
+/// Curve-specific length/format is **not** asserted here — the in-band curve tag
+/// on `k[0]` is authoritative, and the per-curve verifier (in
+/// [`verify_inception_self_signature`]) rejects a wrong-length signature. Guessing
+/// the curve from `x`'s byte length is exactly the silent-correctness hazard the
+/// wire-format tagging rule forbids.
+fn validate_signature_format(event: &serde_json::Value) -> Result<(), EventSignatureError> {
     if let Some(sig_val) = event.get("x") {
-        let sig_hex = sig_val.as_str().ok_or("'x' (signature) must be a string")?;
-        let sig_bytes =
-            hex::decode(sig_hex).map_err(|e| format!("'x' field is not valid hex: {}", e))?;
-        if sig_bytes.len() != 64 {
-            return Err(format!(
-                "'x' field must be 64 bytes (Ed25519 signature), got {} bytes",
-                sig_bytes.len()
-            ));
-        }
+        let sig_hex = sig_val
+            .as_str()
+            .ok_or(EventSignatureError::SignatureNotString)?;
+        hex::decode(sig_hex).map_err(|e| EventSignatureError::SignatureNotHex(e.to_string()))?;
     }
     Ok(())
 }
 
-/// For inception events, verify the self-signature (signature over the event by k[0]).
+/// For inception events, verify the self-signature (signature over the event by `k[0]`).
 ///
-/// parses `k[0]` via `KeriPublicKey::parse` (CESR-aware — the
-/// workspace emits CESR-tagged pubkeys `D...` / `1AAI...`) and dispatches
-/// signature verification on the parsed curve. Accepts a hex-encoded `k[0]` as
-/// a legacy back-compat branch (prior versions of this validator) but emits a
-/// log-worthy error message telling the caller to migrate.
-fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), String> {
+/// Parses `k[0]` via `KeriPublicKey::parse` (CESR-aware — the workspace emits
+/// curve-tagged pubkeys `D…` Ed25519 / `1AAI…`/`1AAJ…` P-256) and dispatches
+/// signature verification on the parsed curve. The in-band tag is authoritative:
+/// there is no byte-length fallback and no legacy raw-hex path — an untagged or
+/// unknown-curve `k[0]` is a typed [`EventSignatureError::UnroutableKey`], never a
+/// silently-misrouted crypto check.
+fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), EventSignatureError> {
     let event_type = event.get("t").and_then(|v| v.as_str()).unwrap_or("");
     if event_type != "icp" {
         return Ok(());
@@ -464,55 +555,35 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Stri
     let k = event
         .get("k")
         .and_then(|v| v.as_array())
-        .ok_or("inception event 'k' must be an array")?;
+        .filter(|a| !a.is_empty())
+        .ok_or(EventSignatureError::MissingKeys)?;
 
-    if k.is_empty() {
-        return Err("inception event 'k' array is empty".to_string());
-    }
+    let k0_str = k[0].as_str().ok_or(EventSignatureError::KeyNotString)?;
 
-    let k0_str = k[0].as_str().ok_or("'k[0]' must be a string")?;
-
-    // Try CESR parse first (canonical wire format).
-    let keri_key = match auths_keri::KeriPublicKey::parse(k0_str) {
-        Ok(pk) => pk,
-        Err(_) => {
-            // Legacy hex fallback: some older emitters produced raw 32-byte hex
-            // instead of a CESR-tagged string. Accept Ed25519 32-byte hex as
-            // transitional; anything else is an error.
-            let pk_bytes =
-                hex::decode(k0_str).map_err(|e| format!("'k[0]' is neither CESR nor hex: {e}"))?;
-            if pk_bytes.len() != 32 {
-                return Err(format!(
-                    "'k[0]' legacy-hex path only accepts 32-byte Ed25519 pubkeys, got {} bytes; \
-                     emit CESR (`D...` or `1AAI...`) instead",
-                    pk_bytes.len()
-                ));
-            }
-            let mut arr = [0u8; 32];
-            arr.copy_from_slice(&pk_bytes);
-            auths_keri::KeriPublicKey::Ed25519(arr)
-        }
-    };
+    // In-band curve tag is authoritative — no byte-length dispatch, no hex fallback.
+    let keri_key = auths_keri::KeriPublicKey::parse(k0_str)
+        .map_err(|e| EventSignatureError::UnroutableKey(e.to_string()))?;
 
     let sig_hex = event
         .get("x")
         .and_then(|v| v.as_str())
-        .ok_or("inception event missing 'x' (signature)")?;
-    let sig_bytes = hex::decode(sig_hex).map_err(|e| format!("'x' is not valid hex: {}", e))?;
+        .ok_or(EventSignatureError::SignatureMissing)?;
+    let sig_bytes =
+        hex::decode(sig_hex).map_err(|e| EventSignatureError::SignatureNotHex(e.to_string()))?;
 
     // Build the signing payload: canonical JSON with empty 'd' and 'x' fields
     let mut payload_event = event.clone();
     let obj = payload_event
         .as_object_mut()
-        .ok_or("event is not a JSON object")?;
+        .ok_or(EventSignatureError::NotAnObject)?;
     obj.insert("d".to_string(), serde_json::Value::String(String::new()));
     obj.insert("x".to_string(), serde_json::Value::String(String::new()));
     let payload = serde_json::to_vec(&payload_event)
-        .map_err(|e| format!("failed to serialize signing payload: {}", e))?;
+        .map_err(|e| EventSignatureError::PayloadSerialization(e.to_string()))?;
 
     keri_key
         .verify_signature(&payload, &sig_bytes)
-        .map_err(|e| format!("inception self-signature verification failed: {e}"))
+        .map_err(EventSignatureError::SelfSignatureInvalid)
 }
 
 /// POST /witness/:prefix/event - Submit an event for witnessing.
@@ -678,6 +749,58 @@ async fn get_head(
     }
 }
 
+/// `GET /witness/{prefix}/said/{seq}` — the SAID this witness first saw at `seq`.
+///
+/// Returns 404 (a gap, not divergence) when the sequence was never observed, so a
+/// monitor can distinguish "not yet seen" from "seen a conflicting SAID".
+async fn get_said_at_seq(
+    State(state): State<WitnessServerState>,
+    AxumPath((prefix_str, seq_str)): AxumPath<(String, String)>,
+) -> Result<Json<SaidAtSeqResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let prefix = Prefix::new_unchecked(prefix_str);
+    let seq: u64 = seq_str.parse().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("seq must be a non-negative integer, got '{seq_str}'"),
+                duplicity: None,
+            }),
+        )
+    })?;
+
+    let storage = state.inner.storage.lock().map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "internal lock error".to_string(),
+                duplicity: None,
+            }),
+        )
+    })?;
+
+    match storage.get_first_seen(&prefix, seq as u128) {
+        Ok(Some(said)) => Ok(Json(SaidAtSeqResponse { prefix, seq, said })),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!(
+                    "no event seen for prefix {} at seq {}",
+                    prefix.as_str(),
+                    seq
+                ),
+                duplicity: None,
+            }),
+        )),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("storage error: {}", e),
+                duplicity: None,
+            }),
+        )),
+    }
+}
+
 /// GET /witness/:prefix/receipt/:said - Retrieve an issued receipt.
 async fn get_receipt(
     State(state): State<WitnessServerState>,
@@ -740,8 +863,13 @@ mod tests {
 
     /// Build a valid KERI inception event with proper SAID and self-signature.
     fn make_valid_icp_event(prefix: &str, seq: u128) -> serde_json::Value {
-        let (pkcs8, pk_hex) = test_keypair();
+        let (pkcs8, _pk_hex) = test_keypair();
         let kp = Ed25519KeyPair::from_pkcs8(&pkcs8).unwrap();
+        // k[0] is the curve-tagged CESR verkey (`D…`), as production emitters use.
+        let k0 = auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
 
         // Build event with empty d and x for SAID computation
         let mut event = serde_json::json!({
@@ -750,7 +878,7 @@ mod tests {
             "d": "",
             "i": prefix,
             "s": seq,
-            "k": [pk_hex],
+            "k": [k0],
             "x": ""
         });
 
@@ -935,8 +1063,14 @@ mod tests {
         let state = test_state();
         let app = router(state);
 
-        let (_, pk_hex) = test_keypair();
-        // Use a different keypair to produce wrong signature
+        let (pkcs8, _) = test_keypair();
+        let kp = Ed25519KeyPair::from_pkcs8(&pkcs8).unwrap();
+        // Correct, curve-tagged k[0] — so verification reaches the signature check.
+        let k0 = auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
+        // Use a different keypair to produce a wrong signature.
         let (wrong_pkcs8, _) = test_keypair();
         let wrong_kp = Ed25519KeyPair::from_pkcs8(&wrong_pkcs8).unwrap();
 
@@ -946,7 +1080,7 @@ mod tests {
             "d": "",
             "i": "EPrefix",
             "s": 0,
-            "k": [pk_hex],
+            "k": [k0],
             "x": ""
         });
 
@@ -1058,6 +1192,53 @@ mod tests {
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn said_at_seq_returns_first_seen() {
+        let state = test_state();
+        let app = router(state);
+        let event = make_valid_icp_event("EPrefix", 0);
+
+        let submit = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/witness/EPrefix/event")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&event).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(submit.status(), StatusCode::OK);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/witness/EPrefix/said/0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn said_at_seq_unseen_is_404() {
+        let app = router(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/witness/EUnseen/said/0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
     #[test]
     fn receipt_d_matches_event_said() {
         let state = test_state();
@@ -1093,6 +1274,70 @@ mod tests {
         let pk = ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, &public_key);
         pk.verify(&payload, &signed.signature)
             .expect("signed receipt signature should verify against serialized receipt");
+    }
+
+    #[test]
+    fn ed25519_inception_self_signature_accepted() {
+        // make_valid_icp_event now emits a curve-tagged `D…` k[0].
+        let event = make_valid_icp_event("EPrefix", 0);
+        assert!(verify_inception_self_signature(&event).is_ok());
+    }
+
+    #[test]
+    fn p256_inception_self_signature_accepted() {
+        use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+
+        let sk = SigningKey::from_slice(&[7u8; 32]).unwrap();
+        let compressed = sk
+            .verifying_key()
+            .to_encoded_point(true)
+            .as_bytes()
+            .to_vec();
+        let k0 = auths_keri::KeriPublicKey::from_verkey_bytes(&compressed, CurveType::P256)
+            .unwrap()
+            .to_qb64()
+            .unwrap();
+
+        let mut event = serde_json::json!({
+            "v": "KERI10JSON000000_",
+            "t": "icp",
+            "d": "",
+            "i": "EPrefix",
+            "s": 0,
+            "k": [k0],
+            "x": ""
+        });
+        // Sign the canonical payload (d and x already empty), matching the verifier.
+        let payload = serde_json::to_vec(&event).unwrap();
+        let sig: Signature = sk.sign(&payload);
+        event["x"] = serde_json::Value::String(hex::encode(sig.to_bytes()));
+
+        assert!(
+            verify_inception_self_signature(&event).is_ok(),
+            "P-256 inception with a valid self-signature must be accepted"
+        );
+    }
+
+    #[test]
+    fn untagged_hex_key_rejected_as_unroutable() {
+        // A raw 32-byte hex k[0] (no curve tag) must be a routing error, NOT a
+        // crypto failure — the legacy length-dispatched fallback is gone.
+        let (_, pk_hex) = test_keypair();
+        let event = serde_json::json!({
+            "v": "KERI10JSON000000_",
+            "t": "icp",
+            "d": "",
+            "i": "EPrefix",
+            "s": 0,
+            "k": [pk_hex],
+            "x": hex::encode([0u8; 64])
+        });
+
+        let err = verify_inception_self_signature(&event).unwrap_err();
+        assert!(
+            matches!(err, EventSignatureError::UnroutableKey(_)),
+            "untagged key must surface as a typed routing error, got: {err:?}"
+        );
     }
 
     #[test]

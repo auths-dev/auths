@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "_note": "Governance admission contract — who may BE a witness. Validated against admission-policy.schema.json. SEPARATE from the runtime verifier quorum auths-transparency/data/witness_policy.json. Bootstrap state: one pending operator; the commons is NOT yet independent (needs >=3 across distinct entity/jurisdiction/infrastructure).",
+  "independence_requirements": {
+    "min_organizations": 3,
+    "min_jurisdictions": 2,
+    "min_infrastructure_zones": 2
+  },
+  "sla": {
+    "min_availability": 0.99,
+    "window_days": 90
+  },
+  "lifecycle_states": ["pending", "qualified", "usable", "retired", "rejected"],
+  "rotation": {
+    "signed_rotation_notice_required": true,
+    "retire_notice_days": 30,
+    "overlap_window_days": 14
+  },
+  "operators": [
+    {
+      "name": "auths-dev-us-west",
+      "legal_entity": "Auths, Inc.",
+      "jurisdiction": "US",
+      "infrastructure": { "asn_or_cloud": "aws", "region": "us-west-2" },
+      "key_custody": { "method": "kms", "attested_at": "2026-06-08" },
+      "status": "pending",
+      "pubkey_b64": "REPLACE_WITH_PINNED_ED25519_VERKEY_BASE64URL_NO_PAD"
+    }
+  ]
+}

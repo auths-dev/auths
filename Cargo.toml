@@ -23,10 +23,14 @@ members = [
   "crates/auths-pairing-protocol",
   "crates/auths-radicle",
   "crates/auths-scim",
+  "crates/auths-scim-server",
   "crates/auths-utils",
   "crates/auths-oidc-port",
   "crates/auths-rp",
   "crates/xtask", "crates/auths-api",
+  "crates/auths-witness",
+  "crates/auths-checkpoint-cosigner",
+  "crates/auths-monitor",
 ]
 
 [workspace.package]

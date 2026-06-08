@@ -1,0 +1,46 @@
+[package]
+name = "auths-checkpoint-cosigner"
+description = "Slim C2SP tlog-witness checkpoint cosigner (CT transparency-log witness) for Auths"
+version.workspace = true
+edition = "2024"
+publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["auths", "transparency", "tlog", "witness", "cosignature"]
+categories = ["cryptography", "network-programming"]
+
+[[bin]]
+name = "auths-checkpoint-cosigner"
+path = "src/main.rs"
+
+[lib]
+name = "auths_checkpoint_cosigner"
+path = "src/lib.rs"
+
+[dependencies]
+# Minimal dependency tail by design: only the transparency cosignature path and
+# the verifier types — NO keychain / git2 / sqlite. CT cosignatures are
+# Ed25519-only per the C2SP tlog-witness spec (intentional, not curve drift).
+auths-transparency = { workspace = true, features = ["native"] }
+auths-verifier.workspace = true
+
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+ring = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+anyhow = "1"
+hex = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+[lints]
+workspace = true

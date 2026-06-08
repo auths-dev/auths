@@ -135,6 +135,15 @@ impl auths_crypto::AuthsErrorInfo for LogError {
 /// Merkle proofs. Adapters translate backend-native formats (e.g., Rekor
 /// hashedrekord) to canonical `auths-transparency` types at the boundary.
 ///
+/// This is the hexagonal seam for the log layer: `RekorClient` (in
+/// `auths-infra-rekor`) is the first adapter, talking to the public Sigstore
+/// Rekor log. A future operated-sequencer adapter (`SequencerTransparencyLog`)
+/// implements this **same** trait — `submit`/`get_checkpoint`/proofs over the
+/// org's own tile store — so the CLI and SDK consumers
+/// (`submit_attestation_to_log`, the compliance query) switch backends by
+/// swapping the `Arc<dyn TransparencyLog>` and never change. No new port type is
+/// needed; the sequencer is purely a second adapter behind this trait.
+///
 /// Usage:
 /// ```ignore
 /// let log: Arc<dyn TransparencyLog> = factory.create_log(&config)?;

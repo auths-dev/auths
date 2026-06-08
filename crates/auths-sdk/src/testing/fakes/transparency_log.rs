@@ -108,6 +108,8 @@ impl FakeTransparencyLog {
             witnesses: vec![],
             signature_algorithm: auths_verifier::SignatureAlgorithm::Ed25519,
             ecdsa_log_public_key_der: None,
+            independence_policy:
+                auths_keri::witness::independence::IndependencePolicy::unconstrained(),
         }
     }
 

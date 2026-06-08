@@ -499,6 +499,7 @@ version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-crypto",
+ "auths-keri",
  "auths-verifier",
  "base64",
  "chrono",

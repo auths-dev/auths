@@ -42,12 +42,17 @@ analysis and are recorded here as the load-bearing trust choices.
    sight caveat during rollout); `--require-witnesses` opts into **fail-closed**
    (under-quorum is a typed verification failure). (D.7)
 
-5. **Receipt provenance = stored witness AID.** The wire `rct` body stays
-   spec-shaped `[v,t,d,i,s]` (its `i` is the *controller* AID). The verifying
-   **witness AID** travels alongside the receipt out-of-band, as
-   `StoredReceipt { signed, witness }`. Collection verifies each receipt's
-   signature against the pinned witness key and drops forged / foreign /
-   wrong-SAID receipts before storage or quorum. (D.2)
+5. **Receipt provenance = stored witness AID, verified at a single chokepoint.**
+   The wire `rct` body stays spec-shaped `[v,t,d,i,s]` (its `i` is the *controller*
+   AID). The verifying **witness AID** travels alongside the receipt out-of-band,
+   as `StoredReceipt { signed, witness }`. Verification is a single chokepoint —
+   `auths_core::witness::verify_receipt`, the **only** constructor of
+   `VerifiedReceipt` — which checks the receipted SAID against the submitted event
+   and the signature against the pinned (curve-tagged) witness key, never the
+   controller `i`. `ReceiptCollector::collect` returns `Vec<VerifiedReceipt>`, and
+   the quorum counter accepts only `VerifiedReceipt`, so counting a forged,
+   foreign-key, or wrong-event receipt is **unrepresentable** rather than merely
+   filtered downstream. (D.2)
 
 6. **Annex-A superseding recovery = deferred.** Epic D *detects and refuses* on
    irreconcilable duplicity (first-seen + flag/refuse). It does **not** implement
@@ -77,13 +82,21 @@ analysis and are recorded here as the load-bearing trust choices.
   tracking GitHub issue; until then this ADR is the record. The roadmap's
   "no trust-on-first-sight" claim holds for *detection*; *automatic recovery* is
   the deeper follow-up.
-- **CT/Sigsum diversity quorum** (`docs/security/witness-diversity.md`) — a future
-  layer, not the Epic-D mechanism (decision 1). **Action:** file a tracking issue
-  for a future "witness diversity" epic.
+- **CT/Sigsum diversity quorum** (`docs/security/witness-diversity.md`) — was a
+  future layer, not the Epic-D mechanism (decision 1). **SUPERSEDED by Epic W
+  (Witness Commons, fn-156):** the organizational/jurisdictional/**infrastructure**
+  diversity quorum is now implemented — a typed independence model
+  (`auths_keri::witness::independence::spans_distinct`) evaluated over the *actual*
+  cosigning quorum in the CT gate (`auths-transparency` `verify_witnesses`), a
+  fail-closed `witness_policy.json` loader, a ratified machine-readable admission
+  schema + CI enforcer, and a cross-operator equivocation monitor + gossip. So
+  decision 1's "CT-style diversity is a non-goal" no longer holds; Epic W is the
+  layer it deferred. Remaining non-code/governance items are tracked in the Epic W
+  issues (auths-dev/auths#235–#243).
 
-> These two GitHub issues were not auto-filed by the implementing agent (creating
-> external artifacts is a human-gated action); they are recorded here so the
-> deferral is not lost. File them and back-reference this ADR.
+> The Annex-A recovery deferral above remains a human-gated follow-up; record it as
+> a tracking issue and back-reference this ADR. (The Epic W deferrals were filed as
+> auths-dev/auths#235–#243.)
 
 ## Reconciliation
 

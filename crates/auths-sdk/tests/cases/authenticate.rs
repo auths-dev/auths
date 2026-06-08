@@ -19,13 +19,15 @@ use auths_id::keri::types::Prefix;
 use auths_rp::{Audience, ChallengeStore, InMemoryChallengeStore, WirePresentation};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::credentials::{
-    PresentationChallenge, authenticate_presentation, issue, present_credential, revoke,
+    PresentationAuthError, PresentationChallenge, authenticate_presentation, issue,
+    present_credential, revoke,
 };
 use auths_sdk::domains::device::add_device;
 use auths_sdk::domains::identity::service::initialize;
 use auths_sdk::domains::identity::types::{
     CreateDeveloperIdentityConfig, IdentityConfig, InitializeResult,
 };
+use auths_sdk::domains::org::policy::{Expr, set_org_policy};
 use auths_sdk::domains::signing::types::GitSigningScope;
 
 use crate::cases::helpers::build_test_context_with_provider;
@@ -147,6 +149,79 @@ async fn valid_presentation_authenticates_and_replay_rejected() {
         authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now).await;
     let err = replay.expect_err("replayed presentation must be rejected");
     assert_eq!(err.http_status(), 401);
+}
+
+/// The issuer's KEL prefix (it acts as the org/policy authority in this harness).
+fn issuer_prefix(h: &Harness) -> Prefix {
+    let did = h
+        .ctx
+        .identity_storage
+        .load_identity()
+        .expect("issuer identity")
+        .controller_did;
+    parse_did_keri(did.as_str()).expect("issuer prefix")
+}
+
+#[tokio::test]
+async fn org_policy_denies_authenticated_presentation_with_403() {
+    // E1 A4: a presentation that authenticates cleanly is still denied (403, not 401)
+    // when the issuer's org policy is not satisfied by the credential's grant.
+    let h = setup();
+    let (subject_alias, _p, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+    let audience = Audience::parse(AUDIENCE).unwrap();
+    let store = InMemoryChallengeStore::new(16);
+    let now = chrono::Utc::now();
+
+    // The credential grants `sign_commit`; require a capability it lacks.
+    set_org_policy(
+        &h.ctx,
+        &issuer_prefix(&h),
+        &h.issuer_alias,
+        &serde_json::to_vec(&Expr::HasCapability("deploy".into())).unwrap(),
+    )
+    .expect("anchor org policy");
+
+    let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+    let err = authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
+        .await
+        .expect_err("org policy must deny");
+    assert!(
+        matches!(err, PresentationAuthError::PolicyDenied { .. }),
+        "expected PolicyDenied, got {err:?}"
+    );
+    assert_eq!(
+        err.http_status(),
+        403,
+        "an authenticated-but-policy-denied principal is 403, not 401"
+    );
+}
+
+#[tokio::test]
+async fn org_policy_allows_authenticated_presentation_when_satisfied() {
+    let h = setup();
+    let (subject_alias, _p, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+    let audience = Audience::parse(AUDIENCE).unwrap();
+    let store = InMemoryChallengeStore::new(16);
+    let now = chrono::Utc::now();
+
+    set_org_policy(
+        &h.ctx,
+        &issuer_prefix(&h),
+        &h.issuer_alias,
+        &serde_json::to_vec(&Expr::And(vec![
+            Expr::NotRevoked,
+            Expr::HasCapability("sign_commit".into()),
+        ]))
+        .unwrap(),
+    )
+    .expect("anchor org policy");
+
+    let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+    let principal =
+        authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
+            .await
+            .expect("policy satisfied → authenticates");
+    assert!(!principal.capabilities().is_empty());
 }
 
 #[tokio::test]

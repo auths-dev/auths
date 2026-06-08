@@ -154,6 +154,58 @@ pub enum OrgError {
         /// The member's `did:keri:`.
         member: String,
     },
+
+    /// The supplied org policy did not parse or compile (invalid JSON, an invalid
+    /// DID/capability/glob, or it exceeds the policy size/complexity bounds). A
+    /// policy that does not compile is never anchored — fail closed.
+    #[error("invalid org policy: {reason}")]
+    PolicyCompile {
+        /// The compile/parse failure(s).
+        reason: String,
+    },
+
+    /// The org KEL anchors a policy hash but its content-addressed blob is missing —
+    /// the policy cannot be loaded, so authority cannot be evaluated. Fail closed.
+    #[error("org policy blob for hash '{hash}' is missing from storage")]
+    PolicyBlobMissing {
+        /// The policy source-hash anchored on the org KEL.
+        hash: String,
+    },
+
+    /// The loaded policy blob does not hash to the value the org KEL committed — the
+    /// blob was tampered with after anchoring. Fail closed.
+    #[error(
+        "org policy integrity failure: KEL committed hash '{expected}' but the stored blob hashes to '{actual}'"
+    )]
+    PolicyIntegrity {
+        /// The hash anchored on the org KEL.
+        expected: String,
+        /// The recomputed hash of the stored blob.
+        actual: String,
+    },
+
+    /// A delegation chain walk followed a `di` link back to an identifier already on
+    /// the chain — a cyclic/malformed delegation. Fail closed (no infinite loop).
+    #[error("delegation chain cycle detected at '{did}'")]
+    ChainCycle {
+        /// The identifier the cycle returned to.
+        did: String,
+    },
+
+    /// A delegation chain exceeds the maximum hop depth the walker will follow.
+    #[error("delegation chain exceeds the maximum depth of {max} hops")]
+    ChainTooDeep {
+        /// The maximum number of hops allowed.
+        max: u32,
+    },
+
+    /// A delegation chain names a delegator/identifier whose KEL is absent from
+    /// storage — the chain cannot be reconstructed. Fail closed.
+    #[error("delegation chain is broken: no KEL found for '{did}'")]
+    ChainBrokenHop {
+        /// The identifier whose KEL is missing.
+        did: String,
+    },
 }
 
 impl AuthsErrorInfo for OrgError {
@@ -181,6 +233,12 @@ impl AuthsErrorInfo for OrgError {
             Self::BundleIntegrity { .. } => "AUTHS-E5619",
             Self::BundleMissingMemberKel { .. } => "AUTHS-E5620",
             Self::BundleMissingDelegatorSeal { .. } => "AUTHS-E5621",
+            Self::PolicyCompile { .. } => "AUTHS-E5622",
+            Self::PolicyBlobMissing { .. } => "AUTHS-E5623",
+            Self::PolicyIntegrity { .. } => "AUTHS-E5624",
+            Self::ChainCycle { .. } => "AUTHS-E5625",
+            Self::ChainTooDeep { .. } => "AUTHS-E5626",
+            Self::ChainBrokenHop { .. } => "AUTHS-E5627",
         }
     }
 
@@ -241,6 +299,24 @@ impl AuthsErrorInfo for OrgError {
             Self::BundleMissingMemberKel { .. } | Self::BundleMissingDelegatorSeal { .. } => {
                 Some("The bundle is incomplete; re-produce it with `auths org bundle`")
             }
+            Self::PolicyCompile { .. } => Some(
+                "Fix the policy JSON (a serialized `Expr`); see `auths org policy show` for the current policy",
+            ),
+            Self::PolicyBlobMissing { .. } => {
+                Some("The policy blob is missing; re-anchor it with `auths org policy set`")
+            }
+            Self::PolicyIntegrity { .. } => Some(
+                "The stored policy was modified after anchoring; re-anchor a trusted policy with `auths org policy set`",
+            ),
+            Self::ChainCycle { .. } => {
+                Some("The delegation chain is malformed (a cycle); inspect the identifiers' KELs")
+            }
+            Self::ChainTooDeep { .. } => {
+                Some("The delegation chain is too deep; reduce delegation nesting")
+            }
+            Self::ChainBrokenHop { .. } => Some(
+                "A KEL in the delegation chain is missing; ensure all delegators' KELs are present",
+            ),
         }
     }
 }

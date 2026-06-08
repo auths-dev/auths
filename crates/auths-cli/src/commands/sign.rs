@@ -67,13 +67,18 @@ const ARTIFACT_EXTENSIONS: &[&str] = &[
 /// KEL tip is known) `Auths-Anchor-Seq` = the delegator-anchoring position at
 /// signing, so a verifier can order this commit against a later revocation by KEL
 /// position. The trailers ride in the commit message body, covered by the signature.
-fn commit_trailer_args(signer: &LocalSigner) -> Vec<String> {
+fn commit_trailer_args(signer: &LocalSigner, scope: &[String]) -> Vec<String> {
     let mut trailers = vec![
         format!("Auths-Id: {}", signer.root_did),
         format!("Auths-Device: {}", signer.signer_did),
     ];
     if let Some(seq) = signer.anchor_seq {
         trailers.push(auths_verifier::anchor_seq_trailer(seq));
+    }
+    // The capabilities this commit claims it exercises. A verifier rejects a claim
+    // outside the signer's delegator-anchored grant (`CommitVerdict::OutsideAgentScope`).
+    if !scope.is_empty() {
+        trailers.push(auths_verifier::scope_trailer(scope));
     }
     trailers
 }
@@ -130,8 +135,9 @@ fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
 /// Args:
 /// * `range` - A git ref or range (e.g., "HEAD", "main..HEAD").
 /// * `signer` - The resolved local signing identity (root + device DIDs).
-fn sign_commit_range(range: &str, signer: &LocalSigner) -> Result<()> {
-    let trailers = commit_trailer_args(signer);
+/// * `scope` - Capabilities this commit claims (emitted as an `Auths-Scope` trailer).
+fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String]) -> Result<()> {
+    let trailers = commit_trailer_args(signer, scope);
     let is_range = range.contains("..");
     if is_range {
         let parts: Vec<&str> = range.splitn(2, "..").collect();
@@ -211,6 +217,12 @@ pub struct SignCommand {
     /// Optional note to embed in the attestation (for artifact signing).
     #[arg(long)]
     pub note: Option<String>,
+
+    /// Capabilities this commit claims it exercises (comma-separated), e.g.
+    /// `--scope sign_commit`. Emitted as an `Auths-Scope` trailer so a verifier can
+    /// reject a claim outside the signer's delegator-anchored grant. Commit-only.
+    #[arg(long, value_delimiter = ',')]
+    pub scope: Vec<String>,
 }
 
 /// Handle the unified sign command.
@@ -249,7 +261,7 @@ pub fn handle_sign_unified(
         }
         SignTarget::CommitRange(range) => {
             let signer = resolve_signer_trailer(repo_opt.as_deref(), env_config)?;
-            sign_commit_range(&range, &signer)
+            sign_commit_range(&range, &signer, &cmd.scope)
         }
     }
 }
@@ -276,13 +288,13 @@ mod tests {
             root_did: "did:keri:Eroot".to_string(),
             anchor_seq: None,
         };
-        let trailers = commit_trailer_args(&signer);
+        let trailers = commit_trailer_args(&signer, &[]);
         assert_eq!(trailers[0], "Auths-Id: did:keri:Eroot");
         assert_eq!(trailers[1], "Auths-Device: did:keri:Edevice");
         assert_eq!(
             trailers.len(),
             2,
-            "no anchor seq → no Auths-Anchor-Seq trailer"
+            "no anchor seq + no scope → only Auths-Id/Auths-Device"
         );
     }
 
@@ -293,9 +305,42 @@ mod tests {
             root_did: "did:keri:Eroot".to_string(),
             anchor_seq: Some(7),
         };
-        let trailers = commit_trailer_args(&signer);
+        let trailers = commit_trailer_args(&signer, &[]);
         assert_eq!(trailers.len(), 3);
         assert_eq!(trailers[2], "Auths-Anchor-Seq: 7");
+    }
+
+    #[test]
+    fn commit_trailer_args_emit_scope_claim() {
+        let signer = LocalSigner {
+            signer_did: "did:keri:Eagent".to_string(),
+            root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: Some(3),
+        };
+        let trailers =
+            commit_trailer_args(&signer, &["sign_commit".to_string(), "open-PR".to_string()]);
+        // Auths-Id, Auths-Device, Auths-Anchor-Seq, Auths-Scope (last).
+        assert_eq!(trailers.len(), 4);
+        assert_eq!(trailers[3], "Auths-Scope: sign_commit,open-PR");
+        // Round-trips through the verifier's own formatter.
+        assert_eq!(
+            trailers[3],
+            auths_verifier::scope_trailer(&["sign_commit".to_string(), "open-PR".to_string()])
+        );
+    }
+
+    #[test]
+    fn commit_trailer_args_no_scope_omits_trailer() {
+        let signer = LocalSigner {
+            signer_did: "did:keri:Eagent".to_string(),
+            root_did: "did:keri:Eroot".to_string(),
+            anchor_seq: None,
+        };
+        let trailers = commit_trailer_args(&signer, &[]);
+        assert!(
+            !trailers.iter().any(|t| t.starts_with("Auths-Scope")),
+            "no scope claim → no Auths-Scope trailer (backward compatible)"
+        );
     }
 
     #[test]
@@ -306,7 +351,7 @@ mod tests {
             root_did: "did:keri:Eroot".to_string(),
             anchor_seq: None,
         };
-        let trailers = commit_trailer_args(&signer);
+        let trailers = commit_trailer_args(&signer, &[]);
         assert_eq!(trailers[0], "Auths-Id: did:keri:Eroot");
         assert_eq!(trailers[1], "Auths-Device: did:keri:Eroot");
     }

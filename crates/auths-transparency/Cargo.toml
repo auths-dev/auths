@@ -12,6 +12,7 @@ categories = ["cryptography", "data-structures"]
 
 [dependencies]
 auths-crypto = { workspace = true, default-features = false }
+auths-keri.workspace = true
 subtle.workspace = true
 auths-verifier = { workspace = true, default-features = false }
 base64.workspace = true
@@ -39,6 +40,7 @@ proptest = "1.4"
 ring.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt"] }
+jsonschema = { version = "0.45.0", default-features = false }
 
 [features]
 default = ["native"]

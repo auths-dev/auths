@@ -521,6 +521,74 @@ pub fn read_agent_scope(events: &[Event], agent_prefix: &Prefix) -> Option<Agent
     found
 }
 
+/// Marker prefix for an org-policy `Seal::Digest` value (`policy:{source_hash_hex}`).
+///
+/// Distinct from the `agent:` role marker, the `agentscope:` scope seal, and the
+/// bare-prefix revocation digest, so an org-policy seal is never misread as any of
+/// them by [`list_delegated_devices`], [`read_agent_scope`], or the revocation scan.
+const ORG_POLICY_MARKER: &str = "policy:";
+
+/// Anchor an org-policy seal on the org KEL: a `Seal::Digest{d: "policy:{hash}"}`
+/// binding the KEL to the BLAKE3 source-hash of the org's compiled policy.
+///
+/// Only the hash rides the KEL — the policy bytes live in a content-addressed blob
+/// (the registry credential store) — so the append-only log stays lean and the
+/// binding is tamper-evident (loaders recompute the blob's hash and compare).
+/// Single-author: the org's current key signs the `ixn`. Latest-anchored wins.
+///
+/// Args:
+/// * `backend`: Registry backend holding the org KEL.
+/// * `org_prefix` / `org_alias` / `org_curve`: the org authoring the seal.
+/// * `source_hash_hex`: Lowercase-hex BLAKE3 hash of the compiled policy's source.
+/// * `passphrase_provider` / `keychain`: org key custody.
+///
+/// Usage:
+/// ```ignore
+/// mark_org_policy(&*backend, &org_prefix, &org_alias, curve, &hash_hex, &provider, &keychain)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn mark_org_policy(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    org_prefix: &Prefix,
+    org_alias: &KeyAlias,
+    org_curve: CurveType,
+    source_hash_hex: &str,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(), InitError> {
+    author_root_anchor_ixn(
+        backend,
+        org_prefix,
+        org_alias,
+        org_curve,
+        vec![Seal::Digest {
+            d: Said::new_unchecked(format!("{ORG_POLICY_MARKER}{source_hash_hex}")),
+        }],
+        passphrase_provider,
+        keychain,
+    )
+    .map(|_| ())
+}
+
+/// Read the latest org-policy source-hash anchored on a KEL slice, or `None` if the
+/// org never anchored one. Pure — the inverse of [`mark_org_policy`]'s marker.
+///
+/// Args:
+/// * `events`: The org's KEL events (oldest first; the latest anchored policy wins).
+pub fn read_org_policy_hash(events: &[Event]) -> Option<String> {
+    let mut found: Option<String> = None;
+    for event in events {
+        for seal in event.anchors() {
+            if let Seal::Digest { d } = seal
+                && let Some(hash) = d.as_str().strip_prefix(ORG_POLICY_MARKER)
+            {
+                found = Some(hash.to_string());
+            }
+        }
+    }
+    found
+}
+
 /// List every device the root has delegated, each tagged with whether the root
 /// has revoked it (walks the root KEL collecting delegation `KeyEvent` seals and
 /// revocation digest seals). Order follows first delegation.
@@ -665,6 +733,77 @@ pub fn revoke_delegated_device(
         keychain,
     )
     .map(|_| ())
+}
+
+/// Revoke an enumerated set of delegated devices in a **single** `ixn` — the org-wide
+/// kill switch. Anchors one revocation `Seal::Digest` per still-live device in one
+/// atomic event (an `ixn`'s `a[]` is a seal vector), so the whole set's authority ends
+/// at the same KEL position. Idempotent: devices already revoked are skipped; if none
+/// remain to revoke, no event is written (`Ok(None)`).
+///
+/// This is an atomic batch of N revocations, **not** a class abstraction — the caller
+/// supplies the explicit membership. (Class-by-predicate revocation needs the policy
+/// path; it is tracked as a follow-on.)
+///
+/// Args:
+/// * `backend`: Registry backend holding the root KEL.
+/// * `root_prefix` / `root_alias` / `root_curve`: the delegator authoring the batch.
+/// * `device_prefixes`: The delegated devices to revoke.
+/// * `passphrase_provider` / `keychain`: root key custody.
+///
+/// Returns the newly-revoked prefixes and the anchoring `ixn` (or `None` if every
+/// listed device was already revoked).
+///
+/// Usage:
+/// ```ignore
+/// let (revoked, ixn) = revoke_delegated_devices_batch(&*backend, &root, &alias, curve, &prefixes, &p, &kc)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn revoke_delegated_devices_batch(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    device_prefixes: &[Prefix],
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(Vec<Prefix>, Option<IxnEvent>), InitError> {
+    let mut seals = Vec::new();
+    let mut newly_revoked = Vec::new();
+    for device_prefix in device_prefixes {
+        if device_prefix.as_str() == root_prefix.as_str() {
+            return Err(InitError::InvalidData(
+                "cannot revoke the root identity's own controller".to_string(),
+            ));
+        }
+        let (delegated, revoked) = delegation_status(backend, root_prefix, device_prefix)?;
+        if !delegated {
+            return Err(InitError::InvalidData(format!(
+                "device {device_prefix} is not a delegated controller of the identity"
+            )));
+        }
+        if revoked {
+            continue; // already revoked — idempotent skip.
+        }
+        seals.push(Seal::Digest {
+            d: Said::new_unchecked(device_prefix.as_str().to_string()),
+        });
+        newly_revoked.push(device_prefix.clone());
+    }
+
+    if seals.is_empty() {
+        return Ok((newly_revoked, None));
+    }
+    let ixn = author_root_anchor_ixn(
+        backend,
+        root_prefix,
+        root_alias,
+        root_curve,
+        seals,
+        passphrase_provider,
+        keychain,
+    )?;
+    Ok((newly_revoked, Some(ixn)))
 }
 
 /// Reveal and validate a delegated device's pre-committed next key (its new current

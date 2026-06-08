@@ -13,7 +13,8 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, extract_public_key_by
 use auths_id::keri::Event;
 use auths_id::keri::delegation::{
     DelegatedRole, incept_delegated_device, list_delegated_devices, mark_agent_scope,
-    mark_delegated_agent, read_agent_scope, revoke_delegated_device, rotate_delegated_device,
+    mark_delegated_agent, read_agent_scope, revoke_delegated_device,
+    revoke_delegated_devices_batch, rotate_delegated_device,
 };
 use auths_id::keri::parse_did_keri;
 use auths_keri::AgentScope;
@@ -311,6 +312,80 @@ pub fn revoke(
         ctx.key_storage.as_ref(),
     )
     .map_err(AgentError::DelegationError)
+}
+
+/// Receipt for an atomic-batch agent revocation (the org-wide kill switch).
+#[derive(Debug, Clone)]
+pub struct BatchRevocation {
+    /// The agents that are revoked as of this batch (all requested).
+    pub revoked: Vec<String>,
+    /// The KEL position the batch revocation was anchored at, or `None` if every
+    /// requested agent was already revoked (no new event written).
+    pub anchored_at_seq: Option<u128>,
+}
+
+/// Revoke an enumerated set of agents in a **single** KEL event — the org-wide kill
+/// switch. Anchors one revocation seal per still-live agent in one atomic `ixn`, so the
+/// whole set's authority ends at the same KEL position; subsequent actions are rejected
+/// positionally. Idempotent: already-revoked agents are skipped (still reported as
+/// revoked); if all were already revoked, no event is written.
+///
+/// This is an atomic batch over an explicit set, not a class-by-predicate event.
+///
+/// Args:
+/// * `ctx`: Auths context.
+/// * `root_alias`: Keychain alias of the delegating root identity's signing key.
+/// * `agent_dids`: The agents' `did:keri:` to revoke.
+///
+/// Usage:
+/// ```ignore
+/// let receipt = revoke_batch(&ctx, &root_alias, &[a.clone(), b.clone()])?;
+/// ```
+pub fn revoke_batch(
+    ctx: &AuthsContext,
+    root_alias: &KeyAlias,
+    agent_dids: &[String],
+) -> Result<BatchRevocation, AgentError> {
+    let managed =
+        ctx.identity_storage
+            .load_identity()
+            .map_err(|e| AgentError::IdentityNotFound {
+                did: format!("identity load failed: {e}"),
+            })?;
+    let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
+        AgentError::IdentityNotFound {
+            did: format!("invalid root did:keri: {e}"),
+        }
+    })?;
+
+    let mut prefixes = Vec::with_capacity(agent_dids.len());
+    for did in agent_dids {
+        prefixes
+            .push(parse_did_keri(did).map_err(|_| AgentError::AgentNotFound { did: did.clone() })?);
+    }
+
+    let (_pk, root_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        root_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .map_err(AgentError::CryptoError)?;
+
+    let (_newly, ixn) = revoke_delegated_devices_batch(
+        ctx.registry.as_ref(),
+        &root_prefix,
+        root_alias,
+        root_curve,
+        &prefixes,
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .map_err(AgentError::DelegationError)?;
+
+    Ok(BatchRevocation {
+        revoked: agent_dids.to_vec(),
+        anchored_at_seq: ixn.map(|e| e.s.value()),
+    })
 }
 
 /// Rotate a delegated agent's own key (`drt`), anchored by the root.

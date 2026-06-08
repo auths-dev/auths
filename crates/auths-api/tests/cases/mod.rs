@@ -1,8 +1,7 @@
 //! Integration test cases.
 //!
-//! The legacy bearer-token agent flow tests were removed in Epic E. Only the
-//! server-skeleton health smoke test remains until a domain HTTP surface is
-//! mounted over the SDK.
+//! The legacy bearer-token agent flow tests were removed in Epic E. The relying-party
+//! middleware tests (rp_auth) and the control-plane HTTP tests
+//! (`../control_plane_http.rs`) exercise the current surface over the SDK.
 
-mod health;
 mod rp_auth;

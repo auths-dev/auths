@@ -3,6 +3,9 @@
 use std::path::Path;
 
 use auths_core::ports::network::{NetworkError, RegistryClient};
+use auths_keri::witness::independence::{
+    IndependencePolicy, Infrastructure, Jurisdiction, OperatorId, Organization, WitnessOperatorInfo,
+};
 use auths_transparency::{
     BundleVerificationReport, ConsistencyProof, LogOrigin, OfflineBundle, SignedCheckpoint,
     TrustRoot, TrustRootWitness,
@@ -52,6 +55,27 @@ struct TrustRootWitnessResponse {
     public_key: String,
     #[allow(dead_code)]
     url: String,
+    /// Operator-independence attributes. Carried through to the trust root so the
+    /// diversity gate can evaluate the actual cosigners; absent ⇒ this witness
+    /// cannot contribute to independence.
+    #[serde(default)]
+    organization: Option<String>,
+    #[serde(default)]
+    jurisdiction: Option<String>,
+    #[serde(default)]
+    infrastructure: Option<String>,
+}
+
+/// Build the operator-independence attributes for a wire witness entry, if all
+/// three axes are present and valid. Returns `None` (not an error) when any axis
+/// is missing — an untagged witness simply cannot prove independence.
+fn operator_info_from_wire(w: &TrustRootWitnessResponse) -> Option<WitnessOperatorInfo> {
+    Some(WitnessOperatorInfo {
+        operator: OperatorId::new(w.name.clone()).ok()?,
+        organization: Organization::new(w.organization.clone()?).ok()?,
+        jurisdiction: Jurisdiction::new(w.jurisdiction.clone()?).ok()?,
+        infrastructure: Infrastructure::new(w.infrastructure.clone()?).ok()?,
+    })
 }
 
 /// Fetch the trust root from a registry URL.
@@ -107,10 +131,12 @@ pub async fn fetch_trust_root(
                 public_key.as_bytes(),
                 auths_crypto::CurveType::Ed25519,
             );
+            let operator_info = operator_info_from_wire(&w);
             Some(TrustRootWitness {
                 witness_did,
                 name: w.name,
                 public_key,
+                operator_info,
             })
         })
         .collect();
@@ -121,6 +147,9 @@ pub async fn fetch_trust_root(
         witnesses,
         signature_algorithm: Default::default(),
         ecdsa_log_public_key_der: None,
+        // The registry trust-root wire format does not yet carry diversity
+        // thresholds; the pinned `witness_policy.json` is the enforcement source.
+        independence_policy: IndependencePolicy::unconstrained(),
     })
 }
 
@@ -381,7 +410,69 @@ mod tests {
             witnesses: vec![],
             signature_algorithm: Default::default(),
             ecdsa_log_public_key_der: None,
+            independence_policy: IndependencePolicy::unconstrained(),
         }
+    }
+
+    /// A registry client that returns a fixed trust-root document.
+    struct CannedRegistry {
+        trust_root_json: Vec<u8>,
+    }
+
+    impl RegistryClient for CannedRegistry {
+        async fn fetch_registry_data(
+            &self,
+            _registry_url: &str,
+            _path: &str,
+        ) -> Result<Vec<u8>, NetworkError> {
+            Ok(self.trust_root_json.clone())
+        }
+
+        async fn push_registry_data(
+            &self,
+            _registry_url: &str,
+            _path: &str,
+            _data: &[u8],
+        ) -> Result<(), NetworkError> {
+            Ok(())
+        }
+
+        async fn post_json(
+            &self,
+            _registry_url: &str,
+            _path: &str,
+            _json_body: &[u8],
+        ) -> Result<auths_core::ports::network::RegistryResponse, NetworkError> {
+            Ok(auths_core::ports::network::RegistryResponse {
+                status: 200,
+                body: vec![],
+                rate_limit: None,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_trust_root_round_trips_independence_attributes() {
+        let log_pk = hex::encode([0u8; 32]);
+        let w_pk = hex::encode([7u8; 32]);
+        let json = format!(
+            r#"{{"version":1,"log_origin":"test.dev/log","log_public_key":"{log_pk}","witnesses":[{{"name":"w1","public_key":"{w_pk}","url":"http://w1","organization":"org-a","jurisdiction":"US","infrastructure":"aws/us-east-1"}}]}}"#
+        );
+        let client = CannedRegistry {
+            trust_root_json: json.into_bytes(),
+        };
+
+        let trust_root = fetch_trust_root("https://registry.test", &client)
+            .await
+            .unwrap();
+
+        assert_eq!(trust_root.witnesses.len(), 1);
+        let attrs = trust_root.witnesses[0]
+            .operator_attributes()
+            .expect("operator attributes survive ingestion");
+        assert_eq!(attrs.organization.as_str(), "org-a");
+        assert_eq!(attrs.jurisdiction.as_str(), "US");
+        assert_eq!(attrs.infrastructure.as_str(), "aws/us-east-1");
     }
 
     #[test]

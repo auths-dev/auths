@@ -86,7 +86,10 @@ fn collect_kel(ctx: &AuthsContext, prefix: &Prefix) -> Vec<Event> {
 
 /// Reject a `kt≥2` (multi-signature) org delegator — the anchoring `ixn` is
 /// single-author. `kt=1` orgs (the documented pre-launch baseline) pass.
-fn ensure_single_sig_org(ctx: &AuthsContext, org_prefix: &Prefix) -> Result<(), OrgError> {
+pub(crate) fn ensure_single_sig_org(
+    ctx: &AuthsContext,
+    org_prefix: &Prefix,
+) -> Result<(), OrgError> {
     let state = ctx
         .registry
         .get_key_state(org_prefix)

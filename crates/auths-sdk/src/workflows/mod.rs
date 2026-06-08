@@ -23,3 +23,4 @@ pub mod rotation;
 pub mod signing;
 pub mod status;
 pub mod transparency;
+pub mod witness_monitor;

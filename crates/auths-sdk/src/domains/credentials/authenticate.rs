@@ -13,12 +13,19 @@ use auths_rp::{
     Audience, ChallengeError, ChallengeStore, Denied, NONCE_LEN, Nonce, VerifiedPrincipal,
     WireError, WirePresentation,
 };
-use auths_verifier::{PresentationBinding, VerifierWitnessPolicy, verify_presentation};
+use auths_verifier::{
+    PresentationBinding, PresentationVerdict, VerifierWitnessPolicy, verify_presentation,
+};
 use chrono::{DateTime, Utc};
+
+use auths_id::keri::types::Prefix;
+use auths_id::policy::context_from_credential;
 
 use crate::context::AuthsContext;
 use crate::domains::credentials::error::CredentialError;
 use crate::domains::credentials::present_inputs::load_presentation_inputs;
+use crate::domains::org::error::OrgError;
+use crate::domains::org::policy::{evaluate_with_org_policy, load_org_policy};
 
 /// Errors from [`authenticate_presentation`] (`thiserror`, exhaustive).
 #[derive(Debug, thiserror::Error)]
@@ -38,14 +45,27 @@ pub enum PresentationAuthError {
     /// The presentation verified-as-a-process but was not honored (see the inner reason).
     #[error("denied: {0}")]
     Denied(Denied),
+    /// The presentation verified and the holder is authenticated, but the issuer's org
+    /// policy denied the principal (403, not 401 — authentication succeeded).
+    #[error("org policy denied: {reason}")]
+    PolicyDenied {
+        /// The typed denial reason from the policy engine.
+        reason: String,
+    },
+    /// The issuer's org policy could not be loaded or evaluated — fail closed (treated
+    /// as a denial; the principal is not authorized when policy cannot be confirmed).
+    #[error("org policy could not be evaluated: {0}")]
+    Policy(OrgError),
 }
 
 impl PresentationAuthError {
-    /// The HTTP status: 400 for a malformed request, 403 for insufficient capability, else 401.
+    /// The HTTP status: 400 for a malformed request, 403 for insufficient capability or a
+    /// policy denial, else 401.
     pub fn http_status(&self) -> u16 {
         match self {
             PresentationAuthError::Wire(_) | PresentationAuthError::NonceLength => 400,
             PresentationAuthError::Denied(denied) => denied.http_status(),
+            PresentationAuthError::PolicyDenied { .. } | PresentationAuthError::Policy(_) => 403,
             PresentationAuthError::Challenge(_) | PresentationAuthError::Resolve(_) => 401,
         }
     }
@@ -107,7 +127,56 @@ pub async fn authenticate_presentation(
     )
     .await;
 
+    enforce_issuer_policy(ctx, &verdict, now)?;
+
     VerifiedPrincipal::from_verdict(verdict).map_err(PresentationAuthError::Denied)
+}
+
+/// Enforce the issuer's org policy against a holder-verified presentation (E1 A4).
+///
+/// A no-op unless the verdict is `Valid` AND the issuer anchored an org policy. The
+/// caps/role context comes from the holder-verified credential
+/// ([`context_from_credential`]). A policy deny is a 403 ([`PresentationAuthError::PolicyDenied`])
+/// — distinct from the 401 authentication failures — and a policy that cannot be
+/// evaluated fails closed ([`PresentationAuthError::Policy`]). An issuer with no policy
+/// leaves authentication unchanged (legacy allow).
+fn enforce_issuer_policy(
+    ctx: &AuthsContext,
+    verdict: &PresentationVerdict,
+    now: DateTime<Utc>,
+) -> Result<(), PresentationAuthError> {
+    let PresentationVerdict::Valid {
+        issuer, subject, ..
+    } = verdict
+    else {
+        return Ok(()); // non-Valid verdicts are handled by `from_verdict` (401).
+    };
+    let issuer_prefix = Prefix::new_unchecked(
+        issuer
+            .as_str()
+            .strip_prefix("did:keri:")
+            .unwrap_or(issuer.as_str())
+            .to_string(),
+    );
+
+    let Some(policy) =
+        load_org_policy(ctx, &issuer_prefix).map_err(PresentationAuthError::Policy)?
+    else {
+        return Ok(()); // issuer anchored no policy → legacy allow.
+    };
+
+    let eval_ctx = context_from_credential(verdict, now)
+        .map_err(|e| PresentationAuthError::Policy(OrgError::InvalidDid(e.to_string())))?;
+    let decision = evaluate_with_org_policy(&policy, &eval_ctx);
+    // A5: record every enforcement decision (allow + deny). Gate stays pure.
+    crate::audit::emit_policy_decision(ctx, "request", subject.as_str(), &decision);
+    if decision.is_allowed() {
+        Ok(())
+    } else {
+        Err(PresentationAuthError::PolicyDenied {
+            reason: format!("{} [{}]", decision.message, decision.reason),
+        })
+    }
 }
 
 /// Extract the 32-byte nonce from a presentation binding.

@@ -65,6 +65,7 @@ jobs:
           cargo run -p xtask -- check-anchor-discipline
           cargo run -p xtask -- check-constant-time
           cargo run -p xtask -- check-rfc6979
+          cargo run -p xtask -- check-admission-policy
 
   schemas:
     name: Schema validation

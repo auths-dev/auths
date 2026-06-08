@@ -108,6 +108,25 @@ pub async fn submit_attestation_to_log(
 
     let metadata = log.metadata();
 
+    // 3. Verify the checkpoint signature against a pinned trust root, when one
+    // exists for this log. Logs we do not pin (e.g. test fakes) are skipped —
+    // the inclusion proof above still bounds them. For a pinned ECDSA log
+    // (Sigstore Rekor) this rejects a checkpoint whose signature does not verify,
+    // so a cached checkpoint is never trusted unverified.
+    let trust = auths_transparency::TrustConfig::default_config();
+    if let Some(root) = trust.get_log(&metadata.log_id) {
+        match auths_transparency::verify_checkpoint_signature(&submission.signed_checkpoint, root) {
+            auths_transparency::CheckpointStatus::Verified
+            | auths_transparency::CheckpointStatus::NotProvided => {}
+            other => {
+                return Err(LogSubmitError::VerificationFailed(format!(
+                    "checkpoint signature verification failed for log '{}': {other:?}",
+                    metadata.log_id
+                )));
+            }
+        }
+    }
+
     Ok(LogSubmissionBundle {
         log_id: metadata.log_id,
         leaf_index: submission.leaf_index,

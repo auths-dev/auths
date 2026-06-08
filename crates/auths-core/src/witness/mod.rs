@@ -78,8 +78,11 @@ mod hash;
 mod noop;
 mod provider;
 mod receipt;
+mod verify;
 
 // Feature-gated modules
+#[cfg(feature = "witness-server")]
+mod identity;
 #[cfg(feature = "witness-server")]
 mod server;
 #[cfg(feature = "witness-server")]
@@ -98,11 +101,19 @@ pub use noop::NoOpWitness;
 pub use collector::{CollectionError, ReceiptCollector, ReceiptCollectorBuilder};
 pub use duplicity::{DuplicityDetector, detect_receipt_conflict};
 
+// Receipt verification chokepoint — the only producer of `VerifiedReceipt`.
+pub use verify::{VerifiedReceipt, verify_receipt};
+
 // Witness server (feature-gated)
 #[cfg(feature = "witness-server")]
+pub use identity::{
+    WitnessIdentityError, generate_and_persist_witness_signer, load_witness_signer,
+    witness_signer_from_seed_hex,
+};
+#[cfg(feature = "witness-server")]
 pub use server::{
-    ErrorResponse, HeadResponse, HealthResponse, SubmitEventRequest, WitnessServerConfig,
-    WitnessServerState, router as witness_router, run_server,
+    ErrorResponse, HeadResponse, HealthResponse, SaidAtSeqResponse, SubmitEventRequest,
+    WitnessServerConfig, WitnessServerState, router as witness_router, run_server,
 };
 #[cfg(feature = "witness-server")]
 pub use storage::WitnessStorage;

@@ -198,13 +198,38 @@ fn verify_checkpoint(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Check
             {
                 return CheckpointStatus::InvalidSignature;
             }
-            let peer_key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, ecdsa_pk.as_der());
+            // ring's ECDSA verifier consumes the raw uncompressed SEC1 point,
+            // not the DER SPKI we carry — convert before verifying.
+            let Some(point) = ecdsa_pk.as_sec1_uncompressed() else {
+                return CheckpointStatus::InvalidSignature;
+            };
+            let peer_key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, point);
             match peer_key.verify(note_body.as_bytes(), ecdsa_sig.as_der()) {
                 Ok(()) => CheckpointStatus::Verified,
                 Err(_) => CheckpointStatus::InvalidSignature,
             }
         }
     }
+}
+
+/// Verify only the checkpoint-signature dimension of a [`SignedCheckpoint`]
+/// against a [`TrustRoot`], dispatching on the trust root's signature algorithm
+/// (Ed25519 or ECDSA-P256). Exposed for the submit/verify flow, which holds a
+/// checkpoint without assembling a full [`OfflineBundle`].
+///
+/// Args:
+/// * `signed` — The signed checkpoint to verify.
+/// * `trust_root` — The pinned trust root for the log that produced it.
+///
+/// Usage:
+/// ```ignore
+/// let status = verify_checkpoint_signature(&signed, &trust_root);
+/// ```
+pub fn verify_checkpoint_signature(
+    signed: &SignedCheckpoint,
+    trust_root: &TrustRoot,
+) -> CheckpointStatus {
+    verify_checkpoint(signed, trust_root)
 }
 
 fn verify_witnesses(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> WitnessStatus {
@@ -215,6 +240,10 @@ fn verify_witnesses(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Witnes
     let note_body = signed.checkpoint.to_note_body();
     let required = trust_root.witnesses.len() / 2 + 1;
     let mut verified = 0usize;
+    // Independence is evaluated over the ACTUAL cosigning quorum — the witnesses
+    // whose cosignatures verify here — not the configured roster. A diverse roster
+    // with a correlated quorum must still fail.
+    let mut cosigner_attrs = Vec::new();
 
     for cosig in &signed.witnesses {
         let trusted = trust_root.witnesses.iter().find(|w| {
@@ -225,21 +254,41 @@ fn verify_witnesses(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Witnes
                 .into()
         });
 
-        if let Some(_witness) = trusted {
+        if let Some(witness) = trusted {
             let peer_key = UnparsedPublicKey::new(&ED25519, cosig.witness_public_key.as_bytes());
             if peer_key
                 .verify(note_body.as_bytes(), cosig.signature.as_bytes())
                 .is_ok()
             {
                 verified += 1;
+                // A verified cosigner without pinned attributes cannot contribute
+                // to diversity (fail closed under a real policy).
+                if let Some(attrs) = witness.operator_attributes() {
+                    cosigner_attrs.push(attrs);
+                }
             }
         }
     }
 
-    if verified >= required {
+    if verified < required {
+        return WitnessStatus::Insufficient { verified, required };
+    }
+
+    // Count met — require the present cosigners to be independent. Under the
+    // unconstrained default policy this passes trivially (0 ≥ 0), preserving
+    // legacy behavior; under a pinned commons policy it enforces diversity.
+    let independence = auths_keri::witness::independence::spans_distinct(
+        &cosigner_attrs,
+        &trust_root.independence_policy,
+    );
+    if independence.independent {
         WitnessStatus::Quorum { verified, required }
     } else {
-        WitnessStatus::Insufficient { verified, required }
+        WitnessStatus::NotIndependent {
+            verified,
+            required,
+            shortfalls: independence.shortfalls,
+        }
     }
 }
 
@@ -605,6 +654,8 @@ mod tests {
             witnesses: vec![],
             signature_algorithm: Default::default(),
             ecdsa_log_public_key_der: None,
+            independence_policy:
+                auths_keri::witness::independence::IndependencePolicy::unconstrained(),
         };
 
         TestFixture {
@@ -785,6 +836,7 @@ mod tests {
                     ),
                     name: "w1".into(),
                     public_key: Ed25519PublicKey::from_bytes(w1_pk),
+                    operator_info: None,
                 },
                 TrustRootWitness {
                     witness_did: CanonicalDid::from_public_key_did_key(
@@ -793,10 +845,13 @@ mod tests {
                     ),
                     name: "w2".into(),
                     public_key: Ed25519PublicKey::from_bytes(w2_pk),
+                    operator_info: None,
                 },
             ],
             signature_algorithm: Default::default(),
             ecdsa_log_public_key_der: None,
+            independence_policy:
+                auths_keri::witness::independence::IndependencePolicy::unconstrained(),
         };
 
         let report = verify_bundle(&bundle, &trust_root, fixed_now());
@@ -807,6 +862,107 @@ mod tests {
                 required: 2,
             }
         ));
+    }
+
+    /// Build a 2-witness checkpoint cosigned by both, with the given operator
+    /// organizations and diversity thresholds, and return the witness verdict.
+    fn witness_status_for_orgs(
+        org1: &str,
+        org2: &str,
+        min_org: usize,
+        min_jur: usize,
+        min_infra: usize,
+    ) -> WitnessStatus {
+        use auths_keri::witness::independence::{
+            IndependencePolicy, Infrastructure, Jurisdiction, OperatorId, Organization,
+            WitnessOperatorInfo,
+        };
+
+        let w1_keypair = Ed25519KeyPair::from_seed_unchecked(&[10u8; 32]).unwrap();
+        let w1_pk: [u8; 32] = w1_keypair.public_key().as_ref().try_into().unwrap();
+        let w2_keypair = Ed25519KeyPair::from_seed_unchecked(&[11u8; 32]).unwrap();
+        let w2_pk: [u8; 32] = w2_keypair.public_key().as_ref().try_into().unwrap();
+
+        let fixture = setup();
+        let mut bundle = make_valid_bundle(&fixture);
+        let note_body = bundle.signed_checkpoint.checkpoint.to_note_body();
+        let w1_sig = w1_keypair.sign(note_body.as_bytes());
+        let w2_sig = w2_keypair.sign(note_body.as_bytes());
+        bundle.signed_checkpoint.witnesses = vec![
+            WitnessCosignature {
+                witness_name: "w1".into(),
+                witness_public_key: Ed25519PublicKey::from_bytes(w1_pk),
+                signature: Ed25519Signature::try_from_slice(w1_sig.as_ref()).unwrap(),
+                timestamp: fixed_ts(),
+            },
+            WitnessCosignature {
+                witness_name: "w2".into(),
+                witness_public_key: Ed25519PublicKey::from_bytes(w2_pk),
+                signature: Ed25519Signature::try_from_slice(w2_sig.as_ref()).unwrap(),
+                timestamp: fixed_ts(),
+            },
+        ];
+
+        let info = |op: &str, org: &str, jur: &str, infra: &str| WitnessOperatorInfo {
+            operator: OperatorId::new(op).unwrap(),
+            organization: Organization::new(org).unwrap(),
+            jurisdiction: Jurisdiction::new(jur).unwrap(),
+            infrastructure: Infrastructure::new(infra).unwrap(),
+        };
+
+        let trust_root = TrustRoot {
+            log_public_key: Ed25519PublicKey::from_bytes(fixture.log_public_key),
+            log_origin: LogOrigin::new("test.dev/log").unwrap(),
+            witnesses: vec![
+                TrustRootWitness {
+                    witness_did: CanonicalDid::from_public_key_did_key(
+                        &w1_pk,
+                        auths_crypto::CurveType::Ed25519,
+                    ),
+                    name: "w1".into(),
+                    public_key: Ed25519PublicKey::from_bytes(w1_pk),
+                    operator_info: Some(info("w1", org1, "US", "aws/us-east-1")),
+                },
+                TrustRootWitness {
+                    witness_did: CanonicalDid::from_public_key_did_key(
+                        &w2_pk,
+                        auths_crypto::CurveType::Ed25519,
+                    ),
+                    name: "w2".into(),
+                    public_key: Ed25519PublicKey::from_bytes(w2_pk),
+                    operator_info: Some(info("w2", org2, "DE", "gcp/eu-west-1")),
+                },
+            ],
+            signature_algorithm: Default::default(),
+            ecdsa_log_public_key_der: None,
+            independence_policy: IndependencePolicy {
+                min_organizations: min_org,
+                min_jurisdictions: min_jur,
+                min_infra_zones: min_infra,
+            },
+        };
+
+        verify_bundle(&bundle, &trust_root, fixed_now()).witnesses
+    }
+
+    #[test]
+    fn witness_quorum_diverse_passes() {
+        // 2 orgs / 2 jurisdictions / 2 infra zones meets a 2/2/2 policy.
+        let status = witness_status_for_orgs("org-a", "org-b", 2, 2, 2);
+        assert!(
+            matches!(status, WitnessStatus::Quorum { verified: 2, .. }),
+            "got {status:?}"
+        );
+    }
+
+    #[test]
+    fn witness_quorum_same_org_not_independent() {
+        // Count is met (2 ≥ 2) but both cosigners share an org → NotIndependent.
+        let status = witness_status_for_orgs("acme", "acme", 2, 1, 1);
+        assert!(
+            matches!(status, WitnessStatus::NotIndependent { .. }),
+            "got {status:?}"
+        );
     }
 
     #[test]

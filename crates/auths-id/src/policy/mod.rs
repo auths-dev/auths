@@ -52,7 +52,7 @@ use crate::storage::receipts::{check_receipt_consistency, verify_receipt_signatu
 // Re-export policy types for convenience
 pub use auths_policy::{
     CompileError, CompiledPolicy, Decision, EvalContext, Expr, Outcome, PolicyBuilder,
-    PolicyLimits, ReasonCode, compile, compile_from_json, evaluate_strict,
+    PolicyLimits, ReasonCode, SignerType, compile, compile_from_json, evaluate_strict,
 };
 
 /// Convert an attestation to an evaluation context.

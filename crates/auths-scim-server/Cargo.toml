@@ -1,0 +1,42 @@
+[package]
+name = "auths-scim-server"
+description = "SCIM 2.0 provisioning server for Auths — directory lifecycle wired to KERI identity"
+version.workspace = true
+edition = "2024"
+publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["auths", "scim", "provisioning", "identity"]
+categories = ["web-programming"]
+
+[[bin]]
+name = "auths-scim-server"
+path = "src/main.rs"
+
+[lib]
+name = "auths_scim_server"
+path = "src/lib.rs"
+
+[dependencies]
+# Types-only SCIM crate (User, ListResponse, filter, PATCH, schema, errors).
+# KERI/registry is the source of truth; there is NO authoritative database here.
+auths-scim = { path = "../auths-scim" }
+
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+anyhow = "1"
+thiserror.workspace = true
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sha2.workspace = true
+subtle.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[lints]
+workspace = true

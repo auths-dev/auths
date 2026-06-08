@@ -1,21 +1,23 @@
 {
   "version": 1,
-  "_doc": "Machine-readable witness-diversity policy. Consumed by the runtime verifier. Human-readable companion: docs/security/witness-diversity.md. Fails closed if quorum unsatisfied.",
+  "_doc": "Machine-readable RUNTIME witness-diversity policy. Consumed by the runtime verifier. SEPARATE from the governance admission contract docs/governance/admission_policy.json (who may BE a witness) — do not conflate. Human-readable companion: docs/security/witness-diversity.md. Fails closed if quorum unsatisfied or any key is a placeholder.",
   "quorum": {
     "min_witnesses": 3,
     "min_organizations": 3,
-    "min_jurisdictions": 2
+    "min_jurisdictions": 2,
+    "min_infra_zones": 2
   },
   "witnesses": [
     {
       "name": "auths-dev-us-west",
       "organization": "auths.dev",
       "jurisdiction": "US",
+      "infrastructure": "aws/us-west-2",
       "status": "active",
       "curve": "ed25519",
       "pubkey_b64": "REPLACE_WITH_PINNED_ED25519_VERKEY_BASE64URL_NO_PAD",
       "kms_provider": "aws-kms",
-      "notes": "Bootstrap witness. Must be joined by ≥2 independent operators before this policy can be satisfied."
+      "notes": "Bootstrap witness. Must be joined by >=2 independent operators before this policy can be satisfied. Loading this policy fails closed until the placeholder key is replaced."
     }
   ],
   "retired_witnesses": [],

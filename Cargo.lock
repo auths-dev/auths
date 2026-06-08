@@ -346,6 +346,7 @@ version = "0.0.1-rc.12"
 name = "auths-api"
 version = "0.0.1-rc.12"
 dependencies = [
+ "anyhow",
  "auths-core",
  "auths-crypto",
  "auths-id",
@@ -357,17 +358,42 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
+ "git2",
  "reqwest",
  "ring",
  "serde",
  "serde_json",
  "sha2",
  "subtle",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tower",
  "tracing",
  "tracing-subscriber",
+ "zeroize",
+]
+
+[[package]]
+name = "auths-checkpoint-cosigner"
+version = "0.0.1-rc.12"
+dependencies = [
+ "anyhow",
+ "auths-transparency",
+ "auths-verifier",
+ "axum",
+ "chrono",
+ "hex",
+ "http-body-util",
+ "ring",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
@@ -724,6 +750,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-monitor"
+version = "0.0.1-rc.12"
+dependencies = [
+ "anyhow",
+ "auths-transparency",
+ "auths-verifier",
+ "chrono",
+ "hex",
+ "reqwest",
+ "ring",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "auths-oidc-port"
 version = "0.0.1-rc.12"
 dependencies = [
@@ -851,6 +897,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-scim-server"
+version = "0.0.1-rc.12"
+dependencies = [
+ "anyhow",
+ "auths-scim",
+ "axum",
+ "http-body-util",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "auths-sdk"
 version = "0.0.1-rc.12"
 dependencies = [
@@ -959,6 +1024,7 @@ version = "0.0.1-rc.12"
 dependencies = [
  "async-trait",
  "auths-crypto",
+ "auths-keri",
  "auths-verifier",
  "aws-config",
  "aws-sdk-s3",
@@ -967,6 +1033,7 @@ dependencies = [
  "futures",
  "hex",
  "json-canon",
+ "jsonschema",
  "proptest",
  "ring",
  "serde",
@@ -1016,6 +1083,23 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
+]
+
+[[package]]
+name = "auths-witness"
+version = "0.0.1-rc.12"
+dependencies = [
+ "anyhow",
+ "auths-core",
+ "auths-crypto",
+ "axum",
+ "clap",
+ "http-body-util",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -6947,6 +7031,7 @@ dependencies = [
  "pin-project-lite",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -8231,6 +8316,7 @@ dependencies = [
  "jsonschema",
  "regex-lite",
  "schemars 0.8.22",
+ "serde",
  "serde_json",
  "tree-sitter",
  "tree-sitter-rust",

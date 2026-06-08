@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auths.dev/schemas/admission-policy.schema.json",
+  "title": "Auths Witness Commons Admission Policy",
+  "description": "Binding, machine-readable contract for who may BE a witness in the commons. Encodes admission criteria, the three independence axes, the SLA, lifecycle states, rotation/sunset, and per-operator key custody. SEPARATE from the runtime verifier quorum file auths-transparency/data/witness_policy.json: this is the governance admission contract (different consumer); neither may be weakened to make a verify pass.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "independence_requirements",
+    "sla",
+    "lifecycle_states",
+    "rotation",
+    "operators"
+  ],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "_note": { "type": "string" },
+    "independence_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The same three axes the runtime gate (spans_distinct) enforces, so governance and code cannot diverge.",
+      "required": [
+        "min_organizations",
+        "min_jurisdictions",
+        "min_infrastructure_zones"
+      ],
+      "properties": {
+        "min_organizations": { "type": "integer", "minimum": 1 },
+        "min_jurisdictions": { "type": "integer", "minimum": 1 },
+        "min_infrastructure_zones": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "sla": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_availability", "window_days"],
+      "properties": {
+        "min_availability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "window_days": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "lifecycle_states": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": ["pending", "qualified", "usable", "retired", "rejected"]
+      }
+    },
+    "rotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signed_rotation_notice_required", "retire_notice_days"],
+      "properties": {
+        "signed_rotation_notice_required": { "type": "boolean" },
+        "retire_notice_days": { "type": "integer", "minimum": 0 },
+        "overlap_window_days": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "operators": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/operator" }
+    }
+  },
+  "$defs": {
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "legal_entity",
+        "jurisdiction",
+        "infrastructure",
+        "key_custody",
+        "status"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "legal_entity": { "type": "string", "minLength": 1 },
+        "jurisdiction": { "type": "string", "minLength": 1 },
+        "infrastructure": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "ASN or cloud provider + region — the infrastructure independence axis.",
+          "required": ["asn_or_cloud", "region"],
+          "properties": {
+            "asn_or_cloud": { "type": "string", "minLength": 1 },
+            "region": { "type": "string", "minLength": 1 }
+          }
+        },
+        "key_custody": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method"],
+          "properties": {
+            "method": { "enum": ["hsm", "kms", "sealed-file"] },
+            "attested_at": { "type": "string" }
+          }
+        },
+        "status": {
+          "enum": ["pending", "qualified", "usable", "retired", "rejected"]
+        },
+        "pubkey_b64": { "type": "string" }
+      }
+    }
+  }
+}
