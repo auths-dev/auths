@@ -94,6 +94,17 @@ pub enum OrgError {
         alias: String,
     },
 
+    /// The supplied member identity is not a delegated identifier of this org —
+    /// its delegated inception (`dip`) does not name the org as delegator, so the
+    /// org cannot off-board it. Fail closed.
+    #[error("member '{did}' is not a delegated identifier of organization '{org}'")]
+    MemberNotDelegable {
+        /// The member's `did:keri:`.
+        did: String,
+        /// The organization identifier.
+        org: String,
+    },
+
     /// A cryptographic operation failed (e.g. resolving the org key's curve).
     #[error("crypto error: {0}")]
     CryptoError(#[source] auths_core::AgentError),
@@ -101,6 +112,48 @@ pub enum OrgError {
     /// Authoring or anchoring the member's delegated identifier failed.
     #[error("member delegation failed: {0}")]
     Delegation(#[source] auths_id::error::InitError),
+
+    /// An identity already exists where the org would be created — refusing to
+    /// clobber it.
+    #[error("an identity already exists at {location}; refusing to create an organization over it")]
+    IdentityExists {
+        /// Where the existing identity was found (repository path or registry).
+        location: String,
+    },
+
+    /// Initializing the organization's KERI identity failed.
+    #[error("failed to initialize organization identity: {0}")]
+    IdentityInit(#[source] auths_id::error::InitError),
+
+    /// Creating the organization's admin self-attestation failed.
+    #[error("failed to create admin attestation: {0}")]
+    Attestation(#[source] auths_verifier::error::AttestationError),
+
+    /// An air-gapped bundle event failed its self-addressing integrity check —
+    /// recomputing the SAID did not match the stored `d` (the bundle was tampered).
+    #[error("bundle integrity failure for '{id}': {reason}")]
+    BundleIntegrity {
+        /// The identifier whose KEL failed integrity.
+        id: String,
+        /// Why integrity failed.
+        reason: String,
+    },
+
+    /// The bundle delegates a member on the org KEL but omits that member's own KEL —
+    /// the bundle is incomplete and cannot be verified. Fail closed.
+    #[error("bundle is missing the KEL for delegated member '{member}'")]
+    BundleMissingMemberKel {
+        /// The member's `did:keri:`.
+        member: String,
+    },
+
+    /// The queried member has no delegation seal in the org KEL — the org never
+    /// delegated it, so there is no authority to verify. Fail closed.
+    #[error("member '{member}' has no delegation seal in the org KEL")]
+    BundleMissingDelegatorSeal {
+        /// The member's `did:keri:`.
+        member: String,
+    },
 }
 
 impl AuthsErrorInfo for OrgError {
@@ -119,8 +172,15 @@ impl AuthsErrorInfo for OrgError {
             Self::Anchor(_) => "AUTHS-E5611",
             Self::OrgThresholdDelegationUnsupported { .. } => "AUTHS-E5612",
             Self::MemberKeyExists { .. } => "AUTHS-E5613",
+            Self::MemberNotDelegable { .. } => "AUTHS-E5618",
             Self::CryptoError(e) => e.error_code(),
             Self::Delegation(_) => "AUTHS-E5614",
+            Self::IdentityExists { .. } => "AUTHS-E5615",
+            Self::IdentityInit(_) => "AUTHS-E5616",
+            Self::Attestation(_) => "AUTHS-E5617",
+            Self::BundleIntegrity { .. } => "AUTHS-E5619",
+            Self::BundleMissingMemberKel { .. } => "AUTHS-E5620",
+            Self::BundleMissingDelegatorSeal { .. } => "AUTHS-E5621",
         }
     }
 
@@ -159,10 +219,28 @@ impl AuthsErrorInfo for OrgError {
             Self::MemberKeyExists { .. } => Some(
                 "Choose a different member alias; run `auths org list-members` to see existing members",
             ),
+            Self::MemberNotDelegable { .. } => Some(
+                "The member must first incept a delegated identity naming this org as delegator (pairing) before it can be off-boarded",
+            ),
             Self::CryptoError(e) => e.suggestion(),
             Self::Delegation(_) => Some(
                 "The member delegation could not be authored or anchored; check the org identity",
             ),
+            Self::IdentityExists { .. } => Some(
+                "An identity already exists here; use a fresh repository path to create a new organization",
+            ),
+            Self::IdentityInit(_) => {
+                Some("Failed to initialize the org identity; check key access and repository state")
+            }
+            Self::Attestation(_) => Some(
+                "Failed to sign the admin attestation; check your key access with `auths key list`",
+            ),
+            Self::BundleIntegrity { .. } => Some(
+                "The bundle was modified after it was produced; obtain a fresh, untampered bundle",
+            ),
+            Self::BundleMissingMemberKel { .. } | Self::BundleMissingDelegatorSeal { .. } => {
+                Some("The bundle is incomplete; re-produce it with `auths org bundle`")
+            }
         }
     }
 }

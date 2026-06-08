@@ -569,3 +569,128 @@ fn verify_commit_in_process(sha: &str) -> bool {
         }
     }
 }
+
+/// Verify an air-gapped org bundle entirely offline (zero network), fail-closed.
+///
+/// Reads the fn-154.5 bundle, loads the verifier's pinned roots (from `roots` or the
+/// default `.auths/roots`, falling back to the bundle's declared roots if neither
+/// exists), and classifies the optional `member` at `signed_at` purely from the
+/// bundle's KEL contents. Exits non-zero on any non-authorized verdict so it can gate
+/// CI.
+///
+/// Args:
+/// * `file`: Path to the air-gapped bundle (`auths org bundle` output).
+/// * `roots`: Optional pinned-roots file (default `.auths/roots`).
+/// * `member`: Optional member `did:keri` to classify authority for.
+/// * `signed_at`: Optional in-band signing KEL position for the member's artifact.
+/// * `json`: Emit the typed report as JSON.
+///
+/// Usage:
+/// ```ignore
+/// handle_offline_verify(Path::new("acme.auths-offline"), None, None, None, false)?;
+/// ```
+pub fn handle_offline_verify(
+    file: &Path,
+    roots: Option<&Path>,
+    member: Option<&str>,
+    signed_at: Option<u128>,
+    json: bool,
+) -> Result<()> {
+    use auths_sdk::workflows::org::{AirGappedOrgBundle, AuthorityAtSigning, verify_org_bundle};
+    use auths_sdk::workflows::roots::parse_roots_typed;
+    use auths_verifier::Prefix;
+    use auths_verifier::types::IdentityDID;
+
+    let bundle_json =
+        fs::read_to_string(file).with_context(|| format!("Failed to read bundle file {file:?}"))?;
+    let bundle = AirGappedOrgBundle::from_json(&bundle_json)
+        .context("Failed to parse air-gapped org bundle")?;
+
+    let roots_path = roots
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(".auths/roots"));
+    let pinned_roots: Vec<IdentityDID> = if roots_path.exists() {
+        let content = fs::read_to_string(&roots_path)
+            .with_context(|| format!("Failed to read roots file {roots_path:?}"))?;
+        parse_roots_typed(&content).context("Failed to parse pinned roots")?
+    } else {
+        // No verifier-side roots configured — trust the bundle's declared roots
+        // (trust-on-first-use). Supply --roots to pin explicitly.
+        bundle.pinned_roots.clone()
+    };
+
+    let member_prefix =
+        member.map(|m| Prefix::new_unchecked(m.strip_prefix("did:keri:").unwrap_or(m).to_string()));
+    let query = member_prefix.as_ref().map(|p| (p, signed_at));
+
+    let report =
+        verify_org_bundle(&bundle, &pinned_roots, query).context("Offline verification failed")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("Air-gapped verification of {file:?}");
+        println!("  Org:            {}", report.org_did.as_str());
+        println!(
+            "  Verified as-of: KEL seq {} (by position, not wall-clock)",
+            report.as_of_org_seq
+        );
+        let root = if report.root_pinned {
+            "✅ yes"
+        } else {
+            "🛑 NO (untrusted root)"
+        };
+        println!("  Root pinned:    {root}");
+        let dup = if report.duplicity_detected {
+            "🛑 DETECTED"
+        } else {
+            "✅ none"
+        };
+        println!("  Duplicity:      {dup}");
+        if let Some(authority) = &report.authority {
+            match authority {
+                AuthorityAtSigning::AuthorizedBeforeRevocation => {
+                    println!("  Authority:      ✅ AuthorizedBeforeRevocation")
+                }
+                AuthorityAtSigning::RejectedAfterRevocation { revoked_at } => {
+                    println!(
+                        "  Authority:      🛑 RejectedAfterRevocation {{ revoked_at: {revoked_at} }}"
+                    )
+                }
+                AuthorityAtSigning::RejectedRevokedPositionUnknown { revoked_at } => {
+                    println!(
+                        "  Authority:      🛑 RejectedRevokedPositionUnknown {{ revoked_at: {revoked_at} }}"
+                    )
+                }
+                AuthorityAtSigning::NeverDelegated => {
+                    println!("  Authority:      ❌ NeverDelegated")
+                }
+            }
+        }
+    }
+
+    // Fail-closed exit: anything short of a trusted, non-duplicitous, authorized
+    // verdict is a hard failure (so CI gates reject it).
+    if !report.root_pinned {
+        return Err(anyhow!(
+            "unauthorized: the bundle's org is not in the pinned trust roots"
+        ));
+    }
+    if report.duplicity_detected {
+        return Err(anyhow!(
+            "org KEL duplicity detected — divergent history; resolve before trusting"
+        ));
+    }
+    match report.authority {
+        None | Some(AuthorityAtSigning::AuthorizedBeforeRevocation) => Ok(()),
+        Some(AuthorityAtSigning::RejectedAfterRevocation { revoked_at }) => Err(anyhow!(
+            "unauthorized: signed at/after revocation (KEL seq {revoked_at})"
+        )),
+        Some(AuthorityAtSigning::RejectedRevokedPositionUnknown { revoked_at }) => Err(anyhow!(
+            "unauthorized: member revoked at KEL seq {revoked_at}; artifact has no in-band signing position"
+        )),
+        Some(AuthorityAtSigning::NeverDelegated) => {
+            Err(anyhow!("unauthorized: the org never delegated this member"))
+        }
+    }
+}

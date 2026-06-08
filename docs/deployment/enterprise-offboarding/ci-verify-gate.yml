@@ -1,0 +1,38 @@
+# Example CI verify gate — reject any artifact whose signer's authority was revoked.
+#
+# Copy to .github/workflows/auths-verify.yml and adjust the build/bundle paths.
+# The gate runs OFFLINE (no network) against the pinned roots in .auths/roots, so it
+# works in disconnected/self-hosted runners and cannot be spoofed by a network call.
+
+name: auths-verify-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify-provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install auths CLI
+        run: cargo install --path crates/auths-cli # or your distribution channel
+
+      # The artifact under test ships with its air-gapped org bundle (produced by
+      # `auths org bundle`). The bundle is self-contained and URL-free.
+      - name: Verify provenance (offline, pinned roots)
+        run: |
+          auths artifact verify ./acme.auths-offline \
+            --offline \
+            --roots .auths/roots \
+            --member "${{ vars.SIGNER_DID }}" \
+            --signed-at "${{ vars.SIGNER_KEL_SEQ }}" \
+            --json
+        # Exits non-zero on ANY non-authorized verdict:
+        #   - the bundle's org is not in .auths/roots   (untrusted root)
+        #   - org KEL duplicity (divergent history)
+        #   - the signer was revoked at/before this position (signed-after-revocation)
+        #   - the bundle is incomplete (missing member KEL / delegation seal)
+        # A valid, pre-revocation signer passes; a revoked signer fails the build.

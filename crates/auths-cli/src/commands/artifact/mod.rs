@@ -174,6 +174,26 @@ pub enum ArtifactSubcommand {
         /// Also verify the source commit's signing attestation.
         #[arg(long)]
         verify_commit: bool,
+
+        /// Verify an air-gapped org bundle entirely offline (no network access).
+        #[arg(long)]
+        offline: bool,
+
+        /// Override the pinned trust roots path (default: `.auths/roots`).
+        #[arg(long, value_name = "PATH")]
+        roots: Option<PathBuf>,
+
+        /// (offline) Member `did:keri` to classify authority for.
+        #[arg(long = "member", visible_alias = "member-did")]
+        member: Option<String>,
+
+        /// (offline) The artifact's in-band signing KEL position.
+        #[arg(long)]
+        signed_at: Option<u128>,
+
+        /// (offline) Emit the typed verdict as JSON.
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -519,7 +539,21 @@ pub fn handle_artifact(
             witness_keys,
             witness_threshold,
             verify_commit,
+            offline,
+            roots,
+            member,
+            signed_at,
+            json,
         } => {
+            if offline {
+                return verify::handle_offline_verify(
+                    &file,
+                    roots.as_deref(),
+                    member.as_deref(),
+                    signed_at,
+                    json,
+                );
+            }
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(verify::handle_verify(
                 &file,

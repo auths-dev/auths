@@ -1,0 +1,17 @@
+# .auths/roots — pinned trust roots for offline / CI verification.
+#
+# One did:keri per line. Blank lines and lines starting with '#' are ignored.
+# A line that is not a valid did:keri is a HARD ERROR (fail-closed) — the verifier
+# refuses rather than silently skip it.
+#
+# Roots are DID-ONLY. Pinning a root means "this org's KEL may delegate authority to
+# callers." It does NOT grant capabilities — a member's role and capabilities come
+# from the org KEL's delegator-anchored scope seals, read at verify time.
+#
+# Replace the placeholder with your organization's did:keri (printed by
+# `auths org create` as "Org Identity ID"):
+
+did:keri:EReplaceWithYourOrgPrefix000000000000000000
+
+# Add additional first-party orgs you trust, one per line:
+# did:keri:EAnotherTrustedOrgPrefix0000000000000000000

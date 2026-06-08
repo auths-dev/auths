@@ -22,18 +22,23 @@ use std::sync::Arc;
 use auths_core::storage::keychain::{KeyAlias, extract_public_key_bytes};
 use auths_id::keri::Event;
 use auths_id::keri::delegation::{
-    incept_delegated_device, list_delegated_devices, mark_agent_scope, read_agent_scope,
-    revoke_delegated_device,
+    anchor_received_dip, incept_delegated_device, list_delegated_devices, mark_agent_scope,
+    read_agent_scope, revoke_delegated_device,
 };
 use auths_id::keri::parse_did_keri;
 use auths_id::keri::types::Prefix;
 use auths_id::policy::{EvalContext, context_from_delegated_member};
-use auths_keri::AgentScope;
+use auths_keri::{AgentScope, DipEvent};
 use auths_verifier::core::Role;
 use chrono::{DateTime, Utc};
 
+use crate::audit::emit_audit;
 use crate::context::AuthsContext;
 use crate::domains::org::error::OrgError;
+use crate::domains::org::offboarding::{
+    OffboardingRecord, SignedOffboardingRecord, find_revocation_event, sign_offboarding_record,
+    store_offboarding_record,
+};
 
 /// Scope-seal marker prefix carrying the member's org role (`role:admin`).
 const ROLE_MARKER_PREFIX: &str = "role:";
@@ -193,30 +198,164 @@ pub fn add_member(
     })
 }
 
-/// Revoke an org member: the org anchors a revocation seal in its KEL so verifiers
-/// stop honouring the member. Thin wrapper over the generic delegation engine;
-/// idempotent — revoking an already-revoked member is a no-op `Ok`.
+/// Delegate org membership to a member's **own existing** delegated identity.
+///
+/// The off-boarding-grade path: the member generated their own key and built a
+/// delegated inception (`dip`) naming this org as delegator — the org never holds
+/// the member's private key. The org anchors that member-signed `dip` (bilateral
+/// `validate_delegation` binding) and a delegator-anchored role + capability scope
+/// seal in its own KEL. Use [`add_member`] instead to mint a fresh member key for
+/// quick demos.
+///
+/// Idempotent: re-delegating a member already present in the org's delegation set
+/// (live or revoked) is a no-op `Ok` — it never re-appends the `dip`. A revoked
+/// member is **not** resurrected; re-instating one requires a fresh delegated
+/// identity. Rejects a `kt≥2` org ([`OrgError::OrgThresholdDelegationUnsupported`])
+/// and a `dip` that does not name this org as delegator
+/// ([`OrgError::MemberNotDelegable`]).
+///
+/// Args:
+/// * `ctx`: Auths context (registry, key storage, passphrase).
+/// * `org_prefix`: The org's KEL prefix (the delegator).
+/// * `org_alias`: Keychain alias of the org's signing key.
+/// * `member_dip`: The member-signed delegated inception (its `di` must equal `org_prefix`).
+/// * `member_attachment`: The member's CESR signature attachment over `member_dip`.
+/// * `role`: The member's org role (asserted by the org admin).
+/// * `capabilities`: Capability strings to grant the member.
+/// * `expires_at`: Optional delegator-anchored expiry (Unix epoch seconds).
+///
+/// Usage:
+/// ```ignore
+/// // member side (their own key): let bundle = build_device_dip(&org_prefix, curve)?;
+/// let member = add_existing_member(&ctx, &org_prefix, &org_alias,
+///     &bundle.dip, &bundle.attachment, Role::Member, &["sign_commit".into()], None)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn add_existing_member(
+    ctx: &AuthsContext,
+    org_prefix: &Prefix,
+    org_alias: &KeyAlias,
+    member_dip: &DipEvent,
+    member_attachment: &[u8],
+    role: Role,
+    capabilities: &[String],
+    expires_at: Option<i64>,
+) -> Result<OrgMemberResult, OrgError> {
+    ensure_single_sig_org(ctx, org_prefix)?;
+
+    let member_prefix = member_dip.i.clone();
+    let member_did = format!("did:keri:{}", member_prefix.as_str());
+
+    if member_dip.di.as_str() != org_prefix.as_str() {
+        return Err(OrgError::MemberNotDelegable {
+            did: member_did,
+            org: org_prefix.as_str().to_string(),
+        });
+    }
+
+    // Idempotent: a member already in the org's delegation set is a no-op (its dip
+    // is already anchored — re-appending would duplicate). A revoked member is not
+    // resurrected here.
+    if resolve_member_authority(ctx, org_prefix, &member_prefix)?.is_some() {
+        return Ok(OrgMemberResult {
+            member_did,
+            member_prefix: member_prefix.as_str().to_string(),
+        });
+    }
+
+    let (_pk, org_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        org_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .map_err(OrgError::CryptoError)?;
+
+    // Anchor the member's own-signed dip on the org KEL (bilateral binding; the
+    // org's key signs only the anchoring ixn, never the member key).
+    anchor_received_dip(
+        ctx.registry.as_ref(),
+        org_prefix,
+        org_alias,
+        org_curve,
+        member_dip,
+        member_attachment,
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .map_err(OrgError::Delegation)?;
+
+    let mut scope_caps = vec![role_marker(role)];
+    scope_caps.extend(capabilities.iter().cloned());
+    mark_agent_scope(
+        ctx.registry.as_ref(),
+        org_prefix,
+        org_alias,
+        org_curve,
+        &member_prefix,
+        &AgentScope {
+            capabilities: scope_caps,
+            expires_at,
+        },
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .map_err(OrgError::Delegation)?;
+
+    Ok(OrgMemberResult {
+        member_did,
+        member_prefix: member_prefix.as_str().to_string(),
+    })
+}
+
+/// Revoke an org member and emit durable off-boarding evidence.
+///
+/// Anchors a revocation seal in the org KEL (so verifiers stop honouring the member)
+/// and produces a signed, seal-bound [`SignedOffboardingRecord`] — who off-boarded
+/// whom, at which **KEL position** (never wall-clock), why, and a snapshot of the
+/// role + capabilities the subject lost. Also emits a SIEM `AuditEvent`
+/// (`org:offboard-member`) for stream consumers.
+///
+/// Idempotent: revoking an already-revoked member is a no-op that returns `Ok(None)`
+/// without writing a duplicate record. A member the org never delegated is
+/// [`OrgError::MemberNotFound`].
 ///
 /// Args:
 /// * `ctx`: Auths context.
 /// * `org_prefix`: The org's KEL prefix (the delegator).
 /// * `org_alias`: Keychain alias of the org's signing key.
 /// * `member_did`: The member's `did:keri:` to revoke.
+/// * `reason`: Optional operator-supplied reason recorded in the off-boarding record.
 ///
 /// Usage:
 /// ```ignore
-/// revoke_member(&ctx, &org_prefix, &org_alias, "did:keri:E...")?;
+/// let record = revoke_member(&ctx, &org_prefix, &org_alias, "did:keri:E...", Some("left the company".into()))?;
 /// ```
 pub fn revoke_member(
     ctx: &AuthsContext,
     org_prefix: &Prefix,
     org_alias: &KeyAlias,
     member_did: &str,
-) -> Result<(), OrgError> {
+    reason: Option<String>,
+) -> Result<Option<SignedOffboardingRecord>, OrgError> {
     let member_prefix = parse_did_keri(member_did).map_err(|_| OrgError::MemberNotFound {
         org: org_prefix.as_str().to_string(),
         did: member_did.to_string(),
     })?;
+
+    // Snapshot the member's authority BEFORE revoking — this is "what they lost" —
+    // and decide idempotency from the same read.
+    let authority =
+        resolve_member_authority(ctx, org_prefix, &member_prefix)?.ok_or_else(|| {
+            OrgError::MemberNotFound {
+                org: org_prefix.as_str().to_string(),
+                did: member_did.to_string(),
+            }
+        })?;
+    if authority.revoked {
+        // Already off-boarded — no duplicate record.
+        return Ok(None);
+    }
+
     let (_pk, org_curve) = extract_public_key_bytes(
         ctx.key_storage.as_ref(),
         org_alias,
@@ -233,7 +372,38 @@ pub fn revoke_member(
         ctx.passphrase_provider.as_ref(),
         ctx.key_storage.as_ref(),
     )
-    .map_err(OrgError::Delegation)
+    .map_err(OrgError::Delegation)?;
+
+    // Bind the record to the revocation event we just anchored (KEL position + SAID).
+    let org_kel = collect_kel(ctx, org_prefix);
+    let (revocation_seal_said, revoked_at_seq) = find_revocation_event(&org_kel, &member_prefix)
+        .ok_or_else(|| {
+            OrgError::Signing("revocation event not found after anchoring".to_string())
+        })?;
+
+    let org_did = format!("did:keri:{}", org_prefix.as_str());
+    let record = OffboardingRecord {
+        org_did: org_did.clone(),
+        member_did: member_did.to_string(),
+        revoked_at_seq,
+        revocation_seal_said,
+        reason,
+        operator_did: org_did,
+        prior_role: authority.role.map(|r| r.as_str().to_string()),
+        prior_caps: authority.capabilities,
+        recorded_at: ctx.clock.now().to_rfc3339(),
+    };
+
+    let signed = sign_offboarding_record(ctx, org_alias, org_curve, record)?;
+    store_offboarding_record(ctx, org_prefix, &member_prefix, &signed)?;
+    emit_audit(
+        ctx,
+        &signed.record.operator_did,
+        "org:offboard-member",
+        "Success",
+    );
+
+    Ok(Some(signed))
 }
 
 /// A member's KEL-authoritative authority within an org.

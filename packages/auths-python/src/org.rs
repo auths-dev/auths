@@ -294,7 +294,7 @@ pub fn revoke_org_member(
         let ctx = build_org_context(&repo, &passphrase_str, &repo_path_str)?;
         let org_prefix = org_prefix_from_did(&org_did);
 
-        revoke_member(&ctx, &org_prefix, &org_alias, &member_did)
+        revoke_member(&ctx, &org_prefix, &org_alias, &member_did, None)
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
         Ok((
