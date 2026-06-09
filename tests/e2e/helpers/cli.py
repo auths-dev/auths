@@ -85,10 +85,56 @@ def get_device_did(binary: Path, env: dict[str, str]) -> str:
     return devices[0]["device_did"]
 
 
-def export_attestation(env: dict[str, str], out_path: Path) -> dict:
-    """Extract the first attestation from the auths git repo to a file.
+def add_device(binary: Path, env: dict[str, str], *, device_key: str = "device-main"):
+    """Add a delegated device (the KEL-native flow) under identity key ``main``.
 
-    Returns the parsed attestation JSON.
+    Replaces the legacy ``device link --device-did`` flow: ``device add`` mints the
+    device's own delegated KEL that the root anchors, so no pre-existing device DID
+    is required.
+    """
+    return run_auths(
+        binary,
+        ["device", "add", "--key", "main", "--device-key", device_key],
+        env=env,
+    )
+
+
+def export_identity_bundle(
+    binary: Path,
+    env: dict[str, str],
+    out_path: Path,
+    *,
+    alias: str = "main",
+    max_age_secs: int = 3600,
+):
+    """Export the identity bundle for stateless KEL-native commit verification.
+
+    The bundle carries the identity's KEL (including any rotations), so
+    ``auths verify --identity-bundle`` can establish trust without a pinned root —
+    the CI/CD verification path that replaces the old allowed_signers file.
+    """
+    return run_auths(
+        binary,
+        [
+            "id",
+            "export-bundle",
+            "--alias",
+            alias,
+            "--output",
+            str(out_path),
+            "--max-age-secs",
+            str(max_age_secs),
+        ],
+        env=env,
+    )
+
+
+def export_attestation(env: dict[str, str], out_path: Path) -> dict | None:
+    """Extract the first legacy attestation from the auths git repo to a file.
+
+    Returns the parsed attestation JSON, or ``None`` when no attestation exists.
+    The KEL-native ``device add`` flow anchors a delegated inception rather than
+    writing an ``attestation.json``, so callers should skip when this is ``None``.
     """
     auths_home = Path(env["AUTHS_HOME"])
 
@@ -97,21 +143,24 @@ def export_attestation(env: dict[str, str], out_path: Path) -> dict:
         cwd=auths_home,
         env=env,
     )
-    ls.assert_success()
+    if ls.returncode != 0:
+        return None
 
     att_path = None
     for line in ls.stdout.splitlines():
         if line.endswith("/attestation.json"):
             att_path = line
             break
-    assert att_path is not None, "No attestation found in auths repo"
+    if att_path is None:
+        return None
 
     show = run_git(
         ["show", f"refs/auths/registry:{att_path}"],
         cwd=auths_home,
         env=env,
     )
-    show.assert_success()
+    if show.returncode != 0:
+        return None
 
     out_path.write_text(show.stdout)
     return json.loads(show.stdout)

@@ -1,32 +1,22 @@
-"""E2E tests for git commit signing and verification."""
+"""E2E tests for git commit signing and verification (KEL-native)."""
 
 import shutil
-from pathlib import Path
 
 import pytest
 
-from helpers.cli import run_auths, run_git
-from helpers.git import configure_signing, make_commit
+from helpers.cli import export_identity_bundle, run_auths, run_git
+from helpers.git import make_commit
 
 
-def _generate_allowed_signers(auths_bin, git_repo: Path, env: dict) -> Path:
-    """Generate allowed-signers file inside the git repo's .auths/ dir."""
-    auths_dir = git_repo / ".auths"
-    auths_dir.mkdir(exist_ok=True)
-    signers_file = auths_dir / "allowed_signers"
-    run_auths(
-        auths_bin,
-        [
-            "signers",
-            "sync",
-            "--repo",
-            env["AUTHS_HOME"],
-            "--output",
-            str(signers_file),
-        ],
-        env=env,
-    ).assert_success()
-    return signers_file
+def _sign_head(auths_bin, repo, env) -> str:
+    """KEL-native sign the current HEAD; return the (rewritten) HEAD sha.
+
+    `auths sign` adds the `Auths-Id`/`Auths-Device` trailers and rewrites the
+    commit; verification then runs against the post-sign sha. This replaces the old
+    SSH (`gpg.ssh.program`) + `allowed_signers` model — KEL replay is the only trust.
+    """
+    run_auths(auths_bin, ["sign", "HEAD"], cwd=repo, env=env)
+    return run_git(["rev-parse", "HEAD"], cwd=repo, env=env).stdout.strip()
 
 
 @pytest.mark.requires_binary
@@ -36,54 +26,48 @@ class TestGitSigning:
         if not shutil.which("ssh-keygen"):
             pytest.skip("ssh-keygen not found")
 
-    def test_sign_commit_roundtrip(
-        self, auths_bin, auths_sign_bin, init_identity, git_repo
-    ):
-        configure_signing(git_repo, auths_sign_bin, init_identity)
-        sha = make_commit(git_repo, "signed commit", init_identity)
+    def test_sign_commit_roundtrip(self, auths_bin, init_identity, git_repo, tmp_path):
+        make_commit(git_repo, "signed commit", init_identity)
+        sha = _sign_head(auths_bin, git_repo, init_identity)
         assert len(sha) == 40
 
-        _generate_allowed_signers(auths_bin, git_repo, init_identity)
-
+        bundle = tmp_path / "bundle.json"
+        export_identity_bundle(auths_bin, init_identity, bundle).assert_success()
         result = run_auths(
-            auths_bin, ["verify", sha], cwd=git_repo, env=init_identity
+            auths_bin,
+            ["verify", sha, "--identity-bundle", str(bundle)],
+            cwd=git_repo,
+            env=init_identity,
         )
-        if result.returncode != 0:
-            pytest.skip(f"verify not available: {result.stderr}")
         result.assert_success()
+        assert "verified" in result.stdout.lower()
 
     def test_verify_unsigned_commit(self, auths_bin, init_identity, git_repo):
         sha = make_commit(git_repo, "unsigned commit", init_identity)
-
-        _generate_allowed_signers(auths_bin, git_repo, init_identity)
-
+        # An unsigned commit reports as unverified; the command still exits cleanly.
         result = run_auths(
             auths_bin, ["verify", sha], cwd=git_repo, env=init_identity
         )
-        # Unsigned commit should report as unverified
-        if result.returncode == 0:
-            pass
-        else:
-            result.assert_failure()
+        assert result.returncode in (0, 1)
 
     def test_sign_and_verify_multiple_commits(
-        self, auths_bin, auths_sign_bin, init_identity, git_repo
+        self, auths_bin, init_identity, git_repo, tmp_path
     ):
-        configure_signing(git_repo, auths_sign_bin, init_identity)
-
         shas = []
         for i in range(3):
-            sha = make_commit(git_repo, f"commit {i}", init_identity)
-            shas.append(sha)
+            make_commit(git_repo, f"commit {i}", init_identity)
+            shas.append(_sign_head(auths_bin, git_repo, init_identity))
 
-        _generate_allowed_signers(auths_bin, git_repo, init_identity)
-
+        bundle = tmp_path / "bundle.json"
+        export_identity_bundle(auths_bin, init_identity, bundle).assert_success()
         for sha in shas:
             result = run_auths(
-                auths_bin, ["verify", sha], cwd=git_repo, env=init_identity
+                auths_bin,
+                ["verify", sha, "--identity-bundle", str(bundle)],
+                cwd=git_repo,
+                env=init_identity,
             )
-            if result.returncode != 0:
-                pytest.skip(f"verify not available: {result.stderr}")
+            result.assert_success()
 
     def test_auths_sign_binary_direct(
         self, auths_sign_bin, init_identity, tmp_path
@@ -99,28 +83,5 @@ class TestGitSigning:
         if result.returncode != 0:
             pytest.skip(f"auths-sign direct not available: {result.stderr}")
 
-        # Should produce SSHSIG output
+        # Should produce SSHSIG output.
         assert "SIGNATURE" in result.stdout or result.returncode == 0
-
-    def test_allowed_signers_generation(
-        self, auths_bin, init_identity, git_repo, tmp_path
-    ):
-        signers_file = tmp_path / "signers.txt"
-        result = run_auths(
-            auths_bin,
-            [
-                "signers",
-                "sync",
-                "--repo",
-                init_identity["AUTHS_HOME"],
-                "--output",
-                str(signers_file),
-            ],
-            env=init_identity,
-        )
-        if result.returncode != 0:
-            pytest.skip(f"signers sync not available: {result.stderr}")
-
-        assert signers_file.exists()
-        content = signers_file.read_text()
-        assert len(content.strip()) > 0
