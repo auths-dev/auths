@@ -2,8 +2,7 @@
 name = "auths-rp"
 version.workspace = true
 edition = "2024"
-description = "Auths relying-party transport: agent-passport request authentication (Epic D1)"
-publish = false
+description = "Auths relying-party transport: agent-passport request authentication"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

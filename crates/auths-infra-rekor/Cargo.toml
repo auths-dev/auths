@@ -4,7 +4,6 @@ version.workspace = true
 edition = "2024"
 authors = ["bordumb <bordumbb@gmail.com>"]
 description = "Rekor transparency log adapter for Auths"
-publish = false
 license.workspace = true
 repository.workspace = true
 

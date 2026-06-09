@@ -19,16 +19,7 @@ Requires:
     - network access to crates.io
     - git tag v{version} must exist (run github.py --push first)
 
-Publish order (dependency layers):
-    Batch 1: auths, auths-crypto, auths-jwt, auths-verifier, auths-telemetry, auths-utils
-    Batch 2: auths-policy
-    Batch 3: auths-keri, auths-pairing-protocol
-    Batch 3: auths-core, auths-index
-    Batch 4: auths-infra-http, auths-mcp-server
-    Batch 5: auths-id  (depends on core, crypto, policy, verifier, infra-http)
-    Batch 6: auths-storage, auths-sdk, auths-radicle, auths-pairing-daemon  (depend on auths-id/core)
-    Batch 7: auths-infra-git  (depends on auths-sdk)
-    Batch 8: auths-cli
+Publish order: see PUBLISH_BATCHES below (topological from cargo metadata).
 """
 
 import json
@@ -42,16 +33,22 @@ from pathlib import Path
 CARGO_TOML = Path(__file__).resolve().parents[2] / "Cargo.toml"
 CRATES_IO_API = "https://crates.io/api/v1/crates"
 
+# Topological order computed from `cargo metadata` (a crate may only appear
+# after every internal dependency it has). Regenerate when crate deps change:
+# each batch contains crates whose internal deps are all in earlier batches.
+# Deliberately excluded: auths-radicle (deprecated), auths-api (server bin),
+# auths-test-utils (test helper, only a dev-dependency of published crates).
 PUBLISH_BATCHES: list[list[str]] = [
-    ["auths", "auths-crypto", "auths-jwt", "auths-verifier", "auths-telemetry", "auths-utils"],
-    ["auths-policy", "auths-oidc-port"],
-    ["auths-keri", "auths-pairing-protocol"],
-    ["auths-core", "auths-index"],
-    ["auths-infra-http", "auths-mcp-server", "auths-transparency"],
+    ["auths", "auths-crypto", "auths-jwt", "auths-telemetry", "auths-utils"],
+    ["auths-keri", "auths-oidc-port"],
+    ["auths-pairing-protocol", "auths-verifier"],
+    ["auths-index", "auths-policy", "auths-rp", "auths-scim", "auths-transparency"],
+    ["auths-core"],
+    ["auths-infra-http", "auths-infra-rekor", "auths-pairing-daemon"],
     ["auths-id"],
-    ["auths-storage", "auths-pairing-daemon"],
+    ["auths-storage"],
     ["auths-sdk"],
-    ["auths-infra-git"],
+    ["auths-infra-git", "auths-mcp-server", "auths-scim-server"],
     ["auths-cli"],
 ]
 
