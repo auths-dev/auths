@@ -82,6 +82,29 @@ def targets(workspace_version: str) -> list[tuple[Path, re.Pattern, str]]:
     ]
 
 
+# Internal workspace dependencies must carry an explicit `version` matching the
+# workspace version: `cargo publish` strips the `path` and requires a version
+# requirement on every dependency.
+WORKSPACE_DEP_RE = re.compile(
+    r'(auths-[a-z0-9-]+ = \{ path = "crates/[^"]+", version = )"([^"]+)"'
+)
+
+
+def workspace_dep_drift(workspace_version: str) -> int:
+    text = (REPO_ROOT / "Cargo.toml").read_text()
+    return sum(
+        1 for m in WORKSPACE_DEP_RE.finditer(text) if m.group(2) != workspace_version
+    )
+
+
+def stamp_workspace_deps(workspace_version: str) -> None:
+    root = REPO_ROOT / "Cargo.toml"
+    text = WORKSPACE_DEP_RE.sub(
+        lambda m: f'{m.group(1)}"{workspace_version}"', root.read_text()
+    )
+    root.write_text(text)
+
+
 def main() -> None:
     check = "--check" in sys.argv
     write = "--write" in sys.argv
@@ -100,7 +123,11 @@ def main() -> None:
         if current != expected:
             drifted.append((path, pattern, expected))
 
-    if not drifted:
+    dep_drift = workspace_dep_drift(workspace_version)
+    dep_status = "ok" if dep_drift == 0 else f"{dep_drift} DRIFT"
+    print(f"  Cargo.toml internal dependency versions: {dep_status}")
+
+    if not drifted and dep_drift == 0:
         print("\nAll package versions are in sync.")
         return
 
@@ -108,9 +135,15 @@ def main() -> None:
         for path, pattern, expected in drifted:
             write_version(path, pattern, expected)
             print(f"Stamped {path.relative_to(REPO_ROOT)} -> {expected}")
+        if dep_drift:
+            stamp_workspace_deps(workspace_version)
+            print(f"Stamped Cargo.toml internal dependency versions -> {workspace_version}")
         return
 
-    print(f"\n{len(drifted)} file(s) out of sync.", file=sys.stderr)
+    print(
+        f"\n{len(drifted) + (1 if dep_drift else 0)} file(s) out of sync.",
+        file=sys.stderr,
+    )
     print("Run with --write to stamp them.", file=sys.stderr)
     if check:
         sys.exit(1)
