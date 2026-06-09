@@ -60,6 +60,12 @@ pub const ERR_VERIFY_WITNESS_PARSE: c_int = -10;
 pub const ERR_VERIFY_INPUT_TOO_LARGE: c_int = -11;
 /// Attestation timestamp is in the future (clock skew).
 pub const ERR_VERIFY_FUTURE_TIMESTAMP: c_int = -12;
+/// The caller-provided output buffer was too small to hold the verdict JSON. Distinct from
+/// [`ERR_VERIFY_SERIALIZATION`]: on this code the required length is written to `*result_len`,
+/// so the caller can resize and retry. (Used by the presentation/credential verdict path.)
+pub const ERR_VERIFY_BUFFER_TOO_SMALL: c_int = -13;
+/// Request bytes were not valid UTF-8 (the verify-JSON contract is a UTF-8 JSON document).
+pub const ERR_VERIFY_INVALID_UTF8: c_int = -14;
 /// Unclassified verification error.
 pub const ERR_VERIFY_OTHER: c_int = -99;
 /// Internal panic occurred
@@ -362,6 +368,144 @@ pub unsafe extern "C" fn ffi_verify_chain_with_witnesses(
     })
 }
 
+/// Copy a UTF-8 payload into a caller-owned output buffer, fail-closed on overflow.
+///
+/// Unlike [`write_report_to_buffer`], this never serializes (the verdict is already a
+/// String) and splits the buffer-too-small case out from serialization: on overflow it
+/// writes the **required** length back into `*result_len` and returns
+/// [`ERR_VERIFY_BUFFER_TOO_SMALL`] so the caller can resize and retry. The caller owns the
+/// buffer end-to-end — no Rust-allocated pointer ever crosses the boundary, which is what
+/// keeps Go/Node/Python free of cross-allocator `free` bugs.
+///
+/// # Safety
+/// `result_ptr` must point to a writable buffer of at least the initial `*result_len` bytes.
+unsafe fn write_str_to_buffer(payload: &str, result_ptr: *mut u8, result_len: *mut usize) -> c_int {
+    let bytes = payload.as_bytes();
+    let capacity = unsafe { *result_len };
+    if bytes.len() > capacity {
+        // Report the size the caller must allocate; do not touch the (too-small) buffer.
+        unsafe { *result_len = bytes.len() };
+        return ERR_VERIFY_BUFFER_TOO_SMALL;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), result_ptr, bytes.len());
+        *result_len = bytes.len();
+    }
+    VERIFY_SUCCESS
+}
+
+/// Drive a bundled verify-JSON request through `core` and write the verdict to the caller
+/// buffer. Shared body of the presentation/credential C-ABI entrypoints: null/size/UTF-8
+/// guards, then the panic-free fn-153.3 core, then the buffer copy. The status `c_int` is
+/// the FFI transport outcome; the **verification** verdict is the discriminated-union JSON
+/// the caller parses out of the buffer.
+///
+/// # Safety
+/// `request_ptr`/`result_ptr`/`result_len` must be valid for `request_len`/`*result_len`.
+unsafe fn verify_json_into_buffer(
+    request_ptr: *const u8,
+    request_len: usize,
+    result_ptr: *mut u8,
+    result_len: *mut usize,
+    caller: &str,
+    core: fn(&str) -> String,
+) -> c_int {
+    if request_ptr.is_null() || result_ptr.is_null() || result_len.is_null() {
+        error!("FFI {caller}: null pointer argument");
+        return ERR_VERIFY_NULL_ARGUMENT;
+    }
+    if request_len > MAX_JSON_BATCH_SIZE {
+        error!("FFI {caller}: request too large ({request_len} bytes)");
+        return ERR_VERIFY_INPUT_TOO_LARGE;
+    }
+    let request_bytes = unsafe { slice::from_raw_parts(request_ptr, request_len) };
+    let request = match std::str::from_utf8(request_bytes) {
+        Ok(s) => s,
+        Err(_) => {
+            error!("FFI {caller}: request was not valid UTF-8");
+            return ERR_VERIFY_INVALID_UTF8;
+        }
+    };
+    let verdict = core(request);
+    unsafe { write_str_to_buffer(&verdict, result_ptr, result_len) }
+}
+
+/// Verify a credential presentation from a bundled JSON request (the fn-153.3 contract),
+/// writing the tagged verdict JSON into a caller-owned buffer.
+///
+/// Keys travel CESR-tagged **inside** the request JSON — there is no raw-pubkey argument and
+/// no byte-length curve dispatch (`pk_from_bytes_ffi` is deliberately not used here).
+///
+/// # Arguments
+/// * `request_ptr` / `request_len` — the `VerifyPresentationRequest` JSON bytes (UTF-8).
+/// * `result_ptr` / `result_len` — caller-owned output buffer; on entry `*result_len` is its
+///   capacity, on success it is set to the verdict byte length.
+///
+/// # Returns
+/// * `VERIFY_SUCCESS` (0) — verdict JSON written; parse it for the `kind` discriminant.
+/// * `ERR_VERIFY_BUFFER_TOO_SMALL` (-13) — `*result_len` set to the required size; resize and retry.
+/// * `ERR_VERIFY_NULL_ARGUMENT` / `ERR_VERIFY_INPUT_TOO_LARGE` / `ERR_VERIFY_INVALID_UTF8` —
+///   transport-level rejections.
+/// * `ERR_VERIFY_PANIC` (-127) — an unexpected panic was caught (the process never aborts).
+///
+/// # Safety
+/// All pointers must be valid for their stated lengths for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn auths_verify_presentation_json(
+    request_ptr: *const u8,
+    request_len: usize,
+    result_ptr: *mut u8,
+    result_len: *mut usize,
+) -> c_int {
+    let result = panic::catch_unwind(|| unsafe {
+        verify_json_into_buffer(
+            request_ptr,
+            request_len,
+            result_ptr,
+            result_len,
+            "auths_verify_presentation_json",
+            crate::contract::verify_presentation_json,
+        )
+    });
+    result.unwrap_or_else(|_| {
+        error!("FFI auths_verify_presentation_json: panic occurred");
+        ERR_VERIFY_PANIC
+    })
+}
+
+/// Verify an issued credential from a bundled JSON request (the fn-153.3 contract), writing
+/// the tagged verdict JSON into a caller-owned buffer. Same status/safety/curve-tagging
+/// contract as [`auths_verify_presentation_json`].
+///
+/// # Arguments
+/// * `request_ptr` / `request_len` — the `VerifyCredentialRequest` JSON bytes (UTF-8).
+/// * `result_ptr` / `result_len` — caller-owned output buffer (capacity in, length out).
+///
+/// # Safety
+/// All pointers must be valid for their stated lengths for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn auths_verify_credential_json(
+    request_ptr: *const u8,
+    request_len: usize,
+    result_ptr: *mut u8,
+    result_len: *mut usize,
+) -> c_int {
+    let result = panic::catch_unwind(|| unsafe {
+        verify_json_into_buffer(
+            request_ptr,
+            request_len,
+            result_ptr,
+            result_len,
+            "auths_verify_credential_json",
+            crate::contract::verify_credential_json,
+        )
+    });
+    result.unwrap_or_else(|_| {
+        error!("FFI auths_verify_credential_json: panic occurred");
+        ERR_VERIFY_PANIC
+    })
+}
+
 /// Verifies a chain of attestations via FFI (without witness quorum).
 ///
 /// # Arguments
@@ -586,4 +730,37 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
         error!("FFI ffi_verify_device_authorization_json: panic occurred");
         ERR_VERIFY_PANIC
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The panic guard each verdict entrypoint uses must map an unwind to `ERR_VERIFY_PANIC`,
+    /// never abort. The verify core itself is panic-free, so this proves the boundary contract
+    /// directly rather than through a contrived panicking input.
+    #[test]
+    fn catch_unwind_maps_panic_to_panic_code() {
+        let result =
+            panic::catch_unwind(|| -> c_int { panic!("boom") }).unwrap_or(ERR_VERIFY_PANIC);
+        assert_eq!(result, ERR_VERIFY_PANIC);
+    }
+
+    /// Buffer-too-small must report the required length and leave the status distinct from a
+    /// serialization error; a second call sized to that length succeeds.
+    #[test]
+    fn write_str_to_buffer_reports_required_length_then_succeeds() {
+        let payload = "{\"kind\":\"valid\"}";
+        let mut tiny = [0u8; 4];
+        let mut len = tiny.len();
+        let rc = unsafe { write_str_to_buffer(payload, tiny.as_mut_ptr(), &mut len) };
+        assert_eq!(rc, ERR_VERIFY_BUFFER_TOO_SMALL);
+        assert_eq!(len, payload.len(), "required length reported back");
+
+        let mut big = vec![0u8; len];
+        let mut big_len = big.len();
+        let rc = unsafe { write_str_to_buffer(payload, big.as_mut_ptr(), &mut big_len) };
+        assert_eq!(rc, VERIFY_SUCCESS);
+        assert_eq!(&big[..big_len], payload.as_bytes());
+    }
 }

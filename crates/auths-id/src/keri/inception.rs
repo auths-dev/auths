@@ -819,6 +819,7 @@ mod tests {
                 .map(|(i, aid)| WitnessRef {
                     url: format!("http://w{i}:3333").parse().unwrap(),
                     aid: Prefix::new_unchecked((*aid).to_string()),
+                    operator_info: None,
                 })
                 .collect(),
             threshold,

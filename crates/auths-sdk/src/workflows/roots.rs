@@ -11,6 +11,8 @@
 
 use std::path::{Path, PathBuf};
 
+use auths_verifier::IdentityDID;
+
 const ROOTS_FILE: &str = "roots";
 
 /// Path to the pin file within `auths_dir`.
@@ -94,6 +96,80 @@ pub fn add_pinned_root(auths_dir: &Path, did: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Failure loading the typed pinned-root set: a line that is not a well-formed
+/// `did:keri:` identity DID is rejected (fail-closed) rather than silently skipped.
+#[derive(Debug, thiserror::Error)]
+pub enum RootsError {
+    /// The `roots` pin file could not be read.
+    #[error("could not read roots pin file: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// A non-comment, non-blank line is not a valid `did:keri:` root.
+    #[error("roots pin line {line} ({value:?}) is not a valid did:keri: root: {source}")]
+    MalformedRoot {
+        /// 1-based line number in the pin file.
+        line: usize,
+        /// The offending (trimmed) line content.
+        value: String,
+        /// The underlying DID parse error.
+        #[source]
+        source: auths_verifier::DidParseError,
+    },
+}
+
+/// Parse pin-file content into typed trusted-root identities (pure; no I/O).
+///
+/// Each non-blank, non-`#` line must be a well-formed `did:keri:` identity DID;
+/// a malformed line fails closed with [`RootsError::MalformedRoot`]. The pin file
+/// names **identities only** — capabilities come from the presented credential's
+/// scope seal, never this file.
+///
+/// Args:
+/// * `content`: Raw `roots` file contents.
+///
+/// Usage:
+/// ```ignore
+/// let roots = parse_roots_typed("did:keri:Eabc\n")?;
+/// ```
+pub fn parse_roots_typed(content: &str) -> Result<Vec<IdentityDID>, RootsError> {
+    content
+        .lines()
+        .enumerate()
+        .map(|(idx, raw)| (idx + 1, raw.trim()))
+        .filter(|(_, line)| !line.is_empty() && !line.starts_with('#'))
+        .map(|(line, value)| {
+            IdentityDID::parse(value).map_err(|source| RootsError::MalformedRoot {
+                line,
+                value: value.to_string(),
+                source,
+            })
+        })
+        .collect()
+}
+
+/// Load the pinned trusted-root set as typed [`IdentityDID`]s, failing closed on a
+/// malformed line. Empty when the file is absent.
+///
+/// This is the typed successor to [`load_pinned_roots`]: the relying-party middleware
+/// pins delegation anchors by parsed identity, so a malformed pin is a hard error at
+/// load rather than a silently-dropped root.
+///
+/// Args:
+/// * `auths_dir`: Directory holding the `roots` pin file.
+///
+/// Usage:
+/// ```ignore
+/// let roots = load_pinned_roots_typed(&auths_dir)?;
+/// ```
+pub fn load_pinned_roots_typed(auths_dir: &Path) -> Result<Vec<IdentityDID>, RootsError> {
+    let path = roots_path(auths_dir);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = std::fs::read_to_string(&path)?;
+    parse_roots_typed(&content)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,6 +180,35 @@ mod tests {
         assert_eq!(
             parse_roots(content),
             vec!["did:keri:Eaaa".to_string(), "did:keri:Ebbb".to_string()]
+        );
+    }
+
+    #[test]
+    fn typed_roots_parse_valid_did_keri() {
+        let roots = parse_roots_typed("did:keri:Eaaa\n# c\n  did:keri:Ebbb \n").expect("parse");
+        assert_eq!(
+            roots.iter().map(|r| r.as_str()).collect::<Vec<_>>(),
+            ["did:keri:Eaaa", "did:keri:Ebbb"]
+        );
+    }
+
+    #[test]
+    fn typed_roots_reject_malformed_line_fail_closed() {
+        // A non-did:keri line is a hard error (with its line number), never skipped.
+        let err = parse_roots_typed("did:keri:Eaaa\nnot-a-did\n").expect_err("must fail closed");
+        assert!(
+            matches!(err, RootsError::MalformedRoot { line: 2, .. }),
+            "expected MalformedRoot at line 2, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn typed_roots_absent_file_is_empty() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        assert!(
+            load_pinned_roots_typed(tmp.path())
+                .expect("load")
+                .is_empty()
         );
     }
 

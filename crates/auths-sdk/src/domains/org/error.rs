@@ -94,6 +94,17 @@ pub enum OrgError {
         alias: String,
     },
 
+    /// The supplied member identity is not a delegated identifier of this org —
+    /// its delegated inception (`dip`) does not name the org as delegator, so the
+    /// org cannot off-board it. Fail closed.
+    #[error("member '{did}' is not a delegated identifier of organization '{org}'")]
+    MemberNotDelegable {
+        /// The member's `did:keri:`.
+        did: String,
+        /// The organization identifier.
+        org: String,
+    },
+
     /// A cryptographic operation failed (e.g. resolving the org key's curve).
     #[error("crypto error: {0}")]
     CryptoError(#[source] auths_core::AgentError),
@@ -101,6 +112,100 @@ pub enum OrgError {
     /// Authoring or anchoring the member's delegated identifier failed.
     #[error("member delegation failed: {0}")]
     Delegation(#[source] auths_id::error::InitError),
+
+    /// An identity already exists where the org would be created — refusing to
+    /// clobber it.
+    #[error("an identity already exists at {location}; refusing to create an organization over it")]
+    IdentityExists {
+        /// Where the existing identity was found (repository path or registry).
+        location: String,
+    },
+
+    /// Initializing the organization's KERI identity failed.
+    #[error("failed to initialize organization identity: {0}")]
+    IdentityInit(#[source] auths_id::error::InitError),
+
+    /// Creating the organization's admin self-attestation failed.
+    #[error("failed to create admin attestation: {0}")]
+    Attestation(#[source] auths_verifier::error::AttestationError),
+
+    /// An air-gapped bundle event failed its self-addressing integrity check —
+    /// recomputing the SAID did not match the stored `d` (the bundle was tampered).
+    #[error("bundle integrity failure for '{id}': {reason}")]
+    BundleIntegrity {
+        /// The identifier whose KEL failed integrity.
+        id: String,
+        /// Why integrity failed.
+        reason: String,
+    },
+
+    /// The bundle delegates a member on the org KEL but omits that member's own KEL —
+    /// the bundle is incomplete and cannot be verified. Fail closed.
+    #[error("bundle is missing the KEL for delegated member '{member}'")]
+    BundleMissingMemberKel {
+        /// The member's `did:keri:`.
+        member: String,
+    },
+
+    /// The queried member has no delegation seal in the org KEL — the org never
+    /// delegated it, so there is no authority to verify. Fail closed.
+    #[error("member '{member}' has no delegation seal in the org KEL")]
+    BundleMissingDelegatorSeal {
+        /// The member's `did:keri:`.
+        member: String,
+    },
+
+    /// The supplied org policy did not parse or compile (invalid JSON, an invalid
+    /// DID/capability/glob, or it exceeds the policy size/complexity bounds). A
+    /// policy that does not compile is never anchored — fail closed.
+    #[error("invalid org policy: {reason}")]
+    PolicyCompile {
+        /// The compile/parse failure(s).
+        reason: String,
+    },
+
+    /// The org KEL anchors a policy hash but its content-addressed blob is missing —
+    /// the policy cannot be loaded, so authority cannot be evaluated. Fail closed.
+    #[error("org policy blob for hash '{hash}' is missing from storage")]
+    PolicyBlobMissing {
+        /// The policy source-hash anchored on the org KEL.
+        hash: String,
+    },
+
+    /// The loaded policy blob does not hash to the value the org KEL committed — the
+    /// blob was tampered with after anchoring. Fail closed.
+    #[error(
+        "org policy integrity failure: KEL committed hash '{expected}' but the stored blob hashes to '{actual}'"
+    )]
+    PolicyIntegrity {
+        /// The hash anchored on the org KEL.
+        expected: String,
+        /// The recomputed hash of the stored blob.
+        actual: String,
+    },
+
+    /// A delegation chain walk followed a `di` link back to an identifier already on
+    /// the chain — a cyclic/malformed delegation. Fail closed (no infinite loop).
+    #[error("delegation chain cycle detected at '{did}'")]
+    ChainCycle {
+        /// The identifier the cycle returned to.
+        did: String,
+    },
+
+    /// A delegation chain exceeds the maximum hop depth the walker will follow.
+    #[error("delegation chain exceeds the maximum depth of {max} hops")]
+    ChainTooDeep {
+        /// The maximum number of hops allowed.
+        max: u32,
+    },
+
+    /// A delegation chain names a delegator/identifier whose KEL is absent from
+    /// storage — the chain cannot be reconstructed. Fail closed.
+    #[error("delegation chain is broken: no KEL found for '{did}'")]
+    ChainBrokenHop {
+        /// The identifier whose KEL is missing.
+        did: String,
+    },
 }
 
 impl AuthsErrorInfo for OrgError {
@@ -119,8 +224,21 @@ impl AuthsErrorInfo for OrgError {
             Self::Anchor(_) => "AUTHS-E5611",
             Self::OrgThresholdDelegationUnsupported { .. } => "AUTHS-E5612",
             Self::MemberKeyExists { .. } => "AUTHS-E5613",
+            Self::MemberNotDelegable { .. } => "AUTHS-E5618",
             Self::CryptoError(e) => e.error_code(),
             Self::Delegation(_) => "AUTHS-E5614",
+            Self::IdentityExists { .. } => "AUTHS-E5615",
+            Self::IdentityInit(_) => "AUTHS-E5616",
+            Self::Attestation(_) => "AUTHS-E5617",
+            Self::BundleIntegrity { .. } => "AUTHS-E5619",
+            Self::BundleMissingMemberKel { .. } => "AUTHS-E5620",
+            Self::BundleMissingDelegatorSeal { .. } => "AUTHS-E5621",
+            Self::PolicyCompile { .. } => "AUTHS-E5622",
+            Self::PolicyBlobMissing { .. } => "AUTHS-E5623",
+            Self::PolicyIntegrity { .. } => "AUTHS-E5624",
+            Self::ChainCycle { .. } => "AUTHS-E5625",
+            Self::ChainTooDeep { .. } => "AUTHS-E5626",
+            Self::ChainBrokenHop { .. } => "AUTHS-E5627",
         }
     }
 
@@ -159,9 +277,45 @@ impl AuthsErrorInfo for OrgError {
             Self::MemberKeyExists { .. } => Some(
                 "Choose a different member alias; run `auths org list-members` to see existing members",
             ),
+            Self::MemberNotDelegable { .. } => Some(
+                "The member must first incept a delegated identity naming this org as delegator (pairing) before it can be off-boarded",
+            ),
             Self::CryptoError(e) => e.suggestion(),
             Self::Delegation(_) => Some(
                 "The member delegation could not be authored or anchored; check the org identity",
+            ),
+            Self::IdentityExists { .. } => Some(
+                "An identity already exists here; use a fresh repository path to create a new organization",
+            ),
+            Self::IdentityInit(_) => {
+                Some("Failed to initialize the org identity; check key access and repository state")
+            }
+            Self::Attestation(_) => Some(
+                "Failed to sign the admin attestation; check your key access with `auths key list`",
+            ),
+            Self::BundleIntegrity { .. } => Some(
+                "The bundle was modified after it was produced; obtain a fresh, untampered bundle",
+            ),
+            Self::BundleMissingMemberKel { .. } | Self::BundleMissingDelegatorSeal { .. } => {
+                Some("The bundle is incomplete; re-produce it with `auths org bundle`")
+            }
+            Self::PolicyCompile { .. } => Some(
+                "Fix the policy JSON (a serialized `Expr`); see `auths org policy show` for the current policy",
+            ),
+            Self::PolicyBlobMissing { .. } => {
+                Some("The policy blob is missing; re-anchor it with `auths org policy set`")
+            }
+            Self::PolicyIntegrity { .. } => Some(
+                "The stored policy was modified after anchoring; re-anchor a trusted policy with `auths org policy set`",
+            ),
+            Self::ChainCycle { .. } => {
+                Some("The delegation chain is malformed (a cycle); inspect the identifiers' KELs")
+            }
+            Self::ChainTooDeep { .. } => {
+                Some("The delegation chain is too deep; reduce delegation nesting")
+            }
+            Self::ChainBrokenHop { .. } => Some(
+                "A KEL in the delegation chain is missing; ensure all delegators' KELs are present",
             ),
         }
     }

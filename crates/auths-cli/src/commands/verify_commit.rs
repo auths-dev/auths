@@ -3,6 +3,7 @@ use anyhow::{Context, Result, anyhow};
 use auths_infra_http::HttpOobiResolver;
 use auths_keri::Event;
 use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
+use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::ports::RegistryBackend;
 use auths_sdk::storage::{GitRegistryBackend, GitWitnessReceiptLookup, RegistryConfig};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
@@ -56,6 +57,12 @@ pub struct VerifyCommitCommand {
     /// quorum (fail-closed). Default: warn and continue (trust-on-first-sight).
     #[arg(long = "require-witnesses")]
     pub require_witnesses: bool,
+
+    /// Path to an identity bundle JSON whose root `did:keri:` is pinned as a trusted
+    /// root for this verification (CI/stateless commit verification). The bundle is
+    /// freshness-checked; an unreadable or stale bundle fails closed.
+    #[arg(long, value_parser)]
+    pub identity_bundle: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -125,18 +132,47 @@ impl VerifyCommitResult {
 /// Handle verify-commit command.
 /// Exit codes: 0=valid, 1=invalid/unsigned, 2=error
 #[allow(clippy::disallowed_methods)]
-pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
+pub async fn handle_verify_commit(
+    cmd: VerifyCommitCommand,
+    env_config: &EnvironmentConfig,
+) -> Result<()> {
     // KEL-native verification: the trust root is the replayed KEL + the `.auths/roots`
     // pin, not an allowlist. No `ssh-keygen` subprocess, no `allowed_signers`.
     let auths_home = match auths_sdk::paths::auths_home() {
         Ok(h) => h,
         Err(e) => return handle_error(&cmd, 2, &format!("Could not locate ~/.auths: {e}")),
     };
+    // Read-only SDK context over the same global registry, for org-policy evaluation
+    // (E1.1). No passphrase — loading a policy never decrypts keys.
+    let sdk_ctx =
+        match crate::factories::storage::build_auths_context(&auths_home, env_config, None) {
+            Ok(c) => c,
+            Err(e) => {
+                return handle_error(
+                    &cmd,
+                    2,
+                    &format!("Could not build context for org-policy evaluation: {e}"),
+                );
+            }
+        };
     // The registry backend holds every identity's KEL events (in the `refs/auths/registry`
     // tree) — the source we replay to decide trust.
     let registry =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
-    let pinned_roots = load_project_pinned_roots();
+    // Trust roots = the committed `.auths/roots` pin, plus the root of any
+    // `--identity-bundle` the caller supplied (stateless CI). An unusable bundle
+    // fails closed — it must never silently leave trust unconstrained.
+    let mut pinned_roots = super::verify_helpers::load_project_pinned_roots();
+    if let Some(bundle_path) = &cmd.identity_bundle {
+        match load_bundle_trust_root(bundle_path, chrono::Utc::now()) {
+            Ok(root) => {
+                if !pinned_roots.contains(&root) {
+                    pinned_roots.push(root);
+                }
+            }
+            Err(e) => return handle_error(&cmd, 2, &e),
+        }
+    }
     let provider = auths_crypto::RingCryptoProvider;
     // Stored witness receipts live in the identity repo; the gate reads them
     // through this lookup (D.7). Empty store → under-quorum for witnessed roots.
@@ -154,6 +190,7 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
                 &pinned_roots,
                 &provider,
                 &receipt_lookup,
+                &sdk_ctx,
                 &cmd,
                 commit_ref,
             )
@@ -163,18 +200,19 @@ pub async fn handle_verify_commit(cmd: VerifyCommitCommand) -> Result<()> {
     output_results(&results)
 }
 
-/// The project's pinned trusted roots, read from `<git-toplevel>/.auths/roots` — the
-/// committed trust declaration seeded by `auths init`. Empty when run outside a repo or
-/// when nothing is pinned (so every commit is `RootNotPinned` until a root is pinned).
-fn load_project_pinned_roots() -> Vec<String> {
-    let Ok(output) = git_command(&["rev-parse", "--show-toplevel"]).output() else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-    auths_sdk::workflows::roots::load_pinned_roots(&root.join(".auths")).unwrap_or_default()
+/// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
+/// (freshness-checked via the SDK trust resolver). Fails closed: any read, parse, or
+/// staleness error is returned so the caller can abort rather than verify unconstrained.
+fn load_bundle_trust_root(
+    path: &std::path::Path,
+    now: chrono::DateTime<chrono::Utc>,
+) -> std::result::Result<String, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|e| format!("could not read identity bundle {path:?}: {e}"))?;
+    let bundle: IdentityBundle = serde_json::from_str(&content)
+        .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
+    auths_sdk::workflows::commit_trust::trusted_root_from_bundle(&bundle, now)
+        .map_err(|e| e.to_string())
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -308,11 +346,13 @@ async fn resolve_signer_kel(
 /// KELs from the local identity repository, and checks the SSH signature in-process
 /// (no `ssh-keygen`, no `allowed_signers`). The KEL verdict is authoritative; witness
 /// receipts (Epic D) remain an orthogonal opt-in check layered on top.
+#[allow(clippy::too_many_arguments)]
 async fn verify_one_commit(
     registry: &dyn RegistryBackend,
     pinned_roots: &[String],
     provider: &dyn auths_crypto::CryptoProvider,
     receipt_lookup: &dyn WitnessReceiptLookup,
+    sdk_ctx: &auths_sdk::context::AuthsContext,
     cmd: &VerifyCommitCommand,
     commit_ref: &str,
 ) -> VerifyCommitResult {
@@ -331,17 +371,18 @@ async fn verify_one_commit(
         Err(e) => return VerifyCommitResult::failure(sha, e.to_string()),
     };
 
-    let (root_did, device_did) = match commit_signer_trailers(&raw_commit) {
-        Some(pair) => pair,
-        None => {
-            return VerifyCommitResult::failure(
-                sha,
-                "Commit carries no Auths-Id/Auths-Device trailer — it was not signed by \
+    let (root_did, device_did) =
+        match auths_sdk::workflows::commit_trust::commit_signer_trailers(&raw_commit) {
+            Some(pair) => pair,
+            None => {
+                return VerifyCommitResult::failure(
+                    sha,
+                    "Commit carries no Auths-Id/Auths-Device trailer — it was not signed by \
                  `auths sign` (or predates KEL-native signing). Nothing to verify against."
-                    .to_string(),
-            );
-        }
-    };
+                        .to_string(),
+                );
+            }
+        };
 
     // KEL sourcing is an SDK/adapter concern: local-first, with an opt-in git
     // remote (`--remote`) or an SSRF-hardened HTTP OOBI host (`--oobi`). The
@@ -413,6 +454,36 @@ async fn verify_one_commit(
     result.oidc_binding =
         try_load_attestation_from_ref(&sha).and_then(|att| extract_oidc_binding_display(&att));
 
+    // E1.1 — org policy is enforced AFTER the cryptographic verdict (fail-closed
+    // ordering). It can only turn a valid result into a denial, never the reverse. A
+    // root that anchored no policy leaves the result unchanged (legacy allow).
+    if result.valid {
+        let now = chrono::Utc::now();
+        match auths_sdk::workflows::commit_trust::evaluate_commit_policy(
+            sdk_ctx,
+            &root_did,
+            &device_did,
+            now,
+        ) {
+            Ok(auths_sdk::workflows::commit_trust::PolicyOutcome::Evaluated(decision))
+                if !decision.is_allowed() =>
+            {
+                result.valid = false;
+                result.chain_valid = Some(false);
+                result.error = Some(format!(
+                    "Org policy denied this commit: {} [{}]",
+                    decision.message, decision.reason
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => {
+                // Fail closed: if policy cannot be evaluated, do not certify the commit.
+                result.valid = false;
+                result.error = Some(format!("Org policy could not be evaluated: {e}"));
+            }
+        }
+    }
+
     result
 }
 
@@ -429,24 +500,6 @@ fn raw_commit_object(sha: &str) -> Result<String> {
         ));
     }
     String::from_utf8(output.stdout).context("Commit object is not valid UTF-8")
-}
-
-/// Extract `(root_did, device_did)` from a commit's `Auths-Id` / `Auths-Device`
-/// trailers. Returns `None` when either is absent (a commit not signed by `auths`).
-fn commit_signer_trailers(raw_commit: &str) -> Option<(String, String)> {
-    let message = raw_commit
-        .split_once("\n\n")
-        .map(|(_, m)| m)
-        .unwrap_or(raw_commit);
-    let trailers = auths_sdk::keri::parse_trailers(message);
-    let find = |key: &str| {
-        trailers
-            .iter()
-            .rev()
-            .find(|(k, _)| k.eq_ignore_ascii_case(key))
-            .map(|(_, v)| v.trim().to_string())
-    };
-    Some((find("Auths-Id")?, find("Auths-Device")?))
 }
 
 /// Map a [`CommitVerdict`] onto a CLI result row: the valid flag, the verified signer,
@@ -789,9 +842,9 @@ fn handle_error(cmd: &VerifyCommitCommand, exit_code: i32, message: &str) -> Res
 }
 
 impl crate::commands::executable::ExecutableCommand for VerifyCommitCommand {
-    fn execute(&self, _ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
+    fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
         let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(handle_verify_commit(self.clone()))
+        rt.block_on(handle_verify_commit(self.clone(), &ctx.env_config))
     }
 }
 

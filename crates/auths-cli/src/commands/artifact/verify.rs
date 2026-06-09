@@ -448,11 +448,12 @@ fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
     Ok(())
 }
 
-/// Verify a commit signature in-process using `auths-verifier`.
+/// Verify the commit an ephemeral attestation is bound to, KEL-natively.
 ///
-/// Reads the commit content via git2, loads allowed signer keys from
-/// `.auths/allowed_signers`, and verifies using the native Rust verifier.
-/// No `git verify-commit --raw` shell-out.
+/// Reads the raw commit via git2, then delegates trust to the SDK commit-trust
+/// resolver: the signer must be a device delegated under a root pinned in
+/// `.auths/roots`. No `.auths/allowed_signers`, no `ssh-keygen` allowlist, no
+/// `git verify-commit --raw` shell-out.
 fn verify_commit_in_process(sha: &str) -> bool {
     // Open the repository
     let repo = match git2::Repository::discover(".") {
@@ -519,34 +520,23 @@ fn verify_commit_in_process(sha: &str) -> bool {
         }
     };
 
-    // Load allowed signer keys from .auths/allowed_signers
-    let allowed_signers_path = std::path::Path::new(".auths/allowed_signers");
-    let allowed_keys = if allowed_signers_path.exists() {
-        match std::fs::read_to_string(allowed_signers_path) {
-            Ok(content) => parse_allowed_signer_keys(&content),
-            Err(e) => {
-                if !is_json_mode() {
-                    eprintln!("Failed to read .auths/allowed_signers: {e}");
-                }
-                return false;
-            }
-        }
-    } else {
-        if !is_json_mode() {
-            eprintln!("No .auths/allowed_signers file found. Create one with: auths signers sync");
-        }
-        return false;
-    };
-
-    if allowed_keys.is_empty() {
-        if !is_json_mode() {
-            eprintln!("No signing keys found in .auths/allowed_signers");
-        }
-        return false;
-    }
-
-    // Verify using in-process verifier
+    // KEL-native trust: the commit's signer must be a device delegated under a root
+    // pinned in `.auths/roots`. The verdict logic lives in the SDK commit-trust resolver.
     let provider = auths_crypto::RingCryptoProvider;
+    let auths_home = match auths_sdk::paths::auths_home() {
+        Ok(h) => h,
+        Err(e) => {
+            if !is_json_mode() {
+                eprintln!("Could not locate ~/.auths: {e}");
+            }
+            return false;
+        }
+    };
+    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+    );
+    let pinned_roots = crate::commands::verify_helpers::load_project_pinned_roots();
+
     let rt = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
         Err(e) => {
@@ -557,92 +547,150 @@ fn verify_commit_in_process(sha: &str) -> bool {
         }
     };
 
-    match rt.block_on(auths_verifier::commit::verify_commit_signature(
+    let short = &sha[..8.min(sha.len())];
+    match rt.block_on(auths_sdk::workflows::commit_trust::verify_commit_local(
+        &registry,
+        &pinned_roots,
         commit_content.as_bytes(),
-        &allowed_keys,
         &provider,
-        Some(repo.path().parent().unwrap_or(std::path::Path::new("."))),
     )) {
-        Ok(_verified) => true,
+        Ok(verdict) if verdict.is_valid() => true,
+        Ok(verdict) => {
+            if !is_json_mode() {
+                eprintln!("Commit {short} is not authorized by a pinned trusted root: {verdict:?}");
+            }
+            false
+        }
         Err(e) => {
             if !is_json_mode() {
-                eprintln!(
-                    "Commit {} signature verification failed: {e}",
-                    &sha[..8.min(sha.len())]
-                );
+                eprintln!("Commit {short} trust could not be resolved: {e}");
             }
             false
         }
     }
 }
 
-/// Parse public keys from an allowed_signers file.
+/// Verify an air-gapped org bundle entirely offline (zero network), fail-closed.
 ///
-/// Format: `email namespaces key-type base64-key`
-/// Supports both `ssh-ed25519` and `ecdsa-sha2-nistp256` key types.
-fn parse_allowed_signer_keys(content: &str) -> Vec<auths_verifier::DevicePublicKey> {
-    content
-        .lines()
-        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            // Find supported key type and extract the base64 key
-            let key_idx = parts
-                .iter()
-                .position(|&p| p == "ssh-ed25519" || p == "ecdsa-sha2-nistp256")?;
-            let key_type = parts[key_idx];
-            let b64_key = parts.get(key_idx + 1)?;
+/// Reads the fn-154.5 bundle, loads the verifier's pinned roots (from `roots` or the
+/// default `.auths/roots`, falling back to the bundle's declared roots if neither
+/// exists), and classifies the optional `member` at `signed_at` purely from the
+/// bundle's KEL contents. Exits non-zero on any non-authorized verdict so it can gate
+/// CI.
+///
+/// Args:
+/// * `file`: Path to the air-gapped bundle (`auths org bundle` output).
+/// * `roots`: Optional pinned-roots file (default `.auths/roots`).
+/// * `member`: Optional member `did:keri` to classify authority for.
+/// * `signed_at`: Optional in-band signing KEL position for the member's artifact.
+/// * `json`: Emit the typed report as JSON.
+///
+/// Usage:
+/// ```ignore
+/// handle_offline_verify(Path::new("acme.auths-offline"), None, None, None, false)?;
+/// ```
+pub fn handle_offline_verify(
+    file: &Path,
+    roots: Option<&Path>,
+    member: Option<&str>,
+    signed_at: Option<u128>,
+    json: bool,
+) -> Result<()> {
+    use auths_sdk::workflows::org::{AirGappedOrgBundle, AuthorityAtSigning, verify_org_bundle};
+    use auths_sdk::workflows::roots::parse_roots_typed;
+    use auths_verifier::Prefix;
+    use auths_verifier::types::IdentityDID;
 
-            use base64::Engine;
-            let key_bytes = base64::engine::general_purpose::STANDARD
-                .decode(b64_key)
-                .ok()?;
-            // SSH key format: 4-byte type-length + type-string + 4-byte key-length + key-data
-            if key_bytes.len() < 4 {
-                return None;
-            }
-            let type_len = u32::from_be_bytes(key_bytes[..4].try_into().ok()?) as usize;
-            let after_type = 4 + type_len;
+    let bundle_json =
+        fs::read_to_string(file).with_context(|| format!("Failed to read bundle file {file:?}"))?;
+    let bundle = AirGappedOrgBundle::from_json(&bundle_json)
+        .context("Failed to parse air-gapped org bundle")?;
 
-            match key_type {
-                "ssh-ed25519" => {
-                    let key_start = after_type + 4;
-                    if key_bytes.len() < key_start + 32 {
-                        return None;
-                    }
-                    auths_verifier::DevicePublicKey::try_new(
-                        auths_crypto::CurveType::Ed25519,
-                        &key_bytes[key_start..key_start + 32],
-                    )
-                    .ok()
+    let roots_path = roots
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from(".auths/roots"));
+    let pinned_roots: Vec<IdentityDID> = if roots_path.exists() {
+        let content = fs::read_to_string(&roots_path)
+            .with_context(|| format!("Failed to read roots file {roots_path:?}"))?;
+        parse_roots_typed(&content).context("Failed to parse pinned roots")?
+    } else {
+        // No verifier-side roots configured — trust the bundle's declared roots
+        // (trust-on-first-use). Supply --roots to pin explicitly.
+        bundle.pinned_roots.clone()
+    };
+
+    let member_prefix =
+        member.map(|m| Prefix::new_unchecked(m.strip_prefix("did:keri:").unwrap_or(m).to_string()));
+    let query = member_prefix.as_ref().map(|p| (p, signed_at));
+
+    let report =
+        verify_org_bundle(&bundle, &pinned_roots, query).context("Offline verification failed")?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&report)?);
+    } else {
+        println!("Air-gapped verification of {file:?}");
+        println!("  Org:            {}", report.org_did.as_str());
+        println!(
+            "  Verified as-of: KEL seq {} (by position, not wall-clock)",
+            report.as_of_org_seq
+        );
+        let root = if report.root_pinned {
+            "✅ yes"
+        } else {
+            "🛑 NO (untrusted root)"
+        };
+        println!("  Root pinned:    {root}");
+        let dup = if report.duplicity_detected {
+            "🛑 DETECTED"
+        } else {
+            "✅ none"
+        };
+        println!("  Duplicity:      {dup}");
+        if let Some(authority) = &report.authority {
+            match authority {
+                AuthorityAtSigning::AuthorizedBeforeRevocation => {
+                    println!("  Authority:      ✅ AuthorizedBeforeRevocation")
                 }
-                "ecdsa-sha2-nistp256" => {
-                    // ECDSA SSH format: type + curve-name-string + ec-point-string
-                    if key_bytes.len() < after_type + 4 {
-                        return None;
-                    }
-                    let curve_len =
-                        u32::from_be_bytes(key_bytes[after_type..after_type + 4].try_into().ok()?)
-                            as usize;
-                    let after_curve = after_type + 4 + curve_len;
-                    if key_bytes.len() < after_curve + 4 {
-                        return None;
-                    }
-                    let point_len = u32::from_be_bytes(
-                        key_bytes[after_curve..after_curve + 4].try_into().ok()?,
-                    ) as usize;
-                    let point_start = after_curve + 4;
-                    if key_bytes.len() < point_start + point_len {
-                        return None;
-                    }
-                    auths_verifier::DevicePublicKey::try_new(
-                        auths_crypto::CurveType::P256,
-                        &key_bytes[point_start..point_start + point_len],
+                AuthorityAtSigning::RejectedAfterRevocation { revoked_at } => {
+                    println!(
+                        "  Authority:      🛑 RejectedAfterRevocation {{ revoked_at: {revoked_at} }}"
                     )
-                    .ok()
                 }
-                _ => None,
+                AuthorityAtSigning::RejectedRevokedPositionUnknown { revoked_at } => {
+                    println!(
+                        "  Authority:      🛑 RejectedRevokedPositionUnknown {{ revoked_at: {revoked_at} }}"
+                    )
+                }
+                AuthorityAtSigning::NeverDelegated => {
+                    println!("  Authority:      ❌ NeverDelegated")
+                }
             }
-        })
-        .collect()
+        }
+    }
+
+    // Fail-closed exit: anything short of a trusted, non-duplicitous, authorized
+    // verdict is a hard failure (so CI gates reject it).
+    if !report.root_pinned {
+        return Err(anyhow!(
+            "unauthorized: the bundle's org is not in the pinned trust roots"
+        ));
+    }
+    if report.duplicity_detected {
+        return Err(anyhow!(
+            "org KEL duplicity detected — divergent history; resolve before trusting"
+        ));
+    }
+    match report.authority {
+        None | Some(AuthorityAtSigning::AuthorizedBeforeRevocation) => Ok(()),
+        Some(AuthorityAtSigning::RejectedAfterRevocation { revoked_at }) => Err(anyhow!(
+            "unauthorized: signed at/after revocation (KEL seq {revoked_at})"
+        )),
+        Some(AuthorityAtSigning::RejectedRevokedPositionUnknown { revoked_at }) => Err(anyhow!(
+            "unauthorized: member revoked at KEL seq {revoked_at}; artifact has no in-band signing position"
+        )),
+        Some(AuthorityAtSigning::NeverDelegated) => {
+            Err(anyhow!("unauthorized: the org never delegated this member"))
+        }
+    }
 }

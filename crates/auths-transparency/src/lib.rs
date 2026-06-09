@@ -37,6 +37,8 @@ pub mod verify;
 /// Witness protocol for split-view protection (requires `native` feature).
 #[cfg(feature = "native")]
 pub mod witness;
+/// Typed, fail-closed witness-diversity policy loader.
+pub mod witness_policy;
 
 // Re-export core types
 pub use bundle::{
@@ -48,7 +50,8 @@ pub use entry::{AccessTier, Entry, EntryBody, EntryContent, EntryType};
 pub use error::TransparencyError;
 pub use merkle::{compute_root, hash_children, hash_leaf, verify_consistency, verify_inclusion};
 pub use note::{
-    NoteSignature, build_signature_line, compute_key_id, parse_signed_note, serialize_signed_note,
+    C2spSignature, NoteSignature, build_signature_line, compute_ecdsa_key_id, compute_key_id,
+    parse_signed_note, parse_signed_note_c2sp, serialize_signed_note,
 };
 pub use proof::{ConsistencyProof, InclusionProof};
 pub use tile::{TILE_HEIGHT, TILE_WIDTH, leaf_tile, tile_count, tile_path};
@@ -68,7 +71,7 @@ pub use s3_store::S3TileStore;
 #[cfg(feature = "native")]
 pub use store::TileStore;
 #[cfg(feature = "native")]
-pub use verify::verify_bundle;
+pub use verify::{verify_bundle, verify_checkpoint_signature, verify_witness_cosignatures};
 
 #[cfg(feature = "native")]
 pub use witness::{
@@ -78,6 +81,15 @@ pub use witness::{
 };
 
 use auths_verifier::CanonicalDid;
+
+pub use auths_keri::witness::independence::{
+    EquivocationDetection, HonestyCeiling, IndependencePolicy, OperatorAttributes,
+    WitnessOperatorInfo,
+};
+
+pub use witness_policy::{
+    WitnessPolicy, WitnessPolicyEntry, WitnessPolicyError, ceiling_for_policy_load,
+};
 
 /// Trust root for verifying transparency log checkpoints.
 ///
@@ -123,6 +135,13 @@ pub struct TrustRoot {
     /// you" anti-pattern.
     #[serde(default)]
     pub ecdsa_log_public_key_der: Option<Vec<u8>>,
+    /// Minimum-diversity thresholds the *actual cosigning quorum* must clear,
+    /// layered on top of the `n/2+1` count. Defaults to **unconstrained** (no
+    /// diversity required) so a legacy trust root that pins no policy keeps its
+    /// existing behavior; a commons trust root built from a pinned
+    /// `witness_policy.json` carries real thresholds and enforces them.
+    #[serde(default = "IndependencePolicy::unconstrained")]
+    pub independence_policy: IndependencePolicy,
 }
 
 /// A trusted witness in the [`TrustRoot`].
@@ -148,6 +167,30 @@ pub struct TrustRootWitness {
     pub name: String,
     /// Witness Ed25519 public key.
     pub public_key: auths_verifier::Ed25519PublicKey,
+    /// Operator-independence attributes (shared [`WitnessOperatorInfo`]). Absent ⇒
+    /// this witness cannot contribute to proving cosigning-quorum independence.
+    #[serde(default)]
+    pub operator_info: Option<WitnessOperatorInfo>,
+}
+
+impl TrustRootWitness {
+    /// Build the [`OperatorAttributes`] for this witness, keyed by its public key.
+    ///
+    /// Returns `None` when the witness has no `operator_info` — the caller must
+    /// treat that as "independence cannot be proven", not as a distinct operator.
+    ///
+    /// Args:
+    /// * `self`: The trusted witness.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let attrs = witness.operator_attributes();
+    /// ```
+    pub fn operator_attributes(&self) -> Option<OperatorAttributes> {
+        self.operator_info
+            .as_ref()
+            .map(|info| info.to_attributes(hex::encode(self.public_key.as_bytes())))
+    }
 }
 
 /// Multi-log trust configuration.
@@ -260,6 +303,7 @@ impl TrustConfig {
             witnesses: vec![],
             signature_algorithm: auths_verifier::SignatureAlgorithm::EcdsaP256,
             ecdsa_log_public_key_der: Some(rekor_ecdsa_pk_der),
+            independence_policy: IndependencePolicy::unconstrained(),
         };
 
         let mut logs = HashMap::new();

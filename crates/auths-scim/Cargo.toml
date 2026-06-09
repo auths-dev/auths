@@ -11,6 +11,9 @@ keywords = ["scim", "provisioning", "identity", "enterprise"]
 categories = ["authentication"]
 
 [dependencies]
+# Typed identity newtype (validate-on-deserialize, fail-closed). NOT auths-sdk —
+# auths-scim stays decoupled from the SDK; this is the Layer-1 verifier only.
+auths-verifier.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }

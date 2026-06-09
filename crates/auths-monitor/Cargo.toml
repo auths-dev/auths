@@ -1,0 +1,43 @@
+[package]
+name = "auths-monitor"
+description = "Transparency-log monitor: cross-operator checkpoint consistency + non-repudiable equivocation evidence"
+version.workspace = true
+edition = "2024"
+publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["auths", "transparency", "tlog", "monitor", "equivocation"]
+categories = ["cryptography", "network-programming"]
+
+[[bin]]
+name = "auths-monitor"
+path = "src/main.rs"
+
+[lib]
+name = "auths_monitor"
+path = "src/lib.rs"
+
+[dependencies]
+# Slim by design: the consistency-proof math is shipped in auths-transparency;
+# this crate is wiring + the portable evidence artifact. No keychain/git2/sqlite.
+auths-transparency = { workspace = true, features = ["native"] }
+auths-verifier.workspace = true
+
+reqwest = { version = "0.13.2", features = ["json"] }
+subtle.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+hex = "0.4"
+ring = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

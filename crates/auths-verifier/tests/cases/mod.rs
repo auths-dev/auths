@@ -13,3 +13,4 @@ mod proptest_core;
 mod revocation_adversarial;
 mod serialization_pinning;
 mod ssh_sig;
+mod verdict_typing;

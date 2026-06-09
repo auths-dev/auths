@@ -206,6 +206,18 @@ pub enum WitnessStatus {
         /// Number of witnesses required for quorum.
         required: usize,
     },
+    /// The cosigning quorum met the count but is NOT independent — too few
+    /// distinct organizations / jurisdictions / infrastructure zones among the
+    /// witnesses that actually cosigned. A count-met-but-correlated quorum is not
+    /// a non-equivocation guarantee, so this fails verification.
+    NotIndependent {
+        /// Number of witnesses that verified (count was met).
+        verified: usize,
+        /// Number of witnesses required for the count.
+        required: usize,
+        /// Which diversity thresholds the actual cosigners fell short of.
+        shortfalls: Vec<String>,
+    },
     /// No witness data was available for verification.
     NotProvided,
 }

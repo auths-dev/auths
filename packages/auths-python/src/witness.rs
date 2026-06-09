@@ -80,6 +80,9 @@ pub fn add_witness(
         config.witnesses.push(WitnessRef {
             url: parsed_url,
             aid: aid.clone(),
+            // No operator-independence attributes via this binding — fail-closed:
+            // such a witness cannot contribute to proving quorum independence.
+            operator_info: None,
         });
         if config.threshold == 0 {
             config.threshold = 1;

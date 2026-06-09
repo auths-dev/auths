@@ -49,6 +49,25 @@ device = auths.devices.link(identity_did=identity.did, capabilities=["sign"])
 auths.devices.revoke(device.did, identity_did=identity.did, note="replaced")
 ```
 
+## Keyless service-to-service verify
+
+Verify an agent's credential **presentation** offline against a pinned root — one call, a
+typed `Status` enum, no exception for a denial:
+
+```python
+from auths import verify_presentation, PresentationStatus
+
+report = verify_presentation(bundle_json)  # the Auths-Presentation request bundle
+if report.status is not PresentationStatus.VALID:
+    raise PermissionError(f"denied: {report.status}")  # WRONG_AUDIENCE, EXPIRED, …
+
+print(report.subject, report.caps)  # granted holder + capabilities
+```
+
+`verify_credential(bundle_json)` returns a `CredentialReport` the same way — e.g.
+`report.status is CredentialStatus.CREDENTIAL_REVOKED` carries `report.revoked_at`. Malformed
+input returns a typed `MALFORMED_REQUEST` status; it never raises.
+
 ## Git commit verification
 
 ```python

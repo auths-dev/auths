@@ -34,7 +34,9 @@ deny = [
     "auths-mcp-server",
     "auths-telemetry",
     "jsonschema",
-  ], reason = "HTTP clients must be confined to adapter layer" },
+    "auths-monitor",
+    "auths-sdk",
+  ], reason = "HTTP clients confined to adapter/binary layer (auths-monitor binary fetches checkpoints; auths-sdk reqwest is optional, behind the `mcp` feature)" },
 
   # dialoguer is a terminal UX dependency — CLI only
   { crate = "dialoguer", wrappers = ["auths-cli"], reason = "interactive TUI confined to CLI" },
@@ -47,7 +49,10 @@ deny = [
     "auths-core",
     "auths-mcp-server",
     "auths-pairing-daemon",
-  ], reason = "HTTP framework confined to adapter crates" },
+    "auths-scim-server",
+    "auths-checkpoint-cosigner",
+    "auths-witness",
+  ], reason = "HTTP framework confined to adapter/server crates (scim-server is the SCIM provisioning server; checkpoint-cosigner and witness are HTTP service binaries)" },
 
   # git2 must not be a production dependency of auths-sdk or auths-core
   { crate = "git2", wrappers = [
@@ -59,7 +64,8 @@ deny = [
     "auths-radicle",
     "auths-sdk",
     "auths-test-utils",
-  ], reason = "git2 must stay in storage/adapter layer; auths-sdk dev-dep only" },
+    "auths-api",
+  ], reason = "git2 must stay in storage/adapter layer; auths-sdk and auths-api git2 are dev-deps only" },
 ]
 
 [advisories]

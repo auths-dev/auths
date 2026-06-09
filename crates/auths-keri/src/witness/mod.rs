@@ -6,6 +6,8 @@ pub mod cesr_receipt;
 mod error;
 mod first_seen;
 mod hash;
+/// Operator-independence model for witness quorums.
+pub mod independence;
 mod provider;
 mod receipt;
 mod receipt_lookup;
@@ -18,6 +20,11 @@ pub use cesr_receipt::{
 pub use error::{DuplicityEvidence, WitnessError, WitnessReport};
 pub use first_seen::{FirstSeenConflict, FirstSeenPolicy, InMemoryFirstSeen};
 pub use hash::{EventHash, EventHashParseError};
+pub use independence::{
+    EquivocationDetection, HonestyCeiling, Independence, IndependenceError, IndependencePolicy,
+    Infrastructure, Jurisdiction, OperatorAttributes, OperatorId, Organization,
+    WitnessOperatorInfo, honesty_ceiling, spans_distinct,
+};
 pub use provider::WitnessProvider;
 pub use receipt::{
     RECEIPT_TYPE, Receipt, ReceiptBuilder, ReceiptTag, SignedReceipt, StoredReceipt,

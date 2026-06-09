@@ -21,9 +21,12 @@
 //! trust-on-first-sight acceptance and any seen `rev` revokes (conservative).
 //! `detect_duplicity` flags issuer-KEL forks in both modes.
 
-use auths_crypto::{CryptoProvider, CurveType};
+use auths_crypto::CryptoProvider;
 use auths_keri::witness::StoredReceipt;
 use auths_keri::witness::agreement::WitnessAgreement;
+
+use crate::software_verify::verify_with_key_sync;
+use crate::{CanonicalDid, Capability, IdentityDID};
 use auths_keri::{
     Acdc, CesrKey, Event, KeriPublicKey, KeyState, Prefix, Said, TelEvent, Threshold,
     compute_capability_schema_said, validate_kel,
@@ -78,12 +81,13 @@ pub enum CredentialVerdict {
     /// The credential is authentic, anchored, witnessed (per policy), unexpired,
     /// and not revoked at/before the presentation position.
     Valid {
-        /// Issuer AID (`did:keri:`).
-        issuer: String,
-        /// Subject (holder) AID (`did:keri:`).
-        subject: String,
-        /// The capability the credential grants (`a.capability`).
-        caps: Vec<String>,
+        /// Issuer AID (`did:keri:`), parsed once at construction.
+        issuer: IdentityDID,
+        /// Subject (holder) AID (`did:keri:`), parsed once at construction.
+        subject: CanonicalDid,
+        /// The capabilities the credential grants (`a.capability`), parsed once — a
+        /// capability that does not parse fails the verdict closed (never silently dropped).
+        caps: Vec<Capability>,
         /// The KEL position the verdict is as-of: the tip `(seq)` of the given issuer KEL.
         as_of: u128,
     },
@@ -145,19 +149,18 @@ pub struct SignedAcdc {
     pub signature: Vec<u8>,
 }
 
-/// Verify an issued capability credential purely by replaying its inputs.
+/// Verify an issued capability credential — the thin `async` wrapper over
+/// [`verify_credential_sync`].
 ///
-/// Reports facts and does the lifecycle witness-quorum math; it never resolves KEL
-/// tips, fetches, or judges freshness (that is the SDK resolution layer's job, F.4).
+/// Kept so native Rust async callers (`auths-sdk`, `auths-rp`, `auths-mcp-server`)
+/// compile unchanged. Signature verification is deterministic and backend-independent,
+/// so this returns exactly the same verdict as the executor-free
+/// [`verify_credential_sync`]; the `_provider` argument is retained only for
+/// source-compatibility of this signature (verification runs through the in-crate
+/// pure-Rust `software_verify`, not the injected provider).
 ///
-/// Args:
-/// * `signed`: The credential plus the issuer's detached signature over its wire bytes.
-/// * `issuer_kel`: The issuer identity's KEL events, in sequence order.
-/// * `tel_events`: The credential registry's TEL (`vcp`, `iss`, optional `rev…`).
-/// * `receipts`: Witness receipts (witness-attributed) handed in for the quorum math.
-/// * `witness_policy`: `Warn` (default, TOFS) or `RequireWitnesses` (fail-closed).
-/// * `now`: The verification time, injected at the boundary (no wall clock here).
-/// * `provider`: Crypto provider used for issuer + receipt signature verification.
+/// Args: identical to [`verify_credential_sync`], plus a trailing `_provider` that is
+/// accepted but unused.
 ///
 /// Usage:
 /// ```ignore
@@ -171,7 +174,48 @@ pub async fn verify_credential(
     receipts: &[StoredReceipt],
     witness_policy: VerifierWitnessPolicy,
     now: DateTime<Utc>,
-    provider: &dyn CryptoProvider,
+    _provider: &dyn CryptoProvider,
+) -> CredentialVerdict {
+    verify_credential_sync(
+        signed,
+        issuer_kel,
+        tel_events,
+        receipts,
+        witness_policy,
+        now,
+    )
+}
+
+/// Verify an issued capability credential purely by replaying its inputs — synchronously,
+/// with no executor.
+///
+/// This is the executor-free core every non-Rust binding target (C-ABI, WASM, Node,
+/// Python, Go) calls directly: `block_on` is impossible in browser WASM, so signature
+/// checks run through the synchronous pure-Rust `software_verify` rather than the async
+/// [`CryptoProvider`]. It reports facts and does the lifecycle witness-quorum math; it
+/// never resolves KEL tips, fetches, or judges freshness (that is the SDK resolution
+/// layer's job, F.4).
+///
+/// Args:
+/// * `signed`: The credential plus the issuer's detached signature over its wire bytes.
+/// * `issuer_kel`: The issuer identity's KEL events, in sequence order.
+/// * `tel_events`: The credential registry's TEL (`vcp`, `iss`, optional `rev…`).
+/// * `receipts`: Witness receipts (witness-attributed) handed in for the quorum math.
+/// * `witness_policy`: `Warn` (default, TOFS) or `RequireWitnesses` (fail-closed).
+/// * `now`: The verification time, injected at the boundary (no wall clock here).
+///
+/// Usage:
+/// ```ignore
+/// let verdict = verify_credential_sync(&signed, &issuer_kel, &tel, &receipts, policy, now);
+/// assert!(verdict.is_valid());
+/// ```
+pub fn verify_credential_sync(
+    signed: &SignedAcdc,
+    issuer_kel: &[Event],
+    tel_events: &[TelEvent],
+    receipts: &[StoredReceipt],
+    witness_policy: VerifierWitnessPolicy,
+    now: DateTime<Utc>,
 ) -> CredentialVerdict {
     let acdc = &signed.acdc;
 
@@ -210,21 +254,14 @@ pub async fn verify_credential(
     // the backer set in force at each anchor's KEL position. Under
     // RequireWitnesses an under-quorum vcp/iss is fatal; the per-rev outcomes feed
     // the revocation decision below.
-    let quorum = resolve_quorum(
-        &lifecycle,
-        issuer_kel,
-        &issuer_state.prefix,
-        receipts,
-        provider,
-    )
-    .await;
+    let quorum = resolve_quorum(&lifecycle, issuer_kel, &issuer_state.prefix, receipts);
     if let VerifierWitnessPolicy::RequireWitnesses = witness_policy
         && let Some(verdict) = quorum.fatal_under_quorum()
     {
         return verdict;
     }
 
-    if !verify_issuer_signature(signed, issuer_kel, lifecycle.iss_anchor_seq, provider).await {
+    if !verify_issuer_signature(signed, issuer_kel, lifecycle.iss_anchor_seq) {
         return CredentialVerdict::IssuerSignatureInvalid;
     }
 
@@ -234,10 +271,28 @@ pub async fn verify_credential(
         return CredentialVerdict::CredentialRevoked { revoked_at };
     }
 
+    // Parse the validated identity/capability claims into their typed forms once, here.
+    // These are derived from already-replayed prefixes and schema-checked attributes, so a
+    // parse failure is a data-integrity violation — fail closed rather than carry a bad
+    // value or silently drop it.
+    let (Ok(issuer), Ok(subject)) = (
+        IdentityDID::parse(&format!("did:keri:{}", acdc.i)),
+        CanonicalDid::parse(&format!("did:keri:{}", acdc.a.i)),
+    ) else {
+        return CredentialVerdict::SchemaInvalid;
+    };
+    let Ok(caps) = capability_claims(acdc)
+        .iter()
+        .map(|c| Capability::parse(c))
+        .collect::<Result<Vec<_>, _>>()
+    else {
+        return CredentialVerdict::SchemaInvalid;
+    };
+
     CredentialVerdict::Valid {
-        issuer: format!("did:keri:{}", acdc.i),
-        subject: format!("did:keri:{}", acdc.a.i),
-        caps: capability_claims(acdc),
+        issuer,
+        subject,
+        caps,
         as_of: issuer_state.sequence,
     }
 }
@@ -390,32 +445,17 @@ impl QuorumResolution {
 ///
 /// For the `vcp`, `iss`, and each `rev` anchoring `ixn`, run KAWA over the backer
 /// set in force at that `ixn`'s KEL position.
-async fn resolve_quorum(
+fn resolve_quorum(
     lifecycle: &Lifecycle,
     issuer_kel: &[Event],
     issuer_prefix: &Prefix,
     receipts: &[StoredReceipt],
-    provider: &dyn CryptoProvider,
 ) -> QuorumResolution {
-    let vcp = anchor_quorum(
-        &lifecycle.vcp_anchor,
-        issuer_kel,
-        issuer_prefix,
-        receipts,
-        provider,
-    )
-    .await;
-    let iss = anchor_quorum(
-        &lifecycle.iss_anchor,
-        issuer_kel,
-        issuer_prefix,
-        receipts,
-        provider,
-    )
-    .await;
+    let vcp = anchor_quorum(&lifecycle.vcp_anchor, issuer_kel, issuer_prefix, receipts);
+    let iss = anchor_quorum(&lifecycle.iss_anchor, issuer_kel, issuer_prefix, receipts);
     let mut revs = Vec::with_capacity(lifecycle.rev_anchors.len());
     for anchor in &lifecycle.rev_anchors {
-        let outcome = anchor_quorum(anchor, issuer_kel, issuer_prefix, receipts, provider).await;
+        let outcome = anchor_quorum(anchor, issuer_kel, issuer_prefix, receipts);
         revs.push((anchor.kel_seq, outcome));
     }
     QuorumResolution { vcp, iss, revs }
@@ -473,12 +513,11 @@ enum QuorumOutcome {
 /// the anchoring `ixn`'s position (`take_while ≤ anchor_seq`). KAWA does the
 /// M-of-N math over the receipts whose signature verifies against their declared
 /// witness key and whose witness AID is in that backer set.
-async fn anchor_quorum(
+fn anchor_quorum(
     anchor: &AnchoredTelEvent,
     issuer_kel: &[Event],
     issuer_prefix: &Prefix,
     receipts: &[StoredReceipt],
-    provider: &dyn CryptoProvider,
 ) -> QuorumOutcome {
     let backer_state = match replay_to_seq(issuer_kel, anchor.kel_seq) {
         Some(state) => state,
@@ -510,7 +549,7 @@ async fn anchor_quorum(
         if !backers.contains(&receipt.witness) {
             continue;
         }
-        if !verify_receipt(receipt, provider).await {
+        if !verify_receipt(receipt) {
             continue;
         }
         collected += 1;
@@ -543,14 +582,14 @@ fn required_count(bt: &Threshold, backer_count: usize) -> usize {
 ///
 /// The witness AID is a CESR-qualified verkey, so the key travels in-band; the
 /// curve is dispatched on the parsed key, never on byte length.
-async fn verify_receipt(receipt: &StoredReceipt, provider: &dyn CryptoProvider) -> bool {
+fn verify_receipt(receipt: &StoredReceipt) -> bool {
     let Ok(payload) = serde_json::to_vec(&receipt.signed.receipt) else {
         return false;
     };
     let Ok(key) = KeriPublicKey::parse(receipt.witness.as_str()) else {
         return false;
     };
-    verify_with_key(&key, &payload, &receipt.signed.signature, provider).await
+    verify_with_key_sync(&key, &payload, &receipt.signed.signature)
 }
 
 /// Verify the issuer's signature over the ACDC wire bytes against the signing-time key.
@@ -558,11 +597,10 @@ async fn verify_receipt(receipt: &StoredReceipt, provider: &dyn CryptoProvider) 
 /// The signing-time key is recovered by replaying the issuer KEL up to and
 /// including the `iss`-anchoring position (`take_while ≤ iss_anchor_seq`) — a
 /// rotation *after* issuance does not invalidate the credential.
-async fn verify_issuer_signature(
+fn verify_issuer_signature(
     signed: &SignedAcdc,
     issuer_kel: &[Event],
     iss_anchor_seq: u128,
-    provider: &dyn CryptoProvider,
 ) -> bool {
     let Some(state) = replay_to_seq(issuer_kel, iss_anchor_seq) else {
         return false;
@@ -572,31 +610,12 @@ async fn verify_issuer_signature(
     };
     for cesr in &state.current_keys {
         if let Some(key) = parse_cesr_key(cesr)
-            && verify_with_key(&key, &wire, &signed.signature, provider).await
+            && verify_with_key_sync(&key, &wire, &signed.signature)
         {
             return true;
         }
     }
     false
-}
-
-/// Curve-dispatched signature verification through the injected provider.
-async fn verify_with_key(
-    key: &KeriPublicKey,
-    message: &[u8],
-    signature: &[u8],
-    provider: &dyn CryptoProvider,
-) -> bool {
-    match key.curve() {
-        CurveType::Ed25519 => provider
-            .verify_ed25519(key.as_bytes(), message, signature)
-            .await
-            .is_ok(),
-        CurveType::P256 => provider
-            .verify_p256(key.as_bytes(), message, signature)
-            .await
-            .is_ok(),
-    }
 }
 
 /// Replay the issuer KEL up to and including `seq`, returning the key-state at that

@@ -23,6 +23,8 @@ path = "src/lib.rs"
 auths-jwt.workspace = true
 auths-telemetry.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
+auths-sdk = { workspace = true, features = ["backend-git"] }
+auths-rp = { path = "../auths-rp" }
 
 anyhow = "1"
 axum = "0.8"

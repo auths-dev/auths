@@ -14,6 +14,10 @@ from auths._errors import (
 )
 from auths._native import (
     ChainLink,
+    CredentialReport,
+    CredentialStatus,
+    PresentationReport,
+    PresentationStatus,
     VerificationReport,
     VerificationResult,
     VerificationStatus,
@@ -26,7 +30,9 @@ from auths._native import (
     verify_at_time,
     verify_attestation,
     verify_chain,
+    verify_credential,
     verify_device_authorization,
+    verify_presentation,
 )
 from auths.agent import AgentAuth
 from auths.doctor import Check, DiagnosticReport, DoctorService
@@ -70,6 +76,14 @@ __all__ = [
     "VerificationResult",
     "VerificationReport",
     "VerificationError",
+
+    # Keyless service-to-service verify (Epic D2)
+    "verify_presentation",
+    "verify_credential",
+    "PresentationReport",
+    "PresentationStatus",
+    "CredentialReport",
+    "CredentialStatus",
 
     # Client
     "Auths",

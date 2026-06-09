@@ -1,0 +1,45 @@
+# Example after-state CI deploy job — keyless, NO stored secret.
+#
+# First-party only: this authenticates a CI job to YOUR OWN deploy target. There is no
+# `secrets.DEPLOY_TOKEN` (or any bearer secret) anywhere in this file — that is the point.
+# The job proves current control of a delegated workload credential per request instead.
+#
+# Prereqs (set as repo/org variables, NOT secrets — none are sensitive):
+#   AUTHS_WORKLOAD_ALIAS   the keychain alias of the workload's current signing key
+#   AUTHS_CREDENTIAL_SAID  the SAID of the capability credential issued to the workload
+# The deploy target (deploy.internal) pins your org root in .auths/roots and mounts the
+# relying-party middleware (see docs/guides/delete-your-static-token.md).
+
+name: deploy
+
+on:
+  push:
+    tags: ["release-*"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install auths CLI
+        run: cargo install --path crates/auths-cli
+
+      - name: Deploy (keyless — no stored secret)
+        env:
+          AUTHS_WORKLOAD_ALIAS: ${{ vars.AUTHS_WORKLOAD_ALIAS }}
+          AUTHS_CREDENTIAL_SAID: ${{ vars.AUTHS_CREDENTIAL_SAID }}
+        run: |
+          set -euo pipefail
+          # 1) fetch a fresh single-use challenge bound to the audience
+          NONCE=$(curl -sSf https://deploy.internal/v1/auth/challenge | jq -r .nonce)
+          # 2) present: sign (credential_said ‖ audience ‖ nonce) with the workload's CURRENT key
+          AUTH=$(auths credential present \
+                   --subject "$AUTHS_WORKLOAD_ALIAS" \
+                   --said "$AUTHS_CREDENTIAL_SAID" \
+                   --audience deploy.internal \
+                   --nonce "$NONCE")
+          # 3) call the deploy target with the presentation (no bearer secret)
+          curl -sSf -X POST https://deploy.internal/v1/deploy \
+            -H "$AUTH" \
+            -d @release.json

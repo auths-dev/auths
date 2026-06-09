@@ -47,6 +47,8 @@ auths-verifier = { workspace = true, features = ["native"] }
 auths-infra-git.workspace = true
 auths-infra-http.workspace = true
 auths-infra-rekor = { path = "../auths-infra-rekor" }
+auths-rp = { path = "../auths-rp" }
+auths-scim-server = { path = "../auths-scim-server" }
 auths-utils.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 ring.workspace = true

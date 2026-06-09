@@ -1,0 +1,52 @@
+# Hardened systemd unit for the auths-witness rct server.
+#
+# Target: `systemd-analyze security auths-witness.service` exposure < 3.0.
+# The signing key + receipts DB live under StateDirectory (/var/lib/auths-witness),
+# the only writable path. TLS terminates at a reverse proxy in front of :3333.
+
+[Unit]
+Description=Auths KERI rct-witness server
+Documentation=https://github.com/auths-dev/auths/blob/main/docs/deployment/witness/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+DynamicUser=yes
+StateDirectory=auths-witness
+ExecStart=/usr/local/bin/auths-witness \
+    --bind 127.0.0.1:3333 \
+    --identity %S/auths-witness/witness.key \
+    --persist %S/auths-witness/receipts.db
+Restart=on-failure
+RestartSec=2
+
+# --- Sandbox (exposure target < 3.0) ---
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+# Only writable path is the state dir (StateDirectory already grants it).
+ReadWritePaths=%S/auths-witness
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

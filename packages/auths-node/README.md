@@ -25,6 +25,33 @@ const sig = auths.signAs({ message: Buffer.from('hello world'), identityDid: ide
 console.log(sig.signature) // hex-encoded Ed25519 signature
 ```
 
+## Keyless service-to-service verify
+
+Verify an agent's credential **presentation** (or a raw credential) offline against a pinned
+root — one call, a typed discriminated verdict, no thrown exception for a denial:
+
+```typescript
+import { verifyPresentation, PresentationStatus } from '@auths-dev/sdk'
+
+// `bundleJson` is the Auths-Presentation request bundle the caller sent.
+const report = verifyPresentation(bundleJson)
+
+switch (report.status) {
+  case PresentationStatus.Valid:
+    console.log(`granted ${report.subject} caps=${report.caps?.join(',')}`)
+    break
+  case PresentationStatus.CredentialNotValid:
+    console.warn(`credential rejected: ${report.credential?.status}`)
+    break
+  default:
+    console.warn(`denied: ${report.status}`) // wrongAudience, holderNotCurrentKey, expired, …
+}
+```
+
+`verifyCredential(bundleJson)` returns a `CredentialReport` the same way (e.g.
+`CredentialStatus.CredentialRevoked` carries `report.revokedAt`). Malformed input returns a
+typed `MalformedRequest` status — it never throws.
+
 ## Identity management
 
 ```typescript

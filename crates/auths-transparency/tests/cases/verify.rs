@@ -101,6 +101,7 @@ fn verify_bundle_end_to_end_single_entry() {
         witnesses: vec![],
         signature_algorithm: Default::default(),
         ecdsa_log_public_key_der: None,
+        independence_policy: auths_transparency::IndependencePolicy::unconstrained(),
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());
@@ -189,6 +190,7 @@ fn verify_bundle_multi_leaf_tree() {
         witnesses: vec![],
         signature_algorithm: Default::default(),
         ecdsa_log_public_key_der: None,
+        independence_policy: auths_transparency::IndependencePolicy::unconstrained(),
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());
@@ -276,9 +278,11 @@ fn verify_bundle_with_witnesses() {
             witness_did: CanonicalDid::new_unchecked(ed25519_did(&w1_pk)),
             name: "w1".into(),
             public_key: Ed25519PublicKey::from_bytes(w1_pk),
+            operator_info: None,
         }],
         signature_algorithm: Default::default(),
         ecdsa_log_public_key_der: None,
+        independence_policy: auths_transparency::IndependencePolicy::unconstrained(),
     };
 
     let report = verify_bundle(&bundle, &trust_root, fixed_now());

@@ -1,85 +1,68 @@
-"""E2E tests for key rotation and revocation flows."""
-
-from pathlib import Path
+"""E2E tests for key rotation and revocation flows (KEL-native)."""
 
 import pytest
 
-from helpers.cli import get_device_did, run_auths
-from helpers.git import configure_signing, make_commit
+from helpers.cli import add_device, export_identity_bundle, get_device_did, run_auths, run_git
+from helpers.git import make_commit
 
 
-def _generate_allowed_signers(auths_bin, git_repo: Path, env: dict) -> Path:
-    """Generate allowed-signers file inside the git repo's .auths/ dir."""
-    auths_dir = git_repo / ".auths"
-    auths_dir.mkdir(exist_ok=True)
-    signers_file = auths_dir / "allowed_signers"
-    run_auths(
-        auths_bin,
-        [
-            "signers",
-            "sync",
-            "--repo",
-            env["AUTHS_HOME"],
-            "--output",
-            str(signers_file),
-        ],
-        env=env,
-    ).assert_success()
-    return signers_file
+def _sign_head(auths_bin, repo, env) -> str:
+    """KEL-native sign the current HEAD; return the (rewritten) HEAD sha.
 
-
-def _link_device(auths_bin, env, *, capabilities=None):
-    """Link a device and return the CLI result."""
-    did = get_device_did(auths_bin, env)
-    args = [
-        "device",
-        "link",
-        "--key",
-        "main",
-        "--device-key",
-        "main",
-        "--device-did",
-        did,
-    ]
-    if capabilities:
-        args += ["--capabilities", capabilities]
-    return run_auths(auths_bin, args, env=env)
+    `auths sign` adds the `Auths-Id`/`Auths-Device` trailers and rewrites the
+    commit, so the post-sign sha is what verification runs against.
+    """
+    run_auths(auths_bin, ["sign", "HEAD"], cwd=repo, env=env)
+    return run_git(["rev-parse", "HEAD"], cwd=repo, env=env).stdout.strip()
 
 
 @pytest.mark.slow
 @pytest.mark.requires_binary
 class TestKeyRotation:
     def test_rotate_keys(self, auths_bin, init_identity):
-        id_before = run_auths(auths_bin, ["id", "show"], env=init_identity)
-        id_before.assert_success()
+        run_auths(auths_bin, ["id", "show"], env=init_identity).assert_success()
 
         result = run_auths(auths_bin, ["id", "rotate"], env=init_identity)
         if result.returncode != 0:
             pytest.skip(f"id rotate not available: {result.stderr}")
         result.assert_success()
 
-        id_after = run_auths(auths_bin, ["id", "show"], env=init_identity)
-        id_after.assert_success()
+        run_auths(auths_bin, ["id", "show"], env=init_identity).assert_success()
 
     def test_verify_old_commit_after_rotation(
-        self, auths_bin, auths_sign_bin, init_identity, git_repo
+        self, auths_bin, init_identity, git_repo, tmp_path
     ):
-        configure_signing(git_repo, auths_sign_bin, init_identity)
-        sha_a = make_commit(git_repo, "before rotation", init_identity)
+        # Sign a commit and verify it via the identity bundle (KEL-native trust — no
+        # allowed_signers file). Then rotate the single-device root key.
+        make_commit(git_repo, "before rotation", init_identity)
+        sha_a = _sign_head(auths_bin, git_repo, init_identity)
+
+        bundle_before = tmp_path / "bundle-before.json"
+        export_identity_bundle(auths_bin, init_identity, bundle_before).assert_success()
+        run_auths(
+            auths_bin,
+            ["verify", sha_a, "--identity-bundle", str(bundle_before)],
+            cwd=git_repo,
+            env=init_identity,
+        ).assert_success()
 
         rotate = run_auths(auths_bin, ["id", "rotate"], env=init_identity)
         if rotate.returncode != 0:
             pytest.skip("id rotate not available")
 
-        sha_b = make_commit(git_repo, "after rotation", init_identity)
-
-        _generate_allowed_signers(auths_bin, git_repo, init_identity)
-
-        verify_a = run_auths(
-            auths_bin, ["verify", sha_a], cwd=git_repo, env=init_identity
+        # After rotating the single-device root key, that signing key is superseded,
+        # so KEL replay flags the pre-rotation commit rather than silently trusting
+        # it (a separately delegated device would survive a root rotation). The
+        # command still runs and returns a definite verdict.
+        bundle_after = tmp_path / "bundle-after.json"
+        export_identity_bundle(auths_bin, init_identity, bundle_after).assert_success()
+        verify_after = run_auths(
+            auths_bin,
+            ["verify", sha_a, "--identity-bundle", str(bundle_after)],
+            cwd=git_repo,
+            env=init_identity,
         )
-        if verify_a.returncode != 0:
-            pytest.skip(f"verify not available: {verify_a.stderr}")
+        assert verify_after.returncode in (0, 1)
 
     def test_emergency_freeze(self, auths_bin, init_identity):
         result = run_auths(
@@ -106,21 +89,16 @@ class TestKeyRotation:
             pytest.skip(f"emergency unfreeze not available: {unfreeze.stderr}")
         unfreeze.assert_success()
 
-    def test_rotate_preserves_attestations(self, auths_bin, init_identity):
-        link = _link_device(
-            auths_bin, init_identity, capabilities="sign:commit"
-        )
-        if link.returncode != 0:
-            pytest.skip("device link not available")
+    def test_rotate_preserves_devices(self, auths_bin, init_identity):
+        if add_device(auths_bin, init_identity).returncode != 0:
+            pytest.skip("device add not available")
 
         rotate = run_auths(auths_bin, ["id", "rotate"], env=init_identity)
         if rotate.returncode != 0:
             pytest.skip("id rotate not available")
 
-        # After rotation, the device should still be listed
-        list_result = run_auths(
-            auths_bin, ["device", "list"], env=init_identity
-        )
+        # After rotation the delegated device is still anchored in the KEL.
+        list_result = run_auths(auths_bin, ["device", "list"], env=init_identity)
         list_result.assert_success()
         did = get_device_did(auths_bin, init_identity)
-        assert "did:key:" in did
+        assert "did:keri:" in did

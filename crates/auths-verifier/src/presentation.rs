@@ -33,14 +33,16 @@
 //!   where genuine single-use is required. The verdict surfaces [`PresentationVerdict::Expired`]
 //!   once `now` passes `not_after`.
 
-use auths_crypto::{CryptoProvider, CurveType};
+use auths_crypto::CryptoProvider;
 use auths_keri::{
     CesrKey, DelegatorKelLookup, Event, KeriPublicKey, KeyState, Prefix, Said, Seal, SourceSeal,
     validate_kel_with_lookup,
 };
 use chrono::{DateTime, Utc};
 
-use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential};
+use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential_sync};
+use crate::software_verify::verify_with_key_sync;
+use crate::{CanonicalDid, Capability, IdentityDID};
 
 /// The optional informational role claim in the ACDC attributes (`a.role`),
 /// written by the F.4 issuance path. Surfaced on a `Valid` verdict for the F.6 bridge.
@@ -172,11 +174,11 @@ pub enum PresentationVerdict {
     /// policy context from the *verified presentation*, never from a raw ACDC.
     Valid {
         /// The issuer AID (`did:keri:`) that granted the now-bound credential.
-        issuer: String,
+        issuer: IdentityDID,
         /// The subject (holder) AID (`did:keri:`) whose current key signed the presentation.
-        subject: String,
+        subject: CanonicalDid,
         /// The capabilities the now-bound credential grants (`a.capability`).
-        caps: Vec<String>,
+        caps: Vec<Capability>,
         /// The optional informational role claim (`a.role`).
         role: Option<String>,
         /// The optional credential expiry (`a.expiry`), as carried in the ACDC attributes.
@@ -233,7 +235,9 @@ impl PresentationVerdict {
 /// * `expected_challenge`: `Some(nonce)` for the interactive challenge path (one-shot,
 ///   session-consumed); `None` for the non-interactive TTL path.
 /// * `now`: Verification time, injected at the boundary (no wall clock here).
-/// * `provider`: Crypto provider for curve-agnostic signature verification.
+/// * `_provider`: Accepted but unused — see [`verify_presentation_sync`]. Signature
+///   verification runs through the in-crate pure-Rust `software_verify`; the parameter
+///   is retained only for source-compatibility of this async signature.
 ///
 /// Usage:
 /// ```ignore
@@ -256,18 +260,64 @@ pub async fn verify_presentation(
     expected_audience: &str,
     expected_challenge: Option<&[u8]>,
     now: DateTime<Utc>,
-    provider: &dyn CryptoProvider,
+    _provider: &dyn CryptoProvider,
 ) -> PresentationVerdict {
-    let credential_verdict = verify_credential(
+    verify_presentation_sync(
+        envelope,
+        signed,
+        issuer_kel,
+        tel_events,
+        receipts,
+        witness_policy,
+        subject_kel,
+        subject_delegator_kel,
+        expected_audience,
+        expected_challenge,
+        now,
+    )
+}
+
+/// Verify a credential presentation synchronously, with no executor — the WASM-safe
+/// core behind [`verify_presentation`].
+///
+/// Identical contract to [`verify_presentation`] but executor-free: `block_on` is
+/// impossible in browser WASM, so every non-Rust binding target (C-ABI, WASM, Node,
+/// Python, Go) calls this directly. It chains F.5's [`verify_credential_sync`] so a
+/// revoked/invalid credential never binds, then enforces the holder proof through the
+/// synchronous pure-Rust `software_verify`.
+///
+/// Args: identical to [`verify_presentation`] minus the trailing provider.
+///
+/// Usage:
+/// ```ignore
+/// let verdict = verify_presentation_sync(
+///     &envelope, &signed, &issuer_kel, &tel, &receipts, policy,
+///     &subject_kel, &subject_delegator_kel, "audience.example", Some(&nonce), now,
+/// );
+/// assert!(verdict.is_honored());
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn verify_presentation_sync(
+    envelope: &PresentationEnvelope,
+    signed: &SignedAcdc,
+    issuer_kel: &[Event],
+    tel_events: &[auths_keri::TelEvent],
+    receipts: &[auths_keri::witness::StoredReceipt],
+    witness_policy: crate::commit_kel::VerifierWitnessPolicy,
+    subject_kel: &[Event],
+    subject_delegator_kel: &[Event],
+    expected_audience: &str,
+    expected_challenge: Option<&[u8]>,
+    now: DateTime<Utc>,
+) -> PresentationVerdict {
+    let credential_verdict = verify_credential_sync(
         signed,
         issuer_kel,
         tel_events,
         receipts,
         witness_policy,
         now,
-        provider,
-    )
-    .await;
+    );
     if !credential_verdict.is_valid() {
         return PresentationVerdict::CredentialNotValid(credential_verdict);
     }
@@ -286,8 +336,9 @@ pub async fn verify_presentation(
 
     let (issuer, caps) = match credential_verdict {
         CredentialVerdict::Valid { issuer, caps, .. } => (issuer, caps),
-        // Unreachable: `is_valid()` above guarantees the `Valid` arm.
-        _ => (String::new(), Vec::new()),
+        // `is_valid()` above guarantees `Valid`; on the impossible arm return a credential
+        // failure rather than panicking or fabricating an identity (keeps this WASM/FFI-safe).
+        other => return PresentationVerdict::CredentialNotValid(other),
     };
 
     let grant = GrantFacts {
@@ -297,15 +348,7 @@ pub async fn verify_presentation(
         expires_at: read_expiry(signed),
     };
 
-    verify_holder_signature(
-        envelope,
-        signed,
-        subject_kel,
-        subject_delegator_kel,
-        grant,
-        provider,
-    )
-    .await
+    verify_holder_signature(envelope, signed, subject_kel, subject_delegator_kel, grant)
 }
 
 /// The credential grant facts surfaced on a `Valid` presentation verdict.
@@ -314,8 +357,8 @@ pub async fn verify_presentation(
 /// verified `acdc.a` (`role`/`expiry`) once both the credential and the holder proof
 /// have passed, so they can never be read off an un-presented ACDC.
 struct GrantFacts {
-    issuer: String,
-    caps: Vec<String>,
+    issuer: IdentityDID,
+    caps: Vec<Capability>,
     role: Option<String>,
     expires_at: Option<DateTime<Utc>>,
 }
@@ -374,15 +417,19 @@ fn check_binding(
 /// presentation must verify against one of those current keys. A rotation that advanced
 /// the subject's key invalidates a presentation signed by the old key — that is the
 /// "current control" requirement (distinct from F.5's signing-*time* issuer key).
-async fn verify_holder_signature(
+fn verify_holder_signature(
     envelope: &PresentationEnvelope,
     signed: &SignedAcdc,
     subject_kel: &[Event],
     subject_delegator_kel: &[Event],
     grant: GrantFacts,
-    provider: &dyn CryptoProvider,
 ) -> PresentationVerdict {
     let Some(state) = replay_subject(subject_kel, subject_delegator_kel) else {
+        return PresentationVerdict::SubjectKelInvalid;
+    };
+    // The subject AID is the holder we just replayed; a DID that fails to parse means the
+    // subject is unusable as an identity (treated as an invalid subject KEL).
+    let Ok(subject) = CanonicalDid::parse(&format!("did:keri:{}", signed.acdc.a.i)) else {
         return PresentationVerdict::SubjectKelInvalid;
     };
 
@@ -394,11 +441,11 @@ async fn verify_holder_signature(
 
     for cesr in &state.current_keys {
         if let Some(key) = parse_cesr_key(cesr)
-            && verify_with_key(&key, &message, &envelope.signature, provider).await
+            && verify_with_key_sync(&key, &message, &envelope.signature)
         {
             return PresentationVerdict::Valid {
                 issuer: grant.issuer,
-                subject: format!("did:keri:{}", signed.acdc.a.i),
+                subject,
                 caps: grant.caps,
                 role: grant.role,
                 expires_at: grant.expires_at,
@@ -406,27 +453,6 @@ async fn verify_holder_signature(
         }
     }
     PresentationVerdict::HolderNotCurrentKey
-}
-
-/// Curve-dispatched signature verification through the injected provider.
-///
-/// The curve is read from the parsed CESR key tag, never from byte length.
-async fn verify_with_key(
-    key: &KeriPublicKey,
-    message: &[u8],
-    signature: &[u8],
-    provider: &dyn CryptoProvider,
-) -> bool {
-    match key.curve() {
-        CurveType::Ed25519 => provider
-            .verify_ed25519(key.as_bytes(), message, signature)
-            .await
-            .is_ok(),
-        CurveType::P256 => provider
-            .verify_p256(key.as_bytes(), message, signature)
-            .await
-            .is_ok(),
-    }
 }
 
 /// Decode a CESR verkey into a curve-tagged key, or `None` if it is undecodable.

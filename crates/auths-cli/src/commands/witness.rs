@@ -11,8 +11,13 @@ use auths_infra_http::HttpAsyncWitnessClient;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::witness::AsyncWitnessProvider;
-use auths_sdk::witness::{WitnessConfig, WitnessRef};
-use auths_sdk::witness::{WitnessServerConfig, WitnessServerState, run_server};
+use auths_sdk::witness::{
+    EquivocationDetection, IndependencePolicy, WitnessConfig, WitnessRef, honesty_ceiling,
+};
+use auths_sdk::witness::{
+    WitnessServerConfig, WitnessServerState, generate_and_persist_witness_signer,
+    load_witness_signer, run_server, witness_signer_from_seed_hex,
+};
 
 /// Manage identity witness servers.
 #[derive(Parser, Debug, Clone)]
@@ -35,9 +40,21 @@ pub enum WitnessSubcommand {
         #[clap(long, default_value = "witness.db")]
         db_path: PathBuf,
 
-        /// Witness server identity (auto-generated if not provided).
-        #[clap(long, visible_alias = "witness")]
-        witness_did: Option<String>,
+        /// Path to the persisted witness signing-key keystore. The advertised AID
+        /// derives from this key and is stable across restarts. Without it the
+        /// witness runs with an EPHEMERAL (unpinnable) identity. The
+        /// `AUTHS_WITNESS_SEED` env var (hex seed) takes precedence for containers.
+        #[clap(long, visible_alias = "id")]
+        identity: Option<PathBuf>,
+
+        /// Create the keystore at `--identity` if it does not exist. Without this,
+        /// a missing keystore fails closed (never silently mints a fresh key).
+        #[clap(long)]
+        generate: bool,
+
+        /// Signing curve for a newly generated identity: "p256" (default) or "ed25519".
+        #[clap(long, default_value = "p256")]
+        curve: String,
     },
 
     /// Add a witness URL to the identity configuration.
@@ -58,38 +75,86 @@ pub enum WitnessSubcommand {
     List,
 }
 
+/// Parse the `--curve` argument into a `CurveType`.
+fn parse_curve_arg(curve: &str) -> Result<auths_crypto::CurveType> {
+    match curve {
+        "p256" | "P256" => Ok(auths_crypto::CurveType::P256),
+        "ed25519" | "Ed25519" => Ok(auths_crypto::CurveType::Ed25519),
+        other => Err(anyhow!(
+            "unknown --curve '{other}'; expected 'p256' or 'ed25519'"
+        )),
+    }
+}
+
+/// Resolve the witness signing identity and build the server config.
+///
+/// Precedence: `AUTHS_WITNESS_SEED` env (container injection) → `--identity`
+/// keystore (load, or create with `--generate`) → ephemeral (warned). A missing
+/// `--identity` keystore without `--generate` fails closed — it never mints a
+/// fresh key behind a path the operator meant to be stable.
+fn build_witness_config(
+    db_path: PathBuf,
+    identity: Option<PathBuf>,
+    generate: bool,
+    curve: auths_crypto::CurveType,
+) -> Result<WitnessServerConfig> {
+    #[allow(clippy::disallowed_methods)]
+    // Boundary: the CLI is where deployment env is read. A container/binary can
+    // inject the witness signing seed here instead of mounting a keystore file.
+    let env_seed = std::env::var("AUTHS_WITNESS_SEED").ok();
+
+    if let Some(seed_hex) = env_seed {
+        let signer = witness_signer_from_seed_hex(curve, &seed_hex)
+            .map_err(|e| anyhow!("invalid AUTHS_WITNESS_SEED: {e}"))?;
+        return WitnessServerConfig::from_signer(db_path, signer)
+            .map_err(|e| anyhow!("witness config from injected seed: {e}"));
+    }
+
+    if let Some(identity_path) = identity {
+        let path =
+            expand_tilde(&identity_path).map_err(|e| anyhow!("invalid --identity path: {e}"))?;
+        let signer = if path.exists() {
+            load_witness_signer(&path).map_err(|e| anyhow!("{e}"))?
+        } else if generate {
+            let signer =
+                generate_and_persist_witness_signer(&path, curve).map_err(|e| anyhow!("{e}"))?;
+            println!("Generated new witness identity at {}", path.display());
+            signer
+        } else {
+            return Err(anyhow!(
+                "no witness identity at {}; pass --generate to create one \
+                 (refusing to mint an ephemeral key for a --identity path)",
+                path.display()
+            ));
+        };
+        return WitnessServerConfig::from_signer(db_path, signer)
+            .map_err(|e| anyhow!("witness config: {e}"));
+    }
+
+    eprintln!(
+        "warning: starting with an EPHEMERAL witness identity (new AID each launch, \
+         not pinnable); pass --identity <path> --generate for a stable identity"
+    );
+    WitnessServerConfig::with_generated_keypair(db_path, curve)
+        .map_err(|e| anyhow!("Failed to generate witness keypair: {e}"))
+}
+
 /// Handle witness commands.
 pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<()> {
     match cmd.subcommand {
         WitnessSubcommand::Start {
             bind,
             db_path,
-            witness_did,
+            identity,
+            generate,
+            curve,
         } => {
+            let curve = parse_curve_arg(&curve)?;
+            let cfg = build_witness_config(db_path, identity, generate, curve)?;
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(async {
-                let state = {
-                    // curve-aware keypair generation. Default to P-256
-                    // at the CLI layer (workspace default); plumb --curve through
-                    // the subcommand if explicit selection becomes necessary.
-                    let curve = auths_crypto::CurveType::P256;
-                    let cfg = WitnessServerConfig::with_generated_keypair(db_path, curve)
-                        .map_err(|e| anyhow::anyhow!("Failed to generate witness keypair: {e}"))?;
-                    let cfg = if let Some(did_override) = witness_did {
-                        WitnessServerConfig {
-                            #[allow(clippy::disallowed_methods)]
-                            // INVARIANT: caller-supplied witness DID
-                            witness_did: auths_verifier::types::CanonicalDid::new_unchecked(
-                                did_override,
-                            ),
-                            ..cfg
-                        }
-                    } else {
-                        cfg
-                    };
-                    WitnessServerState::new(cfg)
-                        .map_err(|e| anyhow::anyhow!("Failed to create witness state: {}", e))?
-                };
+                let state = WitnessServerState::new(cfg)
+                    .map_err(|e| anyhow::anyhow!("Failed to create witness state: {}", e))?;
 
                 println!(
                     "Witness server started at {} (identity: {})",
@@ -134,6 +199,10 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             if !config.pin(WitnessRef {
                 url: parsed_url.clone(),
                 aid: aid.clone(),
+                // Independence attributes are populated in the witness config
+                // (operator/org/jurisdiction/infrastructure); untagged ⇒ the
+                // independence gate fails closed for this witness.
+                operator_info: None,
             }) {
                 println!("Witness already configured (aid {}): {}", aid.as_str(), url);
                 return Ok(());
@@ -192,6 +261,16 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
                 config.witnesses.len(),
                 config.policy
             );
+
+            // Honest current truth — the single shared ceiling, never re-derived.
+            // Equivocation detection is `Sampled` until the W.3 gossip layer lands.
+            let independence = config.roster_independence(&IndependencePolicy::default());
+            let ceiling = honesty_ceiling(&independence, EquivocationDetection::Sampled);
+            let status = if ceiling.policy_met { "MET" } else { "FAILING" };
+            println!("\nIndependence: {status} — {}", ceiling.label);
+            if !ceiling.shortfalls.is_empty() {
+                println!("  shortfall: {}", ceiling.shortfalls.join(", "));
+            }
             Ok(())
         }
     }

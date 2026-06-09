@@ -47,6 +47,11 @@ const ALLOWED_METHOD_NAMES: &[&str] = &[
     "verify_with_p256",
     "ed25519",
     "p256",
+    // Vetted pure-Rust verification crates — the sanctioned sync/WASM verifier
+    // (auths-verifier::software_verify) dispatches on the typed CurveType once and
+    // delegates to these per-curve crates, in exact parity with the async provider.
+    // Same category as `p256`/`ecdsa` above.
+    "ed25519_dalek",
 ];
 
 const ALLOWED_IDENT_PREFIXES: &[&str] = &[

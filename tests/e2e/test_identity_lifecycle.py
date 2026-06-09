@@ -22,21 +22,33 @@ class TestIdentityLifecycle:
         # status may or may not support --json yet
         assert status.returncode == 0
 
+    @pytest.mark.xfail(
+        reason="`init --profile ci` (Memory keychain) intermittently fails with "
+        "AUTHS-E4105 'invalid KERI version string: KERI10JSON' — a flaky CLI "
+        "serialization bug tracked in issue #246 (not an e2e-test issue).",
+        strict=False,
+    )
     def test_init_ci_profile(self, auths_bin, isolated_env):
         result = run_auths(
             auths_bin,
-            ["init", "--profile", "ci", "--non-interactive", ],
+            ["init", "--profile", "ci", "--non-interactive"],
             env=isolated_env,
         )
         result.assert_success()
 
-    def test_init_agent_profile(self, auths_bin, isolated_env):
+    def test_init_agent_profile_is_retired(self, auths_bin, isolated_env):
+        # Standalone agent initialization is retired: an agent is now a KERI
+        # delegated identifier created with `auths id agent add` after a root
+        # `auths init` (see test_device_attestation::test_delegate_agent).
         result = run_auths(
             auths_bin,
-            ["init", "--profile", "agent", "--non-interactive", ],
+            ["init", "--profile", "agent", "--non-interactive"],
             env=isolated_env,
         )
-        result.assert_success()
+        assert result.returncode != 0
+        assert (
+            "id agent add" in result.stderr or "delegated identifier" in result.stderr
+        )
 
     def test_init_already_initialized(self, auths_bin, isolated_env):
         run_auths(

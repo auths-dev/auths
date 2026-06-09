@@ -10,19 +10,31 @@
 //!   plus the lifecycle-anchor witness receipts to the witnessed tip, hands them to
 //!   the pure verifier, and owns the fail-closed freshness decision.
 
+/// Relying-party presentation authentication (the full verify flow).
+pub mod authenticate;
 /// Credential error type (`thiserror`, no `anyhow`).
 pub mod error;
+/// First-party revocation freshness: delegator refresh port + staleness policy.
+pub mod freshness;
 /// Issuance, revocation, and listing workflows.
 pub mod issue;
 /// Holder-binding presentation + challenge issuance (F.8).
 pub mod present;
+/// Presentation-inputs loader: resolves issuer + subject + delegator KELs (D1).
+pub mod present_inputs;
 /// The persisted credential envelope (`{acdc, signature}`).
 pub mod stored;
 /// Verification — the resolution + freshness layer.
 pub mod verify;
 
+pub use authenticate::{PresentationAuthError, authenticate_presentation};
 pub use error::CredentialError;
+pub use freshness::{
+    DelegatorLogSource, FreshnessDecision, FreshnessPolicy, RefreshError, RefreshOutcome,
+    RootRefresh, enforce_freshness,
+};
 pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
 pub use present::{ChallengeSession, PresentationChallenge, present_credential};
+pub use present_inputs::{PresentationInputs, load_presentation_inputs};
 pub use stored::StoredCredential;
 pub use verify::{CredentialVerdict, ResolvedAsOf, VerifierWitnessPolicy, verify, verify_by_said};

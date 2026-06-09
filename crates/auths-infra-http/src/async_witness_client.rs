@@ -50,6 +50,11 @@ struct HealthResponse {
     witness_did: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct SaidAtSeqResponse {
+    said: Said,
+}
+
 impl HttpAsyncWitnessClient {
     /// Creates a new HTTP async witness client.
     ///
@@ -95,6 +100,52 @@ impl HttpAsyncWitnessClient {
             .build()
             .expect("failed to build reqwest client");
         self
+    }
+
+    /// Query the SAID this witness first saw for `prefix` at sequence `seq`.
+    ///
+    /// Lets a monitor compare witnesses by CONTENT, not just HEAD number.
+    ///
+    /// Args:
+    /// * `prefix`: The KERI prefix of the identity.
+    /// * `seq`: The sequence number to query.
+    ///
+    /// Returns `Ok(None)` when the witness has not seen that sequence (a gap, not
+    /// divergence); `Ok(Some(said))` when it has.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let said = client.said_at_seq(&prefix, 0).await?;
+    /// ```
+    pub async fn said_at_seq(
+        &self,
+        prefix: &Prefix,
+        seq: u64,
+    ) -> Result<Option<Said>, WitnessError> {
+        let url = format!("{}/witness/{}/said/{}", self.base_url, prefix, seq);
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                WitnessError::Timeout(self.timeout.as_millis() as u64)
+            } else {
+                WitnessError::Network(e.to_string())
+            }
+        })?;
+
+        if response.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(WitnessError::Network(format!(
+                "said-at-seq query failed: {body}"
+            )));
+        }
+
+        let parsed: SaidAtSeqResponse = response
+            .json()
+            .await
+            .map_err(|e| WitnessError::Serialization(e.to_string()))?;
+        Ok(Some(parsed.said))
     }
 }
 

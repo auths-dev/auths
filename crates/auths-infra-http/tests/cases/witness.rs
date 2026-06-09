@@ -30,7 +30,11 @@ fn make_test_event(prefix: &str, seq: u128) -> (Vec<u8>, Said) {
     let rng = ring::rand::SystemRandom::new();
     let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
     let kp = Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
-    let pk_hex = hex::encode(kp.public_key().as_ref());
+    // k[0] is the curve-tagged CESR verkey (`D…`), as production emitters use.
+    let k0 = auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+        .unwrap()
+        .to_qb64()
+        .unwrap();
 
     let mut event = serde_json::json!({
         "v": "KERI10JSON000000_",
@@ -38,7 +42,7 @@ fn make_test_event(prefix: &str, seq: u128) -> (Vec<u8>, Said) {
         "d": "",
         "i": prefix,
         "s": seq,
-        "k": [pk_hex],
+        "k": [k0],
         "x": ""
     });
 
@@ -142,16 +146,37 @@ async fn receipt_collector_reaches_quorum() {
         .build();
 
     let prefix = Prefix::new_unchecked("ETestPrefix".to_string());
-    let (event_json, _said) = make_test_event("ETestPrefix", 0);
-    let receipts = collector.collect(&prefix, &event_json).await.unwrap();
+    let (event_json, said) = make_test_event("ETestPrefix", 0);
+    let receipts = collector
+        .collect(&prefix, &said, &event_json)
+        .await
+        .unwrap();
 
     assert!(
         receipts.len() >= 2,
-        "Expected >= 2 receipts, got {}",
+        "Expected >= 2 verified receipts, got {}",
         receipts.len()
     );
-    // Every collected receipt is attributed to a witness AID.
+    // Every receipt verified against its pinned witness AID for this event.
     assert!(receipts.iter().all(|r| !r.witness.as_str().is_empty()));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn said_at_seq_round_trips() {
+    let (addr, _state) = start_test_server().await;
+    let client = HttpAsyncWitnessClient::new(format!("http://{}", addr), 1);
+
+    let prefix = Prefix::new_unchecked("ETestPrefix".to_string());
+    let (event_json, said) = make_test_event("ETestPrefix", 0);
+    client.submit_event(&prefix, &event_json).await.unwrap();
+
+    // Seen seq → the first-seen SAID for that event.
+    let got = client.said_at_seq(&prefix, 0).await.unwrap();
+    assert_eq!(got, Some(said));
+
+    // Unseen seq → a gap (None), not an error.
+    let missing = client.said_at_seq(&prefix, 99).await.unwrap();
+    assert_eq!(missing, None);
 }
 
 #[tokio::test(flavor = "multi_thread")]

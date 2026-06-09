@@ -25,13 +25,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # glibc — pin the manylinux baseline (manylinux_2_28; the manylinux2014/_2_24
+          # images were retired after 2025-05-06, so "auto" would silently drift).
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            manylinux: auto
+            manylinux: "2_28"
             args: ""
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            manylinux: auto
+            manylinux: "2_28"
+            args: "--zig"
+          # musl — ship musllinux wheels so Alpine / static-libc consumers can install.
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+            args: ""
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
             args: "--zig"
           - os: macos-latest
             target: universal2-apple-darwin

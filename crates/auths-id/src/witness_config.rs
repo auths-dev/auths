@@ -13,6 +13,9 @@
 use std::path::Path;
 
 use auths_keri::Prefix;
+use auths_keri::witness::independence::{
+    Independence, IndependencePolicy, OperatorAttributes, WitnessOperatorInfo, spans_distinct,
+};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -45,6 +48,32 @@ pub struct WitnessRef {
     pub url: Url,
     /// The witness's pinned AID (curve-tagged CESR verkey prefix).
     pub aid: Prefix,
+    /// Operator-independence attributes for this witness ([`WitnessOperatorInfo`],
+    /// shared with the CT trust root). Absent ⇒ this witness cannot contribute to
+    /// proving quorum independence (fail closed, never "assume distinct").
+    #[serde(default)]
+    pub operator_info: Option<WitnessOperatorInfo>,
+}
+
+impl WitnessRef {
+    /// Build the [`OperatorAttributes`] for this witness, keyed by its AID.
+    ///
+    /// Returns `None` when the witness has no pinned `operator_info` — the caller
+    /// must treat that as "independence cannot be proven", not as a distinct
+    /// operator.
+    ///
+    /// Args:
+    /// * `self`: The pinned witness.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let attrs = witness_ref.operator_attributes();
+    /// ```
+    pub fn operator_attributes(&self) -> Option<OperatorAttributes> {
+        self.operator_info
+            .as_ref()
+            .map(|info| info.to_attributes(self.aid.as_str()))
+    }
 }
 
 /// Configuration for witness receipts on an identity.
@@ -118,6 +147,37 @@ impl WitnessConfig {
         self.witnesses.retain(|w| &w.url != url);
         self.witnesses.len() != before
     }
+
+    /// Whether the configured roster *could* form an independent quorum.
+    ///
+    /// A startup fail-fast check over the whole pinned set: if any witness lacks
+    /// `operator_info`, independence cannot be proven (fail closed). This is the
+    /// roster-capability check — NOT the security-decisive per-attestation check,
+    /// which must run [`spans_distinct`] over the ACTUAL cosigning quorum.
+    ///
+    /// Args:
+    /// * `policy`: The minimum-diversity thresholds to require.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let verdict = config.roster_independence(&IndependencePolicy::default());
+    /// if !verdict.independent { /* refuse to start, or warn */ }
+    /// ```
+    pub fn roster_independence(&self, policy: &IndependencePolicy) -> Independence {
+        let mut attesters = Vec::with_capacity(self.witnesses.len());
+        for w in &self.witnesses {
+            match w.operator_attributes() {
+                Some(a) => attesters.push(a),
+                None => {
+                    return Independence::cannot_prove(format!(
+                        "witness {} is missing operator/organization/jurisdiction/infrastructure attributes",
+                        w.aid.as_str()
+                    ));
+                }
+            }
+        }
+        spans_distinct(&attesters, policy)
+    }
 }
 
 /// What to do when the witness quorum cannot be met.
@@ -135,12 +195,121 @@ pub enum WitnessPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_keri::witness::independence::{
+        Infrastructure, Jurisdiction, OperatorId, Organization,
+    };
 
     fn ref_for(url: &str, aid: &str) -> WitnessRef {
         WitnessRef {
             url: url.parse().unwrap(),
             aid: Prefix::new_unchecked(aid.to_string()),
+            operator_info: None,
         }
+    }
+
+    fn tagged_ref(aid: &str, operator: &str, org: &str, jur: &str, infra: &str) -> WitnessRef {
+        WitnessRef {
+            url: "http://w:3333".parse().unwrap(),
+            aid: Prefix::new_unchecked(aid.to_string()),
+            operator_info: Some(WitnessOperatorInfo {
+                operator: OperatorId::new(operator).unwrap(),
+                organization: Organization::new(org).unwrap(),
+                jurisdiction: Jurisdiction::new(jur).unwrap(),
+                infrastructure: Infrastructure::new(infra).unwrap(),
+            }),
+        }
+    }
+
+    fn config_with(witnesses: Vec<WitnessRef>) -> WitnessConfig {
+        WitnessConfig {
+            witnesses,
+            threshold: 2,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn roster_independent_with_three_diverse_operators() {
+        let config = config_with(vec![
+            tagged_ref(
+                "BW_A0000000000000000000000000000000000000000",
+                "op-a",
+                "org-a",
+                "US",
+                "aws/us-east-1",
+            ),
+            tagged_ref(
+                "BW_B0000000000000000000000000000000000000000",
+                "op-b",
+                "org-b",
+                "DE",
+                "gcp/eu-west-1",
+            ),
+            tagged_ref(
+                "BW_C0000000000000000000000000000000000000000",
+                "op-c",
+                "org-c",
+                "JP",
+                "azure/jp-east",
+            ),
+        ]);
+        assert!(
+            config
+                .roster_independence(&IndependencePolicy::default())
+                .independent
+        );
+    }
+
+    #[test]
+    fn roster_fails_closed_when_attributes_missing() {
+        // One tagged, one untagged → cannot prove independence.
+        let config = config_with(vec![
+            tagged_ref(
+                "BW_A0000000000000000000000000000000000000000",
+                "op-a",
+                "org-a",
+                "US",
+                "aws/us-east-1",
+            ),
+            ref_for(
+                "http://w2:3333",
+                "BW_B0000000000000000000000000000000000000000",
+            ),
+        ]);
+        let verdict = config.roster_independence(&IndependencePolicy::default());
+        assert!(!verdict.independent);
+    }
+
+    #[test]
+    fn roster_same_org_is_not_independent() {
+        let config = config_with(vec![
+            tagged_ref(
+                "BW_A0000000000000000000000000000000000000000",
+                "op-a",
+                "acme",
+                "US",
+                "aws/us-east-1",
+            ),
+            tagged_ref(
+                "BW_B0000000000000000000000000000000000000000",
+                "op-b",
+                "acme",
+                "DE",
+                "gcp/eu-west-1",
+            ),
+            tagged_ref(
+                "BW_C0000000000000000000000000000000000000000",
+                "op-c",
+                "acme",
+                "JP",
+                "azure/jp-east",
+            ),
+        ]);
+        assert!(
+            !config
+                .roster_independence(&IndependencePolicy::default())
+                .independent
+        );
     }
 
     #[test]

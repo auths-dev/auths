@@ -1,0 +1,105 @@
+name: Release Go binding
+
+# The Go binding links the auths-verifier cdylib via cgo (CGO_ENABLED=1). A CGO_ENABLED=0
+# (static-Go / distroless) build cannot use it. This workflow builds the cdylib per platform
+# with the `ffi` feature, runs `go test ./...` against it, and uploads the prebuilt libs so a
+# release can ship them alongside the module (the per-platform-prebuilt-lib pattern).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Run mode"
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - release
+        default: dry-run
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: cdylib + go test (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: linux-x86_64-gnu
+            lib: libauths_verifier.so
+          - os: ubuntu-24.04-arm
+            label: linux-aarch64-gnu
+            lib: libauths_verifier.so
+          - os: macos-latest
+            label: darwin-aarch64
+            lib: libauths_verifier.dylib
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove rust-toolchain.toml
+        shell: bash
+        run: rm -f rust-toolchain.toml
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      # Build the cdylib WITH the ffi feature — the C-ABI symbols live behind it.
+      - name: Build cdylib (--features ffi)
+        run: cargo build --release -p auths_verifier --features ffi
+
+      - name: go test against the prebuilt lib (CGO_ENABLED=1)
+        working-directory: packages/auths-verifier-go
+        env:
+          CGO_ENABLED: "1"
+          CGO_LDFLAGS: "-L${{ github.workspace }}/target/release -lauths_verifier"
+          LD_LIBRARY_PATH: "${{ github.workspace }}/target/release"
+          DYLD_LIBRARY_PATH: "${{ github.workspace }}/target/release"
+        run: go test ./... -v
+
+      - name: Stage prebuilt lib
+        run: |
+          mkdir -p prebuilt/${{ matrix.label }}
+          cp target/release/${{ matrix.lib }} prebuilt/${{ matrix.label }}/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auths-verifier-go-${{ matrix.label }}
+          path: prebuilt/${{ matrix.label }}/*
+
+  package:
+    name: Package prebuilt libs
+    needs: [build-and-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages/auths-verifier-go/prebuilt
+          pattern: auths-verifier-go-*
+          merge-multiple: false
+
+      # The Go module ships its source; consumers build the cdylib (./build.sh) OR a release
+      # bundles these per-platform prebuilt libs. A `go install` of a CGO package needs a C
+      # toolchain on the consumer machine — documented in packages/auths-verifier-go/README.md.
+      - name: Bundle
+        run: |
+          cd packages/auths-verifier-go
+          tar czf auths-verifier-go-prebuilt.tar.gz prebuilt
+          echo "Bundled prebuilt libs for: $(ls prebuilt)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auths-verifier-go-prebuilt
+          path: packages/auths-verifier-go/auths-verifier-go-prebuilt.tar.gz

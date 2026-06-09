@@ -49,7 +49,9 @@ jobs:
           node-version: 22
 
       - name: Install pnpm
-        run: npm install -g pnpm
+        # Pinned to match the repo's packageManager field and local dev (pnpm 11
+        # drops the package.json `pnpm` field and changes build-script approval).
+        run: npm install -g pnpm@10.27.0
 
       - name: Install dependencies
         working-directory: packages/auths-node

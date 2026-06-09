@@ -12,6 +12,7 @@ pub mod identity;
 pub mod org;
 pub mod pairing;
 pub mod policy;
+pub mod presentation;
 pub mod sign;
 pub mod trust;
 pub mod types;

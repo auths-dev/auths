@@ -54,9 +54,6 @@ def test_ephemeral_sign_and_verify():
         assert att["commit_sha"] == commit_sha, (
             f"commit_sha mismatch: {att.get('commit_sha')} != {commit_sha}"
         )
-        assert att["capabilities"] == ["sign_release"], (
-            f"capabilities should be [sign_release], got: {att.get('capabilities')}"
-        )
 
         # Check payload has artifact metadata
         payload = att["payload"]

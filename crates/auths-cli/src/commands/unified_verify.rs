@@ -150,7 +150,10 @@ pub struct UnifiedVerifyCommand {
 ///
 /// Args:
 /// * `cmd` - Parsed UnifiedVerifyCommand.
-pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
+pub async fn handle_verify_unified(
+    cmd: UnifiedVerifyCommand,
+    env_config: &auths_sdk::core_config::EnvironmentConfig,
+) -> Result<()> {
     match parse_verify_target(&cmd.target) {
         VerifyTarget::GitRef(ref_str) => {
             let commit_cmd = VerifyCommitCommand {
@@ -161,8 +164,11 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
                 remote: cmd.remote,
                 oobi: cmd.oobi,
                 require_witnesses: cmd.require_witnesses,
+                // Honor --identity-bundle for commit/git-ref targets (previously dropped
+                // here, silently verifying against the wrong/default trust root).
+                identity_bundle: cmd.identity_bundle,
             };
-            handle_verify_commit(commit_cmd).await
+            handle_verify_commit(commit_cmd, env_config).await
         }
         VerifyTarget::Attestation(path_str) => {
             let verify_cmd = VerifyCommand {
@@ -193,9 +199,9 @@ pub async fn handle_verify_unified(cmd: UnifiedVerifyCommand) -> Result<()> {
 }
 
 impl crate::commands::executable::ExecutableCommand for UnifiedVerifyCommand {
-    fn execute(&self, _ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
+    fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
         let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(handle_verify_unified(self.clone()))
+        rt.block_on(handle_verify_unified(self.clone(), &ctx.env_config))
     }
 }
 

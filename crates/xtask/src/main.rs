@@ -6,6 +6,7 @@
     clippy::unwrap_used,
     clippy::expect_used
 )]
+mod check_admission_policy;
 mod check_anchor_discipline;
 mod check_clippy_sync;
 mod check_constant_time;
@@ -69,6 +70,10 @@ enum Command {
     /// RFC 6979 deterministic-ECDSA enforcement via tree-sitter.
     /// Bans `sign_with_rng`, `sign_digest_with_rng`, etc. in production.
     CheckRfc6979,
+    /// Witness Commons admission-policy enforcement (W.4.3).
+    /// Validates docs/governance/admission_policy.json against its schema +
+    /// independence/SLA rules; fails closed on any violation.
+    CheckAdmissionPolicy,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -91,5 +96,6 @@ fn main() -> anyhow::Result<()> {
         Command::CheckAnchorDiscipline => check_anchor_discipline::run(workspace_root()),
         Command::CheckConstantTime => check_constant_time::run(workspace_root()),
         Command::CheckRfc6979 => check_rfc6979::run(workspace_root()),
+        Command::CheckAdmissionPolicy => check_admission_policy::run(workspace_root()),
     }
 }

@@ -12,9 +12,11 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 
+use auths_rp::{Nonce, WirePresentation};
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::domains::credentials::{
-    CredentialVerdict, VerifierWitnessPolicy, issue, list, revoke, verify_by_said,
+    CredentialVerdict, PresentationChallenge, VerifierWitnessPolicy, issue, list,
+    present_credential, revoke, verify_by_said,
 };
 use auths_sdk::keychain::KeyAlias;
 use auths_sdk::signing::PassphraseProvider;
@@ -105,6 +107,25 @@ pub enum CredentialSubcommand {
         )]
         require_witnesses: bool,
     },
+
+    /// Present a credential: prove control of the subject AID and emit an `Auths-Presentation` header.
+    Present {
+        /// The subject (holder/agent) keychain alias whose current key signs the presentation.
+        #[arg(long, help = "The subject (holder) keychain alias to sign with.")]
+        subject: String,
+
+        /// The credential SAID to present.
+        #[arg(long = "said", help = "The credential SAID to present.")]
+        said: String,
+
+        /// The relying-party audience the presentation binds to.
+        #[arg(long, help = "The relying-party audience to bind to.")]
+        audience: String,
+
+        /// The base64url challenge nonce issued by the relying party.
+        #[arg(long, help = "The base64url challenge nonce from /v1/auth/challenge.")]
+        nonce: String,
+    },
 }
 
 /// JSON response for `credential issue`.
@@ -178,6 +199,42 @@ pub fn handle_credential(
                 println!("✓ Credential issued and anchored to the issuer KEL:");
                 println!("  credential: {}", issued.credential_said);
                 println!("  issuee:     {}", issued.issuee_did);
+            }
+            Ok(())
+        }
+
+        CredentialSubcommand::Present {
+            subject,
+            said,
+            audience,
+            nonce,
+        } => {
+            let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
+            let subject_alias = KeyAlias::new_unchecked(subject);
+            let challenge_nonce = Nonce::parse_b64url(&nonce).map_err(anyhow::Error::new)?;
+            let envelope = present_credential(
+                &ctx,
+                &subject_alias,
+                &said,
+                &audience,
+                PresentationChallenge::Challenge {
+                    nonce: challenge_nonce.as_bytes().to_vec(),
+                },
+            )
+            .map_err(anyhow::Error::new)?;
+            let token = WirePresentation::from_envelope(&envelope)
+                .to_token()
+                .map_err(anyhow::Error::new)?;
+            let header = format!("Auths-Presentation {token}");
+
+            if is_json_mode() {
+                JsonResponse::success(
+                    "credential present",
+                    serde_json::json!({ "authorization": header }),
+                )
+                .print()?;
+            } else {
+                println!("{header}");
             }
             Ok(())
         }

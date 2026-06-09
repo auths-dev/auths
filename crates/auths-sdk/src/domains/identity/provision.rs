@@ -189,7 +189,11 @@ fn build_witness_config(witness: Option<&WitnessOverride>) -> Option<WitnessConf
         .filter_map(|e| {
             let url = e.url.parse().ok()?;
             let aid = auths_keri::Prefix::new(e.aid.clone()).ok()?;
-            Some(WitnessRef { url, aid })
+            Some(WitnessRef {
+                url,
+                aid,
+                operator_info: None,
+            })
         })
         .collect();
     if witnesses.is_empty() {

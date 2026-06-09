@@ -7,10 +7,21 @@
 //! will be (re)mounted over the SDK as an HTTP surface is needed (tracked in E.9).
 
 pub mod app;
+/// Agent-passport control-plane handlers (issue/list/revoke) over the SDK workflows.
+pub mod control_plane;
 pub mod error;
 
 #[path = "middleware.rs"]
 pub mod middleware;
+pub mod rp_auth;
 
 pub use app::{build_router, AppState};
+pub use control_plane::{
+    BatchRevocationResponse, BatchRevokeRequest, FleetMember, FleetResponse, IssuePassportRequest,
+    PassportListResponse, PassportSummary, RevocationReceipt,
+};
 pub use error::ApiError;
+pub use rp_auth::{
+    challenge_handler, rp_auth_middleware, AuthedPrincipal, ChallengeMintState, ChallengeResponse,
+    KeriPresentationVerifier, PresentationVerifier, RpAuthState,
+};

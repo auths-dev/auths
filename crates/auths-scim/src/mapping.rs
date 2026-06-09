@@ -3,6 +3,7 @@
 //! Produces intermediate DTOs that the server layer translates to SDK config types.
 //! This keeps `auths-scim` decoupled from `auths-sdk`.
 
+use auths_verifier::IdentityDID;
 use chrono::{DateTime, Utc};
 
 use crate::error::ScimError;
@@ -128,8 +129,11 @@ pub fn provision_result_to_scim_user(
             location: format!("{}/Users/{}", base_url, result.id),
         },
         auths_extension: Some(AuthsAgentExtension {
-            identity_did: result.identity_did.clone(),
+            // Fail-closed: the SDK yields a valid `did:keri`, but a malformed value
+            // renders as absent rather than flowing through as a bad DID.
+            identity_did: IdentityDID::parse(&result.identity_did).ok(),
             capabilities: request.capabilities.clone(),
+            revoked: false,
         }),
     }
 }
@@ -196,8 +200,10 @@ mod tests {
                 location: String::new(),
             },
             auths_extension: Some(AuthsAgentExtension {
-                identity_did: String::new(),
+                // Read-only/server-assigned: an inbound IdP create omits the DID.
+                identity_did: None,
                 capabilities: vec!["sign:commit".into()],
+                revoked: false,
             }),
         }
     }
@@ -254,7 +260,10 @@ mod tests {
         assert_eq!(user.user_name, "bot");
         assert!(user.meta.location.contains("uuid-123"));
         let ext = user.auths_extension.unwrap();
-        assert_eq!(ext.identity_did, "did:keri:Eabc");
+        assert_eq!(
+            ext.identity_did.as_ref().map(|d| d.as_str()),
+            Some("did:keri:Eabc")
+        );
     }
 
     #[test]

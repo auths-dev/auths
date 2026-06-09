@@ -12,8 +12,6 @@ Verify commits and discover identity layouts.
 
 ::: auths.git.ErrorCode
 
-::: auths.git.generate_allowed_signers
-
 ::: auths.git.discover_layout
 
 ::: auths.git.verify_commit_range

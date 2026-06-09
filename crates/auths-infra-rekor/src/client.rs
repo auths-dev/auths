@@ -12,7 +12,7 @@ use auths_core::ports::transparency_log::{LogError, LogMetadata, LogSubmission, 
 use auths_transparency::checkpoint::SignedCheckpoint;
 use auths_transparency::proof::{ConsistencyProof, InclusionProof};
 use auths_transparency::types::{LogOrigin, MerkleHash};
-use auths_verifier::{DevicePublicKey, Ed25519PublicKey};
+use auths_verifier::{DevicePublicKey, EcdsaP256PublicKey, EcdsaP256Signature, Ed25519PublicKey};
 
 use crate::error::map_rekor_status;
 use crate::types::*;
@@ -153,10 +153,16 @@ impl RekorClient {
     }
 
     /// Parse the C2SP checkpoint string from a Rekor response.
+    ///
+    /// Rekor checkpoints are C2SP signed notes in the **standard** wire layout
+    /// (`base64(key_id[4] || signature)`, no leading algorithm byte) signed with
+    /// ECDSA-P256. We parse the body, then resolve the ECDSA signature + key into
+    /// the `ecdsa_checkpoint_*` fields so the bundle can be verified downstream
+    /// via [`auths_transparency::verify_checkpoint_signature`]. The Ed25519
+    /// `log_signature`/`log_public_key` fields are placeholders — verification
+    /// dispatches on `TrustRoot.signature_algorithm`, never on them.
     fn parse_checkpoint_string(&self, checkpoint_str: &str) -> Result<SignedCheckpoint, LogError> {
-        // The checkpoint is a C2SP signed note. Parse it using
-        // auths-transparency's note parser.
-        let (note_body, _signatures) = auths_transparency::parse_signed_note(checkpoint_str)
+        let (note_body, signatures) = auths_transparency::parse_signed_note_c2sp(checkpoint_str)
             .map_err(|e| {
                 LogError::InvalidResponse(format!("failed to parse checkpoint note: {e}"))
             })?;
@@ -169,32 +175,55 @@ impl RekorClient {
                 LogError::InvalidResponse(format!("failed to parse checkpoint body: {e}"))
             })?;
 
-        // For the ECDSA production shard, we extract the signature from the
-        // signed note and store it in the ecdsa fields. The log_signature
-        // and log_public_key fields use Ed25519 placeholders.
-        //
-        // The actual checkpoint signature verification dispatches on
-        // TrustRoot.signature_algorithm at verify time.
-        let ecdsa_sig = None;
-        let ecdsa_pk = None;
-
-        // If we have note signatures, try to extract the first one
-        if let Some(sig) = _signatures.first() {
-            // The raw signature bytes from the note (algorithm byte + key_id + signature)
-            // For ECDSA, we'd need the DER signature. For now, store what we have.
-            // Full ECDSA extraction will be completed when Rekor adapter is tested
-            // against production.
-            let _ = sig; // Will be used when ECDSA parsing is wired
-        }
+        let (ecdsa_checkpoint_signature, ecdsa_checkpoint_key) =
+            self.extract_ecdsa_checkpoint_signature(&signatures)?;
 
         Ok(SignedCheckpoint {
             checkpoint,
             log_signature: auths_verifier::Ed25519Signature::default(),
             log_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
             witnesses: vec![],
-            ecdsa_checkpoint_signature: ecdsa_sig,
-            ecdsa_checkpoint_key: ecdsa_pk,
+            ecdsa_checkpoint_signature,
+            ecdsa_checkpoint_key,
         })
+    }
+
+    /// Resolve the Rekor ECDSA checkpoint signature + key from the parsed note
+    /// signatures, matching on the pinned Rekor key's C2SP key ID.
+    ///
+    /// The note carries only a 4-byte key-ID hint, not the key itself, so the
+    /// signing key is taken from the pinned Rekor SPKI in the compiled-in trust
+    /// config (`auths_transparency::TrustConfig::default_config`) and matched by
+    /// key ID. Returns `(None, None)` when no signature matches the pinned key
+    /// (e.g. a checkpoint from a shard we don't pin) — verification downstream
+    /// then reports a missing ECDSA signature rather than trusting an
+    /// unrecognized key. The verifier re-checks this key against the pinned key
+    /// byte-for-byte before use.
+    fn extract_ecdsa_checkpoint_signature(
+        &self,
+        signatures: &[auths_transparency::C2spSignature],
+    ) -> Result<(Option<EcdsaP256Signature>, Option<EcdsaP256PublicKey>), LogError> {
+        let trust = auths_transparency::TrustConfig::default_config();
+        let Some(root) = trust.get_log(&self.log_id) else {
+            return Ok((None, None));
+        };
+        let Some(pinned_der) = root.ecdsa_log_public_key_der.as_deref() else {
+            return Ok((None, None));
+        };
+        let expected_key_id = auths_transparency::compute_ecdsa_key_id(pinned_der);
+
+        let Some(sig) = signatures.iter().find(|s| s.key_id == expected_key_id) else {
+            return Ok((None, None));
+        };
+
+        let ecdsa_sig = EcdsaP256Signature::from_der(&sig.signature).map_err(|e| {
+            LogError::InvalidResponse(format!("invalid ECDSA checkpoint signature: {e}"))
+        })?;
+        let ecdsa_pk = EcdsaP256PublicKey::from_der(pinned_der).map_err(|e| {
+            LogError::InvalidResponse(format!("invalid pinned Rekor ECDSA key: {e}"))
+        })?;
+
+        Ok((Some(ecdsa_sig), Some(ecdsa_pk)))
     }
 
     /// Handle HTTP 409 Conflict (duplicate entry): fetch existing entry.
@@ -523,6 +552,31 @@ mod tests {
 
     /// Shared RekorClient — TLS client construction is expensive (~10s).
     static TEST_CLIENT: LazyLock<RekorClient> = LazyLock::new(|| RekorClient::public().unwrap());
+
+    #[test]
+    fn rekor_checkpoint_fixture_verifies_end_to_end() {
+        // Byte-exact checkpoint captured from `GET https://rekor.sigstore.dev/api/v1/log`.
+        // The signature was verified offline against the pinned Rekor SPKI before
+        // freezing it here, so this test is deterministic and network-free.
+        const FIXTURE: &str = "rekor.sigstore.dev - 1193050959916656506\n1634484101\nXlYb/F52mISv85z17ae/cZLT5j+8LDmTwa2ic+dwUPg=\n\n\u{2014} rekor.sigstore.dev wNI9ajBFAiBDPGJysdkv+aGe3HhPg82iJtR8c1SOnopVC+WQmUCCEwIhAKKIzeH4IGxL/zG5U0q2zzwDo9UVBU8IezhcqBgbZ2cj\n";
+
+        let client = &*TEST_CLIENT;
+        let signed = client.parse_checkpoint_string(FIXTURE).unwrap();
+
+        // ECDSA fields are populated — no Ed25519 zero-placeholder path.
+        assert!(signed.ecdsa_checkpoint_signature.is_some());
+        assert!(signed.ecdsa_checkpoint_key.is_some());
+
+        // End-to-end: the checkpoint verifies against the pinned Rekor trust root.
+        let trust = auths_transparency::TrustConfig::default_config();
+        let root = trust.get_log("sigstore-rekor").unwrap();
+        let status = auths_transparency::verify_checkpoint_signature(&signed, root);
+        assert_eq!(
+            status,
+            auths_transparency::CheckpointStatus::Verified,
+            "pinned-key checkpoint verification failed: {status:?}"
+        );
+    }
 
     #[test]
     fn payload_size_limit() {

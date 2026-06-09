@@ -1,0 +1,45 @@
+{
+  "name": "@auths/express",
+  "version": "0.1.0",
+  "description": "Drop-in Express middleware that authenticates an Auths-Presentation request and attaches a verified Principal.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/auths-dev/auths"
+  },
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@auths-dev/sdk": ">=0.1.0",
+    "express": "^4.18.0 || ^5.0.0"
+  },
+  "devDependencies": {
+    "@auths-dev/sdk": "file:../auths-node",
+    "@types/express": "^5.0.0",
+    "@types/node": "^25.3.5",
+    "@types/supertest": "^6.0.0",
+    "express": "^5.0.0",
+    "supertest": "^7.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

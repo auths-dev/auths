@@ -12,3 +12,4 @@ mod sign_verify;
 mod sign_verify_roundtrip;
 mod verify;
 mod verify_commit;
+mod verify_identity_bundle;

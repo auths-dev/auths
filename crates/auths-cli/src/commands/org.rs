@@ -2,7 +2,6 @@ use anyhow::{Context, Result, anyhow};
 use auths_sdk::attestation::create_signed_attestation;
 use auths_sdk::attestation::create_signed_revocation;
 use auths_sdk::identity::DidResolver;
-use auths_sdk::identity::initialize_registry_identity;
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Parser, Subcommand};
 use serde_json;
@@ -19,7 +18,12 @@ use auths_sdk::storage_layout::{StorageLayoutConfig, layout};
 use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
-use auths_sdk::workflows::org::{Role, add_member, list_members, member_role_order, revoke_member};
+use auths_sdk::workflows::commit_trust::commit_signer_trailers;
+use auths_sdk::workflows::org::{
+    AuthorityAtSigning, Role, add_member, build_org_bundle, classify_authority_at_signing,
+    create_org, fleet_metrics, list_members, list_offboarding_records, load_offboarding_record,
+    load_org_policy, member_role_order, revoke_member, set_org_policy, walk_delegation_chain,
+};
 
 use crate::factories::storage::build_auths_context;
 use auths_verifier::Prefix;
@@ -194,6 +198,55 @@ pub enum OrgSubcommand {
         include_revoked: bool,
     },
 
+    /// Classify a member's authority at an artifact's signing position (by KEL position)
+    Audit {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Member identity ID to classify
+        #[arg(long = "member", visible_alias = "member-did")]
+        member_did: String,
+
+        /// Artifact path (shown in the report for context)
+        #[arg(long)]
+        artifact: Option<PathBuf>,
+
+        /// The artifact's in-band signing KEL position (e.g. a commit's `Auths-Anchor-Seq`)
+        #[arg(long)]
+        signed_at: Option<u128>,
+
+        /// Emit the typed verdict as JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+    },
+
+    /// List durable off-boarding records for an organization
+    OffboardingLog {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Restrict to a single member
+        #[arg(long = "member", visible_alias = "member-did")]
+        member_did: Option<String>,
+
+        /// Emit the records as JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+    },
+
+    /// Produce a self-contained, air-gapped provenance bundle for an organization
+    Bundle {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Output path for the bundle file
+        #[arg(long)]
+        out: PathBuf,
+    },
+
     /// Join an organization using an invite code
     Join {
         /// Invite code (e.g. from `auths org join --code C23BD59F`)
@@ -203,6 +256,74 @@ pub enum OrgSubcommand {
         /// Registry URL to contact
         #[arg(long, default_value = "https://auths-registry.fly.dev")]
         registry: String,
+    },
+
+    /// Manage the org-wide authorization policy (anchored on the org KEL)
+    Policy {
+        /// Policy action (set/show)
+        #[command(subcommand)]
+        action: PolicyAction,
+    },
+
+    /// Show fleet governance metrics for an organization
+    Metrics {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Emit the metrics as JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+    },
+
+    /// Trace an agent's delegation chain to the authorizing root + live-at-signing
+    Trace {
+        /// A signed commit SHA — traces its signer (`Auths-Device`) at its anchor-seq
+        #[arg(long)]
+        commit: Option<String>,
+
+        /// A member/agent identity ID to trace directly
+        #[arg(long = "member", visible_alias = "member-did")]
+        member: Option<String>,
+
+        /// The in-band signing KEL position (used with `--member`; `--commit` reads it
+        /// from the commit's `Auths-Anchor-Seq` trailer)
+        #[arg(long)]
+        signed_at: Option<u128>,
+
+        /// Emit the chain as JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
+    },
+}
+
+/// Actions for the org-wide authorization policy.
+#[derive(Subcommand, Debug, Clone)]
+pub enum PolicyAction {
+    /// Anchor a new org-wide policy from a JSON file (a serialized policy `Expr`)
+    Set {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Path to the policy JSON file (a serialized `Expr`)
+        #[arg(long)]
+        file: PathBuf,
+
+        /// Org signing key alias (defaults to the org slug alias)
+        #[arg(long)]
+        key: Option<String>,
+    },
+
+    /// Show the org's currently-anchored policy
+    Show {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Emit the raw policy JSON
+        #[arg(long, action = ArgAction::SetTrue)]
+        json: bool,
     },
 }
 
@@ -279,200 +400,63 @@ pub fn handle_org(
             key,
             metadata_file,
         } => {
-            // Generate a key alias if not provided
-            let key_alias = key.unwrap_or_else(|| {
-                format!(
-                    "org-{}",
-                    name.chars()
-                        .filter(|c| c.is_alphanumeric())
-                        .take(20)
-                        .collect::<String>()
-                        .to_lowercase()
-                )
-            });
+            let key_alias = key.unwrap_or_else(|| org_slug_alias(&name));
 
             println!("🏛️  Initializing new organization identity...");
-            println!("   Organization Name: {}", name);
-            println!("   Repository path:   {:?}", repo_path);
-            println!("   Local Key Alias:   {}", key_alias);
-            println!("   Using Identity Ref: '{}'", config.identity_ref);
+            println!("   Organization Name: {name}");
+            println!("   Repository path:   {repo_path:?}");
+            println!("   Local Key Alias:   {key_alias}");
 
-            // --- Ensure Git repo exists ---
-            use crate::factories::storage::{ensure_git_repo, open_git_repo};
+            use crate::factories::storage::ensure_git_repo;
+            ensure_git_repo(&repo_path).context("Failed to initialize Git repository")?;
 
-            let identity_storage_check = RegistryIdentityStorage::new(repo_path.clone());
-            if repo_path.exists() {
-                match open_git_repo(&repo_path) {
-                    Ok(_) => {
-                        println!("   Git repository found.");
-                        if identity_storage_check.load_identity().is_ok() {
-                            return Err(anyhow!(
-                                "An identity already exists at {:?}. Aborting.",
-                                repo_path
-                            ));
-                        }
-                    }
-                    Err(_) => {
-                        println!("   Path exists but is not a Git repo. Initializing...");
-                        ensure_git_repo(&repo_path)
-                            .context("Failed to initialize Git repository")?;
-                    }
+            let extra_metadata = match &metadata_file {
+                Some(mf) if mf.exists() => {
+                    let raw = fs::read_to_string(mf)
+                        .with_context(|| format!("Failed to read metadata file: {mf:?}"))?;
+                    let value: serde_json::Value = serde_json::from_str(&raw)
+                        .with_context(|| format!("Invalid JSON in metadata file: {mf:?}"))?;
+                    println!("   Merged additional metadata from {mf:?}");
+                    Some(value)
                 }
-            } else {
-                println!("   Creating Git repo directory...");
-                ensure_git_repo(&repo_path)
-                    .context("Failed to create and initialize Git repository")?;
-            }
-
-            // --- Build org metadata ---
-            let mut metadata_json = serde_json::json!({
-                "type": "org",
-                "name": name,
-                "created_at": now.to_rfc3339()
-            });
-
-            // Merge with additional metadata file if provided
-            if let Some(ref mf) = metadata_file
-                && mf.exists()
-            {
-                let metadata_content = fs::read_to_string(mf)
-                    .with_context(|| format!("Failed to read metadata file: {:?}", mf))?;
-                let additional: serde_json::Value = serde_json::from_str(&metadata_content)
-                    .with_context(|| format!("Invalid JSON in metadata file: {:?}", mf))?;
-
-                // Merge additional metadata (preserving type and name)
-                if let (Some(base), Some(add)) =
-                    (metadata_json.as_object_mut(), additional.as_object())
-                {
-                    for (k, v) in add {
-                        if k != "type" && k != "name" {
-                            base.insert(k.clone(), v.clone());
-                        }
-                    }
-                }
-                println!("   Merged additional metadata from {:?}", mf);
-            }
-
-            println!(
-                "   Org metadata: {}",
-                serde_json::to_string(&metadata_json)?
-            );
-
-            // --- Generate KERI Identity ---
-            println!("   Creating KERI-based organization identity (did:keri)...");
-
-            let backend = std::sync::Arc::new(GitRegistryBackend::from_config_unchecked(
-                RegistryConfig::single_tenant(&repo_path),
-            ));
-            let key_alias = KeyAlias::new_unchecked(key_alias);
-            let (controller_did, alias) = initialize_registry_identity(
-                backend,
-                &key_alias,
-                passphrase_provider.as_ref(),
-                &get_platform_keychain()?,
-                None,
-                auths_crypto::CurveType::default(),
-            )
-            .context("Failed to initialize org identity")?;
-
-            // --- Create admin self-attestation ---
-            println!("   Creating admin attestation for organization creator...");
-
-            let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
-            let managed_identity = identity_storage
-                .load_identity()
-                .context("Failed to load newly created org identity")?;
-            let rid = managed_identity.storage_id;
-
-            // Resolve the org's own public key for self-attestation
-            let org_resolved = resolver.resolve(controller_did.as_str()).with_context(|| {
-                format!(
-                    "Failed to resolve public key for org identity: {}",
-                    controller_did
-                )
-            })?;
-            let org_pk_bytes = org_resolved.public_key_bytes().to_vec();
-            let org_curve = org_resolved.curve();
-
-            let meta = AttestationMetadata {
-                note: Some(format!("Organization '{}' root admin", name)),
-                timestamp: Some(now),
-                expires_at: None, // Admin attestation doesn't expire
+                _ => None,
             };
 
-            let signer = StorageSigner::new(get_platform_keychain()?);
-            #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
-            let org_did = CanonicalDid::new_unchecked(controller_did.to_string());
-
-            let attestation = create_signed_attestation(
-                now,
-                auths_sdk::attestation::AttestationInput {
-                    rid: &rid,
-                    identity_did: &controller_did,
-                    subject: &org_did,
-                    device_public_key: &org_pk_bytes,
-                    device_curve: org_curve,
-                    payload: Some(serde_json::json!({
-                        "org_role": "admin",
-                        "org_name": name
-                    })),
-                    meta: &meta,
-                    identity_alias: Some(&alias),
-                    device_alias: None, // Self-attestation, no device signature
-                    delegated_by: None,
-                    commit_sha: None,
-                    signer_type: None,
-                },
-                &signer,
-                passphrase_provider.as_ref(),
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let created = create_org(
+                &sdk_ctx,
+                &name,
+                &KeyAlias::new_unchecked(key_alias),
+                auths_crypto::CurveType::default(),
+                extra_metadata,
             )
-            .context("Failed to create admin attestation")?;
-
-            {
-                let backend = GitRegistryBackend::from_config_unchecked(
-                    RegistryConfig::single_tenant(&repo_path),
-                );
-                let mut batch = auths_sdk::keri::AtomicWriteBatch::new();
-                batch.stage_attestation(attestation);
-                if let Ok(prefix) = auths_sdk::keri::parse_did_keri(controller_did.as_str()) {
-                    let _ = auths_sdk::keri::try_stage_anchor(
-                        &backend,
-                        &signer,
-                        &alias,
-                        passphrase_provider.as_ref(),
-                        &prefix,
-                        &serde_json::json!({}),
-                        &mut batch,
-                    );
-                }
-                backend
-                    .commit_batch(&batch)
-                    .context("Failed to write admin attestation")?;
-            }
+            .with_context(|| format!("Failed to create organization '{name}'"))?;
 
             println!("\n✅ Organization identity initialized successfully!");
-            println!("   Org Identity ID:    {}", controller_did);
-            println!("   Org Name:           {}", name);
-            println!("   Repo Path:          {:?}", repo_path);
-            println!("   Key Alias:          {}", alias);
+            println!("   Org Identity ID:    {}", created.org_did);
+            println!("   Org Name:           {name}");
+            println!("   Repo Path:          {repo_path:?}");
+            println!("   Key Alias:          {}", created.key_alias);
             println!("   Admin Role:         Granted with all capabilities");
-
-            if let Some(did_prefix) = controller_did.as_str().strip_prefix("did:keri:") {
+            println!(
+                "   KEL Ref:            '{}'",
+                layout::keri_kel_ref(&Prefix::new_unchecked(created.org_prefix.clone()))
+            );
+            println!("   Identity Ref:       '{}'", config.identity_ref);
+            if let Ok(org_did) = CanonicalDid::parse(&created.org_did) {
                 println!(
-                    "   KEL Ref:            '{}'",
-                    layout::keri_kel_ref(&Prefix::new_unchecked(did_prefix.to_string()))
+                    "   Member Ref:         '{}'",
+                    config.org_member_ref(&created.org_did, &org_did)
                 );
             }
-
-            println!("   Identity Ref:       '{}'", config.identity_ref);
-            println!(
-                "   Member Ref:         '{}'",
-                config.org_member_ref(controller_did.as_str(), &org_did)
-            );
             println!("\n🔑 Store your key passphrase securely.");
             println!(
                 "   You can now add members with: auths org add-member --org {} --member <identity-id> --role <role>",
-                controller_did
+                created.org_did
             );
 
             Ok(())
@@ -796,7 +780,7 @@ pub fn handle_org(
         OrgSubcommand::RevokeMember {
             org,
             member_did: member,
-            note: _note,
+            note,
             key,
             dry_run,
         } => {
@@ -823,12 +807,31 @@ pub fn handle_org(
                 &ctx.env_config,
                 Some(passphrase_provider.clone()),
             )?;
-            revoke_member(&sdk_ctx, &org_prefix, &org_alias, &member)
+            let record = revoke_member(&sdk_ctx, &org_prefix, &org_alias, &member, note)
                 .context("Failed to revoke member")?;
 
-            println!("\n✅ Member revoked (revocation anchored in the org KEL):");
-            println!("   Member:     {}", member);
-            println!("   Revoked by: {}", invoker_did);
+            match record {
+                Some(signed) => {
+                    println!("\n✅ Member revoked (revocation anchored in the org KEL):");
+                    println!("   Member:        {}", member);
+                    println!("   Revoked by:    {}", invoker_did);
+                    println!(
+                        "   Revoked at:    KEL seq {} (authority ends after this position, not by wall-clock)",
+                        signed.record.revoked_at_seq
+                    );
+                    println!("   Seal SAID:     {}", signed.record.revocation_seal_said);
+                    let role = signed.record.prior_role.as_deref().unwrap_or("unknown");
+                    println!("   Lost role:     {role}");
+                    if !signed.record.prior_caps.is_empty() {
+                        println!("   Lost caps:     {}", signed.record.prior_caps.join(", "));
+                    }
+                    println!("   Off-boarding record stored (signed, retrievable by org/member).");
+                }
+                None => {
+                    println!("\nℹ️  Member already revoked — no change (idempotent).");
+                    println!("   Member: {member}");
+                }
+            }
 
             Ok(())
         }
@@ -897,10 +900,322 @@ pub fn handle_org(
             Ok(())
         }
 
+        OrgSubcommand::Audit {
+            org,
+            member_did,
+            artifact,
+            signed_at,
+            json,
+        } => {
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let member_prefix = Prefix::new_unchecked(
+                member_did
+                    .strip_prefix("did:keri:")
+                    .unwrap_or(&member_did)
+                    .to_string(),
+            );
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let verdict =
+                classify_authority_at_signing(&sdk_ctx, &org_prefix, &member_prefix, signed_at)
+                    .context("Failed to classify authority at signing")?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&verdict)?);
+                return Ok(());
+            }
+
+            if let Some(path) = &artifact {
+                println!("Artifact: {path:?}");
+            }
+            println!("Member:   {member_did}");
+            match &verdict {
+                AuthorityAtSigning::AuthorizedBeforeRevocation => println!(
+                    "Verdict:  ✅ AuthorizedBeforeRevocation — authority was live at the signing position"
+                ),
+                AuthorityAtSigning::RejectedAfterRevocation { revoked_at } => println!(
+                    "Verdict:  🛑 RejectedAfterRevocation {{ revoked_at: {revoked_at} }} — signed at/after the revocation KEL position"
+                ),
+                AuthorityAtSigning::RejectedRevokedPositionUnknown { revoked_at } => println!(
+                    "Verdict:  🛑 RejectedRevokedPositionUnknown {{ revoked_at: {revoked_at} }} — revoked; artifact carries no in-band signing position"
+                ),
+                AuthorityAtSigning::NeverDelegated => {
+                    println!("Verdict:  ❌ NeverDelegated — the org never delegated this member")
+                }
+            }
+            Ok(())
+        }
+
+        OrgSubcommand::OffboardingLog {
+            org,
+            member_did,
+            json,
+        } => {
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+
+            let records = match &member_did {
+                Some(m) => {
+                    let member_prefix =
+                        Prefix::new_unchecked(m.strip_prefix("did:keri:").unwrap_or(m).to_string());
+                    load_offboarding_record(&sdk_ctx, &org_prefix, &member_prefix)
+                        .context("Failed to load off-boarding record")?
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                }
+                None => list_offboarding_records(&sdk_ctx, &org_prefix)
+                    .context("Failed to list off-boarding records")?,
+            };
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&records)?);
+                return Ok(());
+            }
+
+            if records.is_empty() {
+                println!("No off-boarding records for organization {org}.");
+                return Ok(());
+            }
+
+            println!("Off-boarding records for {org} ({} total):", records.len());
+            for r in &records {
+                println!("─────────────────────────────────────────");
+                println!("  Member:     {}", r.record.member_did);
+                println!(
+                    "  Revoked at: KEL seq {} (by position, not wall-clock)",
+                    r.record.revoked_at_seq
+                );
+                println!("  Seal SAID:  {}", r.record.revocation_seal_said);
+                if let Some(reason) = &r.record.reason {
+                    println!("  Reason:     {reason}");
+                }
+                let role = r.record.prior_role.as_deref().unwrap_or("unknown");
+                println!("  Lost role:  {role}");
+                if !r.record.prior_caps.is_empty() {
+                    println!("  Lost caps:  {}", r.record.prior_caps.join(", "));
+                }
+                println!("  Recorded:   {}", r.record.recorded_at);
+            }
+            Ok(())
+        }
+
+        OrgSubcommand::Bundle { org, out } => {
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let bundle =
+                build_org_bundle(&sdk_ctx, &org_prefix).context("Failed to build org bundle")?;
+            let json = bundle
+                .to_canonical_json()
+                .context("Failed to canonicalize org bundle")?;
+            fs::write(&out, json).with_context(|| format!("Failed to write bundle to {out:?}"))?;
+
+            println!("✅ Air-gapped org bundle written to {out:?}");
+            println!("   Org:            {}", bundle.org_did.as_str());
+            println!("   Built as-of:    KEL seq {}", bundle.built_at_org_seq);
+            println!("   Member KELs:    {}", bundle.member_kels.len());
+            println!("   Off-boardings:  {}", bundle.offboarding_records.len());
+            println!("   Pinned roots:   {}", bundle.pinned_roots.len());
+            println!(
+                "   Verifies offline (no network): auths artifact verify {out:?} --offline --roots .auths/roots"
+            );
+            Ok(())
+        }
+
         OrgSubcommand::Join { code, registry } => {
             handle_join(&code, &registry, passphrase_provider.as_ref())
         }
+
+        OrgSubcommand::Policy { action } => match action {
+            PolicyAction::Set { org, file, key } => {
+                let org_prefix = Prefix::new_unchecked(
+                    org.strip_prefix("did:keri:").unwrap_or(&org).to_string(),
+                );
+                let org_alias =
+                    KeyAlias::new_unchecked(key.unwrap_or_else(|| org_slug_alias(&org)));
+                let policy_json = fs::read(&file)
+                    .with_context(|| format!("Failed to read policy file {file:?}"))?;
+
+                let sdk_ctx = build_auths_context(
+                    &repo_path,
+                    &ctx.env_config,
+                    Some(passphrase_provider.clone()),
+                )?;
+                let result = set_org_policy(&sdk_ctx, &org_prefix, &org_alias, &policy_json)
+                    .context("Failed to set org policy")?;
+
+                println!("✅ Org policy anchored on the KEL:");
+                println!("   Org:         {}", result.org_did);
+                println!("   Policy hash: {}", result.policy_hash);
+                println!("   Requires:\n{}", result.description);
+                Ok(())
+            }
+
+            PolicyAction::Show { org, json } => {
+                let org_prefix = Prefix::new_unchecked(
+                    org.strip_prefix("did:keri:").unwrap_or(&org).to_string(),
+                );
+                let sdk_ctx = build_auths_context(
+                    &repo_path,
+                    &ctx.env_config,
+                    Some(passphrase_provider.clone()),
+                )?;
+
+                match load_org_policy(&sdk_ctx, &org_prefix).context("Failed to load org policy")? {
+                    Some(policy) => {
+                        if json {
+                            println!("{}", policy.source_json);
+                        } else {
+                            println!("Org:         did:keri:{}", org_prefix.as_str());
+                            println!("Policy hash: {}", policy.policy_hash);
+                            println!("Requires:\n{}", policy.compiled.describe());
+                        }
+                    }
+                    None => println!("No policy anchored for organization {org}."),
+                }
+                Ok(())
+            }
+        },
+
+        OrgSubcommand::Metrics { org, json } => {
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let m =
+                fleet_metrics(&sdk_ctx, &org_prefix).context("Failed to compute fleet metrics")?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&m)?);
+                return Ok(());
+            }
+            println!("Fleet metrics for {}", m.org_did);
+            println!("  Agents (total):           {}", m.agents_total);
+            println!("  Agents (live):            {}", m.agents_live);
+            println!("  Agents (revoked):         {}", m.agents_revoked);
+            println!(
+                "  Traceable to a human:     {}/{} ({:.0}%)",
+                m.agents_traceable_to_human,
+                m.agents_live,
+                m.traceability_fraction * 100.0
+            );
+            println!(
+                "  Revocation-to-effect:     {} KEL positions (positional — effective at the anchor)",
+                m.revocation_effect_latency_positions
+            );
+            Ok(())
+        }
+
+        OrgSubcommand::Trace {
+            commit,
+            member,
+            signed_at,
+            json,
+        } => {
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+
+            let (leaf_prefix, position) = if let Some(sha) = commit {
+                let raw = read_commit_object(&sha)?;
+                let (_root, device) = commit_signer_trailers(&raw).ok_or_else(|| {
+                    anyhow!("commit {sha} carries no Auths-Id/Auths-Device trailer")
+                })?;
+                let pos = parse_anchor_seq_trailer(&raw);
+                let prefix = Prefix::new_unchecked(
+                    device
+                        .strip_prefix("did:keri:")
+                        .unwrap_or(&device)
+                        .to_string(),
+                );
+                (prefix, pos)
+            } else if let Some(m) = member {
+                let prefix =
+                    Prefix::new_unchecked(m.strip_prefix("did:keri:").unwrap_or(&m).to_string());
+                (prefix, signed_at)
+            } else {
+                return Err(anyhow!("provide --commit <sha> or --member <did> to trace"));
+            };
+
+            let chain = walk_delegation_chain(&sdk_ctx, &leaf_prefix, position)
+                .context("Failed to walk the delegation chain")?;
+
+            if json {
+                println!("{}", serde_json::to_string_pretty(&chain)?);
+                return Ok(());
+            }
+
+            println!("Trace: {}", chain.leaf_did);
+            match position {
+                Some(p) => println!("  Signed at:       KEL position {p}"),
+                None => println!(
+                    "  Signed at:       (no in-band position — upstream revocations fail closed)"
+                ),
+            }
+            println!("  Root:            {}", chain.root_did);
+            println!("  Depth:           {} hop(s)", chain.depth);
+            for hop in &chain.hops {
+                let role = hop.role.as_deref().unwrap_or("-");
+                let caps = if hop.capabilities.is_empty() {
+                    String::new()
+                } else {
+                    format!(" caps=[{}]", hop.capabilities.join(", "))
+                };
+                println!(
+                    "    {} ← {} [{}]{}  authority={:?}",
+                    hop.child_did, hop.delegator_did, role, caps, hop.authority_at_signing
+                );
+            }
+            if chain.live_at_signing {
+                println!("  Live at signing: ✅ yes");
+            } else {
+                println!(
+                    "  Live at signing: 🛑 no (a chain authority was revoked at/by the signing position)"
+                );
+            }
+            Ok(())
+        }
     }
+}
+
+/// Read a raw git commit object (`git cat-file commit <sha>`).
+fn read_commit_object(sha: &str) -> Result<String> {
+    let out = std::process::Command::new("git")
+        .args(["cat-file", "commit", sha])
+        .output()
+        .context("failed to run git cat-file")?;
+    if !out.status.success() {
+        return Err(anyhow!(
+            "git cat-file commit {sha} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    String::from_utf8(out.stdout).context("commit object is not valid UTF-8")
+}
+
+/// Parse the `Auths-Anchor-Seq` trailer value from a raw commit, if present.
+fn parse_anchor_seq_trailer(raw: &str) -> Option<u128> {
+    raw.lines()
+        .rev()
+        .find_map(|l| l.strip_prefix("Auths-Anchor-Seq:"))
+        .and_then(|v| v.trim().parse().ok())
 }
 
 /// Handles the `org join` subcommand by looking up and accepting an invite
