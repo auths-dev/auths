@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "rid": ".auths",
+  "issuer": "did:keri:ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+  "subject": "did:key:zDnaeh7NXw4vXWstkivGmQaBGZkoG4Fwp6uRAh6Khe5hXmUSj",
+  "device_public_key": {
+    "curve": "p256",
+    "key": "02f7d33345c84176a48286539a7e74cdef1c266eb38e389711edb129fcc7938de0"
+  },
+  "identity_signature": "b6fa3436b0fd03462ceb835f5184837f8f462ae96b91c30d0b5dcada0d99c5af6632567fe1af79264a96f9ae3fb2aa9f2dd56cb31329c8f79d0afe05d0afef36",
+  "device_signature": "7be8c0f9a26dd33d38b88e1911ad9b59b071c5eee02c3d0dd8b3faf6dd462f62fa17dd0bf8f6ad707e3818cbec8ae264af053a70f562d69036cf4a3873574f06",
+  "timestamp": "2026-06-09T22:01:42.838518Z",
+  "note": "Linked by auths-sdk setup"
+}
