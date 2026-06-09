@@ -221,7 +221,7 @@ pub async fn handle_verify(
             Some(sha) => {
                 // Verify the commit is signed by a trusted key.
                 // Uses in-process verification via auths-verifier (no git shell-out).
-                let commit_sig_ok = verify_commit_in_process(sha);
+                let commit_sig_ok = verify_commit_in_process(sha).await;
 
                 if !commit_sig_ok {
                     valid = false;
@@ -454,7 +454,7 @@ fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
 /// resolver: the signer must be a device delegated under a root pinned in
 /// `.auths/roots`. No `.auths/allowed_signers`, no `ssh-keygen` allowlist, no
 /// `git verify-commit --raw` shell-out.
-fn verify_commit_in_process(sha: &str) -> bool {
+async fn verify_commit_in_process(sha: &str) -> bool {
     // Open the repository
     let repo = match git2::Repository::discover(".") {
         Ok(r) => r,
@@ -537,23 +537,15 @@ fn verify_commit_in_process(sha: &str) -> bool {
     );
     let pinned_roots = crate::commands::verify_helpers::load_project_pinned_roots();
 
-    let rt = match tokio::runtime::Runtime::new() {
-        Ok(rt) => rt,
-        Err(e) => {
-            if !is_json_mode() {
-                eprintln!("Failed to create async runtime: {e}");
-            }
-            return false;
-        }
-    };
-
     let short = &sha[..8.min(sha.len())];
-    match rt.block_on(auths_sdk::workflows::commit_trust::verify_commit_local(
+    match auths_sdk::workflows::commit_trust::verify_commit_local(
         &registry,
         &pinned_roots,
         commit_content.as_bytes(),
         &provider,
-    )) {
+    )
+    .await
+    {
         Ok(verdict) if verdict.is_valid() => true,
         Ok(verdict) => {
             if !is_json_mode() {

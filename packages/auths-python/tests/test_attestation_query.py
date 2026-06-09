@@ -15,7 +15,6 @@ class TestAttestationDataclass:
             issuer="did:keri:issuer",
             subject="did:key:zDevice",
             device_did="did:key:zDevice",
-            capabilities=["sign", "deploy"],
             signer_type="Human",
             expires_at="2025-06-15T00:00:00Z",
             revoked_at=None,
@@ -27,13 +26,12 @@ class TestAttestationDataclass:
         assert att.issuer == "did:keri:issuer"
         assert att.subject == "did:key:zDevice"
         assert att.device_did == "did:key:zDevice"
-        assert att.capabilities == ["sign", "deploy"]
         assert att.signer_type == "Human"
 
     def test_is_active_when_not_revoked(self):
         att = Attestation(
             rid="r1", issuer="i", subject="s", device_did="s",
-            capabilities=[], signer_type=None, expires_at=None,
+            signer_type=None, expires_at=None,
             revoked_at=None, created_at=None, delegated_by=None, json="{}",
         )
         assert att.is_active is True
@@ -42,20 +40,19 @@ class TestAttestationDataclass:
     def test_is_revoked_when_revoked(self):
         att = Attestation(
             rid="r1", issuer="i", subject="s", device_did="s",
-            capabilities=[], signer_type=None, expires_at=None,
+            signer_type=None, expires_at=None,
             revoked_at="2025-01-01T00:00:00Z", created_at=None,
             delegated_by=None, json="{}",
         )
         assert att.is_active is False
         assert att.is_revoked is True
 
-    def test_repr_shows_status_and_caps(self):
+    def test_repr_shows_status(self):
         att = Attestation(
             rid="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
             issuer="did:keri:issuer",
             subject="did:key:z6MkTestDevice1234567890",
             device_did="did:key:z6MkTestDevice1234567890",
-            capabilities=["sign", "deploy", "admin", "rotate"],
             signer_type="Agent",
             expires_at=None,
             revoked_at=None,
@@ -66,13 +63,12 @@ class TestAttestationDataclass:
         r = repr(att)
         assert "Attestation" in r
         assert "active" in r
-        assert "+1 more" in r
 
     def test_repr_revoked(self):
         att = Attestation(
             rid="short",
             issuer="i", subject="s", device_did="s",
-            capabilities=[], signer_type=None, expires_at=None,
+            signer_type=None, expires_at=None,
             revoked_at="2025-01-01T00:00:00Z", created_at=None,
             delegated_by=None, json="{}",
         )
