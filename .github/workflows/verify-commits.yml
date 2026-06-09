@@ -18,13 +18,14 @@ jobs:
 
       - uses: auths-dev/verify@v1
         with:
+          auths-version: '0.0.1-rc.12'
           # Stateless KEL-native verification: the committed identity bundle
           # carries the identity + authorization chain so the runner can verify
           # commit signatures without ~/.auths. Regenerate when keys rotate or
           # the bundle's TTL lapses:
           #   auths id export-bundle --alias main \
           #     --output .auths/ci-bundle.json --max-age-secs 31536000
-          token: .auths/ci-bundle.json
+          identity-bundle: .auths/ci-bundle.json
           fail-on-unsigned: true
           post-pr-comment: 'true'
           github-token: ${{ secrets.GITHUB_TOKEN }}
