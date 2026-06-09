@@ -477,46 +477,17 @@ async fn verify_commit_in_process(sha: &str) -> bool {
         }
     };
 
-    // Get the raw commit content (same as `git cat-file commit <sha>`)
-    let commit_obj = match repo.find_object(oid, Some(git2::ObjectType::Commit)) {
-        Ok(obj) => obj,
+    // The SSH signature is computed over the commit object's EXACT bytes
+    // (what `git cat-file commit <sha>` prints). Read them from the object
+    // database — never reconstruct them by joining header/message strings;
+    // a single byte of drift makes a valid signature unverifiable.
+    let commit_content = match raw_commit_bytes(&repo, oid) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
         Err(e) => {
             if !is_json_mode() {
                 eprintln!("Commit {} not found: {e}", &sha[..8.min(sha.len())]);
             }
             return false;
-        }
-    };
-
-    // Get raw content including the signature header
-    let commit_content = match repo
-        .find_commit(oid)
-        .ok()
-        .and_then(|c| c.raw_header().map(|h| h.to_string()))
-    {
-        Some(header) => {
-            // Reconstruct full commit content: header + \n\n + message
-            let msg = repo
-                .find_commit(oid)
-                .ok()
-                .and_then(|c| c.message_raw().map(|m| m.to_string()))
-                .unwrap_or_default();
-            format!("{}\n\n{}", header, msg)
-        }
-        None => {
-            // Fallback: use the raw object data
-            match commit_obj.as_blob() {
-                Some(blob) => String::from_utf8_lossy(blob.content()).to_string(),
-                None => {
-                    if !is_json_mode() {
-                        eprintln!(
-                            "Cannot read commit content for {}",
-                            &sha[..8.min(sha.len())]
-                        );
-                    }
-                    return false;
-                }
-            }
         }
     };
 
@@ -684,5 +655,65 @@ pub fn handle_offline_verify(
         Some(AuthorityAtSigning::NeverDelegated) => {
             Err(anyhow!("unauthorized: the org never delegated this member"))
         }
+    }
+}
+
+/// The raw commit object bytes, exactly as `git cat-file commit <oid>` prints
+/// them — the payload an SSH commit signature is computed over.
+///
+/// Args:
+/// * `repo`: An open git repository.
+/// * `oid`: The commit's object id.
+///
+/// Usage:
+/// ```ignore
+/// let bytes = raw_commit_bytes(&repo, oid)?;
+/// ```
+pub(crate) fn raw_commit_bytes(repo: &git2::Repository, oid: git2::Oid) -> Result<Vec<u8>> {
+    let odb = repo.odb().context("open git object database")?;
+    let obj = odb.read(oid).context("read commit object")?;
+    Ok(obj.data().to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::raw_commit_bytes;
+    use std::process::Command;
+
+    /// Regression: the bytes the verifier checks the SSH signature over must
+    /// be byte-identical to `git cat-file commit`. A prior implementation
+    /// reconstructed them from raw_header + "\n\n" + message, drifting by one
+    /// newline and making every valid signature report SshSignatureInvalid.
+    #[test]
+    fn raw_commit_bytes_matches_git_cat_file() {
+        let (dir, repo) = auths_test_utils::git::init_test_repo();
+        let sig = git2::Signature::now("t", "t@example.com").expect("sig");
+        let tree_id = {
+            let mut index = repo.index().expect("index");
+            index.write_tree().expect("tree")
+        };
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let oid = repo
+            .commit(
+                Some("HEAD"),
+                &sig,
+                &sig,
+                "subject line\n\nbody with trailing newline drift potential\n",
+                &tree,
+                &[],
+            )
+            .expect("commit");
+
+        let via_helper = raw_commit_bytes(&repo, oid).expect("helper");
+        let via_git = Command::new("git")
+            .args(["cat-file", "commit", &oid.to_string()])
+            .current_dir(dir.path())
+            .output()
+            .expect("git cat-file");
+        assert!(via_git.status.success());
+        assert_eq!(
+            via_helper, via_git.stdout,
+            "verifier payload must be byte-identical to git cat-file commit"
+        );
     }
 }

@@ -417,6 +417,7 @@ dependencies = [
  "auths-scim-server",
  "auths-sdk",
  "auths-telemetry",
+ "auths-test-utils",
  "auths-transparency",
  "auths-utils",
  "auths-verifier",
