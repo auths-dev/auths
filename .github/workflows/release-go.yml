@@ -55,8 +55,10 @@ jobs:
           go-version: "1.22"
 
       # Build the cdylib WITH the ffi feature — the C-ABI symbols live behind it.
+      # resolver = "3" rejects --features from the workspace root; run inside the crate.
       - name: Build cdylib (--features ffi)
-        run: cargo build --release -p auths_verifier --features ffi
+        working-directory: crates/auths-verifier
+        run: cargo build --release --features ffi
 
       - name: go test against the prebuilt lib (CGO_ENABLED=1)
         working-directory: packages/auths-verifier-go

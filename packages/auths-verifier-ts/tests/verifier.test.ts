@@ -34,53 +34,53 @@ describe('@auths-dev/verifier', () => {
   });
 
   describe('verifyAttestation', () => {
-    it('should return valid:false for invalid JSON', () => {
+    it('should return valid:false for invalid JSON', async () => {
       if (!isInitialized()) return;
 
-      const result = verifyAttestation('not valid json', 'a'.repeat(64));
+      const result = await verifyAttestation('not valid json', 'a'.repeat(64));
       expect(result.valid).toBe(false);
       expect(result.error).toContain('parse');
     });
 
-    it('should return valid:false for invalid public key hex', () => {
+    it('should return valid:false for invalid public key hex', async () => {
       if (!isInitialized()) return;
 
-      const result = verifyAttestation('{}', 'not-hex');
+      const result = await verifyAttestation('{}', 'not-hex');
       expect(result.valid).toBe(false);
       expect(result.error).toContain('hex');
     });
 
-    it('should return valid:false for wrong key length', () => {
+    it('should return valid:false for wrong key length', async () => {
       if (!isInitialized()) return;
 
-      const result = verifyAttestation('{}', 'abcd'); // too short
+      const result = await verifyAttestation('{}', 'abcd'); // too short
       expect(result.valid).toBe(false);
       expect(result.error).toContain('length');
     });
   });
 
   describe('verifyChain', () => {
-    it('should return BrokenChain for empty array', () => {
+    it('should return BrokenChain for empty array', async () => {
       if (!isInitialized()) return;
 
-      const report = verifyChain([], 'a'.repeat(64));
+      const report = await verifyChain([], 'a'.repeat(64));
       // Empty chain should return Valid (no attestations to verify)
       // or an appropriate status
       expect(report.chain).toEqual([]);
     });
 
-    it('should return BrokenChain for invalid JSON', () => {
+    it('should return BrokenChain for invalid JSON', async () => {
       if (!isInitialized()) return;
 
-      const report = verifyChain(['not valid json'], 'a'.repeat(64));
+      const report = await verifyChain(['not valid json'], 'a'.repeat(64));
       expect(report.status.type).toBe('BrokenChain');
     });
 
-    it('should handle attestation objects', () => {
+    it('should handle attestation objects', async () => {
       if (!isInitialized()) return;
 
       // Pass an object instead of JSON string
-      const report = verifyChain([{ invalid: true }], 'a'.repeat(64));
+      const report = await verifyChain([{ invalid: true }], 'a'.repeat(64));
       // Should fail but not throw
       expect(['BrokenChain', 'InvalidSignature']).toContain(report.status.type);
     });

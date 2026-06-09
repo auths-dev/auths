@@ -28,6 +28,9 @@ jobs:
 
       - name: Verify commit signatures
         uses: auths-dev/verify@v1
+        with:
+          auths-version: '0.0.1-rc.12'
+          identity-bundle: .auths/ci-bundle.json
 
   build:
     needs: verify
