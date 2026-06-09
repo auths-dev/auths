@@ -34,6 +34,14 @@ jobs:
           components: rustfmt
       - run: cargo fmt --check --all
 
+  version-sync:
+    name: Package version sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check package versions match the workspace version
+        run: python3 scripts/releases/0_versions.py --check
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
@@ -66,6 +74,7 @@ jobs:
           cargo run -p xtask -- check-constant-time
           cargo run -p xtask -- check-rfc6979
           cargo run -p xtask -- check-admission-policy
+          cargo run -p xtask -- check-command-drift
 
   schemas:
     name: Schema validation

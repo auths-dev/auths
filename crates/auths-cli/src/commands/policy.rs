@@ -23,9 +23,9 @@ use std::path::PathBuf;
     after_help = "Examples:
   auths policy lint policy.json           # Validate policy syntax
   auths policy compile policy.json        # Full compilation with validation
-  auths policy explain --policy policy.json --context context.json
+  auths policy explain policy.json --context context.json
                                           # Evaluate policy against context
-  auths policy test policy.json test-suite.json
+  auths policy test policy.json --tests test-suite.json
                                           # Run policy against test cases
   auths policy diff old-policy.json new-policy.json
                                           # Compare policies and show diff

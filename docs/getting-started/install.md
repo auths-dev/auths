@@ -8,6 +8,40 @@
 | Git         | 2.x             |
 | OS          | macOS, Linux, or Windows |
 
+## Quick Install (curl)
+
+```bash
+curl -fsSL https://get.auths.dev | sh
+```
+
+This downloads the latest [GitHub release](https://github.com/auths-dev/auths/releases)
+for your platform (Linux x86_64/aarch64, macOS Apple Silicon), verifies the
+published SHA256 checksum, and installs `auths`, `auths-sign`, and
+`auths-verify` into `~/.auths/bin`.
+
+Pin a version or change the install directory with environment variables:
+
+```bash
+# Pin an exact release tag (recommended for CI) — see
+# https://github.com/auths-dev/auths/releases for available tags
+curl -fsSL https://get.auths.dev | AUTHS_VERSION=<tag> sh
+
+# Install somewhere else
+curl -fsSL https://get.auths.dev | AUTHS_INSTALL_DIR=/usr/local/bin sh
+```
+
+Prefer to inspect before running? The script is plain shell — fetch it first:
+
+```bash
+curl -fsSL https://get.auths.dev -o install.sh
+less install.sh
+sh install.sh
+```
+
+!!! note
+    Intel Macs are not covered by the installer — use [Homebrew](#homebrew)
+    or [build from source](#from-source) instead.
+
 ## Homebrew
 
 ```bash
@@ -117,10 +151,11 @@ Generate shell completions for your shell:
 auths --version
 ```
 
-Expected output:
+Expected output (the version should match the latest
+[GitHub release](https://github.com/auths-dev/auths/releases/latest)):
 
 ```
-auths 0.0.1-rc.10
+auths <version>
 ```
 
 !!! tip

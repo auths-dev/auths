@@ -72,7 +72,7 @@ python3 docs/smoketests/end_to_end.py --keep-alive --open-browser
 |--------|--------|---------------|
 | `auths` + `auths-sign` | `crates/auths-cli` | `cargo build --release --package auths_cli` |
 | `radicle-httpd` | `radicle-explorer/radicle-httpd` | `cargo build` (debug) |
-| `@auths/verifier` | `packages/auths-verifier-ts` | `wasm-pack build` + `npm run build:ts` |
+| `@auths-dev/verifier` | `packages/auths-verifier-ts` | `wasm-pack build` + `npm run build:ts` |
 | Frontend | `radicle-explorer` | `npm install && npm run build` |
 
 The modified `radicle-httpd` includes `auths-radicle` as a dependency, which adds

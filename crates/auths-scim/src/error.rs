@@ -115,7 +115,7 @@ impl ScimError {
             scim_type: self.scim_type().map(String::from),
             detail: self.to_string(),
             docs: Some(format!(
-                "https://docs.auths.dev/scim/errors#{}",
+                "https://docs.auths.dev/#scim-errors-{}",
                 self.error_slug()
             )),
         }

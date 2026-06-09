@@ -162,7 +162,7 @@ auths verify /path/to/artifact
 
 | Issue | Quick Win | Medium | Architectural |
 |-------|-----------|--------|-----------------|
-| Opaque trust policy error | Show exact path to roots.json | Add `auths trust add <did>` | Auto-trust own identity |
+| Opaque trust policy error | Show exact path to roots.json | Add `auths trust pin --did <did>` | Auto-trust own identity |
 | No trust setup in init | Add `--setup-trust` flag | Interactive trust setup | Trust policy wizard |
 | Unclear signature naming | Show filename in output: "Signed → artifact.txt.auths.json" | Configurable naming | Output summary with paths |
 | Reciprocal help gap | Link verify in sign help, vice versa | Add workflow example | Sign/verify unified command |
@@ -503,7 +503,7 @@ auths --json whoami
 
 | Command | Error | Missing |
 |---------|-------|---------|
-| `auths verify` | "Unknown identity ... trust policy is 'explicit'" | "Run `auths trust add <did>` or edit ~/.auths/roots.json" |
+| `auths verify` | "Unknown identity ... trust policy is 'explicit'" | "Run `auths trust pin --did <did>` or edit ~/.auths/roots.json" |
 | `auths id list` | "unrecognized subcommand 'list'" | "Did you mean `auths id show`?" |
 | `auths error list` | "Unknown error code: LIST" | "Try `auths error --list` to see all codes" |
 

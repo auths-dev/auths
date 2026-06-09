@@ -1,64 +1,39 @@
 # Team Workflows
 
-This guide covers how teams use Auths to manage shared signing registries, onboard new members, enforce organization-level policies, and maintain a trusted `allowed_signers` file across a project.
+This guide covers how teams use Auths to verify each other's commits, onboard new members, manage organization identities, and enforce organization-level policies.
 
-## Shared allowed_signers File
+Verification in Auths is KEL-native: each member's identity is a key event log (KEL), and verifiers resolve a signer's current key state from that log. There is no shared key list file to generate, distribute, or keep in sync — trust is established once per identity (by pinning or fetching its KEL), and key rotations propagate automatically through the log.
 
-The `allowed_signers` file is the foundation of team-level commit verification. It maps principals (email addresses or DIDs) to public keys and tells Git which signatures to trust.
+## Verifying Teammates' Commits
 
-### Repository-Committed Approach
+When you verify a commit, `auths verify` reads the signer's `did:keri:` identifier from the commit's `Auths-Device` trailer and resolves their key state. For your own commits this works out of the box. For a teammate's commits, you need their KEL or a pinned trust entry.
 
-The recommended approach is to commit the `allowed_signers` file to your repository:
+### Option 1: Fetch the Signer's KEL from the Remote
 
-```bash
-# Generate from your Auths identity
-auths signers sync --output .auths/allowed_signers
-
-# Configure Git to use it
-git config --local gpg.ssh.allowedSignersFile .auths/allowed_signers
-
-# Commit the file
-git add .auths/allowed_signers
-git commit -S -m "Add allowed signers"
-```
-
-Each team member adds their public key entry to the same file. The file format is one entry per line:
-
-```
-alice@example.com namespaces="git" ssh-ed25519 AAAA...
-bob@example.com namespaces="git" ssh-ed25519 AAAA...
-```
-
-### Adding a Teammate's Key
-
-Each developer generates their own entry and contributes it to the shared file:
+If teammates' KELs are available on the repository's git remote, resolve them on demand:
 
 ```bash
-# Teammate runs on their machine:
-auths signers list
+auths verify origin/main..HEAD --remote origin
 ```
 
-This outputs their entry to stdout. They copy it and open a PR to append it to `.auths/allowed_signers`. Alternatively, if you have access to the teammate's Auths identity repository, you can generate the full file from all known attestations:
+This is opt-in (resolution is local-only by default). A remote can only advance a signer's key state, never roll it back — your local store stays the trusted floor.
+
+### Option 2: Pin the Teammate's Identity
+
+For explicit, offline-first trust, pin each teammate's root identity once:
 
 ```bash
-auths signers sync --repo /path/to/shared/auths-repo --output .auths/allowed_signers
+auths trust pin \
+  --did did:keri:E... \
+  --key abcdef1234567890... \
+  --note "Alice — platform team"
 ```
 
-### Auto-Regeneration
-
-Install a Git hook that regenerates the `allowed_signers` file after each merge or pull:
+After pinning, their commits verify with no network access:
 
 ```bash
-auths git install-hooks
+auths verify HEAD
 ```
-
-This creates a `.git/hooks/post-merge` hook that runs:
-
-```bash
-auths signers sync --repo ~/.auths --output .auths/allowed_signers
-```
-
-The hook ensures the `allowed_signers` file stays in sync with the latest device authorizations from your identity repository. Use `--force` to overwrite an existing hook.
 
 ## Onboarding New Team Members
 
@@ -72,32 +47,28 @@ auths init
 
 This creates their cryptographic identity, generates a key pair, stores it in the platform keychain, and configures Git signing.
 
-### Step 2: Member Shares Their Public Key
+### Step 2: Member Shares Their Identity
 
-The new member exports their public key entry:
-
-```bash
-auths signers list
-```
-
-They share the output line (e.g., via a PR or secure channel).
-
-### Step 3: Add to allowed_signers
-
-A maintainer appends the new entry to `.auths/allowed_signers` and commits the change:
+The new member shares their DID and root public key over a trusted channel (PR description, internal directory, or in person):
 
 ```bash
-# Append the new entry
-echo 'newdev@example.com namespaces="git" ssh-ed25519 AAAA...' >> .auths/allowed_signers
-
-# Commit
-git add .auths/allowed_signers
-git commit -S -m "Add newdev to allowed signers"
+auths whoami        # prints the did:keri: identifier
+auths id show       # full identity details including the public key
 ```
+
+### Step 3: Teammates Pin the New Identity
+
+Each verifier (or a maintainer acting for the team) pins the new member:
+
+```bash
+auths trust pin --did did:keri:E... --key <hex-public-key> --note "newdev"
+```
+
+Teams using an organization identity can skip per-member pinning and add the member to the org instead (see below).
 
 ### Step 4: Member Verifies Setup
 
-The new member confirms signing works:
+The new member confirms signing works end to end:
 
 ```bash
 auths status
@@ -107,12 +78,12 @@ auths verify HEAD
 
 ## Organization Identities
 
-For teams that need formal membership management, Auths provides organization identities with role-based access control.
+For teams that need formal membership management, Auths provides organization identities with role-based access control. The org's KEL anchors every membership grant and revocation, so "who was authorized when" is provable from the log itself.
 
 ### Creating an Organization
 
 ```bash
-auths org init --name "my-org"
+auths org create --name "my-org"
 ```
 
 This creates a dedicated KERI-based organization identity with an admin self-attestation. The creator receives all capabilities: `SignCommit`, `SignRelease`, `ManageMembers`, and `RotateKeys`.
@@ -121,10 +92,10 @@ Options:
 
 ```bash
 # Custom key alias
-auths org init --name "my-org" --key org-myorg
+auths org create --name "my-org" --key org-myorg
 
 # With additional metadata
-auths org init --name "my-org" --metadata-file org-metadata.json
+auths org create --name "my-org" --metadata-file org-metadata.json
 ```
 
 ### Adding Members
@@ -135,7 +106,8 @@ Organization admins (users with the `ManageMembers` capability) can add members 
 auths org add-member \
   --org did:keri:E... \
   --member did:keri:E... \
-  --role member
+  --role member \
+  --key org-myorg
 ```
 
 Available roles:
@@ -153,7 +125,8 @@ auths org add-member \
   --org did:keri:E... \
   --member did:keri:E... \
   --role member \
-  --capabilities sign-commit
+  --capabilities sign-commit \
+  --key org-myorg
 ```
 
 ### Listing Members
@@ -184,16 +157,13 @@ When a team member leaves or their access should be removed:
 auths org revoke-member \
   --org did:keri:E... \
   --member did:keri:E... \
-  --note "Left the team"
+  --note "Left the team" \
+  --key org-myorg
 ```
 
-Revoked members' signatures remain valid for commits made before the revocation timestamp. Future commits signed with the revoked key will fail verification.
+Revoked members' signatures remain valid for commits made before the revocation timestamp. Future commits signed with the revoked key will fail verification — no key-list cleanup required, because verifiers see the revocation in the org's log.
 
-After revoking a member, regenerate the `allowed_signers` file to remove their key:
-
-```bash
-auths signers sync --output .auths/allowed_signers
-```
+For compliance-grade off-boarding evidence, see `auths org offboarding-log` and `auths org bundle` (air-gapped provenance bundles).
 
 ## Trust Management
 
@@ -319,9 +289,15 @@ Output shows added, removed, and changed rules with risk scores (`LOW`, `MEDIUM`
 
 ## Multi-Device Signing
 
-Team members who work across multiple machines can pair devices to sign with the same identity from any machine.
+Team members who work across multiple machines can link devices to sign with the same identity from any machine:
 
-Each device generates its own key pair and receives a device attestation from the identity owner. The `allowed_signers` file includes entries for all authorized devices. When `auths signers list` is run, it scans all non-revoked attestations and generates entries for every authorized device key.
+```bash
+auths pair        # link a new device via QR code or short code
+```
+
+Under KERI delegation, each device receives its own delegated identifier anchored by the root identity — the device's signing authority is provable from the shared KEL, and verifiers resolve it the same way they resolve the root. No per-device key distribution is needed.
+
+To manage devices explicitly, see `auths device list`, `auths device add`, `auths device revoke`, and `auths device remove`.
 
 ## Audit and Compliance
 
@@ -356,15 +332,8 @@ auths audit --repo . --signer did:keri:E...
 # Each team member (once)
 auths init
 
-# Collect allowed_signers entries from all members
-# Commit the shared file to the repository
-auths signers sync --output .auths/allowed_signers
-git config --local gpg.ssh.allowedSignersFile .auths/allowed_signers
-git add .auths/allowed_signers
-git commit -S -m "Initialize team signing"
-
-# Install auto-regeneration hook
-auths git install-hooks
+# Each member pins teammates' identities (or use an org identity)
+auths trust pin --did did:keri:E... --key <hex> --note "alice"
 ```
 
 ### Adding a New Member
@@ -372,12 +341,10 @@ auths git install-hooks
 ```bash
 # New member runs:
 auths init
+auths whoami            # shares the did:keri: + public key with the team
 
-# New member shares their entry:
-auths signers list
-# (copy output line)
-
-# Maintainer appends to .auths/allowed_signers and commits
+# Teammates pin it, or an org admin runs:
+auths org add-member --org did:keri:E... --member did:keri:E... --role member --key org-myorg
 ```
 
 ### Verifying Team Commits in CI
@@ -387,22 +354,23 @@ steps:
   - uses: actions/checkout@v4
     with:
       fetch-depth: 0
-  - run: auths verify origin/main..HEAD --allowed-signers .auths/allowed_signers
+  - uses: auths-dev/verify@v1
+    with:
+      auths-version: '0.0.1-rc.12'
+      identity-bundle: '.auths/ci-bundle.json'
 ```
 
 ### Handling Member Departure
 
 ```bash
 # Revoke the member's org attestation (if using org identities)
-auths org revoke-member --org did:keri:E... --member did:keri:E...
+auths org revoke-member --org did:keri:E... --member did:keri:E... --key org-myorg
 
-# Remove their entry from allowed_signers
-auths signers sync --output .auths/allowed_signers
-
-# Commit the change
-git add .auths/allowed_signers
-git commit -S -m "Remove departed member from allowed signers"
+# Or, for pin-based teams, remove the pin
+auths trust remove did:keri:E...
 ```
+
+The revocation is anchored in the org's KEL — verifiers reject the departed member's future signatures with no further action.
 
 ## Next Steps
 

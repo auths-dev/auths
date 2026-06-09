@@ -18,8 +18,7 @@ Trust derives from your commit signature, not from a CI secret. The ephemeral ke
 ### Prerequisites
 
 ```bash
-auths init          # creates your signing identity
-auths git setup     # configures git to sign commits with your device key
+auths init          # creates your signing identity and configures Git signing
 ```
 
 ### GitHub Actions

@@ -1,11 +1,11 @@
 /**
- * @auths/verifier - Attestation verification for TypeScript/JavaScript
+ * @auths-dev/verifier - Attestation verification for TypeScript/JavaScript
  *
  * This package provides WASM-powered cryptographic verification of Auths attestations.
  *
  * @example
  * ```typescript
- * import { init, verifyAttestation, verifyChain } from '@auths/verifier';
+ * import { init, verifyAttestation, verifyChain } from '@auths-dev/verifier';
  *
  * // Initialize the WASM module (required before verification)
  * await init();

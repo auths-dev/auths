@@ -349,7 +349,7 @@ This is checked on every reactive update. When `isKeri` is true, the UI shows:
 
 ### Verification flow
 
-The frontend uses a WASM module (`@auths/verifier`) to verify device links:
+The frontend uses a WASM module (`@auths-dev/verifier`) to verify device links:
 
 1. Fetches KEL events from `GET /identity/{did}/kel`
 2. Fetches attestations from `GET /identity/{did}/attestations`

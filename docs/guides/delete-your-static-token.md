@@ -55,7 +55,7 @@ The painful case: a CI job holding a long-lived token to deploy to your own targ
 The relying party (`deploy.internal`) mounts a drop-in middleware. Pick the stack that matches
 your service:
 
-- **Node / Express** → `@auths/express` (`packages/auths-express`) — canonical example below.
+- **Node / Express** → `@auths-dev/express` (`packages/auths-express`) — canonical example below.
 - **Python / FastAPI** → `auths-fastapi` (`packages/auths-fastapi`).
 - **Rust / Axum** → `auths-api`'s `rp_auth` middleware (`crates/auths-api/src/rp_auth.rs`).
 
@@ -63,7 +63,7 @@ your service:
 
 ```ts
 import express from 'express'
-import { authsAuth, challengeHandler, ChallengeStore } from '@auths/express'
+import { authsAuth, challengeHandler, ChallengeStore } from '@auths-dev/express'
 
 const app = express()
 const challenges = new ChallengeStore(10_000)          // bounded, TTL-pruned, single-use

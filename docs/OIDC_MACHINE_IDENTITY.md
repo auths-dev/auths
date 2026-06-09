@@ -22,7 +22,7 @@ Auths can now create cryptographically verifiable artifacts signed by ephemeral 
 Verifiers can reconstruct the CI identity from the OIDC binding without needing the ephemeral private key:
 
 ```rust
-auths verify-commit --file attestation.json
+auths verify --signature attestation.json
 // Verifier sees: "Signed by GitHub Actions job run-123 (identity bound to token exp: 2026-03-28T10:00:00Z)"
 ```
 
@@ -142,7 +142,7 @@ auths init --profile ci
 auths sign --file artifact.bin
 
 # Verify OIDC-bound attestation
-auths verify-commit --file attestation.json
+auths verify --signature attestation.json
 ```
 
 ## Error Handling
@@ -190,7 +190,7 @@ auths verify-commit --file attestation.json
 
 ## Known Limitations (v1)
 
-- ❌ **GitHub UI "Verified" badge**: Ephemeral keys will NOT show as "Verified" in GitHub UI. Commits are cryptographically verifiable via `auths verify-commit`, but GitHub UI only recognizes registered SSH/GPG keys. **Future work** (v1+1): auto-register ephemeral SSH key before signing to get UI badge.
+- ❌ **GitHub UI "Verified" badge**: Ephemeral keys will NOT show as "Verified" in GitHub UI. Commits are cryptographically verifiable via `auths verify`, but GitHub UI only recognizes registered SSH/GPG keys. **Future work** (v1+1): auto-register ephemeral SSH key before signing to get UI badge.
 - ❌ **AWS CodeBuild**: CodeBuild does not natively provide OIDC tokens. Requires IAM role assumption. Deferred to v1+2.
 - ❌ **Custom OIDC providers**: Only GitHub Actions, GitLab CI, CircleCI supported in v1. Custom issuers deferred to v1+3.
 

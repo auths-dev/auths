@@ -30,13 +30,15 @@ impl CliError {
     pub fn suggestion(&self) -> &str {
         match self {
             Self::NoPrerotationCommitment => {
-                "Run: auths key precommit --next-key <path-to-next-pubkey>"
+                "Run: auths id rotate --next-key-alias <alias-for-next-key>"
             }
             Self::IdentityNotFound => "Run: auths init",
             Self::KeychainUnavailable => {
                 "Set AUTHS_KEYCHAIN_BACKEND=file and AUTHS_PASSPHRASE=<passphrase> in your environment."
             }
-            Self::DeviceKeyNotFound { .. } => "Run: auths key import --alias <alias> --file <path>",
+            Self::DeviceKeyNotFound { .. } => {
+                "Run: auths key import --key-alias <alias> --seed-file <path>"
+            }
             Self::PassphraseRequired => {
                 "Set AUTHS_PASSPHRASE=<your-passphrase> in the environment, or run interactively."
             }
@@ -55,9 +57,9 @@ impl CliError {
     /// per-guide routes — every subpath currently 404s.
     pub fn docs_url(&self) -> Option<&str> {
         match self {
-            Self::NoPrerotationCommitment
-            | Self::IdentityNotFound
-            | Self::KeychainUnavailable => Some("https://docs.auths.dev"),
+            Self::NoPrerotationCommitment | Self::IdentityNotFound | Self::KeychainUnavailable => {
+                Some("https://docs.auths.dev")
+            }
             _ => None,
         }
     }

@@ -1,3 +1,3 @@
-module github.com/auths/auths/packages/auths-verifier-go
+module github.com/auths-dev/auths/packages/auths-verifier-go
 
 go 1.21

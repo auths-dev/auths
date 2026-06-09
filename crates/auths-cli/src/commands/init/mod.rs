@@ -120,7 +120,7 @@ pub struct InitCommand {
     pub dry_run: bool,
 
     /// Registry URL for identity registration
-    #[clap(long, default_value = DEFAULT_REGISTRY_URL)]
+    #[clap(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
     pub registry: String,
 
     /// Register identity with the Auths Registry after creation
@@ -526,7 +526,7 @@ mod tests {
         assert_eq!(cmd.key_alias, "main");
         assert!(!cmd.force);
         assert!(!cmd.dry_run);
-        assert_eq!(cmd.registry, "https://auths-registry.fly.dev");
+        assert_eq!(cmd.registry, "https://registry.auths.dev");
         assert!(!cmd.register);
         assert!(!cmd.github_action);
     }

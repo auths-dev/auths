@@ -104,6 +104,10 @@ e2e-radicle:
 install:
     cargo install --path crates/auths-cli
 
+# Sync npm/PyPI/mobile-ffi package versions to the workspace version.
+release-versions:
+    python scripts/releases/0_versions.py --write
+
 # Create and push a GitHub release (tag + binaries).
 release-github:
     python scripts/releases/1_github.py --push

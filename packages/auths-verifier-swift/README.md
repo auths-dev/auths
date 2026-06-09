@@ -8,7 +8,7 @@ Swift and Kotlin/Android bindings for the Auths attestation verification library
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/auths/auths", from: "0.1.0")
+    .package(url: "https://github.com/auths-dev/auths", from: "0.1.0")
 ]
 ```
 

@@ -1,5 +1,5 @@
 /**
- * Tests for @auths/verifier
+ * Tests for @auths-dev/verifier
  *
  * Note: These tests require the WASM module to be built first.
  * Run `npm run build:wasm` before running tests.
@@ -8,7 +8,7 @@
 import { init, verifyAttestation, verifyChain, isInitialized } from '../src/index';
 import type { VerificationResult, VerificationReport } from '../src/types';
 
-describe('@auths/verifier', () => {
+describe('@auths-dev/verifier', () => {
   beforeAll(async () => {
     // Skip tests if WASM not available
     try {

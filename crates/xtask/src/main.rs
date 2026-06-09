@@ -9,6 +9,7 @@
 mod check_admission_policy;
 mod check_anchor_discipline;
 mod check_clippy_sync;
+mod check_command_drift;
 mod check_constant_time;
 mod check_curve_agnostic;
 mod check_rfc6979;
@@ -74,6 +75,9 @@ enum Command {
     /// Validates docs/governance/admission_policy.json against its schema +
     /// independence/SLA rules; fails closed on any violation.
     CheckAdmissionPolicy,
+    /// Command-drift lint: fail if README.md or auths-cli string literals
+    /// reference an `auths` command or long flag that doesn't exist.
+    CheckCommandDrift,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -97,5 +101,6 @@ fn main() -> anyhow::Result<()> {
         Command::CheckConstantTime => check_constant_time::run(workspace_root()),
         Command::CheckRfc6979 => check_rfc6979::run(workspace_root()),
         Command::CheckAdmissionPolicy => check_admission_policy::run(workspace_root()),
+        Command::CheckCommandDrift => check_command_drift::run(workspace_root()),
     }
 }

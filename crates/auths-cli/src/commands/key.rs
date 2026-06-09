@@ -20,7 +20,7 @@ use crate::ux::format::{JsonResponse, is_json_mode};
     about = "Manage signing keys stored on this device.",
     after_help = "Examples:
   auths key list            # List all stored key aliases
-  auths key import --key-alias mykey --seed seed.bin
+  auths key import --key-alias mykey --seed-file seed.bin
                             # Import an Ed25519 key from a 32-byte seed
   auths key export --key-alias mykey --format pub --passphrase <pass>
                             # Export a public key in OpenSSH format

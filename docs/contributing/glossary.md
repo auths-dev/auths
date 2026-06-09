@@ -54,4 +54,4 @@
 |------|-----------|
 | **FFI** | Foreign Function Interface. The C-ABI boundary exposed by `auths-verifier` (feature: `ffi`) for calling verification functions from C, Swift, Kotlin, and other languages. |
 | **UniFFI** | Mozilla's tool for generating language bindings (Swift, Kotlin, Python) from Rust. Used by `auths-mobile-ffi` and `auths-verifier-swift`. |
-| **WASM** | WebAssembly. `auths-verifier` compiles to WASM (feature: `wasm`) for use in browsers and Node.js via the `@auths/verifier` npm package. |
+| **WASM** | WebAssembly. `auths-verifier` compiles to WASM (feature: `wasm`) for use in browsers and Node.js via the `@auths-dev/verifier` npm package. |

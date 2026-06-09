@@ -2,6 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use auths_sdk::attestation::create_signed_attestation;
 use auths_sdk::attestation::create_signed_revocation;
 use auths_sdk::identity::DidResolver;
+use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Parser, Subcommand};
 use serde_json;
@@ -71,9 +72,9 @@ fn org_slug_alias(org: &str) -> String {
     after_help = "Examples:
   auths org create --name 'My Organization'
                         # Create a new org identity
-  auths org add-member --org-key orgkey --subject did:keri:EMember --role admin
+  auths org add-member --org did:keri:EOrg --member did:keri:EMember --role admin --key orgkey
                         # Add a member with admin role
-  auths org revoke-member --org-key orgkey --subject did:keri:EMember
+  auths org revoke-member --org did:keri:EOrg --member did:keri:EMember --key orgkey
                         # Revoke a member's access
 
 Related:
@@ -254,7 +255,7 @@ pub enum OrgSubcommand {
         code: String,
 
         /// Registry URL to contact
-        #[arg(long, default_value = "https://auths-registry.fly.dev")]
+        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
     },
 

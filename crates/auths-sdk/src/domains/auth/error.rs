@@ -7,7 +7,7 @@ use thiserror::Error;
 /// ```ignore
 /// match resolve_issuer_key(did, policy) {
 ///     Err(TrustError::UnknownIdentity { did, policy }) => {
-///         eprintln!("Unknown identity under {} policy; run `auths trust add {}`", policy, did)
+///         eprintln!("Unknown identity under {} policy; run `auths trust pin --did {}`", policy, did)
 ///     }
 ///     Err(e) => return Err(e.into()),
 ///     Ok(key) => { /* use key for verification */ }
@@ -95,7 +95,7 @@ impl AuthsErrorInfo for TrustError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::UnknownIdentity { .. } => {
-                Some("Run `auths trust add <did>` or add the identity to .auths/roots.json")
+                Some("Run `auths trust pin --did <did>` or add the identity to .auths/roots.json")
             }
             Self::KeyResolutionFailed { .. } => {
                 Some("Verify the identity exists and has a valid public key registered")

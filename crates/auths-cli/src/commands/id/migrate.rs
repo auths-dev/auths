@@ -893,7 +893,9 @@ fn perform_ssh_migration(
             out.println("  1. Start using Auths for new commits:");
             out.println("     auths agent start");
             out.println("  2. Existing SSH-signed commits remain verifiable");
-            out.println("  3. Run 'auths verify HEAD' after your next commit to confirm it verifies");
+            out.println(
+                "  3. Run 'auths verify HEAD' after your next commit to confirm it verifies",
+            );
 
             Ok(())
         }

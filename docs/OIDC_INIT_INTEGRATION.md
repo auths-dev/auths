@@ -145,7 +145,7 @@ Attestations created with OIDC binding include:
 ### E2E Tests (requires CI environment)
 
 1. **GitHub Actions workflow** — `auths init --profile ci` + `auths sign`
-2. **Attestation verification** — `auths verify-commit` confirms OIDC binding
+2. **Attestation verification** — `auths verify` confirms OIDC binding
 3. **Token replay detection** — same JTI rejected on second use
 
 ## Known Issues & Mitigations

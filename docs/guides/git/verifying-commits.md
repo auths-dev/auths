@@ -6,13 +6,16 @@ This guide covers how to verify Git commit signatures using Auths, including sin
 
 The `auths verify` command is a unified entry point that detects whether you are verifying a Git commit or an attestation file. When given a Git ref, commit hash, or range, it performs commit verification. When given a file path or `-` for stdin, it performs attestation verification.
 
-For commit verification, `auths verify`:
+Commit verification is **KEL-native** — there is no key list file to maintain. For each commit, `auths verify`:
 
 1. Reads the SSH signature embedded in the Git commit object
-2. Looks up the signer's principal against the `--allowed-signers` file
-3. Verifies the signature cryptographically using `ssh-keygen`
-4. Optionally verifies the attestation chain (when `--identity-bundle` is provided)
-5. Optionally verifies witness signatures (when `--witness-signatures` is provided)
+2. Reads the `Auths-Device` trailer (the signer's `did:keri:` identifier)
+3. Resolves the signer's key state from their key event log (KEL) in the local identity store — or, opt-in, from a git remote (`--remote`) or an OOBI HTTP endpoint (`--oobi`)
+4. Verifies the signature cryptographically against the resolved key
+5. Optionally verifies the attestation chain (when `--identity-bundle` is provided)
+6. Optionally enforces witness quorum (`--require-witnesses`, `--witness-signatures`)
+
+Resolution is local-only by default (no network). A remote can only advance a signer's key state, never roll it back — the local store stays the trusted floor.
 
 ## Verifying a Single Commit
 
@@ -30,10 +33,10 @@ auths verify abc1234
 auths verify v1.0.0
 ```
 
-The default `--allowed-signers` path is `.auths/allowed_signers`. To use a different file:
+If the signer's KEL is not in your local store (e.g. a teammate's commit), fetch it from the repository's remote:
 
 ```bash
-auths verify HEAD --allowed-signers path/to/allowed_signers
+auths verify HEAD --remote origin
 ```
 
 ### Output
@@ -41,7 +44,7 @@ auths verify HEAD --allowed-signers path/to/allowed_signers
 On success:
 
 ```
-Commit abc12345 verified: signed by you@example.com
+Commit abc12345 verified: signed by did:keri:EBf2cE...
 ```
 
 On failure:
@@ -68,14 +71,7 @@ Verify all commits in a range:
 auths verify main..HEAD
 ```
 
-This resolves the range using `git rev-list` and verifies each commit individually. Output shows one line per commit:
-
-```
-abc12345: valid (signer: you@example.com)
-def67890: valid (signer: teammate@example.com)
-```
-
-Exit code `0` means all commits are valid. Exit code `1` means at least one commit is invalid or unsigned.
+This resolves the range using `git rev-list` and verifies each commit individually, one line per commit. Exit code `0` means all commits are valid. Exit code `1` means at least one commit is invalid or unsigned.
 
 ## Verifying Full Repository History
 
@@ -89,11 +85,19 @@ ROOT=$(git rev-list --max-parents=0 HEAD)
 auths verify "${ROOT}..HEAD"
 ```
 
-For large repositories, this may take time since each commit requires an `ssh-keygen` call.
+For large repositories, this may take time since each commit is verified individually.
 
 ## Identity Bundle Verification (Stateless / CI)
 
 For CI environments that do not have access to identity repositories, you can verify against an identity bundle. The bundle contains the identity's public key and attestation chain, enabling stateless verification.
+
+The signer exports a bundle:
+
+```bash
+auths id export-bundle --alias main --output identity-bundle.json --max-age-secs 86400
+```
+
+The verifier uses it:
 
 ```bash
 auths verify HEAD --identity-bundle identity-bundle.json
@@ -101,11 +105,10 @@ auths verify HEAD --identity-bundle identity-bundle.json
 
 When an identity bundle is provided:
 
-1. A temporary `allowed_signers` file is created from the bundle's public key
-2. The SSH signature is verified against that key
-3. The attestation chain in the bundle is cryptographically verified
-4. Bundle freshness is checked (bundles have a `max_valid_for_secs` TTL)
-5. Attestation expiry warnings are emitted if any attestation expires within 30 days
+1. The SSH signature is verified against the bundle's public key
+2. The attestation chain in the bundle is cryptographically verified
+3. Bundle freshness is checked (bundles have a `max_valid_for_secs` TTL)
+4. Attestation expiry warnings are emitted if any attestation expires within 30 days
 
 ### Identity Bundle Format
 
@@ -133,7 +136,7 @@ auths verify HEAD \
   --witness-keys "did:key:z6Mk...:abcd1234..."
 ```
 
-The `--witnesses-required` specifies how many witness signatures must be valid. If the quorum is not met, verification fails.
+The `--witnesses-required` specifies how many witness signatures must be valid. If the quorum is not met, verification fails. Pass `--require-witnesses` to fail closed when the signer's root KEL has not reached witness quorum (the default is to warn and continue).
 
 ## CI Integration
 
@@ -153,25 +156,21 @@ jobs:
         with:
           fetch-depth: 0   # Full history required for commit verification
 
-      - name: Install Auths
-        run: cargo install auths-cli
-
-      - name: Verify commit signatures
-        run: auths verify origin/main..HEAD --json --allowed-signers .auths/allowed_signers
+      - uses: auths-dev/verify@v1
+        with:
+          auths-version: '0.0.1-rc.12'           # pin — a verifier must not resolve `latest`
+          identity-bundle: '.auths/ci-bundle.json'  # omit for KEL-native verification
+          fail-on-unsigned: 'true'
 ```
 
-The `fetch-depth: 0` is required. Shallow clones do not contain the commit objects needed for signature extraction.
+The action runs `auths verify` across the PR's commit range, writes a results table to the GitHub Step Summary, and fails the check if any commit is unsigned. The `fetch-depth: 0` is required — shallow clones do not contain the commit objects needed for signature extraction.
 
-### Using the Verify Action
+To run the CLI directly instead:
 
 ```yaml
-- uses: auths-dev/auths-verify-action@v1
-  with:
-    allowed-signers: '.auths/allowed_signers'
-    fail-on-unsigned: 'true'
+      - name: Verify commit signatures
+        run: auths verify origin/main..HEAD --json
 ```
-
-This action runs `auths verify` across the PR's commit range, writes a results table to the GitHub Step Summary, and fails the check if any commit is unsigned.
 
 ### GitLab CI
 
@@ -180,7 +179,7 @@ verify-signatures:
   stage: test
   script:
     - cargo install auths-cli
-    - auths verify origin/main..HEAD --allowed-signers .auths/allowed_signers
+    - auths verify origin/main..HEAD --identity-bundle .auths/ci-bundle.json
   variables:
     GIT_DEPTH: 0
 ```
@@ -191,7 +190,7 @@ verify-signatures:
 |------|---------|
 | `0` | All commits verified successfully |
 | `1` | At least one commit is invalid or unsigned |
-| `2` | Runtime error (missing `ssh-keygen`, invalid args, etc.) |
+| `2` | Runtime error (invalid args, etc.) |
 
 ### Using the Audit Command
 
@@ -272,18 +271,19 @@ let report = verify_with_capability(&chain, Capability::SignCommit)?;
 
 ## Troubleshooting
 
-### "Allowed signers file not found"
+### "Unknown identity ... and trust policy is 'explicit'"
 
-The default path `.auths/allowed_signers` does not exist. Generate it:
+The signer's identity is not in your trust store. Pin it explicitly:
 
 ```bash
-mkdir -p .auths
-auths signers sync --output .auths/allowed_signers
+auths trust pin --did did:keri:E... --key <signer-public-key-hex>
 ```
 
-### "Signature from non-allowed signer"
+Or fetch their KEL from the repository's remote:
 
-The commit was signed with a key that is not in the `allowed_signers` file. This happens when a teammate signs commits but their key has not been added. See [Team Workflows](team-workflows.md) for how to manage shared `allowed_signers` files.
+```bash
+auths verify HEAD --remote origin
+```
 
 ### "No signature found"
 
@@ -316,4 +316,4 @@ Commit verification requires full commit objects. Add `fetch-depth: 0` to your c
 ## Next Steps
 
 - [Signing Configuration](signing-configuration.md) -- set up Git signing
-- [Team Workflows](team-workflows.md) -- shared registries and organization policies
+- [Team Workflows](team-workflows.md) -- trust pinning and organization policies

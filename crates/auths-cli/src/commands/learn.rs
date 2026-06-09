@@ -201,7 +201,7 @@ pub fn handle_learn(cmd: LearnCommand) -> Result<()> {
             if input.trim().to_lowercase() == "q" {
                 println!();
                 println!(
-                    "  {} Your progress has been saved. Run 'auths learn' to continue.",
+                    "  {} Your progress has been saved. Run 'auths tutorial' to continue.",
                     "✓".green()
                 );
                 break;

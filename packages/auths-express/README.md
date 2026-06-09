@@ -1,4 +1,4 @@
-# @auths/express
+# @auths-dev/express
 
 Drop-in [Express](https://expressjs.com/) middleware that authenticates an
 `Auths-Presentation` request and attaches a verified `Principal`. It is the Express analogue
@@ -17,7 +17,7 @@ the shipped, pure verifier in `@auths-dev/sdk` (`verifyPresentation`).
 ## Install
 
 ```bash
-npm install @auths/express express @auths-dev/sdk
+npm install @auths-dev/express express @auths-dev/sdk
 ```
 
 `express` and `@auths-dev/sdk` are peer dependencies.
@@ -33,7 +33,7 @@ import {
   ChallengeStore,
   KeriPresentationVerifier,
   RequestWithPrincipal,
-} from '@auths/express'
+} from '@auths-dev/express'
 
 const AUDIENCE = 'api.example.com'
 const PINNED_ROOTS = ['did:keri:Eexample_root_aid'] // `.auths/roots` — DID-only
@@ -103,7 +103,7 @@ nothing). Instead, a guarded handler reads it through `RequestWithPrincipal` (wh
 `principal` is non-optional) or narrows with the `hasPrincipal(req)` type guard:
 
 ```ts
-import { hasPrincipal } from '@auths/express'
+import { hasPrincipal } from '@auths-dev/express'
 
 app.get('/v1/whoami', (req, res) => {
   if (!hasPrincipal(req)) return res.sendStatus(401)
@@ -140,7 +140,7 @@ sticky-session deployments are safe; a multi-node deployment must supply a share
 ## Client helper
 
 ```ts
-import { fetchChallenge } from '@auths/express'
+import { fetchChallenge } from '@auths-dev/express'
 
 const { nonce, notAfter } = await fetchChallenge('https://api.example.com/v1/auth/challenge')
 // sign over `nonce`, build the `Auths-Presentation` header, then call your guarded route

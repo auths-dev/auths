@@ -19,9 +19,9 @@ use serde::Serialize;
   auths trust list          # Show all pinned trusted identities
   auths trust pin --did did:keri:EExample --key 7f8c9d0e1a2b3c4d...
                             # Pin an identity as trusted
-  auths trust remove --did did:keri:EExample
+  auths trust remove did:keri:EExample
                             # Remove a pinned identity
-  auths trust show --did did:keri:EExample
+  auths trust show did:keri:EExample
                             # Show details of a trusted identity
 
 Related:

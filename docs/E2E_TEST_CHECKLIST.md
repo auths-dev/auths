@@ -157,7 +157,7 @@ Example structure:
 For each attestation:
 
 ```bash
-auths verify-commit <commit-sha>
+auths verify <commit-sha>
 ```
 
 Expected output:
@@ -173,7 +173,7 @@ Commit abc123def456... verified: signed by did:keri:Eissuer (oidc: https://token
 ### JSON Output Verification
 
 ```bash
-auths verify-commit --json <commit-sha>
+auths verify --json <commit-sha>
 ```
 
 - [ ] Valid JSON output
@@ -188,7 +188,7 @@ auths verify-commit --json <commit-sha>
 If multiple commits were signed:
 
 ```bash
-auths verify-commit main..HEAD
+auths verify main..HEAD
 ```
 
 - [ ] All commits show as verified
