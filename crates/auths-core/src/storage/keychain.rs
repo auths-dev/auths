@@ -313,55 +313,32 @@ pub trait KeyStorage: Send + Sync {
         let (_, role, material) = self.load_key(alias)?;
         self.store_key(alias, identity_did, role, &material)
     }
-}
 
-/// Sign a message with a stored key, transparently handling hardware backends.
-///
-/// Hardware backends (Secure Enclave) sign via their opaque handle — this may
-/// trigger a biometric prompt. Software backends decrypt the stored PKCS8 with
-/// a passphrase from `passphrase_provider` and sign in-process.
-///
-/// Args:
-/// * `keychain`: The key storage backend holding the key.
-/// * `alias`: Keychain alias of the signing key.
-/// * `passphrase_provider`: Provider for the decryption passphrase (software backends).
-/// * `message`: The bytes to sign.
-///
-/// Usage:
-/// ```ignore
-/// let sig = sign_with_stored_key(keychain, &alias, &provider, &canonical)?;
-/// ```
-pub fn sign_with_stored_key(
-    keychain: &dyn KeyStorage,
-    alias: &KeyAlias,
-    passphrase_provider: &dyn crate::signing::PassphraseProvider,
-    message: &[u8],
-) -> Result<Vec<u8>, AgentError> {
-    if keychain.is_hardware_backend() {
-        let (_, _role, _handle) = keychain.load_key(alias)?;
-        #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
-        {
-            return super::secure_enclave::sign_with_handle(&_handle, message);
-        }
-        #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
-        {
-            return Err(AgentError::BackendUnavailable {
-                backend: keychain.backend_name(),
-                reason: "hardware signing not available on this platform".into(),
-            });
-        }
+    /// Returns the raw public key bytes of a stored key without a passphrase.
+    ///
+    /// Hardware backends derive this from their opaque handle; software
+    /// backends would need a passphrase to decrypt the stored PKCS8, so the
+    /// default errors — use `extract_public_key_bytes` for those.
+    fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
+        let _ = alias;
+        Err(AgentError::StorageError(format!(
+            "backend '{}' does not support passphrase-less public key export",
+            self.backend_name()
+        )))
     }
 
-    use crate::crypto::signer::decrypt_keypair;
-    let (_, _role, encrypted) = keychain.load_key(alias)?;
-    let passphrase = passphrase_provider
-        .get_passphrase(&format!("Enter passphrase for key '{alias}':"))
-        .map_err(|e| AgentError::SigningFailed(e.to_string()))?;
-    let key_bytes = decrypt_keypair(&encrypted, &passphrase)?;
-    let parsed = auths_crypto::parse_key_material(&key_bytes)
-        .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
-    auths_crypto::typed_sign(&parsed.seed, message)
-        .map_err(|e| AgentError::CryptoError(format!("signing failed: {e}")))
+    /// Signs a message with a stored key without a passphrase.
+    ///
+    /// Hardware backends sign inside the hardware (may trigger a biometric
+    /// prompt); software backends need a passphrase, so the default errors —
+    /// use `SecureSigner::sign_with_alias` for those.
+    fn sign_raw(&self, alias: &KeyAlias, message: &[u8]) -> Result<Vec<u8>, AgentError> {
+        let _ = (alias, message);
+        Err(AgentError::StorageError(format!(
+            "backend '{}' does not support passphrase-less signing",
+            self.backend_name()
+        )))
+    }
 }
 
 /// Decrypt a stored key and return its public key bytes and curve type.

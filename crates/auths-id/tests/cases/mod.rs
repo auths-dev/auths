@@ -2,6 +2,7 @@ mod anchor_lifecycle;
 mod attestation_input_golden;
 mod credential_registry;
 mod delegation;
+mod hardware_inception;
 mod keri;
 mod lifecycle;
 mod proptest_keri;

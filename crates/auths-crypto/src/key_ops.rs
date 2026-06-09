@@ -331,6 +331,55 @@ impl TypedSignerKey {
     }
 }
 
+/// Normalize raw public key bytes to the canonical verkey form for `curve`.
+///
+/// Hardware backends and foreign encodings may hand back non-canonical forms
+/// (e.g. an uncompressed SEC1 point); wire formats carry exactly one canonical
+/// shape per curve — 32 raw bytes for Ed25519, the 33-byte compressed SEC1
+/// point for P-256. Rejects bytes that are not a valid key on `curve`.
+///
+/// Args:
+/// * `bytes`: Raw public key bytes in any encoding the curve accepts.
+/// * `curve`: The curve the key belongs to (never inferred from length).
+///
+/// Usage:
+/// ```ignore
+/// let verkey = normalize_verkey(&hardware_pubkey, CurveType::P256)?;
+/// assert_eq!(verkey.len(), 33);
+/// ```
+pub fn normalize_verkey(bytes: &[u8], curve: CurveType) -> Result<Vec<u8>, CryptoError> {
+    match curve {
+        CurveType::Ed25519 => {
+            if bytes.len() != 32 {
+                return Err(CryptoError::OperationFailed(format!(
+                    "Ed25519 verkey must be 32 bytes, got {}",
+                    bytes.len()
+                )));
+            }
+            Ok(bytes.to_vec())
+        }
+        CurveType::P256 => {
+            #[cfg(feature = "native")]
+            {
+                use p256::elliptic_curve::sec1::ToEncodedPoint;
+                let pk = p256::PublicKey::from_sec1_bytes(bytes).map_err(|e| {
+                    CryptoError::OperationFailed(format!("invalid P-256 public key: {e}"))
+                })?;
+                Ok(pk.to_encoded_point(true).as_bytes().to_vec())
+            }
+            #[cfg(not(feature = "native"))]
+            {
+                let _ = bytes;
+                Err(CryptoError::UnsupportedTarget)
+            }
+        }
+        #[allow(unreachable_patterns)]
+        other => Err(CryptoError::OperationFailed(format!(
+            "normalize_verkey: unsupported curve {other:?}"
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

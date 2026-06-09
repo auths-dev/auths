@@ -268,23 +268,18 @@ fn initialize_hardware_registry_identity(
     keychain.store_key(local_key_alias, &placeholder, KeyRole::Primary, &[])?;
     keychain.store_key(&next_alias, &placeholder, KeyRole::NextRotation, &[])?;
 
-    let (current_pub, _) = auths_core::storage::keychain::extract_public_key_bytes(
-        keychain,
-        local_key_alias,
-        passphrase_provider,
-    )?;
-    let (next_pub, _) = auths_core::storage::keychain::extract_public_key_bytes(
-        keychain,
-        &next_alias,
-        passphrase_provider,
-    )?;
+    let _ = passphrase_provider;
+    let current_pub = keychain.export_public_key(local_key_alias)?;
+    let next_pub = keychain.export_public_key(&next_alias)?;
 
-    let current_verkey =
-        auths_keri::KeriPublicKey::from_verkey_bytes(&p256_compressed(&current_pub)?, curve)
-            .map_err(|e| InitError::Crypto(format!("hardware current key: {e}")))?;
-    let next_verkey =
-        auths_keri::KeriPublicKey::from_verkey_bytes(&p256_compressed(&next_pub)?, curve)
-            .map_err(|e| InitError::Crypto(format!("hardware next key: {e}")))?;
+    let current_norm = auths_crypto::normalize_verkey(&current_pub, curve)
+        .map_err(|e| InitError::Crypto(format!("hardware current key: {e}")))?;
+    let next_norm = auths_crypto::normalize_verkey(&next_pub, curve)
+        .map_err(|e| InitError::Crypto(format!("hardware next key: {e}")))?;
+    let current_verkey = auths_keri::KeriPublicKey::from_verkey_bytes(&current_norm, curve)
+        .map_err(|e| InitError::Crypto(format!("hardware current key: {e}")))?;
+    let next_verkey = auths_keri::KeriPublicKey::from_verkey_bytes(&next_norm, curve)
+        .map_err(|e| InitError::Crypto(format!("hardware next key: {e}")))?;
     let current_cesr = current_verkey
         .to_qb64()
         .map_err(|e| InitError::Crypto(e.to_string()))?;
@@ -317,12 +312,7 @@ fn initialize_hardware_registry_identity(
 
     let canonical = serialize_for_signing(&Event::Icp(finalized.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;
-    let sig_bytes = auths_core::storage::keychain::sign_with_stored_key(
-        keychain,
-        local_key_alias,
-        passphrase_provider,
-        &canonical,
-    )?;
+    let sig_bytes = keychain.sign_raw(local_key_alias, &canonical)?;
     let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
         index: 0,
         prior_index: None,
@@ -342,15 +332,6 @@ fn initialize_hardware_registry_identity(
     keychain.rebind_identity(&next_alias, &controller_did)?;
 
     Ok((controller_did, local_key_alias.clone()))
-}
-
-/// Normalize a P-256 public key (compressed or uncompressed SEC1) to its
-/// 33-byte compressed form, which is what KERI verkeys carry.
-fn p256_compressed(bytes: &[u8]) -> Result<Vec<u8>, InitError> {
-    use p256::elliptic_curve::sec1::ToEncodedPoint;
-    let pk = p256::PublicKey::from_sec1_bytes(bytes)
-        .map_err(|e| InitError::Crypto(format!("invalid P-256 public key from keychain: {e}")))?;
-    Ok(pk.to_encoded_point(true).as_bytes().to_vec())
 }
 
 /// Initialize a multi-key KERI identity.

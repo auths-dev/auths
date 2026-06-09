@@ -285,6 +285,16 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         true
     }
 
+    fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
+        let handle = self.load_handle(alias)?;
+        public_key_from_handle(&handle)
+    }
+
+    fn sign_raw(&self, alias: &KeyAlias, message: &[u8]) -> Result<Vec<u8>, AgentError> {
+        let handle = self.load_handle(alias)?;
+        sign_with_handle(&handle, message)
+    }
+
     fn rebind_identity(
         &self,
         alias: &KeyAlias,
