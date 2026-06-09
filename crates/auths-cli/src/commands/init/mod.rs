@@ -406,13 +406,17 @@ fn run_ci_setup(out: &Output, ctx: &CliConfig) -> Result<()> {
 
     // GATHER
     guide.section("CI Environment Detection");
-    let (ci_env, config, keychain, passphrase_str) = gather_ci_config(out)?;
+    let (ci_env, config, keychain, passphrase_str) =
+        gather_ci_config(out, ctx.repo_path.as_deref())?;
     let registry_path = config.registry_path.clone();
     ensure_registry_dir(&registry_path)?;
 
     // EXECUTE
     guide.section("Creating CI Identity");
-    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
+    // gather_ci_config set the file-backend env vars; read them fresh so the SDK
+    // context's keychain matches the one we just built (ctx.env_config predates them).
+    let ci_env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
+    let sdk_ctx = build_auths_context(&registry_path, &ci_env_config, None)?;
     let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
     let signer = StorageSigner::new(Arc::clone(&keychain_arc));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);

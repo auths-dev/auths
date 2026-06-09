@@ -1,8 +1,8 @@
 //! Migration commands for importing existing keys into Auths.
 //!
 //! Supports migrating from:
-//! - GPG keys (`auths migrate from-gpg`)
-//! - SSH keys (`auths migrate from-ssh`)
+//! - GPG keys (`auths id migrate from-gpg`)
+//! - SSH keys (`auths id migrate from-ssh`)
 
 use crate::subprocess::git_command;
 use crate::ux::format::{Output, is_json_mode};
@@ -204,7 +204,7 @@ fn handle_from_gpg(cmd: FromGpgCommand, now: chrono::DateTime<chrono::Utc>) -> R
             out.println(&format!("  {} - {}", out.bold(&key.key_id), key.user_id));
         }
         out.newline();
-        out.println("Use: auths migrate from-gpg --key-id <KEY_ID>");
+        out.println("Use: auths id migrate from-gpg --key-id <KEY_ID>");
         return Ok(());
     };
 
@@ -578,7 +578,7 @@ fn handle_from_ssh(cmd: FromSshCommand, now: chrono::DateTime<chrono::Utc>) -> R
             ));
         }
         out.newline();
-        out.println("Use: auths migrate from-ssh --key <PATH>");
+        out.println("Use: auths id migrate from-ssh --key <PATH>");
         return Ok(());
     };
 
@@ -893,7 +893,7 @@ fn perform_ssh_migration(
             out.println("  1. Start using Auths for new commits:");
             out.println("     auths agent start");
             out.println("  2. Existing SSH-signed commits remain verifiable");
-            out.println("  3. Run 'auths signers sync' to update allowed signers");
+            out.println("  3. Run 'auths verify HEAD' after your next commit to confirm it verifies");
 
             Ok(())
         }
@@ -1145,10 +1145,10 @@ fn handle_migrate_status(cmd: MigrateStatusCommand) -> Result<()> {
         out.print_heading("  Next Steps");
         out.newline();
         if stats.gpg_signed > 0 {
-            out.println("    For GPG users: auths migrate from-gpg");
+            out.println("    For GPG users: auths id migrate from-gpg");
         }
         if stats.ssh_signed > 0 {
-            out.println("    For SSH users: auths migrate from-ssh");
+            out.println("    For SSH users: auths id migrate from-ssh");
         }
     }
 

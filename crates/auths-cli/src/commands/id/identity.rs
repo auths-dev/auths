@@ -779,7 +779,7 @@ pub fn handle_id(
             println!("   Attestations:      {}", bundle.attestation_chain.len());
             println!("\nUsage in CI:");
             println!(
-                "   auths verify-commit --identity-bundle {:?} HEAD",
+                "   auths verify --identity-bundle {:?} HEAD",
                 output_file
             );
 

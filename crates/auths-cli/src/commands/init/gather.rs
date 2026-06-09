@@ -53,6 +53,7 @@ pub(crate) fn gather_developer_config(
 #[allow(clippy::type_complexity)]
 pub(crate) fn gather_ci_config(
     out: &Output,
+    repo_opt: Option<&Path>,
 ) -> Result<(
     Option<String>,
     CiIdentityConfig,
@@ -68,25 +69,37 @@ pub(crate) fn gather_ci_config(
     }
     out.newline();
 
-    let registry_path = std::env::current_dir()
-        .context("Failed to determine current working directory")?
-        .join(".auths-ci");
+    let registry_path = match repo_opt {
+        Some(p) => p.to_path_buf(),
+        None => std::env::current_dir()
+            .context("Failed to determine current working directory")?
+            .join(".auths-ci"),
+    };
+    let keychain_file = registry_path.join("keys.enc");
     #[allow(clippy::disallowed_methods)] // CLI boundary: CI passphrase from env
-    let passphrase =
-        std::env::var("AUTHS_PASSPHRASE").unwrap_or_else(|_| "Ci-ephemeral-pass1!".to_string());
+    let passphrase = std::env::var("AUTHS_PASSPHRASE")
+        .unwrap_or_else(|_| auths_sdk::types::DEFAULT_CI_PASSPHRASE.to_string());
 
-    // SAFETY: Single-threaded CLI context; env var read immediately by get_platform_keychain.
+    // Persist the CI key to an encrypted file co-located with the registry so a
+    // separate `auths sign` process can load it — the in-memory backend would lose
+    // the key the moment `init` exits. Setting these here also makes the vars present
+    // for the rest of this process and matches the copy-pasteable env block we print.
+    // SAFETY: single-threaded CLI context; vars read immediately below and by the SDK context.
     unsafe {
-        std::env::set_var("AUTHS_KEYCHAIN_BACKEND", "memory");
+        std::env::set_var("AUTHS_KEYCHAIN_BACKEND", "file");
+        std::env::set_var("AUTHS_KEYCHAIN_FILE", &keychain_file);
+        std::env::set_var("AUTHS_PASSPHRASE", &passphrase);
     }
-    let keychain =
-        get_platform_keychain().map_err(|e| anyhow!("Failed to get memory keychain: {}", e))?;
+    let keychain = get_platform_keychain()
+        .map_err(|e| anyhow!("Failed to get file-backed keychain: {}", e))?;
 
     out.print_info(&format!("Using keychain: {}", keychain.backend_name()));
 
     let config = CiIdentityConfig {
         ci_environment: map_ci_environment(&ci_env),
         registry_path,
+        keychain_file,
+        passphrase: passphrase.clone(),
     };
 
     Ok((ci_env, config, keychain, passphrase))

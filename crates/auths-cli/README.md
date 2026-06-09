@@ -127,7 +127,11 @@ Run `auths <group> --help` for details on any group.
 
 ## CI Setup (GitHub Actions)
 
-`auths init --profile ci` creates an ephemeral in-memory identity scoped to the current run — no platform keychain required, no secrets to rotate.
+`auths init --profile ci` creates a fresh, run-scoped identity backed by an **encrypted
+file** (default `.auths-ci/keys.enc`) — no platform keychain, no Touch ID. It prints a block of
+`AUTHS_*` exports; set those at the job level so a later `auths sign` step in the same job can
+load the key. The identity is ephemeral, so the passphrase can be any value as long as it's
+consistent across the job's steps.
 
 ### Signing commits in CI
 
@@ -138,7 +142,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      AUTHS_KEYCHAIN_BACKEND: memory
+      AUTHS_KEYCHAIN_BACKEND: file
+      AUTHS_KEYCHAIN_FILE: .auths-ci/keys.enc
+      AUTHS_REPO: .auths-ci
+      AUTHS_PASSPHRASE: ${{ secrets.AUTHS_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -146,10 +153,8 @@ jobs:
         run: cargo install --path crates/auths-cli --force
       - name: Set up Auths (CI profile)
         run: auths init --profile ci --non-interactive
-      - name: Run doctor (verify setup)
-        run: auths doctor
-      - name: Your build step
-        run: cargo build --release
+      - name: Sign HEAD
+        run: auths sign HEAD
 ```
 
 ### Verifying commit signatures in CI

@@ -1,65 +1,48 @@
-use std::io::Write as _;
-use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
+use chrono::Utc;
 use serde_json::Value;
-use tempfile::NamedTempFile;
 
-use auths_sdk::domains::signing::service::{
-    ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
-};
-use auths_sdk::keychain::KeyAlias;
+use auths_sdk::domains::signing::service::sign_artifact_ephemeral;
 
-use crate::commands::artifact::file::FileArtifact;
 use crate::commands::executable::ExecutableCommand;
-use crate::commands::key_detect::auto_detect_device_key;
 use crate::config::CliConfig;
-use crate::factories::storage::build_auths_context;
 use crate::ux::format::Output;
 
+/// Synthetic commit SHA stamped into the demo attestation.
+///
+/// `sign_artifact_ephemeral` binds provenance to a 40/64-hex commit SHA, but the
+/// demo signs ad-hoc bytes rather than a real commit — this recognizable placeholder
+/// keeps the call valid without pretending to reference a real commit.
+const DEMO_COMMIT_SHA: &str = "0000000000000000000000000000000000000000";
+
 #[derive(Debug, clap::Args)]
-#[command(about = "Sign and verify a demo artifact — works offline, no registry needed")]
+#[command(about = "Sign and verify a demo artifact — works offline, no setup or registry needed")]
 pub struct DemoCommand {}
 
 impl ExecutableCommand for DemoCommand {
-    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
         let out = Output::new();
+        let data = b"Hello, Auths!\n";
 
-        // 1. Create a temp file with known content
-        let mut tmp = NamedTempFile::new().context("failed to create temp file")?;
-        writeln!(tmp, "Hello, Auths!").context("failed to write demo content")?;
-        let path = tmp.path().to_path_buf();
-
-        // 2. Auto-detect the device key alias (errors out cleanly if identity missing)
-        let device_key_alias = auto_detect_device_key(ctx.repo_path.as_deref(), &ctx.env_config)
-            .context("No identity found — run `auths init` first")?;
-
-        // 3. Build SDK context
-        let repo_path = auths_sdk::storage_layout::resolve_repo_path(ctx.repo_path.clone())?;
-        let sdk_ctx = build_auths_context(
-            &repo_path,
-            &ctx.env_config,
-            Some(ctx.passphrase_provider.clone()),
-        )?;
-
-        // 4. Sign using SDK directly (no intermediate CLI output)
+        // Sign with an ephemeral in-process key: no identity, no keychain, no Secure
+        // Enclave — so the "aha" works the instant the binary is installed and never
+        // blocks on a Touch ID prompt (even on a TTY-less CI shell).
         let t_sign = Instant::now();
-        let sign_result = sign_artifact(
-            ArtifactSigningParams {
-                artifact: Arc::new(FileArtifact::new(&path)),
-                identity_key: None,
-                device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(&device_key_alias)),
-                expires_in: None,
-                note: Some("auths demo — local only".into()),
-                commit_sha: None,
-            },
-            &sdk_ctx,
+        let sign_result = sign_artifact_ephemeral(
+            Utc::now(),
+            data,
+            Some("demo.txt".into()),
+            DEMO_COMMIT_SHA.into(),
+            None,
+            Some("auths demo — local only".into()),
+            None,
         )
         .map_err(|e| anyhow!("{}", e))?;
         let sign_ms = t_sign.elapsed().as_millis();
 
-        // 5. Verify: parse attestation and confirm digest integrity (fully local)
+        // Verify locally: the digest the attestation commits to must match what we signed.
         let t_verify = Instant::now();
         let attestation: Value = serde_json::from_str(&sign_result.attestation_json)
             .context("failed to parse attestation")?;
@@ -76,20 +59,22 @@ impl ExecutableCommand for DemoCommand {
         }
         let verify_ms = t_verify.elapsed().as_millis();
 
-        // 6. Extract issuer DID from the attestation
         let issuer = attestation
             .pointer("/issuer")
             .and_then(|v| v.as_str())
             .unwrap_or("(unknown)");
 
-        // 7. Print result banner
         out.print_heading("Auths Demo");
         out.println("");
-        out.key_value("Your identity", issuer);
-        out.key_value("Signed in    ", &format!("{}ms", sign_ms));
-        out.key_value("Verified in  ", &format!("{}ms", verify_ms));
+        out.println(&out.key_value("Demo identity", issuer));
+        out.println(&out.key_value("Signed in", &format!("{sign_ms}ms")));
+        out.println(&out.key_value("Verified in", &format!("{verify_ms}ms")));
         out.println("");
-        out.print_success("No network required.");
+        out.print_success("Signed + verified locally — no network, no setup required.");
+        out.println("");
+        out.println(
+            "This used a throwaway demo key. Run `auths init` to sign with your real identity.",
+        );
 
         Ok(())
     }

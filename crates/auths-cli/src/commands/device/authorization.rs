@@ -139,7 +139,7 @@ pub enum DeviceSubcommand {
     /// attestation inactive without touching the controller set.
     ///
     /// Self-removal is rejected at the CLI with a pointer to
-    /// `auths identity forget`. The authoritative guard lives in the
+    /// `auths reset`. The authoritative guard lives in the
     /// SDK — even callers that bypass the CLI check hit
     /// `SharedKelError::WouldOrphanIdentity`.
     Remove {
@@ -308,7 +308,7 @@ pub fn handle_device(
             //
             // Self-removal pre-flight (UX only — the SDK is the authoritative
             // guard): reject removing the root identity itself; point the caller
-            // at `auths identity forget` to wipe their own state.
+            // at `auths reset` to wipe their own state.
             let ctx = build_auths_context(
                 &repo_path,
                 env_config,
@@ -320,7 +320,7 @@ pub fn handle_device(
             if device_did == identity.controller_did.as_str() {
                 return Err(anyhow::anyhow!(
                     "Cannot remove the root identity itself. \
-                     Use `auths identity forget` to delete this device's copy of the identity."
+                     Use `auths reset` to delete this device's copy of the identity."
                 ));
             }
             let root_alias = KeyAlias::new_unchecked(key);

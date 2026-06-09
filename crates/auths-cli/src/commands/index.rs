@@ -89,7 +89,7 @@ pub fn handle_index(
         IndexSubcommand::Stats => {
             if !index_path.exists() {
                 println!("No index found at {:?}", index_path);
-                println!("Run 'auths index rebuild' to create one.");
+                println!("Run 'auths debug index rebuild' to create one.");
                 return Ok(());
             }
 
@@ -114,7 +114,7 @@ pub fn handle_index(
         IndexSubcommand::QueryDevice { device_did } => {
             if !index_path.exists() {
                 println!("No index found at {:?}", index_path);
-                println!("Run 'auths index rebuild' to create one.");
+                println!("Run 'auths debug index rebuild' to create one.");
                 return Ok(());
             }
 
@@ -151,7 +151,7 @@ pub fn handle_index(
         IndexSubcommand::QueryIssuer { issuer_did } => {
             if !index_path.exists() {
                 println!("No index found at {:?}", index_path);
-                println!("Run 'auths index rebuild' to create one.");
+                println!("Run 'auths debug index rebuild' to create one.");
                 return Ok(());
             }
 

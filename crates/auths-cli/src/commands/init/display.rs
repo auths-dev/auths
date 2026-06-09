@@ -28,8 +28,8 @@ pub(crate) fn display_developer_result(
         ));
     }
     out.newline();
-    out.key_value("Next step     ", "auths sign <file>   or   auths git setup");
-    out.key_value("Share identity", "auths export --bundle | pbcopy");
+    out.key_value("Next step     ", "auths demo   or   auths sign <file>");
+    out.key_value("Share identity", "auths id export-bundle");
     out.newline();
     out.print_success("Your next commit will be signed with Auths!");
     out.println("  Run `auths status` to check your identity");
@@ -115,27 +115,25 @@ fn write_ci_vendor_hints(out: &Output, vendor: &str) {
 
     match vendor {
         "GitHub Actions" => {
-            out.println("Add to your workflow (.github/workflows/*.yml):");
-            out.newline();
-            out.println("  env:");
-            out.println("    AUTHS_KEYCHAIN_BACKEND: memory");
+            out.println("Add to your workflow (.github/workflows/*.yml) — init and sign in the");
+            out.println("same job so the file-backed key persists between steps:");
             out.newline();
             out.println("  steps:");
             out.println("    - uses: actions/checkout@v4");
             out.println("    - run: auths init --profile ci --non-interactive");
+            out.println("    - run: auths sign HEAD");
         }
         "GitLab CI" => {
-            out.println("Add to .gitlab-ci.yml:");
+            out.println("Add to .gitlab-ci.yml — init and sign in the same job so the");
+            out.println("file-backed key persists between steps:");
             out.newline();
-            out.println("  variables:");
-            out.println("    AUTHS_KEYCHAIN_BACKEND: memory");
-            out.newline();
-            out.println("  before_script:");
+            out.println("  script:");
             out.println("    - auths init --profile ci --non-interactive");
+            out.println("    - auths sign HEAD");
         }
         _ => {
-            out.println("Set these environment variables in your CI:");
-            out.println("  AUTHS_KEYCHAIN_BACKEND=memory");
+            out.println("Run init and sign in the same CI job so the file-backed key persists:");
+            out.println("  auths init --profile ci --non-interactive && auths sign HEAD");
         }
     }
     out.newline();
