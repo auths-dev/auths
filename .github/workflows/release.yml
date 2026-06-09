@@ -127,6 +127,17 @@ jobs:
             --log sigstore-rekor `
             --note "Release ${{ github.ref_name }}"
 
+      # The ephemeral attestation anchors HEAD, whose trust chain ends at the
+      # maintainer's KEL. The repo publishes that KEL under refs/auths/registry
+      # (KEL-native distribution) — seed the runner's ~/.auths so the verifier
+      # can resolve it.
+      - name: Seed maintainer registry for verification
+        shell: bash
+        run: |
+          git init -q "$HOME/.auths"
+          git -C "$HOME/.auths" fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 'refs/auths/*:refs/auths/*'
+          git -C "$HOME/.auths" for-each-ref refs/auths/
+
       - name: Verify own attestation (Unix)
         if: matrix.ext == '.tar.gz'
         run: ./staging/auths artifact verify "${{ matrix.asset_name }}${{ matrix.ext }}"
