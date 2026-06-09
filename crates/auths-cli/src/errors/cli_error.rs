@@ -30,33 +30,36 @@ impl CliError {
     pub fn suggestion(&self) -> &str {
         match self {
             Self::NoPrerotationCommitment => {
-                "Run: auths key precommit --next-key <path-to-next-pubkey>"
+                "Run: auths id rotate --next-key-alias <alias-for-next-key>"
             }
             Self::IdentityNotFound => "Run: auths init",
             Self::KeychainUnavailable => {
                 "Set AUTHS_KEYCHAIN_BACKEND=file and AUTHS_PASSPHRASE=<passphrase> in your environment."
             }
-            Self::DeviceKeyNotFound { .. } => "Run: auths key import --alias <alias> --file <path>",
+            Self::DeviceKeyNotFound { .. } => {
+                "Run: auths key import --key-alias <alias> --seed-file <path>"
+            }
             Self::PassphraseRequired => {
                 "Set AUTHS_PASSPHRASE=<your-passphrase> in the environment, or run interactively."
             }
-            Self::AttestationExpired => "Run: auths device link --device-alias <name>",
+            Self::AttestationExpired => {
+                "Run: auths device link --key <key> --device-key <device-key> --device-did <did>"
+            }
             Self::MissingCapability { .. } => {
-                "Run: auths device link --capability <cap> to add the capability."
+                "Re-authorize the device with `auths device link` to grant the capability."
             }
         }
     }
 
     /// Documentation URL for this error, if available.
     ///
-    /// These URLs map to Markdown source files under `docs/guides/` in this repository
-    /// (e.g., `docs/guides/key-rotation.md`). Keep the slugs in sync with those filenames
-    /// so static site generators (e.g., mdBook, Docusaurus) can serve them correctly.
+    /// Deep links are parked on the docs root until the docs site serves
+    /// per-guide routes — every subpath currently 404s.
     pub fn docs_url(&self) -> Option<&str> {
         match self {
-            Self::NoPrerotationCommitment => Some("https://docs.auths.dev/guides/key-rotation"),
-            Self::IdentityNotFound => Some("https://docs.auths.dev/guides/getting-started"),
-            Self::KeychainUnavailable => Some("https://docs.auths.dev/guides/headless-setup"),
+            Self::NoPrerotationCommitment | Self::IdentityNotFound | Self::KeychainUnavailable => {
+                Some("https://docs.auths.dev")
+            }
             _ => None,
         }
     }

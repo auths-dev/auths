@@ -1,0 +1,23 @@
+{
+  "identity_did": "did:keri:ECHoDk6bcHtZm3rngCXNpANJNh-U-3Bd5bSO1YVx6Fac",
+  "public_key_hex": "025587d93658ed5be7be14027e3dae1f7312c968011faa45302abdf677a0c74b2a",
+  "curve": "p256",
+  "attestation_chain": [
+    {
+      "version": 1,
+      "rid": ".auths",
+      "issuer": "did:keri:ECHoDk6bcHtZm3rngCXNpANJNh-U-3Bd5bSO1YVx6Fac",
+      "subject": "did:key:zDnaeWBqqznf8xyJhTAfc1RU4VFzUoRmw85G3hVdVS9mpLemP",
+      "device_public_key": {
+        "curve": "p256",
+        "key": "025587d93658ed5be7be14027e3dae1f7312c968011faa45302abdf677a0c74b2a"
+      },
+      "identity_signature": "d6776a5182df46bb646938d8416ed7ce3a2a9f55a841900c360d1e7190d3af7a5a5d8832dfad1bd43540cfeaba43df3f96c7a8f95ff8b970f6bdf71c878989c9",
+      "device_signature": "49d8c6dc15ad8d79f91bce2b9cb3533dd8cf4d3e12305641f0765f5624655812c549dcac07ad6a52f07e9fc41a3827db55f68069f9bd1bcc74feeb85197665c1",
+      "timestamp": "2026-06-03T17:32:34.460661Z",
+      "note": "Linked by auths-sdk setup"
+    }
+  ],
+  "bundle_timestamp": "2026-06-09T19:49:11.207253Z",
+  "max_valid_for_secs": 31536000
+}

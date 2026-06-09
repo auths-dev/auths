@@ -13,7 +13,12 @@ use crate::domains::identity::error::RegistrationError;
 use crate::domains::identity::types::RegistrationOutcome;
 
 /// Default registry URL used when no explicit registry endpoint is configured.
-pub const DEFAULT_REGISTRY_URL: &str = "https://auths-registry.fly.dev";
+///
+/// Registration is opt-in (`--register`); auths is offline-first and never
+/// contacts this host unless the user explicitly asks for registration.
+/// Override per-invocation with `--registry <url>` or globally with the
+/// `AUTHS_REGISTRY_URL` environment variable.
+pub const DEFAULT_REGISTRY_URL: &str = "https://registry.auths.dev";
 
 #[derive(Serialize)]
 struct RegistryOnboardingPayload {
@@ -42,7 +47,7 @@ struct RegistrationResponse {
 /// ```ignore
 /// let outcome = register_identity(
 ///     identity_storage, registry, attestation_source,
-///     "https://auths-registry.fly.dev", None, &http_client,
+///     "https://registry.auths.dev", None, &http_client,
 /// ).await?;
 /// ```
 pub async fn register_identity(

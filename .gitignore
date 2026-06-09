@@ -126,6 +126,7 @@ RustAgentDemo/*.a
 # Product specific
 concat_output.txt
 CLAUDE.md
+AGENTS.md
 .cargo/
 my-artifact.txt
 my-artifact.txt.auths.json

@@ -22,7 +22,7 @@ echo "== HTTP middleware: Axum relying party =="
 cargo nextest run -p auths_api -E 'test(rp_auth)' --no-fail-fast
 
 if command -v pnpm >/dev/null 2>&1 && [ -f packages/auths-express/package.json ]; then
-  echo "== HTTP middleware: Express (@auths/express) =="
+  echo "== HTTP middleware: Express (@auths-dev/express) =="
   ( cd packages/auths-express && pnpm install --silent && pnpm test )
 else
   echo "== Express middleware: SKIPPED (pnpm not found) =="

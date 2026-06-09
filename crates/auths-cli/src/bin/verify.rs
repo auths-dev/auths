@@ -150,9 +150,8 @@ fn verify_file(
     if !allowed_signers.exists() {
         bail!(
             "Allowed signers file not found: {:?}\n\n\
-            Create it with:\n  \
-            auths signers sync --output {:?}",
-            allowed_signers,
+            Provide an allowed-signers file, or use `auths verify` for \
+            KEL-native verification (no allowed-signers file needed).",
             allowed_signers
         );
     }

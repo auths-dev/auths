@@ -394,7 +394,7 @@ fn check_identity_valid(now: DateTime<Utc>) -> Check {
             Ok(aliases) if aliases.is_empty() => (
                 false,
                 "No keys found in keychain".to_string(),
-                Some("Run: auths init --profile developer  (or: auths id init)".to_string()),
+                Some("Run: auths init --profile developer  (or: auths id create)".to_string()),
             ),
             Ok(aliases) => {
                 let key_count = aliases.len();
@@ -403,7 +403,7 @@ fn check_identity_valid(now: DateTime<Utc>) -> Check {
                     ExpiryStatus::AllExpired(msg) => (
                         false,
                         format!("{key_count} key(s) found, but {msg}"),
-                        Some("Run: auths device refresh".to_string()),
+                        Some("Run: auths device extend".to_string()),
                     ),
                     ExpiryStatus::ExpiringSoon(msg) => {
                         (true, format!("{key_count} key(s) found ({msg})"), None)

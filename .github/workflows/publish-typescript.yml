@@ -1,0 +1,101 @@
+name: Publish TypeScript packages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        required: true
+        type: choice
+        options:
+          - npm
+          - dry-run
+        default: dry-run
+
+permissions:
+  contents: read
+
+jobs:
+  publish-verifier:
+    name: Build + publish @auths-dev/verifier (WASM)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93"
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install dependencies
+        working-directory: packages/auths-verifier-ts
+        run: npm install
+
+      - name: Build (wasm + ts)
+        working-directory: packages/auths-verifier-ts
+        run: npm run build
+
+      - name: Test
+        working-directory: packages/auths-verifier-ts
+        run: npm test
+
+      - name: Publish
+        working-directory: packages/auths-verifier-ts
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.target }}" = "dry-run" ]; then
+            echo "Dry run - skipping publish"
+            npm pack
+          else
+            npm publish --ignore-scripts --provenance --access public
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-express:
+    name: Build + publish @auths-dev/express
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        working-directory: packages/auths-express
+        run: npm install
+
+      - name: Build
+        working-directory: packages/auths-express
+        run: npm run build
+
+      - name: Test
+        working-directory: packages/auths-express
+        run: npm test
+
+      - name: Publish
+        working-directory: packages/auths-express
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.target }}" = "dry-run" ]; then
+            echo "Dry run - skipping publish"
+            npm pack
+          else
+            npm publish --provenance --access public
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

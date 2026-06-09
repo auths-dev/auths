@@ -315,9 +315,13 @@ impl IdentityConfig {
     /// let config = IdentityConfig::ci(PathBuf::from("/tmp/.auths-ci"));
     /// ```
     pub fn ci(registry_path: impl Into<PathBuf>) -> Self {
+        let registry_path = registry_path.into();
+        let keychain_file = registry_path.join("keys.enc");
         Self::Ci(CiIdentityConfig {
             ci_environment: CiEnvironment::Unknown,
-            registry_path: registry_path.into(),
+            registry_path,
+            keychain_file,
+            passphrase: crate::domains::ci::types::DEFAULT_CI_PASSPHRASE.to_string(),
         })
     }
 

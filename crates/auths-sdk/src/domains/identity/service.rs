@@ -124,8 +124,13 @@ fn initialize_ci(
     let now = ctx.clock.now();
     let (controller_did, key_alias) = initialize_ci_keys(ctx, keychain, passphrase_provider, now)?;
     let device_did = bind_device(&key_alias, ctx, keychain, signer, passphrase_provider, now)?;
-    let env_block =
-        generate_ci_env_block(&key_alias, &config.registry_path, &config.ci_environment);
+    let env_block = generate_ci_env_block(
+        &key_alias,
+        &config.registry_path,
+        &config.keychain_file,
+        &config.passphrase,
+        &config.ci_environment,
+    );
 
     Ok(CiIdentityResult {
         #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did originates from initialize_registry_identity() which returns a validated IdentityDID; into_inner() only unwraps it
@@ -426,26 +431,46 @@ fn initialize_ci_keys(
 fn generate_ci_env_block(
     key_alias: &KeyAlias,
     repo_path: &Path,
+    keychain_file: &Path,
+    passphrase: &str,
     environment: &CiEnvironment,
 ) -> Vec<String> {
     match environment {
-        CiEnvironment::GitHubActions => generate_github_env_block(key_alias, repo_path),
-        CiEnvironment::GitLabCi => generate_gitlab_env_block(key_alias, repo_path),
-        CiEnvironment::Custom { name } => generate_generic_env_block(key_alias, repo_path, name),
-        CiEnvironment::Unknown => generate_generic_env_block(key_alias, repo_path, "ci"),
+        CiEnvironment::GitHubActions => {
+            generate_github_env_block(key_alias, repo_path, keychain_file, passphrase)
+        }
+        CiEnvironment::GitLabCi => {
+            generate_gitlab_env_block(key_alias, repo_path, keychain_file, passphrase)
+        }
+        CiEnvironment::Custom { name } => {
+            generate_generic_env_block(key_alias, repo_path, keychain_file, passphrase, name)
+        }
+        CiEnvironment::Unknown => {
+            generate_generic_env_block(key_alias, repo_path, keychain_file, passphrase, "ci")
+        }
     }
 }
 
-fn generate_github_env_block(key_alias: &KeyAlias, repo_path: &Path) -> Vec<String> {
-    let mut lines = base_env_lines(key_alias, repo_path);
+fn generate_github_env_block(
+    key_alias: &KeyAlias,
+    repo_path: &Path,
+    keychain_file: &Path,
+    passphrase: &str,
+) -> Vec<String> {
+    let mut lines = base_env_lines(key_alias, repo_path, keychain_file, passphrase);
     lines.push(String::new());
     lines.push("# GitHub Actions: add these as repository secrets".to_string());
     lines.push("# then reference them in your workflow env: block".to_string());
     lines
 }
 
-fn generate_gitlab_env_block(key_alias: &KeyAlias, repo_path: &Path) -> Vec<String> {
-    let mut lines = base_env_lines(key_alias, repo_path);
+fn generate_gitlab_env_block(
+    key_alias: &KeyAlias,
+    repo_path: &Path,
+    keychain_file: &Path,
+    passphrase: &str,
+) -> Vec<String> {
+    let mut lines = base_env_lines(key_alias, repo_path, keychain_file, passphrase);
     lines.push(String::new());
     lines.push("# GitLab CI: add these as CI/CD variables".to_string());
     lines.push("# in Settings > CI/CD > Variables".to_string());
@@ -455,17 +480,27 @@ fn generate_gitlab_env_block(key_alias: &KeyAlias, repo_path: &Path) -> Vec<Stri
 fn generate_generic_env_block(
     key_alias: &KeyAlias,
     repo_path: &Path,
+    keychain_file: &Path,
+    passphrase: &str,
     platform: &str,
 ) -> Vec<String> {
-    let mut lines = base_env_lines(key_alias, repo_path);
+    let mut lines = base_env_lines(key_alias, repo_path, keychain_file, passphrase);
     lines.push(String::new());
     lines.push(format!("# {platform}: add these as environment variables"));
     lines
 }
 
-fn base_env_lines(key_alias: &KeyAlias, repo_path: &Path) -> Vec<String> {
+fn base_env_lines(
+    key_alias: &KeyAlias,
+    repo_path: &Path,
+    keychain_file: &Path,
+    passphrase: &str,
+) -> Vec<String> {
     vec![
-        format!("export AUTHS_KEYCHAIN_BACKEND=\"memory\""),
+        "# CI signing secrets — store these securely and rotate per environment".to_string(),
+        format!("export AUTHS_KEYCHAIN_BACKEND=\"file\""),
+        format!("export AUTHS_KEYCHAIN_FILE=\"{}\"", keychain_file.display()),
+        format!("export AUTHS_PASSPHRASE=\"{passphrase}\""),
         format!("export AUTHS_REPO=\"{}\"", repo_path.display()),
         format!("export AUTHS_KEY_ALIAS=\"{key_alias}\""),
         String::new(),

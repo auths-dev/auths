@@ -252,7 +252,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
             "# AUTHS-E3106\n\n**Crate:** `auths-core`  \n**Type:** `TrustError::Lock`\n\n## Message\n\nlock acquisition failed: {0}\n\n## Suggestion\n\nCheck file permissions and try again\n",
         ),
         "AUTHS-E3107" => Some(
-            "# AUTHS-E3107\n\n**Crate:** `auths-core`  \n**Type:** `TrustError::PolicyRejected`\n\n## Message\n\npolicy rejected: {0}\n\n## Suggestion\n\nRun `auths trust add` to pin this identity\n",
+            "# AUTHS-E3107\n\n**Crate:** `auths-core`  \n**Type:** `TrustError::PolicyRejected`\n\n## Message\n\npolicy rejected: {0}\n\n## Suggestion\n\nRun `auths trust pin` to pin this identity\n",
         ),
 
         // --- auths-core (PairingError) ---

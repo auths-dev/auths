@@ -1,4 +1,5 @@
 use anyhow::Result;
+use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use std::path::PathBuf;
 
 use crate::commands::artifact::publish::handle_publish;
@@ -32,7 +33,7 @@ pub struct PublishCommand {
     pub package: Option<String>,
 
     /// Registry URL to publish to.
-    #[arg(long, default_value = "https://auths-registry.fly.dev")]
+    #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
     pub registry: String,
 }
 

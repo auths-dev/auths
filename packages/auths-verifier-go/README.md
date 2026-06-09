@@ -10,8 +10,13 @@ other language bindings use — there is no pure-Go re-implementation, so Go can
 ## Installation
 
 ```bash
-go get github.com/auths/auths/packages/auths-verifier-go
+go get github.com/auths-dev/auths/packages/auths-verifier-go
 ```
+
+> Because this module lives in a subdirectory of the `auths` repo, `go get`
+> resolves versions from tags of the form `packages/auths-verifier-go/vX.Y.Z`
+> (Go's nested-module convention). Until such a tag exists, pin a commit:
+> `go get github.com/auths-dev/auths/packages/auths-verifier-go@<commit-sha>`.
 
 ### Building the Native Library
 
@@ -41,7 +46,7 @@ package main
 
 import (
     "fmt"
-    verifier "github.com/auths/auths/packages/auths-verifier-go"
+    verifier "github.com/auths-dev/auths/packages/auths-verifier-go"
 )
 
 func main() {

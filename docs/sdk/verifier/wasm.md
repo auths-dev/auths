@@ -1,11 +1,11 @@
 # WASM Embedding
 
-The `auths-verifier` crate compiles to WebAssembly for browser and edge-runtime verification. The TypeScript wrapper package `@auths/verifier` provides a typed API on top of the raw WASM exports.
+The `auths-verifier` crate compiles to WebAssembly for browser and edge-runtime verification. The TypeScript wrapper package `@auths-dev/verifier` provides a typed API on top of the raw WASM exports.
 
 ## Installation
 
 ```bash
-npm install @auths/verifier
+npm install @auths-dev/verifier
 ```
 
 Requirements: Node.js 18+
@@ -13,7 +13,7 @@ Requirements: Node.js 18+
 ## Quick start
 
 ```typescript
-import { init, verifyAttestation, verifyChain } from '@auths/verifier';
+import { init, verifyAttestation, verifyChain } from '@auths-dev/verifier';
 
 // Initialize WASM module (required once, before any verification)
 await init();
@@ -132,7 +132,7 @@ The `witnessKeysJson` parameter is a JSON array of `{"did": "...", "pk_hex": "..
 
 ## TypeScript wrapper API
 
-The `@auths/verifier` package wraps the raw WASM exports with typed functions. You must call `init()` before using any verification function.
+The `@auths-dev/verifier` package wraps the raw WASM exports with typed functions. You must call `init()` before using any verification function.
 
 ### Functions
 
@@ -194,7 +194,7 @@ interface Attestation {
 ### Verify a single attestation
 
 ```typescript
-import { init, verifyAttestation } from '@auths/verifier';
+import { init, verifyAttestation } from '@auths-dev/verifier';
 
 await init();
 
@@ -213,7 +213,7 @@ if (result.valid) {
 ### Verify a chain of attestations
 
 ```typescript
-import { init, verifyChain } from '@auths/verifier';
+import { init, verifyChain } from '@auths-dev/verifier';
 
 await init();
 
@@ -238,7 +238,7 @@ report.chain.forEach((link, i) => {
 ### Throw-on-failure pattern
 
 ```typescript
-import { init, verifyAttestationOrThrow } from '@auths/verifier';
+import { init, verifyAttestationOrThrow } from '@auths-dev/verifier';
 
 await init();
 
@@ -299,7 +299,7 @@ Inputs exceeding these limits are rejected with descriptive error messages befor
 
 ## Module formats
 
-The `@auths/verifier` package ships with both ESM and CJS builds:
+The `@auths-dev/verifier` package ships with both ESM and CJS builds:
 
 | Format | Entry point |
 |--------|------------|

@@ -476,7 +476,7 @@ fn handle_rotate_now(
     ));
     out.newline();
     out.println("Next steps:");
-    out.println("  1. Re-authorize your devices: auths device link");
+    out.println("  1. Re-authorize your devices: auths pair");
     out.println("  2. Update any CI/CD secrets");
     out.println("  3. Run `auths doctor` to verify setup");
 

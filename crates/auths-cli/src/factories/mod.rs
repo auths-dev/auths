@@ -69,8 +69,17 @@ pub fn build_config(cli: &AuthsCli) -> Result<CliConfig> {
 
     let is_interactive = std::io::stdout().is_terminal();
 
+    // Honor the global --repo flag, falling back to AUTHS_REPO so a headless CI step
+    // (which exports AUTHS_REPO from `init --profile ci`) finds the same registry.
+    let repo_path = cli.repo.clone().or_else(|| {
+        std::env::var("AUTHS_REPO")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(std::path::PathBuf::from)
+    });
+
     Ok(CliConfig {
-        repo_path: cli.repo.clone(),
+        repo_path,
         output_format,
         is_interactive,
         passphrase_provider,

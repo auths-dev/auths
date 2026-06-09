@@ -1,5 +1,5 @@
 /**
- * Example wiring of `@auths/express`.
+ * Example wiring of `@auths-dev/express`.
  *
  * Mounts the challenge mint route and a guarded `POST /v1/deploy` that reads a typed
  * principal. The production verifier wraps the Node binding's `verifyPresentation` plus an

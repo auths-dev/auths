@@ -1,5 +1,5 @@
 /**
- * `@auths/express` — drop-in Express middleware that authenticates an `Auths-Presentation`
+ * `@auths-dev/express` — drop-in Express middleware that authenticates an `Auths-Presentation`
  * request and attaches a verified {@link Principal}.
  *
  * Public surface: {@link authsAuth} (the middleware), {@link challengeHandler} +

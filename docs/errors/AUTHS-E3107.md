@@ -9,4 +9,4 @@ policy rejected: {0}
 
 ## Suggestion
 
-Run `auths trust add` to pin this identity
+Run `auths trust pin` to pin this identity

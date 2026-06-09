@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::signing::validate_commit_sha;
 
@@ -117,7 +118,7 @@ pub enum ArtifactSubcommand {
         package: Option<String>,
 
         /// Registry URL to publish to.
-        #[arg(long, default_value = "https://auths-registry.fly.dev")]
+        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
 
         /// Local alias of the identity key. Omit for device-only CI signing.

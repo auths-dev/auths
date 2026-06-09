@@ -14,6 +14,7 @@ use auths_sdk::{
 use auths_verifier::{IdentityBundle, IdentityDID};
 use clap::ValueEnum;
 
+use super::register::DEFAULT_REGISTRY_URL;
 use crate::commands::registry_overrides::RegistryOverrides;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
@@ -229,7 +230,7 @@ pub enum IdSubcommand {
     /// Publish this identity to a public registry for discovery.
     Register {
         /// Registry URL to publish to.
-        #[arg(long, default_value = "https://auths-registry.fly.dev")]
+        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
     },
 
@@ -778,10 +779,7 @@ pub fn handle_id(
             println!("   Output:            {:?}", output_file);
             println!("   Attestations:      {}", bundle.attestation_chain.len());
             println!("\nUsage in CI:");
-            println!(
-                "   auths verify-commit --identity-bundle {:?} HEAD",
-                output_file
-            );
+            println!("   auths verify --identity-bundle {:?} HEAD", output_file);
 
             Ok(())
         }

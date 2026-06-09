@@ -154,10 +154,6 @@ const HELP_GROUPS: &[CommandGroup] = &[
         commands: &["pair", "trust", "doctor", "tutorial", "demo"],
     },
     CommandGroup {
-        heading: "CI/CD",
-        commands: &["ci"],
-    },
-    CommandGroup {
         heading: "Utilities",
         commands: &["config", "completions"],
     },

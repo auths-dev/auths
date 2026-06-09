@@ -224,16 +224,18 @@ jobs:
           end
           FORMULA
 
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          path: homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          commit-message: "auths ${{ steps.hashes.outputs.version }}"
-          title: "auths ${{ steps.hashes.outputs.version }}"
-          body: |
-            Automated formula update from [release v${{ steps.hashes.outputs.version }}](https://github.com/auths-dev/auths/releases/tag/v${{ steps.hashes.outputs.version }}).
-
-            SHA256 hashes extracted from `.auths.json` provenance files.
-          branch: "update-${{ steps.hashes.outputs.version }}"
-          base: main
+      # Direct push (no PR): pre-launch the tap has no review gate, and the
+      # previous create-pull-request flow left formulas stale because nobody
+      # merged the bot PRs.
+      - name: Push formula update
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/auths.rb
+          if git diff --cached --quiet; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+          git commit -m "auths ${{ steps.hashes.outputs.version }}"
+          git push origin main

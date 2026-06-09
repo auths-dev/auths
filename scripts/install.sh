@@ -52,8 +52,8 @@ resolve_version() {
         | grep '"tag_name"' \
         | sed -E 's/.*"([^"]+)".*/\1/')" \
         || err "Failed to fetch latest version from GitHub.
-  You can set AUTHS_VERSION manually:
-    AUTHS_VERSION=v0.0.1-rc.9 curl -fsSL https://get.auths.dev | sh"
+  You can set AUTHS_VERSION manually (see https://github.com/${REPO}/releases):
+    AUTHS_VERSION=<tag> curl -fsSL https://get.auths.dev | sh"
 
     if [ -z "$VERSION" ]; then
         err "Could not determine latest version"

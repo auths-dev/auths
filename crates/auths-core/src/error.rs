@@ -267,15 +267,15 @@ impl AuthsErrorInfo for TrustError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::NotFound(_) => Some("Run `auths trust list` to see pinned identities"),
-            Self::PolicyRejected(_) => Some("Run `auths trust add` to pin this identity"),
+            Self::PolicyRejected(_) => Some("Run `auths trust pin` to pin this identity"),
             Self::Lock(_) => Some("Check file permissions and try again"),
             Self::Io(_) => Some("Check disk space and file permissions"),
             Self::AlreadyExists(_) => Some("Run `auths trust list` to see existing entries"),
             Self::InvalidData(_) => {
-                Some("The trust store may be corrupted; delete and re-pin with `auths trust add`")
+                Some("The trust store may be corrupted; delete and re-pin with `auths trust pin`")
             }
             Self::Serialization(_) => {
-                Some("The trust store data is corrupted; delete and re-pin with `auths trust add`")
+                Some("The trust store data is corrupted; delete and re-pin with `auths trust pin`")
             }
         }
     }

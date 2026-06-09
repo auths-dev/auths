@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "auths"
-version = "0.1.0"
+version = "0.1.1"
 description = "Auths Python SDK - decentralized identity for developers and AI agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }

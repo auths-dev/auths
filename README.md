@@ -56,42 +56,35 @@ auths status
 
 Output:
 ```
-Identity: did:keri:EBf...
-Key Alias: controller
-Devices: 1 linked
-
-Ready to sign commits.
+Identity:    did:keri:EBf2cE...
+Key aliases: main
+Witnesses:   none designated
+Agent:       stopped
+Devices:     none
 ```
 
 ### 3. Sign your first commit
 
-Configure Git to use Auths:
+`auths init` already configured Git commit signing (`gpg.format`, `commit.gpgsign`), so just commit:
 
 ```bash
-auths git setup
-```
-
-Now sign a commit:
-
-```bash
-git commit -S -m "My first signed commit"
+git commit -m "My first signed commit"
 ```
 
 Verify it:
 
 ```bash
-auths verify-commit HEAD
+auths verify HEAD
 ```
 
 Output:
 ```
-Commit abc123 is valid
-  Signed by: did:keri:EBf...
-  Device: did:key:z6Mk...
-  Status: VALID
+Commit a1b2c3d verified: signed by did:keri:EBf2cE...
 ```
 
 That's it. Your commits are now cryptographically signed with your decentralized identity.
+
+Want the whole loop in one shot? `auths demo` signs and verifies a sample artifact in under 30 seconds.
 
 ---
 
@@ -112,20 +105,18 @@ No central server. No blockchain. Just Git and cryptography.
 
 | Command | Description |
 |---------|-------------|
-| `auths init` | Initialize identity with guided setup |
+| `auths init` | Initialize identity (also configures Git signing) |
+| `auths demo` | Sign + verify a sample artifact in 30 seconds |
+| `auths sign <file>` | Sign an artifact |
+| `auths verify <target>` | Verify a commit (e.g. `HEAD`) or signed artifact |
 | `auths status` | Show identity and device overview |
-| `auths id show` | Display identity details |
-| `auths device link` | Link a new device |
-| `auths device revoke` | Revoke a device |
-| `auths key list` | List stored keys |
-| `auths verify` | Verify an attestation |
-| `auths verify-commit` | Verify a signed commit |
-| `auths git setup` | Configure Git for signing |
-| `auths signers sync` | Sync allowed-signers from registry |
-| `auths signers list` | List allowed signers |
-| `auths signers add` | Add a manual signer |
+| `auths whoami` | Print your identity DID |
+| `auths pair` | Link another device via QR / short code |
+| `auths trust pin` | Pin a trusted identity |
+| `auths doctor` | Diagnose setup issues |
+| `auths tutorial` | Interactive guided tour |
 
-Run `auths --help` for full documentation.
+Run `auths --help` for full documentation, or `auths --help-all` to include advanced commands.
 
 ---
 

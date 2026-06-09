@@ -76,20 +76,15 @@ git config --global commit.gpgSign true
 
 To configure for the current repository only, replace `--global` with `--local`.
 
-## Regenerate the allowed signers file
+## Verify a signed commit
 
-The `allowed_signers` file maps identities to their authorized public keys. Auths generates this during `init`, but you can regenerate it at any time:
-
-```bash
-auths signers sync --output ~/.ssh/allowed_signers
-git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
-```
-
-For team repositories, install a Git hook that regenerates the file after every pull:
+Verification is KEL-native — no allowed-signers file to generate or sync. `auths verify` resolves the signer's key state from their key event log:
 
 ```bash
-auths git install-hooks
+auths verify HEAD
 ```
+
+See the [Verifying Commits](../guides/git/verifying-commits.md) guide for ranges, CI, and teammate verification.
 
 ## Troubleshooting
 

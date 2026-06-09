@@ -1,11 +1,11 @@
 /**
- * @auths/verifier - Attestation verification for TypeScript/JavaScript
+ * @auths-dev/verifier - Attestation verification for TypeScript/JavaScript
  *
  * This package provides WASM-powered cryptographic verification of Auths attestations.
  *
  * @example
  * ```typescript
- * import { init, verifyAttestation, verifyChain } from '@auths/verifier';
+ * import { init, verifyAttestation, verifyChain } from '@auths-dev/verifier';
  *
  * // Initialize the WASM module (required before verification)
  * await init();
@@ -33,7 +33,7 @@ interface WasmModule {
   verifyAttestationJson(attestationJson: string, issuerPkHex: string): Promise<void>;
   verifyAttestationWithResult(attestationJson: string, issuerPkHex: string): Promise<string>;
   verifyChainJson(attestationsJsonArray: string, rootPkHex: string): Promise<string>;
-  verifyKelJson(kelJson: string): Promise<string>;
+  validateKelJson(kelJson: string): Promise<string>;
   verifyDeviceLink(kelJson: string, attestationJson: string, deviceDid: string): Promise<string>;
 }
 
@@ -228,7 +228,7 @@ export async function verifyKel(kelJson: string): Promise<KeriKeyState> {
   const wasm = ensureInitialized();
 
   try {
-    const resultJson = await wasm.verifyKelJson(kelJson);
+    const resultJson = await wasm.validateKelJson(kelJson);
     return JSON.parse(resultJson) as KeriKeyState;
   } catch (error) {
     throw new Error(

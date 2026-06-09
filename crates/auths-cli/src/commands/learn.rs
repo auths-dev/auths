@@ -201,7 +201,7 @@ pub fn handle_learn(cmd: LearnCommand) -> Result<()> {
             if input.trim().to_lowercase() == "q" {
                 println!();
                 println!(
-                    "  {} Your progress has been saved. Run 'auths learn' to continue.",
+                    "  {} Your progress has been saved. Run 'auths tutorial' to continue.",
                     "✓".green()
                 );
                 break;
@@ -235,9 +235,9 @@ pub fn handle_learn(cmd: LearnCommand) -> Result<()> {
                 "auths init".bold()
             );
             println!(
-                "  {} Run {} to start signing commits",
+                "  {} Commit as usual — {} configures Git signing automatically",
                 "2.".cyan(),
-                "auths git setup".bold()
+                "auths init".bold()
             );
             println!(
                 "  {} Check {} for advanced features",
@@ -456,7 +456,7 @@ fn section_verifying_signature(_tutorial: &Tutorial) -> Result<()> {
     println!();
     println!("  To verify a commit signature:");
     println!();
-    println!("    {}", "$ auths verify-commit HEAD".cyan());
+    println!("    {}", "$ auths verify HEAD".cyan());
     println!();
     println!("  This checks:");
     println!();

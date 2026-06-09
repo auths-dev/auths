@@ -120,7 +120,7 @@ pub struct InitCommand {
     pub dry_run: bool,
 
     /// Registry URL for identity registration
-    #[clap(long, default_value = DEFAULT_REGISTRY_URL)]
+    #[clap(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
     pub registry: String,
 
     /// Register identity with the Auths Registry after creation
@@ -406,13 +406,17 @@ fn run_ci_setup(out: &Output, ctx: &CliConfig) -> Result<()> {
 
     // GATHER
     guide.section("CI Environment Detection");
-    let (ci_env, config, keychain, passphrase_str) = gather_ci_config(out)?;
+    let (ci_env, config, keychain, passphrase_str) =
+        gather_ci_config(out, ctx.repo_path.as_deref())?;
     let registry_path = config.registry_path.clone();
     ensure_registry_dir(&registry_path)?;
 
     // EXECUTE
     guide.section("Creating CI Identity");
-    let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
+    // gather_ci_config set the file-backend env vars; read them fresh so the SDK
+    // context's keychain matches the one we just built (ctx.env_config predates them).
+    let ci_env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
+    let sdk_ctx = build_auths_context(&registry_path, &ci_env_config, None)?;
     let keychain_arc: Arc<dyn KeyStorage + Send + Sync> = Arc::from(keychain);
     let signer = StorageSigner::new(Arc::clone(&keychain_arc));
     let provider = PrefilledPassphraseProvider::new(&passphrase_str);
@@ -522,7 +526,7 @@ mod tests {
         assert_eq!(cmd.key_alias, "main");
         assert!(!cmd.force);
         assert!(!cmd.dry_run);
-        assert_eq!(cmd.registry, "https://auths-registry.fly.dev");
+        assert_eq!(cmd.registry, "https://registry.auths.dev");
         assert!(!cmd.register);
         assert!(!cmd.github_action);
     }

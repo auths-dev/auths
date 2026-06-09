@@ -19,7 +19,7 @@ const PRIMARY_GROUPS: &[&str] = &["Primary", "Setup & Troubleshooting", "Utiliti
 const ADVANCED_GROUPS: &[&str] = &["Advanced", "Internal"];
 
 /// Strip ANSI escape codes from a string.
-fn strip_ansi(s: &str) -> String {
+pub(crate) fn strip_ansi(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut in_escape = false;
     for c in s.chars() {
@@ -39,7 +39,7 @@ fn strip_ansi(s: &str) -> String {
 }
 
 /// Parse `auths --help-all` output into (group_name, Vec<command_name>) pairs.
-fn parse_groups(help_all: &str) -> Vec<(String, Vec<String>)> {
+pub(crate) fn parse_groups(help_all: &str) -> Vec<(String, Vec<String>)> {
     let clean = strip_ansi(help_all);
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     let mut current_group: Option<String> = None;
@@ -98,7 +98,7 @@ fn parse_groups(help_all: &str) -> Vec<(String, Vec<String>)> {
 }
 
 /// Parse `auths <cmd> --help` to extract subcommand names from the Commands: section.
-fn parse_subcommands(binary: &Path, parent: &str) -> Result<Option<Vec<String>>> {
+pub(crate) fn parse_subcommands(binary: &Path, parent: &str) -> Result<Option<Vec<String>>> {
     let out = Command::new(binary)
         .args([parent, "--help"])
         .output()

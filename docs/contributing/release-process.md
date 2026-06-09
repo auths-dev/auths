@@ -125,7 +125,7 @@ SDK packages (Python, TypeScript, Go, Swift) have independent version numbers fr
 |-----------|----------|
 | Rust crates (`auths-core`, `auths-verifier`, ...) | crates.io |
 | Python SDK (`auths-verifier`) | PyPI |
-| TypeScript SDK (`@auths/verifier`) | npm |
+| TypeScript SDK (`@auths-dev/verifier`) | npm |
 
 SDK versions track their own binding API stability. A breaking change in the Python wrapper bumps the Python version even if the underlying Rust API did not change. An internal Rust refactor that does not affect the binding surface does not require an SDK version bump.
 

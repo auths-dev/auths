@@ -1,11 +1,11 @@
-# @auths/verifier
+# @auths-dev/verifier
 
 TypeScript/JavaScript library for verifying Auths attestations using WASM.
 
 ## Installation
 
 ```bash
-npm install @auths/verifier
+npm install @auths-dev/verifier
 ```
 
 Requirements: Node.js 18+
@@ -13,7 +13,7 @@ Requirements: Node.js 18+
 ## Quick start
 
 ```typescript
-import { init, verifyAttestation, verifyChain } from '@auths/verifier';
+import { init, verifyAttestation, verifyChain } from '@auths-dev/verifier';
 
 // Initialize WASM module (required once)
 await init();

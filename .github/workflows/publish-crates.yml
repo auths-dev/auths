@@ -1,0 +1,63 @@
+# Publishes all workspace crates to crates.io in dependency order.
+#
+# Triggers on the same v* tag as release.yml, publish-node.yml, and
+# publish-python.yml so one tag push fans out to every registry.
+# The underlying script (scripts/releases/2_crates.py) is idempotent:
+# crates already at the workspace version are skipped, so a failed run
+# can simply be re-run via workflow_dispatch.
+#
+# Requires the CARGO_REGISTRY_TOKEN repository secret (crates.io API token).
+
+name: Publish Crates
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        required: true
+        default: "dry-run"
+        type: choice
+        options:
+          - dry-run
+          - publish
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93"
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Check version sync
+        run: python3 scripts/releases/0_versions.py --check
+
+      - name: Publish to crates.io (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'dry-run'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: python3 scripts/releases/2_crates.py
+
+      - name: Publish to crates.io
+        if: github.event_name == 'push' || inputs.target == 'publish'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: python3 scripts/releases/2_crates.py --publish

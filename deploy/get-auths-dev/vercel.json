@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/api/install" },
+    { "source": "/:path*", "destination": "/api/install?path=:path*" }
+  ]
+}

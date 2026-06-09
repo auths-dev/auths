@@ -119,6 +119,8 @@ To sign a one-off commit without the global setting:
 git commit -S -m "your message"
 ```
 
+Signed commits carry an `Auths-Device` trailer with your device's `did:keri:` identifier — that trailer is how verifiers map the SSH signature back to your identity's key event log (KEL).
+
 ### Re-Signing Existing Commits
 
 To re-sign the most recent commit:
@@ -135,55 +137,11 @@ auths sign main..HEAD
 
 This runs `git rebase --exec` under the hood to amend each commit with a fresh signature.
 
-## The allowed_signers File
+## How Verification Finds Your Key
 
-Git and `auths verify` both require an `allowed_signers` file that maps principals (email addresses or DIDs) to SSH public keys. This file tells the verifier which keys are trusted.
+Verification is KEL-native: `auths verify` reads the commit's `Auths-Device` trailer and resolves the signer's current key state from their key event log — no key list file to generate, distribute, or keep in sync. Keys are resolved from the local identity store by default, with opt-in remote resolution (`--remote` / `--oobi`) and explicit trust pinning (`auths trust pin`). See [Verifying Commits](verifying-commits.md).
 
-### Generate It
-
-```bash
-auths signers sync --output .auths/allowed_signers
-```
-
-This scans your Auths identity repository for authorized devices and produces a file in the format Git expects:
-
-```
-you@example.com namespaces="git" ssh-ed25519 AAAA...
-```
-
-### Configure Git to Use It
-
-```bash
-git config --global gpg.ssh.allowedSignersFile ~/.auths/allowed_signers
-```
-
-Or commit it to the repository for team and CI use:
-
-```bash
-git config --local gpg.ssh.allowedSignersFile .auths/allowed_signers
-git add .auths/allowed_signers
-git commit -S -m "Add allowed signers"
-```
-
-### Auto-Regeneration with Git Hooks
-
-Install a post-merge hook that regenerates the `allowed_signers` file after each `git pull` or `git merge`:
-
-```bash
-auths git install-hooks
-```
-
-This creates a `.git/hooks/post-merge` hook that runs `auths signers sync --output .auths/allowed_signers` automatically.
-
-Options:
-
-```bash
-# Custom paths
-auths git install-hooks --allowed-signers-path .signers
-
-# Overwrite existing hook
-auths git install-hooks --force
-```
+> **Note on native Git verification:** Git's own `git verify-commit` / `git log --show-signature` rely on Git's `gpg.ssh.allowedSignersFile` mechanism, which Auths no longer generates. Use `auths verify` instead — it understands the identity model behind the signature, not just the raw SSH key.
 
 ## GitHub Signature Verification
 
@@ -192,7 +150,7 @@ GitHub displays a "Verified" badge on commits signed with SSH keys. For Auths-si
 1. Export your public key:
 
     ```bash
-    auths key export --alias main --passphrase '<your-passphrase>' --format pub
+    auths key export --key-alias main --passphrase '<your-passphrase>' --format pub
     ```
 
 2. Add the key to your GitHub account under **Settings > SSH and GPG keys > New SSH key**, selecting **Signing Key** as the key type.
@@ -205,7 +163,7 @@ Commits pushed after this will show the "Verified" badge in the GitHub UI.
 
 GitLab also supports SSH signature verification:
 
-1. Export your public key with `auths key export --alias main --passphrase '<your-passphrase>' --format pub`.
+1. Export your public key with `auths key export --key-alias main --passphrase '<your-passphrase>' --format pub`.
 2. Add it under **User Settings > SSH Keys**, checking the **Signing** usage type.
 3. Ensure `git config user.email` matches your GitLab email.
 
@@ -314,4 +272,4 @@ git config --local --unset user.signingKey  # remove it
 ## Next Steps
 
 - [Verifying Commits](verifying-commits.md) -- verify signatures locally and in CI
-- [Team Workflows](team-workflows.md) -- shared registries and onboarding teammates
+- [Team Workflows](team-workflows.md) -- trust pinning, organizations, and onboarding teammates

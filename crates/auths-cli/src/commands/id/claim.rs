@@ -38,19 +38,19 @@ pub enum ClaimPlatform {
     /// Link your GitHub account to your identity via OAuth device flow.
     Github {
         /// Registry URL to publish the claim to.
-        #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
+        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
     },
     /// Link your npm account to your identity via access token.
     Npm {
         /// Registry URL to publish the claim to.
-        #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
+        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
     },
     /// Link your PyPI account to your identity via API token.
     Pypi {
         /// Registry URL to publish the claim to.
-        #[arg(long, default_value = DEFAULT_REGISTRY_URL)]
+        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
         registry: String,
     },
 }

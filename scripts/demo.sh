@@ -143,14 +143,14 @@ main() {
     print_info "This generates an Ed25519 key pair and derives your DID."
     echo ""
 
-    print_cmd "auths id create --name \"Demo User\""
+    print_cmd "auths init --non-interactive"
     echo ""
 
     mkdir -p "$AUTHS_HOME"
     export AUTHS_HOME
 
     # Create identity (non-interactive for demo)
-    "$AUTHS_BIN" id create --name "Demo User" --repo "$AUTHS_HOME" 2>/dev/null || {
+    "$AUTHS_BIN" init --non-interactive --repo "$AUTHS_HOME" 2>/dev/null || {
         # If identity exists, show it instead
         print_info "Identity already exists, showing details..."
     }
@@ -193,9 +193,7 @@ main() {
     print_section "Step 3: Configure Git for Auths Signing"
 
     print_info "Setting up Git to use Auths for commit signing..."
-    echo ""
-
-    print_cmd "auths git setup"
+    print_info "(auths init configures this automatically — shown manually for the demo)"
     echo ""
 
     # Configure git signing (manual for demo since we can't run full setup)
@@ -260,7 +258,7 @@ main() {
     print_info "Auths can verify that commits came from authorized devices..."
     echo ""
 
-    print_cmd "auths verify-commit HEAD"
+    print_cmd "auths verify HEAD"
     echo ""
 
     # Show what verification looks like
@@ -272,7 +270,7 @@ main() {
 
     print_info "You can also verify a range of commits:"
     echo ""
-    print_cmd "auths verify-commit HEAD~1..HEAD"
+    print_cmd "auths verify HEAD~1..HEAD"
 
     pause
 
@@ -322,11 +320,11 @@ main() {
     echo -e "  ${BOLD}Next steps:${NC}"
     echo ""
     echo -e "    ${CYAN}1.${NC} Run ${YELLOW}auths init${NC} to create your real identity"
-    echo -e "    ${CYAN}2.${NC} Run ${YELLOW}auths git setup${NC} in your projects"
-    echo -e "    ${CYAN}3.${NC} Run ${YELLOW}auths learn${NC} for an interactive tutorial"
+    echo -e "    ${CYAN}2.${NC} Commit as usual — ${YELLOW}auths init${NC} configures Git signing automatically"
+    echo -e "    ${CYAN}3.${NC} Run ${YELLOW}auths tutorial${NC} for an interactive tutorial"
     echo -e "    ${CYAN}4.${NC} Run ${YELLOW}auths --help${NC} to explore all commands"
     echo ""
-    echo -e "  ${DIM}Documentation: https://auths.io/docs${NC}"
+    echo -e "  ${DIM}Documentation: https://docs.auths.dev${NC}"
     echo ""
 }
 

@@ -17,7 +17,7 @@ The auths system can use machine identities created from OIDC tokens (typically 
 To verify that a commit was signed with a machine identity:
 
 ```bash
-auths verify-commit <commit-sha>
+auths verify <commit-sha>
 ```
 
 Example output:
@@ -27,7 +27,7 @@ Commit abc123def456... verified: signed by did:keri:Eissuer (oidc: https://token
 
 ### Understanding the Output
 
-When `auths verify-commit` displays OIDC binding information:
+When `auths verify` displays OIDC binding information:
 
 ```json
 {
@@ -62,7 +62,7 @@ This proves the commit was signed by a specific CI/CD workload with known contex
 To verify a range of commits:
 
 ```bash
-auths verify-commit main..HEAD
+auths verify main..HEAD
 ```
 
 This shows verification status for all commits after `main` up to `HEAD`.
@@ -103,7 +103,7 @@ When a commit is signed in CI/CD:
 When a user verifies a commit:
 
 ```
-1. auths verify-commit <sha>
+1. auths verify <sha>
    ↓
 2. Load attestation from refs/auths/commits/<sha>
    ↓
@@ -168,7 +168,7 @@ Our auths attestations are **not** GPG or SSH signatures, so GitHub's UI won't s
 
 ### What You Can Do Instead
 
-1. **Verify locally** with `auths verify-commit`
+1. **Verify locally** with `auths verify`
    - See the OIDC binding and attestation details
    - Cryptographically valid but custom format
 
@@ -232,7 +232,7 @@ EOF
 auths sign-commit HEAD
 
 # 4. Verify the attestation
-auths verify-commit HEAD
+auths verify HEAD
 ```
 
 ### Modifying Attestation Structure

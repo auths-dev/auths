@@ -69,7 +69,7 @@ pub fn auto_detect_device_key(
         0 => Err(anyhow!(
             "No signing keys found for identity {}.\n\n\
              All keys are rotation keys (--next- prefixed) or no keys exist.\n\
-             Run `auths status` to see your identity details, or `auths device link` to authorize a device.",
+             Run `auths status` to see your identity details, or `auths pair` to link another device.",
             identity.controller_did
         )),
         1 => Ok(signing_aliases[0].as_str().to_string()),
