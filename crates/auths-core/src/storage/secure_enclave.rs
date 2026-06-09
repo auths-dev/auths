@@ -284,6 +284,26 @@ impl KeyStorage for SecureEnclaveKeyStorage {
     fn is_hardware_backend(&self) -> bool {
         true
     }
+
+    fn rebind_identity(
+        &self,
+        alias: &KeyAlias,
+        identity_did: &IdentityDID,
+    ) -> Result<(), AgentError> {
+        let (_, role, _) = self.load_key(alias)?;
+        let meta = KeyMetadata {
+            identity_did: identity_did.to_string(),
+            role: format!("{role:?}"),
+        };
+        let meta_json = serde_json::to_string_pretty(&meta)
+            .map_err(|e| AgentError::StorageError(format!("SE metadata serialize: {e}")))?;
+        fs::write(self.meta_path(alias), meta_json).map_err(|e| {
+            AgentError::IO(std::io::Error::other(format!(
+                "failed to rewrite SE key metadata: {e}"
+            )))
+        })?;
+        Ok(())
+    }
 }
 
 impl SecureSigner for SecureEnclaveKeyStorage {

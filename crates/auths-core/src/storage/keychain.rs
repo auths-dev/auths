@@ -280,6 +280,88 @@ pub trait KeyStorage: Send + Sync {
     fn is_hardware_backend(&self) -> bool {
         false
     }
+
+    /// Re-associates an existing stored key with a different identity DID
+    /// without touching the key material.
+    ///
+    /// Needed by KERI inception: the key must exist (so its public key can be
+    /// read) before the identity prefix it belongs to can be derived. The
+    /// default implementation round-trips the stored material through
+    /// `store_key`, which is correct for software backends. Hardware backends
+    /// MUST override this — their `store_key` generates a fresh key, which
+    /// would orphan the original.
+    ///
+    /// Args:
+    /// * `alias`: Alias of the already-stored key.
+    /// * `identity_did`: The identity to associate the key with.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// keychain.rebind_identity(&alias, &controller_did)?;
+    /// ```
+    fn rebind_identity(
+        &self,
+        alias: &KeyAlias,
+        identity_did: &IdentityDID,
+    ) -> Result<(), AgentError> {
+        if self.is_hardware_backend() {
+            return Err(AgentError::StorageError(format!(
+                "hardware backend '{}' must override rebind_identity",
+                self.backend_name()
+            )));
+        }
+        let (_, role, material) = self.load_key(alias)?;
+        self.store_key(alias, identity_did, role, &material)
+    }
+}
+
+/// Sign a message with a stored key, transparently handling hardware backends.
+///
+/// Hardware backends (Secure Enclave) sign via their opaque handle — this may
+/// trigger a biometric prompt. Software backends decrypt the stored PKCS8 with
+/// a passphrase from `passphrase_provider` and sign in-process.
+///
+/// Args:
+/// * `keychain`: The key storage backend holding the key.
+/// * `alias`: Keychain alias of the signing key.
+/// * `passphrase_provider`: Provider for the decryption passphrase (software backends).
+/// * `message`: The bytes to sign.
+///
+/// Usage:
+/// ```ignore
+/// let sig = sign_with_stored_key(keychain, &alias, &provider, &canonical)?;
+/// ```
+pub fn sign_with_stored_key(
+    keychain: &dyn KeyStorage,
+    alias: &KeyAlias,
+    passphrase_provider: &dyn crate::signing::PassphraseProvider,
+    message: &[u8],
+) -> Result<Vec<u8>, AgentError> {
+    if keychain.is_hardware_backend() {
+        let (_, _role, _handle) = keychain.load_key(alias)?;
+        #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
+        {
+            return super::secure_enclave::sign_with_handle(&_handle, message);
+        }
+        #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
+        {
+            return Err(AgentError::BackendUnavailable {
+                backend: keychain.backend_name(),
+                reason: "hardware signing not available on this platform".into(),
+            });
+        }
+    }
+
+    use crate::crypto::signer::decrypt_keypair;
+    let (_, _role, encrypted) = keychain.load_key(alias)?;
+    let passphrase = passphrase_provider
+        .get_passphrase(&format!("Enter passphrase for key '{alias}':"))
+        .map_err(|e| AgentError::SigningFailed(e.to_string()))?;
+    let key_bytes = decrypt_keypair(&encrypted, &passphrase)?;
+    let parsed = auths_crypto::parse_key_material(&key_bytes)
+        .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
+    auths_crypto::typed_sign(&parsed.seed, message)
+        .map_err(|e| AgentError::CryptoError(format!("signing failed: {e}")))
 }
 
 /// Decrypt a stored key and return its public key bytes and curve type.

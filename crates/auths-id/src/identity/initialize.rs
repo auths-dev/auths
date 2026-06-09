@@ -135,6 +135,17 @@ pub fn initialize_registry_identity(
         .init_if_needed()
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
+    if keychain.is_hardware_backend() {
+        return initialize_hardware_registry_identity(
+            backend,
+            local_key_alias,
+            passphrase_provider,
+            keychain,
+            witness_config,
+            curve,
+        );
+    }
+
     let current = crate::keri::inception::generate_keypair_for_init(curve)
         .map_err(|e| InitError::Crypto(e.to_string()))?;
     let next = crate::keri::inception::generate_keypair_for_init(curve)
@@ -189,35 +200,157 @@ pub fn initialize_registry_identity(
     // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format
     let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
 
-    let is_hardware_backend = keychain.is_hardware_backend();
+    let passphrase = passphrase_provider
+        .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
 
-    if is_hardware_backend {
-        keychain.store_key(local_key_alias, &controller_did, KeyRole::Primary, &[])?;
-        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-        keychain.store_key(&next_alias, &controller_did, KeyRole::NextRotation, &[])?;
-    } else {
-        let passphrase = passphrase_provider
-            .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
+    let encrypted_current = encrypt_keypair(current.pkcs8.as_ref(), &passphrase)?;
+    let encrypted_next = encrypt_keypair(next.pkcs8.as_ref(), &passphrase)?;
 
-        let encrypted_current = encrypt_keypair(current.pkcs8.as_ref(), &passphrase)?;
-        let encrypted_next = encrypt_keypair(next.pkcs8.as_ref(), &passphrase)?;
-
-        keychain.store_key(
-            local_key_alias,
-            &controller_did,
-            KeyRole::Primary,
-            &encrypted_current,
-        )?;
-        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-        keychain.store_key(
-            &next_alias,
-            &controller_did,
-            KeyRole::NextRotation,
-            &encrypted_next,
-        )?;
-    }
+    keychain.store_key(
+        local_key_alias,
+        &controller_did,
+        KeyRole::Primary,
+        &encrypted_current,
+    )?;
+    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
+    keychain.store_key(
+        &next_alias,
+        &controller_did,
+        KeyRole::NextRotation,
+        &encrypted_next,
+    )?;
 
     Ok((controller_did, local_key_alias.clone()))
+}
+
+/// Initializes a KERI identity whose keys live in a hardware backend (Secure Enclave).
+///
+/// Hardware keys cannot be generated in software and imported — the backend
+/// generates them internally. The inception therefore runs in the opposite
+/// order from the software path: generate the hardware keys first, read their
+/// public halves back, incept the KEL with the *hardware* current key, sign
+/// the inception event through the hardware, and finally rebind the stored
+/// keys to the derived identity prefix.
+///
+/// Args:
+/// * `backend` — The registry backend to store the KERI inception event.
+/// * `local_key_alias` — Alias for the primary signing key.
+/// * `passphrase_provider` — Unused by hardware signing, threaded for the trait API.
+/// * `keychain` — Hardware key storage backend.
+/// * `witness_config` — Optional witness configuration.
+/// * `curve` — Must be P-256 (the only curve hardware backends support).
+///
+/// Usage:
+/// ```ignore
+/// let (did, alias) = initialize_hardware_registry_identity(
+///     backend, &alias, &provider, keychain, None, CurveType::P256,
+/// )?;
+/// ```
+fn initialize_hardware_registry_identity(
+    backend: Arc<dyn RegistryBackend + Send + Sync>,
+    local_key_alias: &KeyAlias,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+    witness_config: Option<&WitnessConfig>,
+    curve: auths_crypto::CurveType,
+) -> Result<(IdentityDID, KeyAlias), InitError> {
+    if curve != auths_crypto::CurveType::P256 {
+        return Err(InitError::Crypto(format!(
+            "hardware-backed inception supports P-256 only, got {curve:?}"
+        )));
+    }
+
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: rebound to the real did:keri prefix before this function returns
+    let placeholder = IdentityDID::new_unchecked("did:keri:pending");
+    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
+
+    keychain.store_key(local_key_alias, &placeholder, KeyRole::Primary, &[])?;
+    keychain.store_key(&next_alias, &placeholder, KeyRole::NextRotation, &[])?;
+
+    let (current_pub, _) = auths_core::storage::keychain::extract_public_key_bytes(
+        keychain,
+        local_key_alias,
+        passphrase_provider,
+    )?;
+    let (next_pub, _) = auths_core::storage::keychain::extract_public_key_bytes(
+        keychain,
+        &next_alias,
+        passphrase_provider,
+    )?;
+
+    let current_verkey =
+        auths_keri::KeriPublicKey::from_verkey_bytes(&p256_compressed(&current_pub)?, curve)
+            .map_err(|e| InitError::Crypto(format!("hardware current key: {e}")))?;
+    let next_verkey =
+        auths_keri::KeriPublicKey::from_verkey_bytes(&p256_compressed(&next_pub)?, curve)
+            .map_err(|e| InitError::Crypto(format!("hardware next key: {e}")))?;
+    let current_cesr = current_verkey
+        .to_qb64()
+        .map_err(|e| InitError::Crypto(e.to_string()))?;
+
+    let (bt, b) = match witness_config {
+        Some(cfg) if cfg.is_enabled() => (
+            Threshold::Simple(cfg.threshold as u64),
+            cfg.aids().cloned().collect(),
+        ),
+        _ => (Threshold::Simple(0), vec![]),
+    };
+
+    let icp = IcpEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: Prefix::default(),
+        s: KeriSequence::new(0),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(current_cesr)],
+        nt: Threshold::Simple(1),
+        n: vec![compute_next_commitment(&next_verkey)],
+        bt,
+        b,
+        c: vec![],
+        a: vec![],
+    };
+
+    let finalized = finalize_icp_event(icp).map_err(|e| InitError::Keri(e.to_string()))?;
+    let prefix = finalized.i.clone();
+
+    let canonical = serialize_for_signing(&Event::Icp(finalized.clone()))
+        .map_err(|e| InitError::Keri(e.to_string()))?;
+    let sig_bytes = auths_core::storage::keychain::sign_with_stored_key(
+        keychain,
+        local_key_alias,
+        passphrase_provider,
+        &canonical,
+    )?;
+    let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+        index: 0,
+        prior_index: None,
+        sig: sig_bytes,
+    }])
+    .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
+
+    backend
+        .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+
+    #[allow(clippy::disallowed_methods)]
+    // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format
+    let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
+
+    keychain.rebind_identity(local_key_alias, &controller_did)?;
+    keychain.rebind_identity(&next_alias, &controller_did)?;
+
+    Ok((controller_did, local_key_alias.clone()))
+}
+
+/// Normalize a P-256 public key (compressed or uncompressed SEC1) to its
+/// 33-byte compressed form, which is what KERI verkeys carry.
+fn p256_compressed(bytes: &[u8]) -> Result<Vec<u8>, InitError> {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    let pk = p256::PublicKey::from_sec1_bytes(bytes)
+        .map_err(|e| InitError::Crypto(format!("invalid P-256 public key from keychain: {e}")))?;
+    Ok(pk.to_encoded_point(true).as_bytes().to_vec())
 }
 
 /// Initialize a multi-key KERI identity.
