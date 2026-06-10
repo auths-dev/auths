@@ -16,8 +16,78 @@
       "device_signature": "7be8c0f9a26dd33d38b88e1911ad9b59b071c5eee02c3d0dd8b3faf6dd462f62fa17dd0bf8f6ad707e3818cbec8ae264af053a70f562d69036cf4a3873574f06",
       "timestamp": "2026-06-09T22:01:42.838518Z",
       "note": "Linked by auths-sdk setup"
+    },
+    {
+      "version": 1,
+      "rid": "sha256:f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2",
+      "issuer": "did:keri:ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+      "subject": "did:key:zDnaeh7NXw4vXWstkivGmQaBGZkoG4Fwp6uRAh6Khe5hXmUSj",
+      "device_public_key": {
+        "curve": "p256",
+        "key": "02f7d33345c84176a48286539a7e74cdef1c266eb38e389711edb129fcc7938de0"
+      },
+      "identity_signature": "695e52d4641d6e1f86009bc89665d8e218e375b5a7402959909fb637c2c5e48b1268e718b5161301009b72100ba3c4ea5e4c1a3293c699a6860bb0edb31d94df",
+      "device_signature": "991ce277ffc5e57bd5ac7c274a871273cc8a6a8d6a3bcb867fb697d839ac8be1af76cf47ca0dc687feb8c06b354740edd7cd343da65ff3d871c2bb1974471754",
+      "timestamp": "2026-06-09T23:10:38.598909Z",
+      "payload": {
+        "artifact_type": "file",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "f2ca1bb6c7e907d06dafe4687e579fce76b37e4e93b7605022da52e6ccc26fd2"
+        },
+        "name": "relprobe.txt",
+        "size": 5
+      },
+      "commit_sha": "d4443cd81077f396ec1a1366bc0356cc19b3bbf5"
     }
   ],
-  "bundle_timestamp": "2026-06-09T22:24:09.191027Z",
+  "kel": [
+    {
+      "v": "KERI10JSON00012f_",
+      "t": "icp",
+      "d": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+      "i": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+      "s": "0",
+      "kt": "1",
+      "k": [
+        "1AAJAvfTM0XIQXakgoZTmn50ze8cJm6zjjiXEe2xKfzHk43g"
+      ],
+      "nt": "1",
+      "n": [
+        "EGdbaV-wPaf-_ipeasSHuXwmb0YtEt7FaMk68HLxD4mn"
+      ],
+      "bt": "0",
+      "b": [],
+      "c": [],
+      "a": []
+    },
+    {
+      "v": "KERI10JSON0000ff_",
+      "t": "ixn",
+      "d": "EDxwuXyK6UzdhpDUJOggQGHTdWpc0APpPHihmiUcye6y",
+      "i": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+      "s": "1",
+      "p": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+      "a": [
+        {
+          "d": "EBZ9C975VziWzzdir1SctdzUDmqZMCKgG7J6zU9m8aES"
+        }
+      ]
+    },
+    {
+      "v": "KERI10JSON0000ff_",
+      "t": "ixn",
+      "d": "EIrQ9Hly1PL1MkNynKgrQ_X9Mjspm5lxupzyOMasbZQu",
+      "i": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+      "s": "2",
+      "p": "EDxwuXyK6UzdhpDUJOggQGHTdWpc0APpPHihmiUcye6y",
+      "a": [
+        {
+          "d": "EBSIjdFY0dh2tv8BsfpPIBQ-QkA7Ay8d7G3vG18vrkwS"
+        }
+      ]
+    }
+  ],
+  "bundle_timestamp": "2026-06-10T00:32:04.746971Z",
   "max_valid_for_secs": 31536000
 }
