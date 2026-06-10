@@ -160,6 +160,7 @@ async fn handle_verify(args: &VerifyArgs) -> Result<()> {
         serde_json::from_slice(&response_bytes).context("Failed to parse latest checkpoint")?;
 
     let report = auths_sdk::workflows::transparency::try_cache_checkpoint(
+        &crate::adapters::config_store::FileConfigStore,
         &cache_path,
         &latest_checkpoint,
         None,

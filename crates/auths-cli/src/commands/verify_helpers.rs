@@ -17,7 +17,11 @@ pub fn load_project_pinned_roots() -> Vec<String> {
         return Vec::new();
     }
     let root = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
-    auths_sdk::workflows::roots::load_pinned_roots(&root.join(".auths")).unwrap_or_default()
+    auths_sdk::workflows::roots::load_pinned_roots(
+        &crate::adapters::config_store::FileConfigStore,
+        &root.join(".auths"),
+    )
+    .unwrap_or_default()
 }
 
 /// Parse witness key arguments ("did:key:z6Mk...:abcd1234...") into (DID, pk_bytes) tuples.

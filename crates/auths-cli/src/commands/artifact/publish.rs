@@ -206,6 +206,7 @@ fn cache_checkpoint_from_sig(sig_contents: &str) {
     };
 
     if let Err(e) = auths_sdk::workflows::transparency::try_cache_checkpoint(
+        &crate::adapters::config_store::FileConfigStore,
         &cache_path,
         &bundle.signed_checkpoint,
         None,

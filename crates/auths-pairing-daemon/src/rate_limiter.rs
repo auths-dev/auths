@@ -112,6 +112,13 @@ struct WindowState {
     window_start: Instant,
 }
 
+/// Per-session SAS submission counter (lifetime of the session).
+#[derive(Debug, Clone, Copy)]
+struct SasState {
+    count: u32,
+    first_seen: Instant,
+}
+
 /// Lookup miss-hit tracking per IP.
 #[derive(Debug, Clone, Copy, Default)]
 struct LookupMissState {
@@ -119,7 +126,19 @@ struct LookupMissState {
     /// The Instant that, once passed, a subsequent lookup can run even
     /// while `consecutive_misses >= threshold`.
     locked_until: Option<Instant>,
+    /// Last time this entry was touched — drives capacity pruning.
+    last_update: Option<Instant>,
 }
+
+/// Hard cap on tracked keys per sub-map. A botnet cycling unique source
+/// IPs (or session IDs) must not grow daemon memory without bound; at the
+/// cap, expired entries are pruned and — if the map is still full — new
+/// keys are rate-limited (fail-closed) rather than tracked.
+const MAX_TRACKED_KEYS: usize = 10_000;
+
+/// How long an inactive lookup-miss or SAS entry stays eligible for
+/// retention once the map is at capacity.
+const STALE_ENTRY_TTL: Duration = Duration::from_secs(3600);
 
 /// Outcome of checking a tier quota. Returned to the middleware so
 /// `Retry-After` can be populated on 429.
@@ -135,7 +154,7 @@ pub struct TieredRateLimiter {
     cfg: TieredRateConfig,
     session_create: Mutex<HashMap<IpAddr, WindowState>>,
     session_lookup: Mutex<HashMap<IpAddr, WindowState>>,
-    sas_submission: Mutex<HashMap<String, u32>>,
+    sas_submission: Mutex<HashMap<String, SasState>>,
     other: Mutex<HashMap<IpAddr, WindowState>>,
     lookup_miss: Mutex<HashMap<IpAddr, LookupMissState>>,
 }
@@ -181,6 +200,14 @@ impl TieredRateLimiter {
 
         let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
+        if guard.len() >= MAX_TRACKED_KEYS && !guard.contains_key(&ip) {
+            guard.retain(|_, st| now.duration_since(st.window_start) < self.cfg.window);
+            if guard.len() >= MAX_TRACKED_KEYS {
+                return CheckOutcome::RateLimited {
+                    retry_after: Some(self.cfg.window),
+                };
+            }
+        }
         let entry = guard.entry(ip).or_insert(WindowState {
             count: 0,
             window_start: now,
@@ -210,9 +237,21 @@ impl TieredRateLimiter {
             .sas_submission
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let entry = guard.entry(session_id.to_string()).or_insert(0);
-        *entry += 1;
-        if *entry > self.cfg.sas_submissions_per_session {
+        let now = Instant::now();
+        if guard.len() >= MAX_TRACKED_KEYS && !guard.contains_key(session_id) {
+            guard.retain(|_, st| now.duration_since(st.first_seen) < STALE_ENTRY_TTL);
+            if guard.len() >= MAX_TRACKED_KEYS {
+                return CheckOutcome::RateLimited { retry_after: None };
+            }
+        }
+        let entry = guard
+            .entry(session_id.to_string())
+            .or_insert(SasState {
+                count: 0,
+                first_seen: now,
+            });
+        entry.count += 1;
+        if entry.count > self.cfg.sas_submissions_per_session {
             CheckOutcome::RateLimited { retry_after: None }
         } else {
             CheckOutcome::Allowed
@@ -224,7 +263,22 @@ impl TieredRateLimiter {
     /// lockout deadline.
     pub fn record_lookup_outcome(&self, ip: IpAddr, was_hit: bool) {
         let mut guard = self.lookup_miss.lock().unwrap_or_else(|e| e.into_inner());
+        let now = Instant::now();
+        if guard.len() >= MAX_TRACKED_KEYS && !guard.contains_key(&ip) {
+            guard.retain(|_, st| {
+                st.locked_until.is_some_and(|until| until > now)
+                    || st
+                        .last_update
+                        .is_some_and(|at| now.duration_since(at) < STALE_ENTRY_TTL)
+            });
+            if guard.len() >= MAX_TRACKED_KEYS {
+                // Tracking saturated: skip lockout bookkeeping for new IPs.
+                // The per-IP tier quota still bounds their request rate.
+                return;
+            }
+        }
         let entry = guard.entry(ip).or_default();
+        entry.last_update = Some(now);
         if was_hit {
             entry.consecutive_misses = 0;
             entry.locked_until = None;
@@ -543,5 +597,72 @@ mod tests {
             l.check(Tier::SessionCreate, b),
             CheckOutcome::Allowed
         ));
+    }
+
+    fn nth_ip(n: u32) -> IpAddr {
+        IpAddr::from(std::net::Ipv4Addr::from(0x0a00_0000u32 + n))
+    }
+
+    #[test]
+    fn window_map_is_bounded_under_unique_ip_flood() {
+        let l = TieredRateLimiter::new(test_cfg());
+        for n in 0..(MAX_TRACKED_KEYS as u32 + 100) {
+            let _ = l.check(Tier::Other, nth_ip(n));
+        }
+        let tracked = l.other.lock().unwrap_or_else(|e| e.into_inner()).len();
+        assert!(
+            tracked <= MAX_TRACKED_KEYS,
+            "tracked {tracked} IPs, expected <= {MAX_TRACKED_KEYS}"
+        );
+    }
+
+    #[test]
+    fn window_map_fails_closed_for_new_ips_when_saturated_with_live_entries() {
+        let l = TieredRateLimiter::new(test_cfg());
+        for n in 0..MAX_TRACKED_KEYS as u32 {
+            let _ = l.check(Tier::Other, nth_ip(n));
+        }
+        // All entries live (windows just started) → a new IP is rejected
+        // rather than tracked.
+        assert!(matches!(
+            l.check(Tier::Other, nth_ip(MAX_TRACKED_KEYS as u32 + 1)),
+            CheckOutcome::RateLimited { .. }
+        ));
+        // Already-tracked IPs are unaffected by saturation.
+        assert!(matches!(l.check(Tier::Other, nth_ip(0)), CheckOutcome::Allowed));
+    }
+
+    #[test]
+    fn sas_map_is_bounded_under_unique_session_flood() {
+        let l = TieredRateLimiter::new(test_cfg());
+        for n in 0..(MAX_TRACKED_KEYS + 100) {
+            let _ = l.check_sas_submission(&format!("session-{n}"));
+        }
+        let tracked = l
+            .sas_submission
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .len();
+        assert!(
+            tracked <= MAX_TRACKED_KEYS,
+            "tracked {tracked} sessions, expected <= {MAX_TRACKED_KEYS}"
+        );
+    }
+
+    #[test]
+    fn lookup_miss_map_is_bounded_under_unique_ip_flood() {
+        let l = TieredRateLimiter::new(test_cfg());
+        for n in 0..(MAX_TRACKED_KEYS as u32 + 100) {
+            l.record_lookup_outcome(nth_ip(n), false);
+        }
+        let tracked = l
+            .lookup_miss
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .len();
+        assert!(
+            tracked <= MAX_TRACKED_KEYS,
+            "tracked {tracked} IPs, expected <= {MAX_TRACKED_KEYS}"
+        );
     }
 }

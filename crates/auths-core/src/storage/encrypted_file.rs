@@ -13,7 +13,7 @@ use chacha20poly1305::{
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 #[allow(clippy::disallowed_types)]
 // INVARIANT: file-backed keychain adapter — these types are its core purpose
 use std::fs::{self, File, OpenOptions};
@@ -55,7 +55,9 @@ enum KeyEntry {
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct KeyData {
     /// alias -> key entry
-    keys: HashMap<String, KeyEntry>,
+    // BTreeMap (not HashMap): alias listing order feeds current-key
+    // resolution upstream; iteration must be deterministic.
+    keys: BTreeMap<String, KeyEntry>,
 }
 
 /// Encrypted file storage for headless Linux environments.

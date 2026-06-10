@@ -192,6 +192,15 @@ pub fn apply_rotation(
     // NOTE: non-atomic — KEL and keychain writes are not transactional.
     // If the keychain write fails here, the KEL is already ahead.
     let keychain_result = (|| {
+        // Snapshot stale primaries before storing the new one, so the new
+        // alias can never be swept by the cleanup below.
+        let stale_primaries: Vec<KeyAlias> = key_storage
+            .list_aliases_for_identity_with_role(&key_material.did, KeyRole::Primary)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|alias| *alias != key_material.next_alias)
+            .collect();
+
         key_storage
             .store_key(
                 &key_material.next_alias,
@@ -211,6 +220,15 @@ pub fn apply_rotation(
             .map_err(|e| e.to_string())?;
 
         let _ = key_storage.delete_key(&key_material.old_next_alias);
+
+        // Delete the rotated-away primary keys. Leaving them as Primary made
+        // current-key resolution and delegation signing pick a stale key when
+        // keychain enumeration returned multiple primaries. A rotated-away
+        // key must never sign again — verification replays public keys from
+        // the KEL, so the old private key serves no further purpose.
+        for stale in stale_primaries {
+            let _ = key_storage.delete_key(&stale);
+        }
 
         Ok::<(), String>(())
     })();

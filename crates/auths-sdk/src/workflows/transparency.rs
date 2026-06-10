@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use auths_core::ports::config_store::{ConfigStore, ConfigStoreError};
 use auths_core::ports::network::{NetworkError, RegistryClient};
 use auths_keri::witness::independence::{
     IndependencePolicy, Infrastructure, Jurisdiction, OperatorId, Organization, WitnessOperatorInfo,
@@ -27,7 +28,7 @@ pub enum TransparencyWorkflowError {
 
     /// Cache I/O error.
     #[error("cache I/O error: {0}")]
-    CacheError(#[source] std::io::Error),
+    CacheError(#[from] ConfigStoreError),
 
     /// JSON deserialization error.
     #[error("deserialization error: {0}")]
@@ -213,11 +214,8 @@ pub fn verify_artifact_bundle(
 /// is a consistent append-only extension of the cached one, and writes the
 /// new checkpoint to disk.
 ///
-/// **Note:** Uses blocking `std::fs` I/O (not `tokio::fs`). This is acceptable
-/// for the current use case — a single small JSON file read/write from CLI context.
-/// If called from a multi-threaded async server, wrap in `tokio::task::spawn_blocking`.
-///
 /// Args:
+/// * `store` — File-access port for the checkpoint cache file.
 /// * `cache_path` — Path to the cached checkpoint JSON file.
 /// * `new_checkpoint` — The newly received signed checkpoint.
 /// * `consistency_proof` — Proof that old tree is a prefix of the new tree.
@@ -227,6 +225,7 @@ pub fn verify_artifact_bundle(
 /// Usage:
 /// ```ignore
 /// let report = update_checkpoint_cache(
+///     &store,
 ///     &cache_path,
 ///     &new_checkpoint,
 ///     &consistency_proof,
@@ -234,23 +233,15 @@ pub fn verify_artifact_bundle(
 ///     now,
 /// )?;
 /// ```
-#[allow(clippy::disallowed_methods)] // Filesystem I/O is intentional here — this is a top-level SDK workflow
 pub fn update_checkpoint_cache(
+    store: &dyn ConfigStore,
     cache_path: &Path,
     new_checkpoint: &SignedCheckpoint,
     consistency_proof: &ConsistencyProof,
     _trust_root: &TrustRoot,
     _now: DateTime<Utc>,
 ) -> Result<ConsistencyReport, TransparencyWorkflowError> {
-    let old_checkpoint = match std::fs::read_to_string(cache_path) {
-        Ok(json) => {
-            let cp: SignedCheckpoint = serde_json::from_str(&json)
-                .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
-            Some(cp)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(TransparencyWorkflowError::CacheError(e)),
-    };
+    let old_checkpoint = load_cached_checkpoint(store, cache_path)?;
 
     if let Some(ref old) = old_checkpoint {
         auths_transparency::verify_consistency(
@@ -263,13 +254,7 @@ pub fn update_checkpoint_cache(
         .map_err(|e| TransparencyWorkflowError::CheckpointInconsistent(e.to_string()))?;
     }
 
-    let json = serde_json::to_string_pretty(new_checkpoint)
-        .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
-
-    if let Some(parent) = cache_path.parent() {
-        std::fs::create_dir_all(parent).map_err(TransparencyWorkflowError::CacheError)?;
-    }
-    std::fs::write(cache_path, json.as_bytes()).map_err(TransparencyWorkflowError::CacheError)?;
+    write_cached_checkpoint(store, cache_path, new_checkpoint)?;
 
     let old_size = old_checkpoint.map(|c| c.checkpoint.size).unwrap_or(0);
 
@@ -278,6 +263,31 @@ pub fn update_checkpoint_cache(
         new_size: new_checkpoint.checkpoint.size,
         consistent: true,
     })
+}
+
+/// Read and parse the cached checkpoint via the store, `None` when absent.
+fn load_cached_checkpoint(
+    store: &dyn ConfigStore,
+    cache_path: &Path,
+) -> Result<Option<SignedCheckpoint>, TransparencyWorkflowError> {
+    match store.read(cache_path)? {
+        Some(json) => serde_json::from_str(&json)
+            .map(Some)
+            .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string())),
+        None => Ok(None),
+    }
+}
+
+/// Serialize and write the checkpoint via the store (parent dirs created by the store).
+fn write_cached_checkpoint(
+    store: &dyn ConfigStore,
+    cache_path: &Path,
+    checkpoint: &SignedCheckpoint,
+) -> Result<(), TransparencyWorkflowError> {
+    let json = serde_json::to_string_pretty(checkpoint)
+        .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
+    store.write(cache_path, &json)?;
+    Ok(())
 }
 
 /// Cache a checkpoint using trust-on-first-use (TOFU) semantics.
@@ -289,6 +299,7 @@ pub fn update_checkpoint_cache(
 /// If a consistency proof is provided, full Merkle consistency is verified.
 ///
 /// Args:
+/// * `store` — File-access port for the checkpoint cache file.
 /// * `cache_path` — Path to the cached checkpoint JSON file (`~/.auths/log_checkpoint.json`).
 /// * `new_checkpoint` — The checkpoint to cache.
 /// * `consistency_proof` — Optional consistency proof for cache-hit cases.
@@ -296,26 +307,19 @@ pub fn update_checkpoint_cache(
 /// Usage:
 /// ```ignore
 /// try_cache_checkpoint(
+///     &store,
 ///     &Path::new("~/.auths/log_checkpoint.json"),
 ///     &bundle.signed_checkpoint,
 ///     None,
 /// )?;
 /// ```
-#[allow(clippy::disallowed_methods)] // Filesystem I/O is intentional — top-level SDK workflow
 pub fn try_cache_checkpoint(
+    store: &dyn ConfigStore,
     cache_path: &Path,
     new_checkpoint: &SignedCheckpoint,
     consistency_proof: Option<&ConsistencyProof>,
 ) -> Result<ConsistencyReport, TransparencyWorkflowError> {
-    let old_checkpoint = match std::fs::read_to_string(cache_path) {
-        Ok(json) => {
-            let cp: SignedCheckpoint = serde_json::from_str(&json)
-                .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
-            Some(cp)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(TransparencyWorkflowError::CacheError(e)),
-    };
+    let old_checkpoint = load_cached_checkpoint(store, cache_path)?;
 
     if let Some(ref old) = old_checkpoint {
         // Equivocation: same size, different root
@@ -358,13 +362,7 @@ pub fn try_cache_checkpoint(
         }
     }
 
-    let json = serde_json::to_string_pretty(new_checkpoint)
-        .map_err(|e| TransparencyWorkflowError::DeserializationError(e.to_string()))?;
-
-    if let Some(parent) = cache_path.parent() {
-        std::fs::create_dir_all(parent).map_err(TransparencyWorkflowError::CacheError)?;
-    }
-    std::fs::write(cache_path, json.as_bytes()).map_err(TransparencyWorkflowError::CacheError)?;
+    write_cached_checkpoint(store, cache_path, new_checkpoint)?;
 
     let old_size = old_checkpoint.map(|c| c.checkpoint.size).unwrap_or(0);
 
@@ -380,6 +378,34 @@ pub fn try_cache_checkpoint(
 mod tests {
     use super::*;
     use auths_transparency::checkpoint::{Checkpoint, SignedCheckpoint};
+
+    struct FsStore;
+
+    impl ConfigStore for FsStore {
+        fn read(&self, path: &Path) -> Result<Option<String>, ConfigStoreError> {
+            match std::fs::read_to_string(path) {
+                Ok(content) => Ok(Some(content)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(ConfigStoreError::Read {
+                    path: path.to_path_buf(),
+                    source: e,
+                }),
+            }
+        }
+
+        fn write(&self, path: &Path, content: &str) -> Result<(), ConfigStoreError> {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| ConfigStoreError::Write {
+                    path: path.to_path_buf(),
+                    source: e,
+                })?;
+            }
+            std::fs::write(path, content).map_err(|e| ConfigStoreError::Write {
+                path: path.to_path_buf(),
+                source: e,
+            })
+        }
+    }
     use auths_transparency::entry::{Entry, EntryBody, EntryContent, EntryType};
     use auths_transparency::proof::InclusionProof;
     use auths_transparency::types::{LogOrigin, MerkleHash};
@@ -561,7 +587,7 @@ mod tests {
             .with_timezone(&Utc);
 
         let report =
-            update_checkpoint_cache(&cache_path, &new_cp, &proof, &trust_root, now).unwrap();
+            update_checkpoint_cache(&FsStore, &cache_path, &new_cp, &proof, &trust_root, now).unwrap();
 
         assert_eq!(report.old_size, 0);
         assert_eq!(report.new_size, 10);
@@ -597,7 +623,7 @@ mod tests {
             .with_timezone(&Utc);
 
         let report =
-            update_checkpoint_cache(&cache_path, &new_cp, &proof, &trust_root, now).unwrap();
+            update_checkpoint_cache(&FsStore, &cache_path, &new_cp, &proof, &trust_root, now).unwrap();
 
         assert!(report.consistent);
         assert!(cache_path.exists());
@@ -611,7 +637,7 @@ mod tests {
         let root = MerkleHash::from_bytes([0xaa; 32]);
         let cp = dummy_signed_checkpoint(10, root);
 
-        let report = try_cache_checkpoint(&cache_path, &cp, None).unwrap();
+        let report = try_cache_checkpoint(&FsStore, &cache_path, &cp, None).unwrap();
         assert_eq!(report.old_size, 0);
         assert_eq!(report.new_size, 10);
         assert!(report.consistent);
@@ -626,8 +652,8 @@ mod tests {
         let root = MerkleHash::from_bytes([0xaa; 32]);
         let cp = dummy_signed_checkpoint(10, root);
 
-        try_cache_checkpoint(&cache_path, &cp, None).unwrap();
-        let report = try_cache_checkpoint(&cache_path, &cp, None).unwrap();
+        try_cache_checkpoint(&FsStore, &cache_path, &cp, None).unwrap();
+        let report = try_cache_checkpoint(&FsStore, &cache_path, &cp, None).unwrap();
         assert_eq!(report.old_size, 10);
         assert_eq!(report.new_size, 10);
         assert!(report.consistent);
@@ -640,11 +666,11 @@ mod tests {
 
         let root1 = MerkleHash::from_bytes([0xaa; 32]);
         let cp1 = dummy_signed_checkpoint(10, root1);
-        try_cache_checkpoint(&cache_path, &cp1, None).unwrap();
+        try_cache_checkpoint(&FsStore, &cache_path, &cp1, None).unwrap();
 
         let root2 = MerkleHash::from_bytes([0xbb; 32]);
         let cp2 = dummy_signed_checkpoint(10, root2);
-        let err = try_cache_checkpoint(&cache_path, &cp2, None).unwrap_err();
+        let err = try_cache_checkpoint(&FsStore, &cache_path, &cp2, None).unwrap_err();
         assert!(matches!(
             err,
             TransparencyWorkflowError::CheckpointInconsistent(_)
@@ -657,10 +683,10 @@ mod tests {
         let cache_path = dir.path().join("log_checkpoint.json");
 
         let cp1 = dummy_signed_checkpoint(10, MerkleHash::from_bytes([0xaa; 32]));
-        try_cache_checkpoint(&cache_path, &cp1, None).unwrap();
+        try_cache_checkpoint(&FsStore, &cache_path, &cp1, None).unwrap();
 
         let cp2 = dummy_signed_checkpoint(5, MerkleHash::from_bytes([0xbb; 32]));
-        let err = try_cache_checkpoint(&cache_path, &cp2, None).unwrap_err();
+        let err = try_cache_checkpoint(&FsStore, &cache_path, &cp2, None).unwrap_err();
         assert!(matches!(
             err,
             TransparencyWorkflowError::CheckpointInconsistent(_)

@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 
 use auths_verifier::IdentityDID;
 
+use crate::ports::{ConfigStore, ConfigStoreError};
+
 const ROOTS_FILE: &str = "roots";
 
 /// Path to the pin file within `auths_dir`.
@@ -25,19 +27,21 @@ fn roots_path(auths_dir: &Path) -> PathBuf {
 /// Blank lines and `#`-prefixed comments are ignored; entries are trimmed.
 ///
 /// Args:
+/// * `store`: File-access port for the pin file.
 /// * `auths_dir`: Directory holding the `roots` pin file.
 ///
 /// Usage:
 /// ```ignore
-/// let roots = load_pinned_roots(&auths_dir)?;
+/// let roots = load_pinned_roots(&store, &auths_dir)?;
 /// ```
-pub fn load_pinned_roots(auths_dir: &Path) -> std::io::Result<Vec<String>> {
-    let path = roots_path(auths_dir);
-    if !path.exists() {
-        return Ok(Vec::new());
+pub fn load_pinned_roots(
+    store: &dyn ConfigStore,
+    auths_dir: &Path,
+) -> Result<Vec<String>, ConfigStoreError> {
+    match store.read(&roots_path(auths_dir))? {
+        Some(content) => Ok(parse_roots(&content)),
+        None => Ok(Vec::new()),
     }
-    let content = std::fs::read_to_string(&path)?;
-    Ok(parse_roots(&content))
 }
 
 /// Parse pin-file content into the trusted-root set (pure; no I/O).
@@ -62,38 +66,49 @@ pub fn parse_roots(content: &str) -> Vec<String> {
 /// Whether `did` (a `did:keri:` string) is a pinned trusted root.
 ///
 /// Args:
+/// * `store`: File-access port for the pin file.
 /// * `auths_dir`: Directory holding the `roots` pin file.
 /// * `did`: The candidate root `did:keri:`.
 ///
 /// Usage:
 /// ```ignore
-/// if is_pinned_root(&auths_dir, &trailer_root_did)? { /* trust it */ }
+/// if is_pinned_root(&store, &auths_dir, &trailer_root_did)? { /* trust it */ }
 /// ```
-pub fn is_pinned_root(auths_dir: &Path, did: &str) -> std::io::Result<bool> {
-    Ok(load_pinned_roots(auths_dir)?.iter().any(|root| root == did))
+pub fn is_pinned_root(
+    store: &dyn ConfigStore,
+    auths_dir: &Path,
+    did: &str,
+) -> Result<bool, ConfigStoreError> {
+    Ok(load_pinned_roots(store, auths_dir)?
+        .iter()
+        .any(|root| root == did))
 }
 
 /// Pin a trusted root `did:keri:` (idempotent — never duplicates an existing entry).
 ///
-/// Creates `auths_dir` if needed. Used by `auths init` to seed the local root.
+/// Creates `auths_dir` if needed (the store's `write` creates parent directories).
+/// Used by `auths init` to seed the local root.
 ///
 /// Args:
+/// * `store`: File-access port for the pin file.
 /// * `auths_dir`: Directory holding the `roots` pin file.
 /// * `did`: The root `did:keri:` to pin.
 ///
 /// Usage:
 /// ```ignore
-/// add_pinned_root(&auths_dir, &controller_did)?;
+/// add_pinned_root(&store, &auths_dir, &controller_did)?;
 /// ```
-pub fn add_pinned_root(auths_dir: &Path, did: &str) -> std::io::Result<()> {
-    let mut roots = load_pinned_roots(auths_dir)?;
+pub fn add_pinned_root(
+    store: &dyn ConfigStore,
+    auths_dir: &Path,
+    did: &str,
+) -> Result<(), ConfigStoreError> {
+    let mut roots = load_pinned_roots(store, auths_dir)?;
     if roots.iter().any(|root| root == did) {
         return Ok(());
     }
     roots.push(did.to_string());
-    std::fs::create_dir_all(auths_dir)?;
-    std::fs::write(roots_path(auths_dir), format!("{}\n", roots.join("\n")))?;
-    Ok(())
+    store.write(&roots_path(auths_dir), &format!("{}\n", roots.join("\n")))
 }
 
 /// Failure loading the typed pinned-root set: a line that is not a well-formed
@@ -102,7 +117,7 @@ pub fn add_pinned_root(auths_dir: &Path, did: &str) -> std::io::Result<()> {
 pub enum RootsError {
     /// The `roots` pin file could not be read.
     #[error("could not read roots pin file: {0}")]
-    Io(#[from] std::io::Error),
+    Store(#[from] ConfigStoreError),
 
     /// A non-comment, non-blank line is not a valid `did:keri:` root.
     #[error("roots pin line {line} ({value:?}) is not a valid did:keri: root: {source}")]
@@ -155,24 +170,54 @@ pub fn parse_roots_typed(content: &str) -> Result<Vec<IdentityDID>, RootsError> 
 /// load rather than a silently-dropped root.
 ///
 /// Args:
+/// * `store`: File-access port for the pin file.
 /// * `auths_dir`: Directory holding the `roots` pin file.
 ///
 /// Usage:
 /// ```ignore
-/// let roots = load_pinned_roots_typed(&auths_dir)?;
+/// let roots = load_pinned_roots_typed(&store, &auths_dir)?;
 /// ```
-pub fn load_pinned_roots_typed(auths_dir: &Path) -> Result<Vec<IdentityDID>, RootsError> {
-    let path = roots_path(auths_dir);
-    if !path.exists() {
-        return Ok(Vec::new());
+pub fn load_pinned_roots_typed(
+    store: &dyn ConfigStore,
+    auths_dir: &Path,
+) -> Result<Vec<IdentityDID>, RootsError> {
+    match store.read(&roots_path(auths_dir))? {
+        Some(content) => parse_roots_typed(&content),
+        None => Ok(Vec::new()),
     }
-    let content = std::fs::read_to_string(&path)?;
-    parse_roots_typed(&content)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct FsStore;
+
+    impl ConfigStore for FsStore {
+        fn read(&self, path: &Path) -> Result<Option<String>, ConfigStoreError> {
+            match std::fs::read_to_string(path) {
+                Ok(content) => Ok(Some(content)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(e) => Err(ConfigStoreError::Read {
+                    path: path.to_path_buf(),
+                    source: e,
+                }),
+            }
+        }
+
+        fn write(&self, path: &Path, content: &str) -> Result<(), ConfigStoreError> {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| ConfigStoreError::Write {
+                    path: path.to_path_buf(),
+                    source: e,
+                })?;
+            }
+            std::fs::write(path, content).map_err(|e| ConfigStoreError::Write {
+                path: path.to_path_buf(),
+                source: e,
+            })
+        }
+    }
 
     #[test]
     fn parse_roots_ignores_blanks_and_comments() {
@@ -206,7 +251,7 @@ mod tests {
     fn typed_roots_absent_file_is_empty() {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         assert!(
-            load_pinned_roots_typed(tmp.path())
+            load_pinned_roots_typed(&FsStore, tmp.path())
                 .expect("load")
                 .is_empty()
         );
@@ -216,21 +261,22 @@ mod tests {
     fn add_and_membership_roundtrip() {
         let tmp = tempfile::TempDir::new().expect("temp dir");
         let dir = tmp.path();
+        let store = FsStore;
 
         // Absent file → empty + not pinned.
-        assert!(load_pinned_roots(dir).expect("load").is_empty());
-        assert!(!is_pinned_root(dir, "did:keri:Eroot").expect("check"));
+        assert!(load_pinned_roots(&store, dir).expect("load").is_empty());
+        assert!(!is_pinned_root(&store, dir, "did:keri:Eroot").expect("check"));
 
-        add_pinned_root(dir, "did:keri:Eroot").expect("add");
-        assert!(is_pinned_root(dir, "did:keri:Eroot").expect("check pinned"));
-        assert!(!is_pinned_root(dir, "did:keri:Eother").expect("check unpinned"));
+        add_pinned_root(&store, dir, "did:keri:Eroot").expect("add");
+        assert!(is_pinned_root(&store, dir, "did:keri:Eroot").expect("check pinned"));
+        assert!(!is_pinned_root(&store, dir, "did:keri:Eother").expect("check unpinned"));
 
         // Idempotent.
-        add_pinned_root(dir, "did:keri:Eroot").expect("add again");
-        assert_eq!(load_pinned_roots(dir).expect("load").len(), 1);
+        add_pinned_root(&store, dir, "did:keri:Eroot").expect("add again");
+        assert_eq!(load_pinned_roots(&store, dir).expect("load").len(), 1);
 
         // A second distinct root.
-        add_pinned_root(dir, "did:keri:Esecond").expect("add second");
-        assert_eq!(load_pinned_roots(dir).expect("load").len(), 2);
+        add_pinned_root(&store, dir, "did:keri:Esecond").expect("add second");
+        assert_eq!(load_pinned_roots(&store, dir).expect("load").len(), 2);
     }
 }

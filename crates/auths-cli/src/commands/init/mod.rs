@@ -381,7 +381,11 @@ fn run_developer_setup(
     {
         let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
         let root_did = result.identity_did.to_string();
-        match auths_sdk::workflows::roots::add_pinned_root(&root.join(".auths"), &root_did) {
+        match auths_sdk::workflows::roots::add_pinned_root(
+            &crate::adapters::config_store::FileConfigStore,
+            &root.join(".auths"),
+            &root_did,
+        ) {
             Ok(()) => out.println(&format!("  Pinned trusted root: {}", root_did)),
             Err(e) => out.println(&format!("  Note: could not pin trusted root ({e})")),
         }

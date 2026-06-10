@@ -53,7 +53,40 @@ pub struct AppState {
     pub audience: Audience,
     /// Best-effort, in-memory idempotency cache: key → (body fingerprint, response JSON).
     /// Non-durable across restarts (documented; a durable store is a follow-up).
-    idempotency: Arc<Mutex<HashMap<String, (u64, String)>>>,
+    /// Bounded at [`IDEMPOTENCY_MAX_ENTRIES`] with FIFO eviction so unique keys
+    /// cannot grow memory without bound.
+    idempotency: Arc<Mutex<IdempotencyCache>>,
+}
+
+/// Hard cap on retained idempotency entries. Retries arrive within minutes;
+/// 10k entries comfortably covers that horizon while bounding memory.
+const IDEMPOTENCY_MAX_ENTRIES: usize = 10_000;
+
+/// FIFO-bounded idempotency map (mirrors the `JtiRegistry` pattern in auths-sdk).
+#[derive(Default)]
+struct IdempotencyCache {
+    entries: HashMap<String, (u64, String)>,
+    insertion_order: std::collections::VecDeque<String>,
+}
+
+impl IdempotencyCache {
+    fn get(&self, key: &str) -> Option<&(u64, String)> {
+        self.entries.get(key)
+    }
+
+    fn insert(&mut self, key: String, value: (u64, String)) {
+        if self.entries.insert(key.clone(), value).is_none() {
+            self.insertion_order.push_back(key);
+        }
+        while self.entries.len() > IDEMPOTENCY_MAX_ENTRIES {
+            match self.insertion_order.pop_front() {
+                Some(oldest) => {
+                    self.entries.remove(&oldest);
+                }
+                None => break,
+            }
+        }
+    }
 }
 
 impl AppState {
@@ -78,7 +111,7 @@ impl AppState {
             org_prefix,
             challenges,
             audience,
-            idempotency: Arc::new(Mutex::new(HashMap::new())),
+            idempotency: Arc::new(Mutex::new(IdempotencyCache::default())),
         }
     }
 
@@ -98,8 +131,8 @@ impl AppState {
     pub(crate) fn idempotency_lookup(&self, key: &str, fingerprint: u64) -> IdempotencyHit {
         #[allow(clippy::expect_used)]
         // INVARIANT: a poisoned mutex means another thread panicked (unrecoverable).
-        let map = self.idempotency.lock().expect("idempotency mutex poisoned");
-        match map.get(key) {
+        let cache = self.idempotency.lock().expect("idempotency mutex poisoned");
+        match cache.get(key) {
             Some((fp, json)) if *fp == fingerprint => IdempotencyHit::Replay(json.clone()),
             Some(_) => IdempotencyHit::Conflict,
             None => IdempotencyHit::Miss,
@@ -110,8 +143,35 @@ impl AppState {
     pub(crate) fn idempotency_store(&self, key: String, fingerprint: u64, response_json: String) {
         #[allow(clippy::expect_used)]
         // INVARIANT: a poisoned mutex means another thread panicked (unrecoverable).
-        let mut map = self.idempotency.lock().expect("idempotency mutex poisoned");
-        map.insert(key, (fingerprint, response_json));
+        let mut cache = self.idempotency.lock().expect("idempotency mutex poisoned");
+        cache.insert(key, (fingerprint, response_json));
+    }
+}
+
+#[cfg(test)]
+mod idempotency_tests {
+    use super::*;
+
+    #[test]
+    fn cache_is_bounded_with_fifo_eviction() {
+        let mut cache = IdempotencyCache::default();
+        for n in 0..(IDEMPOTENCY_MAX_ENTRIES + 50) {
+            cache.insert(format!("key-{n}"), (n as u64, format!("resp-{n}")));
+        }
+        assert_eq!(cache.entries.len(), IDEMPOTENCY_MAX_ENTRIES);
+        assert!(cache.get("key-0").is_none(), "oldest entries evicted first");
+        let newest = format!("key-{}", IDEMPOTENCY_MAX_ENTRIES + 49);
+        assert!(cache.get(&newest).is_some(), "newest entries retained");
+    }
+
+    #[test]
+    fn reinserting_same_key_does_not_grow_order_queue() {
+        let mut cache = IdempotencyCache::default();
+        for _ in 0..10 {
+            cache.insert("same".to_string(), (1, "r".to_string()));
+        }
+        assert_eq!(cache.entries.len(), 1);
+        assert_eq!(cache.insertion_order.len(), 1);
     }
 }
 
