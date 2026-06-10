@@ -97,8 +97,6 @@ build:
     fi
 
 # Run the Radicle multi-device e2e demo (requires rad CLI).
-e2e-radicle:
-    bash scripts/radicle-e2e.sh
 
 # Install auths-cli from local source into ~/.cargo/bin
 install:

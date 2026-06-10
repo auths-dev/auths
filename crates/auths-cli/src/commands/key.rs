@@ -225,16 +225,31 @@ fn key_list() -> Result<()> {
     Ok(())
 }
 
+/// Frees the wrapped FFI context on drop, covering early returns in `key_export`.
+struct FfiContextGuard(*mut ffi::AuthsFfiContext);
+
+impl Drop for FfiContextGuard {
+    fn drop(&mut self) {
+        unsafe { ffi::ffi_context_free(self.0) };
+    }
+}
+
 /// Exports a stored key in one of several formats using FFI calls.
 #[inline]
 fn key_export(alias: &str, passphrase: &str, format: ExportFormat) -> Result<()> {
     let c_alias = CString::new(alias).context("Alias contains null byte")?;
     let c_passphrase = CString::new(passphrase).context("Passphrase contains null byte")?;
+    let ctx = unsafe { ffi::ffi_context_new(std::ptr::null()) };
+    if ctx.is_null() {
+        anyhow::bail!("Failed to initialize FFI configuration context");
+    }
+    let ctx_guard = FfiContextGuard(ctx);
+    let ctx = ctx_guard.0.cast_const();
 
     match format {
         ExportFormat::Pem => {
             let ptr = unsafe {
-                ffi::ffi_export_private_key_openssh(c_alias.as_ptr(), c_passphrase.as_ptr())
+                ffi::ffi_export_private_key_openssh(ctx, c_alias.as_ptr(), c_passphrase.as_ptr())
             };
             if ptr.is_null() {
                 anyhow::bail!(
@@ -255,7 +270,7 @@ fn key_export(alias: &str, passphrase: &str, format: ExportFormat) -> Result<()>
         }
         ExportFormat::Pub => {
             let ptr = unsafe {
-                ffi::ffi_export_public_key_openssh(c_alias.as_ptr(), c_passphrase.as_ptr())
+                ffi::ffi_export_public_key_openssh(ctx, c_alias.as_ptr(), c_passphrase.as_ptr())
             };
             if ptr.is_null() {
                 anyhow::bail!(
@@ -276,7 +291,8 @@ fn key_export(alias: &str, passphrase: &str, format: ExportFormat) -> Result<()>
         }
         ExportFormat::Enc => {
             let mut out_len: usize = 0;
-            let buf_ptr = unsafe { ffi::ffi_export_encrypted_key(c_alias.as_ptr(), &mut out_len) };
+            let buf_ptr =
+                unsafe { ffi::ffi_export_encrypted_key(ctx, c_alias.as_ptr(), &mut out_len) };
             if buf_ptr.is_null() {
                 anyhow::bail!(
                     "❌ Failed to export encrypted private key (key not found or FFI error)"

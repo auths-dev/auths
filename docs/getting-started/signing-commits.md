@@ -52,9 +52,9 @@ auths verify HEAD --json
 
 ### What verification checks
 
-For a local commit, `auths verify` performs SSH signature verification against the `allowed_signers` file at `.auths/allowed_signers`. The signer's public key must be present in that file.
+Verification is KEL-native. `auths verify` reads the commit's `Auths-Id` and `Auths-Device` trailers, replays the signing device's key event log, confirms the device is delegated by the root identity in the repo's pinned trust roots (`.auths/roots`), and checks the signature against the device's current key. There is no allowed-signers file.
 
-When an identity bundle is provided (common in CI), verification also checks the attestation chain -- the cryptographic proof that the signing device was authorized by the identity controller.
+When an identity bundle is provided (common in CI), verification runs statelessly from the bundle -- the same KEL replay, without needing local identity storage.
 
 ## Manual Git configuration
 

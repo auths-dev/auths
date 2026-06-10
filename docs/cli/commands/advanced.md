@@ -2,6 +2,105 @@
 
 ## Advanced
 
+### auths publish
+
+```bash
+auths publish
+```
+
+<!-- BEGIN GENERATED: auths publish -->
+Publish a signed artifact attestation to the Auths registry.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--signature <PATH>` | — | Path to an existing .auths.json signature file. Defaults to <FILE>.auths.json |
+| `--package <PACKAGE>` | — | Package identifier for registry indexing (e.g., npm:react@18.3.0) |
+| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths publish -->
+
+### auths artifact sign
+
+```bash
+auths artifact sign
+```
+
+<!-- BEGIN GENERATED: auths artifact sign -->
+Sign an artifact file with your Auths identity
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<FILE>` | — | Path to the artifact file to sign. |
+| `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
+| `--key <KEY>` | — | Local alias of the identity key. Omit for device-only CI signing. |
+| `--device-key <DEVICE_KEY>` | — | Local alias of the device key. Auto-detected when only one key exists. |
+| `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
+| `--note <NOTE>` | — | Optional note to embed in the attestation |
+| `--commit <COMMIT>` | — | Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted) |
+| `--no-commit` | — | Do not embed any commit SHA in the attestation |
+| `--ci` | — | Use ephemeral CI signing (no keychain needed). Requires --commit |
+| `--ci-platform <CI_PLATFORM>` | — | CI platform override when --ci is used outside a detected CI environment |
+| `--log <LOG_ID>` | — | Transparency log to submit to (overrides default from trust config) |
+| `--allow-unlogged` | — | Skip transparency log submission (local testing only). Produces an unlogged attestation that verifiers reject by default |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths artifact sign -->
+
+### auths artifact publish
+
+```bash
+auths artifact publish
+```
+
+<!-- BEGIN GENERATED: auths artifact publish -->
+Sign and publish an artifact attestation to a registry
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--signature <PATH>` | — | Path to an existing .auths.json signature file. Defaults to <FILE>.auths.json |
+| `--package <PACKAGE>` | — | Package identifier for registry indexing (e.g., npm:react@18.3.0) |
+| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
+| `--key <KEY>` | — | Local alias of the identity key. Omit for device-only CI signing |
+| `--device-key <DEVICE_KEY>` | — | Local alias of the device key. Auto-detected when only one key exists |
+| `--expires-in <N>` | — | Duration in seconds until expiration |
+| `--note <NOTE>` | — | Optional note to embed in the attestation |
+| `--commit <COMMIT>` | — | Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted) |
+| `--no-commit` | — | Do not embed any commit SHA in the attestation |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths artifact publish -->
+
+### auths artifact verify
+
+```bash
+auths artifact verify
+```
+
+<!-- BEGIN GENERATED: auths artifact verify -->
+Verify an artifact's signature against an Auths identity
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<FILE>` | — | Path to the artifact file to verify. |
+| `--signature <PATH>` | — | Path to the signature file. Defaults to <FILE>.auths.json |
+| `--identity-bundle <IDENTITY_BUNDLE>` | — | Path to identity bundle JSON (for CI/CD stateless verification) |
+| `--witness-signatures <WITNESS_RECEIPTS>` | — | Path to witness signatures JSON file |
+| `--witness-keys <WITNESS_KEYS>...` | — | Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...") |
+| `--witnesses-required <WITNESS_THRESHOLD>` | `1` | Number of witnesses required (default: 1) |
+| `--verify-commit` | — | Also verify the source commit's signing attestation |
+| `--offline` | — | Verify an air-gapped org bundle entirely offline (no network access) |
+| `--roots <PATH>` | — | Override the pinned trust roots path (default: `.auths/roots`) |
+| `--member <MEMBER>` | — | (offline) Member `did:keri` to classify authority for [aliases: --member-did] |
+| `--signed-at <SIGNED_AT>` | — | (offline) The artifact's in-band signing KEL position |
+| `--json` | — | (offline) Emit the typed verdict as JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths artifact verify -->
+
 ### auths reset
 
 ```bash
@@ -35,91 +134,6 @@ Sign a Git commit with machine identity.
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths signcommit -->
-
-### auths signers list
-
-```bash
-auths signers list
-```
-
-<!-- BEGIN GENERATED: auths signers list -->
-List all entries in the allowed_signers file
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--json` | — | Output as JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths signers list -->
-
-### auths signers add
-
-```bash
-auths signers add
-```
-
-<!-- BEGIN GENERATED: auths signers add -->
-Add a manual signer entry
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<EMAIL>` | — | Email address of the signer |
-| `<PUBKEY>` | — | SSH public key (ssh-ed25519 AAAA...) |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths signers add -->
-
-### auths signers remove
-
-```bash
-auths signers remove
-```
-
-<!-- BEGIN GENERATED: auths signers remove -->
-Remove a manual signer entry
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<EMAIL>` | — | Email address of the signer to remove |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths signers remove -->
-
-### auths signers sync
-
-```bash
-auths signers sync
-```
-
-<!-- BEGIN GENERATED: auths signers sync -->
-Sync attestation entries from the auths registry
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--repo <REPO>` | `~/.auths` | Path to the Auths identity repository |
-| `-o, --output <OUTPUT_FILE>` | — | Output file path. Overrides the default location |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-<!-- END GENERATED: auths signers sync -->
-
-### auths signers add-from-github
-
-```bash
-auths signers add-from-github
-```
-
-<!-- BEGIN GENERATED: auths signers add-from-github -->
-Add a signer from a GitHub user's SSH keys
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<USERNAME>` | — | GitHub username whose SSH keys to add |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths signers add-from-github -->
 
 ### auths error list
 
@@ -161,12 +175,12 @@ auths id create
 ```
 
 <!-- BEGIN GENERATED: auths id create -->
-Create a new cryptographic identity with secure key storage
+Create a new signing identity
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--metadata-file <METADATA_FILE>` | — | Path to JSON file with arbitrary identity metadata. |
-| `--local-key-alias <LOCAL_KEY_ALIAS>` | — | Alias for storing the NEWLY generated private key in the secure keychain. |
+| `--local-key-alias <LOCAL_KEY_ALIAS>` | — | Name for the new signing key in secure storage. |
 | `--preset <PRESET>` | `default` | Storage layout preset (default, radicle, gitoxide) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -216,17 +230,42 @@ Rotate identity keys. Stores the new key under a new alias
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--alias <ALIAS>` | — | Alias of the identity key to rotate. |
-| `--current-key-alias <CURRENT_KEY_ALIAS>` | — | Alias of the CURRENT private key controlling the identity. |
-| `--next-key-alias <NEXT_KEY_ALIAS>` | — | Alias to store the NEWLY generated private key under. |
-| `--add-witness <ADD_WITNESS>` | — | Verification server prefix to add (e.g., B...). Can be specified multiple times. |
-| `--remove-witness <REMOVE_WITNESS>` | — | Verification server prefix to remove (e.g., B...). Can be specified multiple times. |
-| `--witness-threshold <WITNESS_THRESHOLD>` | — | New simple verification threshold count (e.g., 1 for 1-of-N). |
+| `--alias <ALIAS>` | — | Name of the key to rotate. |
+| `--current-key-alias <CURRENT_KEY_ALIAS>` | — | Current signing key name (alternative to --alias). |
+| `--next-key-alias <NEXT_KEY_ALIAS>` | — | Name for the new signing key after rotation. |
+| `--add-witness <ADD_WITNESS>` | — | Add a witness server address (repeatable). |
+| `--remove-witness <REMOVE_WITNESS>` | — | Remove a witness server address (repeatable). |
+| `--witness-threshold <WITNESS_THRESHOLD>` | — | Number of witnesses required to accept this rotation (e.g., 1). |
 | `--dry-run` | — | Preview actions without making changes |
+| `--add-device <CURVE>` | — | Add a device slot on this rotation (repeatable). Value is the curve for the new slot (`P256` or `Ed25519`) |
+| `--remove-device <INDEX>` | — | Remove a device slot by index on this rotation (repeatable). Currently rejected — requires CESR indexed-signature support |
+| `--signing-threshold <SIGNING_THRESHOLD>` | — | New signing threshold (scalar like `"2"` or fractions like `"1/2,1/2,1/2"`). Omit to keep the prior `kt` |
+| `--rotation-threshold <ROTATION_THRESHOLD>` | — | New rotation (next) threshold, same format as `--signing-threshold`. Omit to keep the prior `nt` |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths id rotate -->
+
+### auths id expand
+
+```bash
+auths id expand
+```
+
+<!-- BEGIN GENERATED: auths id expand -->
+Expand a single-device identity into multi-device via one rotation
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--add-device <CURVE>` | — | Add a device slot (repeatable). Curve name: `P256` or `Ed25519` |
+| `--signing-threshold <SIGNING_THRESHOLD>` | — | Signing threshold after expansion. Required |
+| `--rotation-threshold <ROTATION_THRESHOLD>` | — | Rotation threshold after expansion. Required |
+| `--alias <ALIAS>` | `main` | Base alias for the existing single-key identity |
+| `--next-alias <NEXT_ALIAS>` | `main` | Alias for the new multi-key identity set |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths id expand -->
 
 ### auths id export-bundle
 
@@ -258,7 +297,7 @@ Publish this identity to a public registry for discovery
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--registry <REGISTRY>` | `https://auths-registry.fly.dev` | Registry URL to publish to |
+| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -329,6 +368,22 @@ Re-authorize with a platform and optionally upload SSH signing key
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths id update-scope -->
 
+### auths id agent
+
+```bash
+auths id agent
+```
+
+<!-- BEGIN GENERATED: auths id agent -->
+Manage AI agents delegated by this identity (KERI delegated identifiers)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths id agent -->
+
 ### auths device list
 
 ```bash
@@ -346,6 +401,25 @@ List all authorized devices for the current identity
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths device list -->
 
+### auths device add
+
+```bash
+auths device add
+```
+
+<!-- BEGIN GENERATED: auths device add -->
+Add a device as a delegated identifier of the identity
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--key <KEY>` | — | Your identity's signing key name. |
+| `--device-key <DEVICE_KEY>` | — | Keychain alias to store the new device's key under. |
+| `--curve <CURVE>` | `p256` | Curve for the new device key (p256 or ed25519). |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths device add -->
+
 ### auths device link
 
 ```bash
@@ -353,22 +427,39 @@ auths device link
 ```
 
 <!-- BEGIN GENERATED: auths device link -->
-Authorize a new device to act on behalf of the identity
+Authorize a new device to act on behalf of the identity (legacy attestation)
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--key <KEY>` | — | Local alias of the *identity's* key (used for signing). |
-| `--device-key <DEVICE_KEY>` | — | Local alias of the *new device's* key (must be imported first). |
-| `--device-did <DEVICE_DID>` | — | Identity ID of the new device being authorized (must match --device-key). [aliases: --device] |
+| `--key <KEY>` | — | Your identity's key name. |
+| `--device-key <DEVICE_KEY>` | — | The new device's key name (import first with: auths key import). |
+| `--device-did <DEVICE_DID>` | — | The device's ID (must match --device-key). [aliases: --device] |
 | `--payload <PAYLOAD_PATH>` | — | Optional path to a JSON file containing arbitrary payload data for the authorization. |
 | `--schema <SCHEMA_PATH>` | — | Optional path to a JSON schema for validating the payload (experimental). |
 | `--expires-in <SECS>` | — | Optional number of seconds until this device authorization expires. |
 | `--note <NOTE>` | — | Optional description/note for this device authorization. |
-| `--capabilities <CAPABILITIES>` | — | Permissions to grant this device (comma-separated) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths device link -->
+
+### auths device remove
+
+```bash
+auths device remove
+```
+
+<!-- BEGIN GENERATED: auths device remove -->
+Remove a device from the shared identity's controller set by signing a rotation on the shared KEL
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--device-did <DEVICE_DID>` | — | The controller DID to remove. [aliases: --device] |
+| `--key <KEY>` | — | Your identity's signing key name. |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths device remove -->
 
 ### auths device revoke
 
@@ -381,8 +472,8 @@ Revoke an existing device authorization using the identity key
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device-did <DEVICE_DID>` | — | Identity ID of the device authorization to revoke. [aliases: --device] |
-| `--key <KEY>` | — | Local alias of the *identity's* key (required to authorize revocation). |
+| `--device-did <DEVICE_DID>` | — | The device's ID to revoke. [aliases: --device] |
+| `--key <KEY>` | — | Your identity's key name. |
 | `--note <NOTE>` | — | Optional note explaining the revocation. |
 | `--dry-run` | — | Preview actions without making changes. |
 | `-j, --json` | — | Emit machine-readable JSON |
@@ -397,11 +488,11 @@ auths device resolve
 ```
 
 <!-- BEGIN GENERATED: auths device resolve -->
-Resolve a device DID to its controller identity DID
+Resolve a device to its owner identity
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device-did <DEVICE_DID>` | — | The device DID to resolve (e.g. did:key:z6Mk...). [aliases: --device] |
+| `--device-did <DEVICE_DID>` | — | The device ID to resolve (e.g. did:key:z6Mk...). [aliases: --device] |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -421,6 +512,8 @@ Link devices to your identity via QR code or short code
 | `--join <CODE>` | — | Join an existing pairing session using a short code |
 | `--registry <URL>` | — | Registry URL for pairing relay (omit for LAN mode) |
 | `--timeout <SECONDS>` | `300` | Custom timeout in seconds for the pairing session (default: 300 = 5 minutes)  [aliases: --expiry] |
+| `--verify` | — | Prompt to manually verify the short-authentication-string (SAS) codes match between devices before completing the pair |
+| `--recover <OLD_DID>` | — | Lost/stolen-device recovery: pair a replacement delegated device, then revoke the old device's delegation (by `did:keri:`). The replacement is authorized before the old one is revoked, so the identity is never left with zero usable devices. Supported over the relay path (with `--registry`) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -438,13 +531,12 @@ Verify device authorization signatures (attestation)
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--attestation <ATTESTATION>` | — | Path to authorization JSON file, or "-" to read from stdin |
-| `--issuer-pk <ISSUER_PK>` | — | Issuer public key in hex format (64 hex chars = 32 bytes) |
-| `--issuer-did <ISSUER_DID>` | — | Issuer identity ID for trust-based key resolution [aliases: --issuer] |
+| `--signer-key <ISSUER_PK>` | — | Signer public key in hex format (64 hex chars = 32 bytes) |
+| `--signer <ISSUER_DID>` | — | Signer identity ID for trust-based key resolution [aliases: --issuer-did] |
 | `--trust <TRUST>` | — | Trust policy for unknown identities |
 | `--roots-file <ROOTS_FILE>` | — | Path to roots.json file for explicit trust |
-| `--require-capability <REQUIRE_CAPABILITY>` | — | Require attestation to have a specific capability (sign-commit, sign-release, manage-members, rotate-keys) |
-| `--witness-receipts <WITNESS_RECEIPTS>` | — | Path to witness receipts JSON file |
-| `--witness-threshold <WITNESS_THRESHOLD>` | `1` | Witness quorum threshold (default: 1) |
+| `--witness-signatures <WITNESS_RECEIPTS>` | — | Path to witness signatures JSON file |
+| `--witnesses-required <WITNESS_THRESHOLD>` | `1` | Number of witnesses required (default: 1) |
 | `--witness-keys <WITNESS_KEYS>...` | — | Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...") |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -462,10 +554,10 @@ Extend the expiration date of an existing device authorization
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device-did <DEVICE_DID>` | — | Identity ID of the device authorization to extend. [aliases: --device] |
+| `--device-did <DEVICE_DID>` | — | The device's ID to extend. [aliases: --device] |
 | `--expires-in <SECS>` | — | Number of seconds to extend the expiration by (from now). |
-| `--key <KEY>` | — | Local alias of the *identity's* key (required for re-signing). |
-| `--device-key <DEVICE_KEY>` | — | Local alias of the *device's* key (required for re-signing). |
+| `--key <KEY>` | — | Your identity's key name. |
+| `--device-key <DEVICE_KEY>` | — | The device's key name. |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -536,7 +628,7 @@ Import an Ed25519 key from a 32-byte seed file and store it encrypted
 |------|---------|-------------|
 | `--key-alias <KEY_ALIAS>` | — | Local alias to assign to the imported key. [aliases: --alias] |
 | `--seed-file <SEED_FILE>` | — | Path to the file containing the raw 32-byte Ed25519 seed. |
-| `--controller-did <CONTROLLER_DID>` | — | Controller DID (e.g., did:key:...) to associate with the imported key. |
+| `--controller-did <CONTROLLER_DID>` | — | Your identity to associate with this key (e.g., did:keri:E...). |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -595,97 +687,6 @@ Grant approval for a pending request
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths approval grant -->
-
-### auths artifact sign
-
-```bash
-auths artifact sign
-```
-
-<!-- BEGIN GENERATED: auths artifact sign -->
-Sign an artifact file with your Auths identity
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<FILE>` | — | Path to the artifact file to sign. |
-| `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
-| `--key <KEY>` | — | Local alias of the identity key. Omit for device-only CI signing. |
-| `--device-key <DEVICE_KEY>` | — | Local alias of the device key. Auto-detected when only one key exists. |
-| `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
-| `--note <NOTE>` | — | Optional note to embed in the attestation |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths artifact sign -->
-
-### auths artifact publish
-
-```bash
-auths artifact publish
-```
-
-<!-- BEGIN GENERATED: auths artifact publish -->
-Sign and publish an artifact attestation to a registry
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--signature <PATH>` | — | Path to an existing .auths.json signature file. Defaults to <FILE>.auths.json |
-| `--package <PACKAGE>` | — | Package identifier for registry indexing (e.g., npm:react@18.3.0) |
-| `--registry <REGISTRY>` | `https://auths-registry.fly.dev` | Registry URL to publish to |
-| `--key <KEY>` | — | Local alias of the identity key. Omit for device-only CI signing |
-| `--device-key <DEVICE_KEY>` | — | Local alias of the device key. Auto-detected when only one key exists |
-| `--expires-in <N>` | — | Duration in seconds until expiration |
-| `--note <NOTE>` | — | Optional note to embed in the attestation |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths artifact publish -->
-
-### auths artifact batch-sign
-
-```bash
-auths artifact batch-sign
-```
-
-<!-- BEGIN GENERATED: auths artifact batch-sign -->
-Sign multiple artifacts matching a glob pattern
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<PATTERN>` | — | Glob pattern matching artifact files to sign. |
-| `--device-key <DEVICE_KEY>` | — | Local alias of the device key |
-| `--key <KEY>` | — | Local alias of the identity key. Omit for device-only CI signing |
-| `--attestation-dir <DIR>` | — | Directory to collect attestation files into |
-| `--expires-in <N>` | — | Duration in seconds until expiration |
-| `--note <NOTE>` | — | Optional note to embed in each attestation |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths artifact batch-sign -->
-
-### auths artifact verify
-
-> **Prefer `auths verify <file>`** — pass the artifact file directly and the sidecar is found automatically. `auths artifact verify` remains available for advanced use.
-
-```bash
-auths artifact verify
-```
-
-<!-- BEGIN GENERATED: auths artifact verify -->
-Verify an artifact's signature against an Auths identity
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<FILE>` | — | Path to the artifact file to verify. |
-| `--signature <PATH>` | — | Path to the signature file. Defaults to <FILE>.auths.json |
-| `--identity-bundle <IDENTITY_BUNDLE>` | — | Path to identity bundle JSON (for CI/CD stateless verification) |
-| `--witness-receipts <WITNESS_RECEIPTS>` | — | Path to witness receipts JSON file |
-| `--witness-keys <WITNESS_KEYS>...` | — | Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...") |
-| `--witness-threshold <WITNESS_THRESHOLD>` | `1` | Witness quorum threshold (default: 1) |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths artifact verify -->
 
 ### auths policy lint
 
@@ -774,95 +775,6 @@ Compare two policies and show semantic differences
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths policy diff -->
-
-### auths git install-hooks
-
-```bash
-auths git install-hooks
-```
-
-<!-- BEGIN GENERATED: auths git install-hooks -->
-Install Git hooks for automatic allowed_signers regeneration
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--repo <REPO>` | `.` | Path to the Git repository where hooks should be installed. Defaults to the current directory |
-| `--auths-repo <AUTHS_REPO>` | `~/.auths` | Path to the Auths identity repository |
-| `--allowed-signers-path <ALLOWED_SIGNERS_PATH>` | `.auths/allowed_signers` | Path where allowed_signers file should be written |
-| `--force` | — | Overwrite existing hook without prompting |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-<!-- END GENERATED: auths git install-hooks -->
-
-### auths trust list
-
-```bash
-auths trust list
-```
-
-<!-- BEGIN GENERATED: auths trust list -->
-List all pinned identities
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths trust list -->
-
-### auths trust pin
-
-```bash
-auths trust pin
-```
-
-<!-- BEGIN GENERATED: auths trust pin -->
-Manually pin an identity as trusted
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--did <DID>` | — | The DID of the identity to pin (e.g., did:keri:E...) |
-| `--key <KEY>` | — | The public key in hex format (64 chars for Ed25519) |
-| `--kel-tip <KEL_TIP>` | — | Optional KEL tip SAID for rotation tracking |
-| `--note <NOTE>` | — | Optional note about this identity |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths trust pin -->
-
-### auths trust remove
-
-```bash
-auths trust remove
-```
-
-<!-- BEGIN GENERATED: auths trust remove -->
-Remove a pinned identity
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<DID>` | — | The DID of the identity to remove |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths trust remove -->
-
-### auths trust show
-
-```bash
-auths trust show
-```
-
-<!-- BEGIN GENERATED: auths trust show -->
-Show details of a pinned identity
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<DID>` | — | The DID of the identity to show |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths trust show -->
 
 ### auths namespace claim
 
@@ -973,7 +885,7 @@ auths org attest
 <!-- BEGIN GENERATED: auths org attest -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--subject-did <SUBJECT_DID>` | — | [aliases: --subject] |
+| `--subject <SUBJECT_DID>` | — | [aliases: --subject-did] |
 | `--payload-file <PAYLOAD_FILE>` | — |  |
 | `--note <NOTE>` | — |  |
 | `--expires-at <EXPIRES_AT>` | — |  |
@@ -992,7 +904,7 @@ auths org revoke
 <!-- BEGIN GENERATED: auths org revoke -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--subject-did <SUBJECT_DID>` | — | [aliases: --subject] |
+| `--subject <SUBJECT_DID>` | — | [aliases: --subject-did] |
 | `--note <NOTE>` | — |  |
 | `--key <KEY>` | — |  |
 | `-j, --json` | — | Emit machine-readable JSON |
@@ -1009,7 +921,7 @@ auths org show
 <!-- BEGIN GENERATED: auths org show -->
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--subject-did <SUBJECT_DID>` | — | [aliases: --subject] |
+| `--subject <SUBJECT_DID>` | — | [aliases: --subject-did] |
 | `--include-revoked` | — |  |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -1043,7 +955,7 @@ Add a member to an organization
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--org <ORG>` | — | Organization identity ID |
-| `--member-did <MEMBER_DID>` | — | Member identity ID to add [aliases: --member] |
+| `--member <MEMBER_DID>` | — | Member identity ID to add [aliases: --member-did] |
 | `--role <ROLE>` | — | Role to assign (admin, member, readonly) |
 | `--capabilities <CAPABILITIES>` | — | Override default capabilities (comma-separated) |
 | `--key <KEY>` | — | Alias of the signing key in keychain |
@@ -1065,7 +977,7 @@ Revoke a member from an organization
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--org <ORG>` | — | Organization identity ID |
-| `--member-did <MEMBER_DID>` | — | Member identity ID to revoke [aliases: --member] |
+| `--member <MEMBER_DID>` | — | Member identity ID to revoke [aliases: --member-did] |
 | `--note <NOTE>` | — | Reason for revocation |
 | `--key <KEY>` | — | Alias of the signing key in keychain |
 | `--dry-run` | — | Preview actions without making changes |
@@ -1092,6 +1004,62 @@ List members of an organization
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths org list-members -->
 
+### auths org audit
+
+```bash
+auths org audit
+```
+
+<!-- BEGIN GENERATED: auths org audit -->
+Classify a member's authority at an artifact's signing position (by KEL position)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--org <ORG>` | — | Organization identity ID |
+| `--member <MEMBER_DID>` | — | Member identity ID to classify [aliases: --member-did] |
+| `--artifact <ARTIFACT>` | — | Artifact path (shown in the report for context) |
+| `--signed-at <SIGNED_AT>` | — | The artifact's in-band signing KEL position (e.g. a commit's `Auths-Anchor-Seq`) |
+| `--json` | — | Emit the typed verdict as JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths org audit -->
+
+### auths org offboarding-log
+
+```bash
+auths org offboarding-log
+```
+
+<!-- BEGIN GENERATED: auths org offboarding-log -->
+List durable off-boarding records for an organization
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--org <ORG>` | — | Organization identity ID |
+| `--member <MEMBER_DID>` | — | Restrict to a single member [aliases: --member-did] |
+| `--json` | — | Emit the records as JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths org offboarding-log -->
+
+### auths org bundle
+
+```bash
+auths org bundle
+```
+
+<!-- BEGIN GENERATED: auths org bundle -->
+Produce a self-contained, air-gapped provenance bundle for an organization
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--org <ORG>` | — | Organization identity ID |
+| `--out <OUT>` | — | Output path for the bundle file |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths org bundle -->
+
 ### auths org join
 
 ```bash
@@ -1104,11 +1072,186 @@ Join an organization using an invite code
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--code <CODE>` | — | Invite code (e.g. from `auths org join --code C23BD59F`) |
-| `--registry <REGISTRY>` | `https://auths-registry.fly.dev` | Registry URL to contact |
+| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to contact [env: AUTHS_REGISTRY_URL=] |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths org join -->
+
+### auths org policy
+
+```bash
+auths org policy
+```
+
+<!-- BEGIN GENERATED: auths org policy -->
+Manage the org-wide authorization policy (anchored on the org KEL)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths org policy -->
+
+### auths org metrics
+
+```bash
+auths org metrics
+```
+
+<!-- BEGIN GENERATED: auths org metrics -->
+Show fleet governance metrics for an organization
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--org <ORG>` | — | Organization identity ID |
+| `--json` | — | Emit the metrics as JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths org metrics -->
+
+### auths org trace
+
+```bash
+auths org trace
+```
+
+<!-- BEGIN GENERATED: auths org trace -->
+Trace an agent's delegation chain to the authorizing root + live-at-signing
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--commit <COMMIT>` | — | A signed commit SHA — traces its signer (`Auths-Device`) at its anchor-seq |
+| `--member <MEMBER>` | — | A member/agent identity ID to trace directly [aliases: --member-did] |
+| `--signed-at <SIGNED_AT>` | — | The in-band signing KEL position (used with `--member`; `--commit` reads it from the commit's `Auths-Anchor-Seq` trailer) |
+| `--json` | — | Emit the chain as JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths org trace -->
+
+### auths compliance report
+
+```bash
+auths compliance report
+```
+
+<!-- BEGIN GENERATED: auths compliance report -->
+Produce a compliance evidence pack for a reporting period
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--org <ORG>` | — | Organization identity ID (`did:keri:…`) or bare prefix |
+| `--period <PERIOD>` | — | Reporting period label (free-form, e.g. `2026-Q3`) |
+| `--framework <FRAMEWORK>` | `slsa` | Target framework (tags the pack; with `--predicate`, selects the rendered predicate: SLSA provenance+VSA / SPDX SBOM / CRA mapping) |
+| `--predicate` | — | Render the framework predicate (in-toto Statement) instead of the raw pack |
+| `--verifier-id <VERIFIER_ID>` | `https://auths.dev/compliance` | Verifier id recorded in the SLSA VSA (with `--predicate --framework slsa`) |
+| `--releases <RELEASES>` | — | JSON file: array of `{ artifact_digest, signer, signed_at?, transparency? }` |
+| `--offline` | — | Embed the org KEL bundle so each row verifies offline (no network) |
+| `--sign` | — | Org-sign the pack as a DSSE-wrapped in-toto statement |
+| `--key <KEY>` | — | Org signing key alias (defaults to the org slug alias); used with `--sign` |
+| `--witness-policy <WITNESS_POLICY>` | — | Pinned witness-policy path (default: `$AUTHS_WITNESS_POLICY_PATH`, else fail-closed) |
+| `--out <OUT>` | — | Output file (default: stdout) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths compliance report -->
+
+### auths credential issue
+
+```bash
+auths credential issue
+```
+
+<!-- BEGIN GENERATED: auths credential issue -->
+Issue a capability credential to an issuee (its KEL must already exist)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--issuer <ISSUER>` | — | The issuer's signing key name (your identity's key). |
+| `--to <TO>` | — | The issuee/subject did:keri to credential. |
+| `--cap <CAP>` | — | Capability to grant (repeatable). |
+| `--role <ROLE>` | — | Informational role claim (e.g. deployer). |
+| `--expires-in <EXPIRES_IN>` | — | Expire the credential after N seconds. |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths credential issue -->
+
+### auths credential revoke
+
+```bash
+auths credential revoke
+```
+
+<!-- BEGIN GENERATED: auths credential revoke -->
+Revoke a credential (anchors a `rev` in the issuer's KEL). Idempotent
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<CREDENTIAL_SAID>` | — | The credential SAID to revoke. |
+| `--issuer <ISSUER>` | — | The issuer's signing key name. |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths credential revoke -->
+
+### auths credential list
+
+```bash
+auths credential list
+```
+
+<!-- BEGIN GENERATED: auths credential list -->
+List the issuer's live credentials (issued − revoked)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--issuer <ISSUER>` | — | The issuer's signing key name. |
+| `--include-revoked` | — | Include revoked credentials. |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths credential list -->
+
+### auths credential verify
+
+```bash
+auths credential verify
+```
+
+<!-- BEGIN GENERATED: auths credential verify -->
+Verify a credential, resolving the issuer KEL/TEL + witness receipts
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<CREDENTIAL_SAID>` | — | The credential SAID to verify. |
+| `--issuer <ISSUER>` | — | The issuer's signing key name. |
+| `--require-witnesses` | — | Fail closed unless every lifecycle anchor reaches witness quorum. |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths credential verify -->
+
+### auths credential present
+
+```bash
+auths credential present
+```
+
+<!-- BEGIN GENERATED: auths credential present -->
+Present a credential: prove control of the subject AID and emit an `Auths-Presentation` header
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--subject <SUBJECT>` | — | The subject (holder) keychain alias to sign with. |
+| `--said <SAID>` | — | The credential SAID to present. |
+| `--audience <AUDIENCE>` | — | The relying-party audience to bind to. |
+| `--nonce <NONCE>` | — | The base64url challenge nonce from /v1/auth/challenge. |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths credential present -->
 
 ### auths audit
 
@@ -1153,6 +1296,66 @@ Sign an authentication challenge for DID-based login
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths auth challenge -->
 
+### auths multi-sig begin
+
+```bash
+auths multi-sig begin
+```
+
+<!-- BEGIN GENERATED: auths multi-sig begin -->
+Create an unsigned-event bundle for distribution to signers
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--event <EVENT>` | — | Path to the JSON-encoded finalized `SignedEvent` (signatures empty) |
+| `--signers <SIGNERS>` | — | Comma-separated signer aliases, in slot order |
+| `--output <OUTPUT>` | — | Output path for the unsigned bundle |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths multi-sig begin -->
+
+### auths multi-sig sign
+
+```bash
+auths multi-sig sign
+```
+
+<!-- BEGIN GENERATED: auths multi-sig sign -->
+Sign an unsigned bundle with a single device key
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--unsigned <UNSIGNED>` | — | Path to the unsigned-event bundle |
+| `--keyalias <KEY_ALIAS>` | — | Keychain alias of the signing key |
+| `--index <INDEX>` | — | Slot index for the indexed signature (0-based) |
+| `--output <OUTPUT>` | — | Output path for the partial signature |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths multi-sig sign -->
+
+### auths multi-sig combine
+
+```bash
+auths multi-sig combine
+```
+
+<!-- BEGIN GENERATED: auths multi-sig combine -->
+Combine partial signatures into a SignedEvent, enforcing the threshold
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--unsigned <UNSIGNED>` | — | Path to the unsigned-event bundle |
+| `--partials <PARTIALS>` | — | Comma-separated paths to partial signature files |
+| `--threshold <THRESHOLD>` | — | Expected threshold (scalar `"2"` or fractions `"1/2,1/2,1/2"`) |
+| `--keycount <KEY_COUNT>` | — | Number of signer slots expected (device_count) |
+| `--output <OUTPUT>` | — | Output path for the combined SignedEvent JSON |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths multi-sig combine -->
+
 ## Internal
 
 ### auths emergency revoke-device
@@ -1166,7 +1369,7 @@ Revoke a compromised device immediately
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--device <DEVICE>` | — | Device DID to revoke |
+| `--device <DEVICE>` | — | Device ID to revoke |
 | `--key <KEY>` | — | Local alias of the identity's key (used for signing the revocation) |
 | `--note <NOTE>` | — | Optional note explaining the revocation |
 | `-y, --yes` | — | Skip confirmation prompt |
@@ -1400,7 +1603,9 @@ Start the witness HTTP server
 |------|---------|-------------|
 | `--bind <BIND>` | `127.0.0.1:3333` | Address to bind to (e.g., "127.0.0.1:3333") |
 | `--db-path <DB_PATH>` | `witness.db` | Path to the SQLite database for witness storage |
-| `--witness-did <WITNESS_DID>` | — | Witness DID (auto-generated if not provided) [aliases: --witness] |
+| `--identity <IDENTITY>` | — | Path to the persisted witness signing-key keystore. The advertised AID derives from this key and is stable across restarts. Without it the witness runs with an EPHEMERAL (unpinnable) identity. The `AUTHS_WITNESS_SEED` env var (hex seed) takes precedence for containers [aliases: --id] |
+| `--generate` | — | Create the keystore at `--identity` if it does not exist. Without this, a missing keystore fails closed (never silently mints a fresh key) |
+| `--curve <CURVE>` | `p256` | Signing curve for a newly generated identity: "p256" (default) or "ed25519" |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1463,15 +1668,18 @@ auths scim serve
 ```
 
 <!-- BEGIN GENERATED: auths scim serve -->
-Start the SCIM provisioning server
+Start the SCIM provisioning server (in-process, KERI-authoritative)
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--bind <BIND>` | `0.0.0.0:3301` | Listen address |
-| `--database-url <DATABASE_URL>` | — | PostgreSQL connection URL |
-| `--registry-path <REGISTRY_PATH>` | — | Path to the Auths registry Git repository |
-| `--log-level <LOG_LEVEL>` | `info` | Log level |
-| `--test-mode` | — | Enable test mode (auto-tenant, relaxed TLS) |
+| `--bind <BIND>` | `0.0.0.0:8787` | Listen address |
+| `--tenant <TENANT>` | — | Tenant id for the single-tenant bootstrap (matches the IdP's tenant) |
+| `--org-prefix <ORG_PREFIX>` | — | Auths org prefix this tenant provisions into |
+| `--token <TOKEN>` | — | Bearer token authenticating the provisioning channel |
+| `--org-key <ORG_KEY>` | — | Org signing-key alias (default: derived `org-<slug>`) |
+| `--base-url <BASE_URL>` | — | Base URL used for SCIM `meta.location` |
+| `--passphrase <PASSPHRASE>` | — | Passphrase for the org signing key (single-host custody) |
+| `--registry-path <REGISTRY_PATH>` | — | Path to the Auths registry Git repository (default: `~/.auths`) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1484,11 +1692,15 @@ auths scim quickstart
 ```
 
 <!-- BEGIN GENERATED: auths scim quickstart -->
-Zero-config quickstart: temp DB + test tenant + running server
+Zero-config quickstart: generate a token and run a single-tenant server
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--bind <BIND>` | `0.0.0.0:3301` | Listen address |
+| `--bind <BIND>` | `0.0.0.0:8787` | Listen address |
+| `--org-prefix <ORG_PREFIX>` | — | Auths org prefix to provision into (must already exist on this host) |
+| `--tenant <TENANT>` | `quickstart` | Tenant id (defaults to `quickstart`) |
+| `--passphrase <PASSPHRASE>` | — | Passphrase for the org signing key (single-host custody) |
+| `--registry-path <REGISTRY_PATH>` | — | Path to the Auths registry Git repository (default: `~/.auths`) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1505,7 +1717,7 @@ Validate the full SCIM pipeline: create -> get -> patch -> delete
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--url <URL>` | `http://localhost:3301` | Server URL |
+| `--url <URL>` | `http://localhost:8787` | Server URL |
 | `--token <TOKEN>` | — | Bearer token |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -1519,11 +1731,10 @@ auths scim tenants
 ```
 
 <!-- BEGIN GENERATED: auths scim tenants -->
-List SCIM tenants
+List SCIM tenants (process-configured in this model)
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--database-url <DATABASE_URL>` | — | PostgreSQL connection URL |
 | `--json` | — | Output as JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1536,13 +1747,12 @@ auths scim add-tenant
 ```
 
 <!-- BEGIN GENERATED: auths scim add-tenant -->
-Generate a new bearer token for an IdP tenant
+Mint a bearer token for an IdP provisioning channel
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name <NAME>` | — | Tenant name |
-| `--database-url <DATABASE_URL>` | — | PostgreSQL connection URL |
-| `--expires-in <EXPIRES_IN>` | — | Duration in seconds until expiration (per RFC 6749) |
+| `--org-prefix <ORG_PREFIX>` | — | Auths org prefix this tenant provisions into |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1555,13 +1765,11 @@ auths scim rotate-token
 ```
 
 <!-- BEGIN GENERATED: auths scim rotate-token -->
-Rotate bearer token for an existing tenant
+Mint a replacement bearer token to rotate a tenant's channel
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name <NAME>` | — | Tenant name |
-| `--database-url <DATABASE_URL>` | — | PostgreSQL connection URL |
-| `--expires-in <EXPIRES_IN>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1574,11 +1782,11 @@ auths scim status
 ```
 
 <!-- BEGIN GENERATED: auths scim status -->
-Show SCIM sync state for debugging
+Probe a running SCIM server's health and discovery surface
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--database-url <DATABASE_URL>` | — | PostgreSQL connection URL |
+| `--url <URL>` | `http://localhost:8787` | Server URL |
 | `--json` | — | Output as JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |

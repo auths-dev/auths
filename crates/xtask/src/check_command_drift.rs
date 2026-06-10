@@ -1,11 +1,11 @@
 //! Command-drift lint: fails if user-facing strings reference an `auths`
 //! command (or long flag) that doesn't exist in the real command tree.
 //!
-//! Scans the repo-root README.md and every string literal in
-//! `crates/auths-cli/src/**/*.rs`, then validates each `auths <cmd> [<sub>]`
-//! mention against the tree discovered from the built binary's `--help-all`
-//! output. This is the ratchet that keeps README/CLI promises and the actual
-//! clap tree from drifting apart again.
+//! Scans the repo-root README.md, every Markdown file under `docs/cli/`, and
+//! every string literal in `crates/auths-cli/src/**/*.rs`, then validates each
+//! `auths <cmd> [<sub>]` mention against the tree discovered from the built
+//! binary's `--help-all` output. This is the ratchet that keeps README/docs/CLI
+//! promises and the actual clap tree from drifting apart again.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -120,12 +120,13 @@ pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
 
     let mut violations = Vec::new();
     scan_readme(workspace_root, &tree, &mut violations)?;
+    let docs_scanned = scan_docs_cli(workspace_root, &tree, &mut violations)?;
     let files_scanned = scan_rust_sources(workspace_root, &tree, &mut violations)?;
 
     if violations.is_empty() {
         println!(
-            "command-drift check: README + {} CLI source files scanned, 0 violations",
-            files_scanned
+            "command-drift check: README + {} docs/cli files + {} CLI source files scanned, 0 violations",
+            docs_scanned, files_scanned
         );
         Ok(())
     } else {
@@ -211,6 +212,29 @@ fn scan_readme(
         check_text(line, tree, &path, i + 1, violations);
     }
     Ok(())
+}
+
+/// Walk `docs/cli/**/*.md` and check every line, same as the README scan.
+fn scan_docs_cli(
+    workspace_root: &Path,
+    tree: &CommandTree,
+    violations: &mut Vec<Violation>,
+) -> anyhow::Result<u32> {
+    let root = workspace_root.join("docs/cli");
+    let mut files_scanned = 0u32;
+    for entry in WalkDir::new(&root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+    {
+        let path = entry.path();
+        let text = std::fs::read_to_string(path)?;
+        files_scanned += 1;
+        for (i, line) in text.lines().enumerate() {
+            check_text(line, tree, path, i + 1, violations);
+        }
+    }
+    Ok(files_scanned)
 }
 
 /// Walk `crates/auths-cli/src` and check every non-test string literal.

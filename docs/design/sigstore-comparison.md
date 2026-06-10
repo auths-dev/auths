@@ -20,7 +20,7 @@
 
 **Identity survives account compromise.** If your GitHub account is compromised, your Sigstore signing identity is compromised — Sigstore identity IS the OIDC account. With Auths, your identity is a device-bound Ed25519 key. Account compromise doesn't give the attacker your signing key. KERI pre-rotation lets you recover.
 
-**Offline verification.** Sigstore verification requires querying the Rekor transparency log (network call). Auths verification works offline with just a Git clone — the commit signatures and allowed_signers are in the repo.
+**Offline verification.** Sigstore verification requires querying the Rekor transparency log (network call). Auths verification works offline with just a Git clone — the commit signatures, the signer's key event log, and the pinned trust roots (`.auths/roots`) are in the repo.
 
 **No central authority.** Sigstore depends on Fulcio (CA) and Rekor (transparency log), both operated by the Linux Foundation. Auths depends on nothing external.
 

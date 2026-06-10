@@ -17,7 +17,20 @@ use crate::context::AuthsContext;
 pub fn emit_audit(ctx: &AuthsContext, actor_did: &str, action: &str, status: &str) {
     let now = ctx.clock.now().timestamp();
     let event = auths_telemetry::build_audit_event(actor_did, action, status, now);
-    let payload = serde_json::to_string(&event).unwrap_or_default();
+    // The audit trail must never go silently empty: a serialization failure
+    // (unreachable for this derived struct, but load-bearing if it ever happens)
+    // emits a structured failure event instead of an empty payload.
+    let payload = serde_json::to_string(&event).unwrap_or_else(|e| {
+        serde_json::json!({
+            "event": "audit_serialization_failure",
+            "actor": actor_did,
+            "action": action,
+            "status": status,
+            "ts": now,
+            "error": e.to_string(),
+        })
+        .to_string()
+    });
     ctx.event_sink.emit(&payload);
 }
 

@@ -6,6 +6,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | Code | Crate | Type | Message |
 |------|-------|------|---------|
 | [AUTHS-E1001](AUTHS-E1001.md) | `auths-crypto` | `CryptoError::InvalidSignature` | Invalid signature |
+| [AUTHS-E1002](AUTHS-E1002.md) | `auths-crypto` | `CryptoError::InvalidKeyLength` | Invalid public key length: expected {expected}, got {actual} |
 | [AUTHS-E1003](AUTHS-E1003.md) | `auths-crypto` | `CryptoError::InvalidPrivateKey` | Invalid private key: {0} |
 | [AUTHS-E1004](AUTHS-E1004.md) | `auths-crypto` | `CryptoError::OperationFailed` | Crypto operation failed: {0} |
 | [AUTHS-E1005](AUTHS-E1005.md) | `auths-crypto` | `CryptoError::UnsupportedTarget` | Operation not supported on current compilation target |

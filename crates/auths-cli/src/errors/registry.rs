@@ -26,6 +26,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
     match code {
         // --- auths-crypto (CryptoError) ---
         "AUTHS-E1001" => Some("# AUTHS-E1001\n\n**Crate:** `auths-crypto`\n\n**Type:** `CryptoError::InvalidSignature`\n\n## Message\n\nInvalid signature\n\n## Suggestion\n\nThe signature does not match the data or public key\n"),
+        "AUTHS-E1002" => Some("# AUTHS-E1002\n\n**Crate:** `auths-crypto`\n\n**Type:** `CryptoError::InvalidKeyLength`\n\n## Message\n\nInvalid public key length: expected {expected}, got {actual}\n"),
         "AUTHS-E1003" => Some("# AUTHS-E1003\n\n**Crate:** `auths-crypto`\n\n**Type:** `CryptoError::InvalidPrivateKey`\n\n## Message\n\nInvalid private key: {0}\n"),
         "AUTHS-E1004" => Some("# AUTHS-E1004\n\n**Crate:** `auths-crypto`\n\n**Type:** `CryptoError::OperationFailed`\n\n## Message\n\nCrypto operation failed: {0}\n"),
         "AUTHS-E1005" => Some("# AUTHS-E1005\n\n**Crate:** `auths-crypto`\n\n**Type:** `CryptoError::UnsupportedTarget`\n\n## Message\n\nOperation not supported on current compilation target\n"),
@@ -490,6 +491,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
 pub fn all_codes() -> &'static [&'static str] {
     static CODES: &[&str] = &[
         "AUTHS-E1001",
+        "AUTHS-E1002",
         "AUTHS-E1003",
         "AUTHS-E1004",
         "AUTHS-E1005",
@@ -878,6 +880,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 355);
+        assert_eq!(all_codes().len(), 356);
     }
 }

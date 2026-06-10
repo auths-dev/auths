@@ -27,5 +27,6 @@ mod pairing;
 mod pairing_delegation;
 mod rotation;
 mod setup;
+mod sign_commit_attestation;
 mod signing;
 mod ssh_key_upload;

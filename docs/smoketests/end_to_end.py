@@ -1,656 +1,475 @@
 #!/usr/bin/env python3
 """
-Auths CLI Full Coverage Smoke Test
+Auths CLI Golden-Path Smoke Test
 
-Tests the entire auths CLI command suite to verify all commands are functional
-and work through a realistic identity lifecycle.
+Drives the locally built `auths` binary through the full first-run lifecycle a
+real developer (and a CI job, and an agent operator) would hit, in isolated
+HOME directories, fully headless — no Touch ID, no prompts, no network writes.
 
 Usage:
-    python3 docs/smoketests/end_to_end.py
+    cargo build -p auths-cli                       # build first (debug)
+    python3 docs/smoketests/end_to_end.py          # run everything
+    python3 docs/smoketests/end_to_end.py --release  # test the release binary
+    AUTHS_BIN=/path/to/auths python3 docs/smoketests/end_to_end.py
 
-This script will:
-1. Initialize a test identity
-2. Exercise all CLI commands in a realistic workflow
-3. Report which commands succeeded and failed
-4. Show the full identity lifecycle
+What it covers (the golden paths):
+  1. Developer first-run    init → status → whoami → key/device list
+  2. The 30-second aha      auths demo (must be headless and fast)
+  3. Artifact signing       sign <file> → verify <file>
+  4. Git commit signing     git commit (auto-sign via init's git config) → verify HEAD
+  5. Stateless verification id export-bundle → verify HEAD --identity-bundle
+  6. Trust pinning          trust pin / list / show / remove
+  7. Agent delegation       id agent add → list → (the supported agent path)
+  8. Key rotation           id rotate → sign + verify again (stale-key regression)
+  9. CI profile             init --profile ci ×3 fresh HOMEs (flakiness probe, #246)
+     then sign using the printed env block (the documented CI handoff)
+ 10. Retired path UX        init --profile agent must fail with actionable guidance
+ 11. Hygiene                doctor, config show, error lookup, completions, --json
 
-Commands tested (34 total):
-  - init: Set up cryptographic identity
-  - status: Show identity and agent status
-  - whoami: Show current identity
-  - key: Manage cryptographic keys
-  - device: Manage device authorizations
-  - pair: Link devices to identity
-  - id: Manage identities
-  - artifact: Sign arbitrary artifacts
-  - sign: Sign git commits
-  - verify: Verify signatures
-  - policy: Manage authorization policies
-  - approval: Manage approval gates
-  - trust: Manage trusted identity roots
-  - signers: Manage allowed signers
-  - config: View/modify configuration
-  - doctor: Run health checks
-  - audit: Generate audit reports
-  - agent: SSH agent management
-  - witness: Manage KERI witness server
-  - namespace: Manage namespace claims
-  - org: Handle member authorizations
-  - account: Manage registry account
-  - auth: Authenticate with external services
-  - log: Inspect transparency log
-  - git: Git integration commands
-  - error: Look up error codes
-  - completions: Generate shell completions
-  - emergency: Emergency incident response
-  - debug: Internal debugging utilities
-  - tutorial: Interactive learning
-  - scim: SCIM 2.0 provisioning
-  - verify (unified): Verify signed commits and artifacts
-  - commit (low-level): Low-level commit signing/verification
+Results (per-step exit code, duration, full output) are written to
+docs/smoketests/last_run.json for analysis.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+
+# ── Paths ────────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]
+RESULTS_PATH = SCRIPT_DIR / "last_run.json"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 
-RED = "\033[0;31m"
-GREEN = "\033[0;32m"
-YELLOW = "\033[1;33m"
-BLUE = "\033[0;34m"
-CYAN = "\033[0;36m"
-BOLD = "\033[1m"
-DIM = "\033[2m"
-NC = "\033[0m"
+RED, GREEN, YELLOW, BLUE, CYAN = "\033[0;31m", "\033[0;32m", "\033[1;33m", "\033[0;34m", "\033[0;36m"
+BOLD, DIM, NC = "\033[1m", "\033[2m", "\033[0m"
 
 
 def _c(color: str, text: str) -> str:
     return f"{color}{text}{NC}"
 
 
-# ── Logging ──────────────────────────────────────────────────────────────────
-
-
 def section(title: str) -> None:
-    print()
-    print(_c(BLUE, "=" * 80))
-    print(_c(BOLD + BLUE, f"  {title}"))
-    print(_c(BLUE, "=" * 80))
-    print()
-
-
-def subsection(title: str) -> None:
-    print(_c(CYAN, f"\n  → {title}"))
+    print(f"\n{_c(BLUE, '=' * 78)}\n{_c(BOLD + BLUE, f'  {title}')}\n{_c(BLUE, '=' * 78)}")
 
 
 def info(msg: str) -> None:
     print(f"  {msg}")
 
 
-def print_success(msg: str) -> None:
-    print(_c(GREEN, f"  ✓ {msg}"))
-
-
-def print_failure(msg: str) -> None:
-    print(_c(RED, f"  ✗ {msg}"))
-
-
-def print_warn(msg: str) -> None:
-    print(_c(YELLOW, f"  ⚠ {msg}"))
-
-
-# ── Test Result Tracking ─────────────────────────────────────────────────────
+# ── Result tracking ──────────────────────────────────────────────────────────
 
 
 @dataclass
-class CommandResult:
+class StepResult:
     name: str
-    success: bool
-    output: str = ""
-    error: str = ""
+    cmd: str
+    returncode: int | None
+    duration_s: float
+    stdout: str
+    stderr: str
+    ok: bool
+    note: str = ""
     skipped: bool = False
-    skip_reason: str = ""
+
+
+@dataclass
+class Report:
+    steps: list[StepResult] = field(default_factory=list)
+
+    def add(self, r: StepResult) -> None:
+        self.steps.append(r)
+        flag = (
+            _c(YELLOW, "⚠ SKIP")
+            if r.skipped
+            else _c(GREEN, "✓ PASS")
+            if r.ok
+            else _c(RED, "✗ FAIL")
+        )
+        note = f"  {_c(DIM, r.note)}" if r.note else ""
+        print(f"  {flag}  {r.name}  {_c(DIM, f'({r.duration_s:.1f}s)')}{note}")
+        if not r.ok and not r.skipped:
+            tail = (r.stderr or r.stdout).strip().split("\n")
+            for line in tail[-4:]:
+                print(f"        {_c(DIM, line)}")
 
     @property
-    def failed(self) -> bool:
-        return not self.success and not self.skipped
+    def failed(self) -> list[StepResult]:
+        return [s for s in self.steps if not s.ok and not s.skipped]
 
 
-@dataclass
-class TestReport:
-    total: int = 0
-    passed: int = 0
-    failed: int = 0
-    skipped: int = 0
-    results: list[CommandResult] = field(default_factory=list)
-
-    def add(self, result: CommandResult) -> None:
-        self.results.append(result)
-        self.total += 1
-        if result.skipped:
-            self.skipped += 1
-        elif result.success:
-            self.passed += 1
-        else:
-            self.failed += 1
+# ── Execution harness ────────────────────────────────────────────────────────
 
 
-# ── Command Execution ────────────────────────────────────────────────────────
+class Runner:
+    """Runs `auths` against an isolated HOME with a headless file keychain."""
 
-
-def run_command(
-    cmd: list[str],
-    env: dict[str, str] | None = None,
-    expect_failure: bool = False,
-    quiet: bool = False,
-) -> tuple[bool, str, str]:
-    """
-    Execute a command and return (success, stdout, stderr).
-
-    Args:
-        cmd: Command and arguments as list
-        env: Environment variables to pass
-        expect_failure: If True, a non-zero exit code is considered success
-        quiet: If True, don't print command being run
-
-    Returns:
-        (success, stdout, stderr)
-    """
-    if not quiet:
-        info(_c(DIM, f"$ {' '.join(cmd)}"))
-
-    try:
-        full_env = os.environ.copy()
-        if env:
-            full_env.update(env)
-
-        result = subprocess.run(
-            cmd,
-            env=full_env,
-            capture_output=True,
-            text=True,
-            timeout=30,
+    def __init__(self, auths_bin: Path, home: Path, report: Report):
+        self.auths_bin = auths_bin
+        self.home = home
+        self.report = report
+        home.mkdir(parents=True, exist_ok=True)
+        self.env = os.environ.copy()
+        self.env.update(
+            {
+                "HOME": str(home),
+                "AUTHS_KEYCHAIN_BACKEND": "file",
+                "AUTHS_PASSPHRASE": "smoke-test-passphrase",
+                "GIT_AUTHOR_NAME": "Smoke Tester",
+                "GIT_AUTHOR_EMAIL": "smoke@auths.dev",
+                "GIT_COMMITTER_NAME": "Smoke Tester",
+                "GIT_COMMITTER_EMAIL": "smoke@auths.dev",
+                # Keep the built binaries first on PATH for git's ssh-program lookup.
+                "PATH": f"{self.auths_bin.parent}:{os.environ.get('PATH', '')}",
+            }
         )
 
-        success = (result.returncode == 0) != expect_failure
-        return success, result.stdout, result.stderr
+    def run(
+        self,
+        name: str,
+        args: list[str],
+        cwd: Path | None = None,
+        timeout: int = 90,
+        expect_failure: bool = False,
+        ok_codes: tuple[int, ...] = (0,),
+        note: str = "",
+        raw_cmd: list[str] | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> StepResult:
+        cmd = raw_cmd if raw_cmd is not None else [str(self.auths_bin), *args]
+        env = self.env.copy()
+        if extra_env:
+            env.update(extra_env)
+        start = time.monotonic()
+        try:
+            proc = subprocess.run(
+                cmd,
+                env=env,
+                cwd=cwd or self.home,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                stdin=subprocess.DEVNULL,
+            )
+            rc: int | None = proc.returncode
+            out, err = proc.stdout, proc.stderr
+        except subprocess.TimeoutExpired as e:
+            rc, out, err = None, (e.stdout or ""), f"TIMEOUT after {timeout}s"
+        except Exception as e:  # noqa: BLE001 — smoke harness records everything
+            rc, out, err = None, "", f"EXCEPTION: {e}"
+        duration = time.monotonic() - start
 
-    except subprocess.TimeoutExpired:
-        return False, "", "Command timed out after 30 seconds"
-    except Exception as e:
-        return False, "", str(e)
+        if rc is None:
+            ok = False
+        elif expect_failure:
+            ok = rc not in ok_codes
+        else:
+            ok = rc in ok_codes
 
-
-def test_command(
-    name: str,
-    cmd: list[str],
-    report: TestReport,
-    env: dict[str, str] | None = None,
-    expect_failure: bool = False,
-    skip: bool = False,
-    skip_reason: str = "",
-) -> CommandResult:
-    """
-    Test a single command and add result to report.
-
-    Args:
-        name: Display name for the command
-        cmd: Command to run
-        report: Report object to add result to
-        env: Optional environment variables
-        expect_failure: If True, expecting command to fail
-        skip: If True, skip this test
-        skip_reason: Reason for skipping
-
-    Returns:
-        CommandResult with outcome
-    """
-    subsection(name)
-
-    if skip:
-        result = CommandResult(name=name, success=False, skipped=True, skip_reason=skip_reason)
-        print_warn(f"Skipped: {skip_reason}")
-        report.add(result)
+        result = StepResult(
+            name=name,
+            cmd=" ".join(cmd),
+            returncode=rc,
+            duration_s=duration,
+            stdout=out,
+            stderr=err,
+            ok=ok,
+            note=note,
+        )
+        self.report.add(result)
         return result
 
-    is_success, stdout, stderr = run_command(cmd, env=env, expect_failure=expect_failure)
-
-    if is_success:
-        print_success(f"{name} passed")
-        result = CommandResult(name=name, success=True, output=stdout)
-    else:
-        print_failure(f"{name} failed")
-        result = CommandResult(name=name, success=False, error=stderr or stdout)
-
-    report.add(result)
-    return result
-
-
-# ── Test Suite ───────────────────────────────────────────────────────────────
-
-
-def run_tests(temp_dir: Path, report: TestReport) -> None:
-    """Run the full test suite."""
-
-    # Set up environment with isolated HOME to prevent polluting real ~/.auths
-    # Note: auths init doesn't respect --repo flag, so we use HOME isolation instead
-    repo_dir = temp_dir / ".auths"
-    test_env = {
-        "HOME": str(temp_dir),  # Isolated home directory for test
-        "AUTHS_PASSPHRASE": "test-passphrase-123",  # For non-interactive setup
-        "AUTHS_KEYCHAIN_BACKEND": "file",  # Use file-based storage instead of system keychain
-    }
-
-    section("PHASE 1: INITIALIZATION & CORE IDENTITY")
-
-    # 1. Init - Create a new identity (non-interactive, developer profile, force to overwrite any existing)
-    test_command(
-        "01. auths init",
-        ["auths", "init", "--profile", "developer", "--non-interactive", "--force"],
-        report,
-        env=test_env,
-    )
-
-    # 2. Status - Check the identity status
-    test_command(
-        "02. auths status",
-        ["auths", "status"],
-        report,
-        env=test_env,
-    )
-
-    # 3. Whoami - Show current identity
-    test_command(
-        "03. auths whoami",
-        ["auths", "whoami"],
-        report,
-        env=test_env,
-    )
-
-    section("PHASE 2: KEY & DEVICE MANAGEMENT")
-
-    # 4. Key - List local keys
-    test_command(
-        "04. auths key list",
-        ["auths", "key", "list"],
-        report,
-        env=test_env,
-    )
-
-    # 5. Device - List devices
-    test_command(
-        "05. auths device list",
-        ["auths", "device", "list"],
-        report,
-        env=test_env,
-    )
-
-    # 6. Pair - Show pair device help (actual pairing requires interaction)
-    test_command(
-        "06. auths pair (help)",
-        ["auths", "pair", "--help"],
-        report,
-        env=test_env,
-    )
-
-    section("PHASE 3: SIGNING & VERIFICATION")
-
-    # Create a test artifact to sign
-    test_artifact = temp_dir / "test-artifact.txt"
-    test_artifact.write_text("This is a test artifact for signing.\n")
-
-    # 7. Sign - Sign the artifact
-    sign_result = test_command(
-        "07. auths sign (artifact)",
-        ["auths", "sign", str(test_artifact)],
-        report,
-        env=test_env,
-    )
-
-    # Expected output file from signing
-    signature_file = temp_dir / "test-artifact.txt.auths.json"
-
-    # 8. Verify - Verify the signed artifact
-    if signature_file.exists():
-        test_command(
-            "08. auths verify (artifact)",
-            ["auths", "verify", str(signature_file)],
-            report,
-            env=test_env,
+    def skip(self, name: str, reason: str) -> StepResult:
+        result = StepResult(
+            name=name, cmd="", returncode=None, duration_s=0.0,
+            stdout="", stderr="", ok=True, skipped=True, note=reason,
         )
+        self.report.add(result)
+        return result
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def find_did(text: str) -> str | None:
+    m = re.search(r"did:keri:[A-Za-z0-9_-]{20,}", text)
+    return m.group(0) if m else None
+
+
+def find_hex_key(text: str) -> str | None:
+    m = re.search(r"\b[0-9a-f]{64,66}\b", text)
+    return m.group(0) if m else None
+
+
+def parse_env_block(text: str) -> dict[str, str]:
+    """Extract `export KEY="VALUE"` lines from `init --profile ci` output."""
+    env: dict[str, str] = {}
+    for m in re.finditer(r'export ([A-Z_0-9]+)="([^"]*)"', text):
+        env[m.group(1)] = m.group(2)
+    return env
+
+
+def git(runner: Runner, repo: Path, *args: str, name: str, **kw) -> StepResult:
+    return runner.run(name, [], cwd=repo, raw_cmd=["git", *args], **kw)
+
+
+# ── Scenarios ────────────────────────────────────────────────────────────────
+
+
+def scenario_developer(auths: Path, work: Path, report: Report) -> Runner:
+    section("1. DEVELOPER FIRST-RUN  (init → status → whoami → key/device list)")
+    r = Runner(auths, work / "home-dev", report)
+
+    r.run("git global identity (test fixture)", [], raw_cmd=[
+        "git", "config", "--global", "user.name", "Smoke Tester"])
+    r.run("git global email (test fixture)", [], raw_cmd=[
+        "git", "config", "--global", "user.email", "smoke@auths.dev"])
+
+    r.run("init --profile developer --non-interactive",
+          ["init", "--profile", "developer", "--non-interactive"], timeout=180)
+    r.run("status", ["status"])
+    r.run("whoami", ["whoami"])
+    r.run("whoami --json", ["--json", "whoami"])
+    r.run("key list", ["key", "list"])
+    r.run("device list", ["device", "list"])
+    return r
+
+
+def scenario_demo(r: Runner) -> None:
+    section("2. THE 30-SECOND AHA  (auths demo, headless)")
+    res = r.run("demo", ["demo"], timeout=30)
+    if res.ok and res.duration_s > 10:
+        res.note += f" SLOW: {res.duration_s:.1f}s (target <5s)"
+
+
+def scenario_artifact(r: Runner, work: Path) -> None:
+    section("3. ARTIFACT SIGNING  (sign <file> → verify)")
+    artifact = work / "artifact.txt"
+    artifact.write_text("smoke test artifact\n")
+
+    res = r.run("sign <file>", ["sign", str(artifact)], cwd=work)
+    if not res.ok:
+        r.run("sign <file> --key main --device-key main (fallback)",
+              ["sign", str(artifact), "--key", "main", "--device-key", "main"],
+              cwd=work, note="plain `sign <file>` failed; needed explicit aliases")
+
+    sig = artifact.with_suffix(".txt.auths.json")
+    if sig.exists():
+        r.run("verify <file> (default sig discovery)", ["verify", str(artifact)], cwd=work)
+        r.run("verify <file.auths.json> (direct)", ["verify", str(sig)], cwd=work)
     else:
-        print_warn(f"Signature file not found at {signature_file}, skipping verify test")
+        r.skip("verify artifact", f"no signature file produced at {sig.name}")
 
-    section("PHASE 4: CONFIGURATION & STATUS")
 
-    # 9. Config - Show configuration
-    test_command(
-        "09. auths config show",
-        ["auths", "config", "show"],
-        report,
-        env=test_env,
-    )
-
-    # 10. Doctor - Run health checks
-    # Doctor returns 0 (all pass), 1 (critical fail), or 2 (advisory fail but functional)
-    # We consider 0 and 2 as success since Auths is functional in both cases
-    try:
-        doctor_result = subprocess.run(
-            ["auths", "doctor"],
-            env=test_env,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        # Accept exit code 0 (all pass) or 2 (advisory checks failed, but Auths functional)
-        doctor_success = doctor_result.returncode in (0, 2)
-        result = CommandResult(
-            name="10. auths doctor",
-            success=doctor_success,
-            output=doctor_result.stdout,
-            error=doctor_result.stderr,
-        )
-    except Exception as e:
-        result = CommandResult(
-            name="10. auths doctor",
-            success=False,
-            error=str(e),
-        )
-
-    if result.success:
-        print_success(f"{result.name} passed")
+def scenario_git_signing(r: Runner, work: Path) -> Path:
+    section("4. GIT COMMIT SIGNING  (git commit auto-sign → verify HEAD)")
+    repo = work / "demo-repo"
+    repo.mkdir(exist_ok=True)
+    git(r, repo, "init", "-q", name="git init")
+    (repo / "README.md").write_text("# smoke\n")
+    git(r, repo, "add", ".", name="git add")
+    commit = git(r, repo, "commit", "-q", "-m", "smoke: signed commit", name="git commit (auto-sign)")
+    if commit.ok:
+        r.run("verify HEAD", ["verify", "HEAD"], cwd=repo)
     else:
-        print_failure(f"{result.name} failed")
-    report.add(result)
+        r.skip("verify HEAD", "commit failed — git signing config from init is broken")
+    return repo
 
-    section("PHASE 5: IDENTITY MANAGEMENT")
 
-    # 11. ID - List identities
-    test_command(
-        "11. auths id list",
-        ["auths", "id", "list"],
-        report,
-        env=test_env,
+def scenario_bundle(r: Runner, work: Path, repo: Path) -> None:
+    section("5. STATELESS VERIFICATION  (export-bundle → verify --identity-bundle)")
+    bundle = work / "identity-bundle.json"
+    exported = r.run(
+        "id export-bundle",
+        ["id", "export-bundle", "--alias", "main", "-o", str(bundle), "--max-age-secs", "3600"],
     )
-
-    # 12. Signers - Show signers
-    test_command(
-        "12. auths signers list",
-        ["auths", "signers", "list"],
-        report,
-        env=test_env,
-    )
-
-    section("PHASE 6: ADVANCED FEATURES")
-
-    # 13. Policy - Show policy help
-    test_command(
-        "13. auths policy (help)",
-        ["auths", "policy", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 14. Approval - Show approval help
-    test_command(
-        "14. auths approval (help)",
-        ["auths", "approval", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 15. Trust - Show trust help
-    test_command(
-        "15. auths trust (help)",
-        ["auths", "trust", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 16. Artifact - Show artifact help
-    test_command(
-        "16. auths artifact (help)",
-        ["auths", "artifact", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 17. Git - Show git integration help
-    test_command(
-        "17. auths git (help)",
-        ["auths", "git", "--help"],
-        report,
-        env=test_env,
-    )
-
-    section("PHASE 7: REGISTRY & ACCOUNT")
-
-    # 18. Account - Show account help
-    test_command(
-        "18. auths account (help)",
-        ["auths", "account", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 19. Namespace - Show namespace help
-    test_command(
-        "19. auths namespace (help)",
-        ["auths", "namespace", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 20. Org - Show org help
-    test_command(
-        "20. auths org (help)",
-        ["auths", "org", "--help"],
-        report,
-        env=test_env,
-    )
-
-    section("PHASE 8: AGENT & INFRASTRUCTURE")
-
-    # 21. Agent - Show agent help
-    test_command(
-        "21. auths agent (help)",
-        ["auths", "agent", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 22. Witness - Show witness help
-    test_command(
-        "22. auths witness (help)",
-        ["auths", "witness", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 23. Auth - Show auth help
-    test_command(
-        "23. auths auth (help)",
-        ["auths", "auth", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 24. Log - Show log help
-    test_command(
-        "24. auths log (help)",
-        ["auths", "log", "--help"],
-        report,
-        env=test_env,
-    )
-
-    section("PHASE 9: AUDIT & COMPLIANCE")
-
-    # 25. Audit - Generate audit report
-    test_command(
-        "25. auths audit (help)",
-        ["auths", "audit", "--help"],
-        report,
-        env=test_env,
-    )
-
-    section("PHASE 10: UTILITIES & TOOLS")
-
-    # 26. Error - Look up error codes
-    test_command(
-        "26. auths error list",
-        ["auths", "error", "list"],
-        report,
-        env=test_env,
-    )
-
-    # 27. Completions - Generate shell completions
-    test_command(
-        "27. auths completions (bash)",
-        ["auths", "completions", "bash"],
-        report,
-        env=test_env,
-    )
-
-    # 28. Debug - Show debug help
-    test_command(
-        "28. auths debug (help)",
-        ["auths", "debug", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 29. Tutorial - Show tutorial help
-    test_command(
-        "29. auths tutorial (help)",
-        ["auths", "tutorial", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 30. SCIM - Show SCIM help
-    test_command(
-        "30. auths scim (help)",
-        ["auths", "scim", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 31. Emergency - Show emergency help
-    test_command(
-        "31. auths emergency (help)",
-        ["auths", "emergency", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 32. Verify (unified) - Show verify help
-    test_command(
-        "32. auths verify (help)",
-        ["auths", "verify", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 33. Commit (low-level) - Show commit help
-    test_command(
-        "33. auths commit (help)",
-        ["auths", "commit", "--help"],
-        report,
-        env=test_env,
-    )
-
-    # 34. JSON output format test
-    test_command(
-        "34. auths --json whoami",
-        ["auths", "--json", "whoami"],
-        report,
-        env=test_env,
-    )
-
-
-def print_summary(report: TestReport) -> None:
-    """Print test summary report."""
-
-    section("TEST SUMMARY")
-
-    print(f"  Total:   {_c(BOLD, str(report.total))}")
-    print(f"  {_c(GREEN, f'Passed:  {report.passed}')}")
-    if report.failed > 0:
-        print(f"  {_c(RED, f'Failed:  {report.failed}')}")
-    if report.skipped > 0:
-        print(f"  {_c(YELLOW, f'Skipped: {report.skipped}')}")
-
-    print()
-
-    if report.failed > 0:
-        print(_c(RED, "  Failed Tests:"))
-        for result in report.results:
-            if result.failed:
-                print(f"    • {result.name}")
-                if result.error:
-                    for line in result.error.split("\n")[:3]:
-                        if line:
-                            print(f"      {DIM}{line}{NC}")
-
-    if report.skipped > 0:
-        print()
-        print(_c(YELLOW, "  Skipped Tests:"))
-        for result in report.results:
-            if result.skipped:
-                print(_c(DIM, f"    • {result.name}: {result.skip_reason}{NC}"))
-
-    print()
-    percentage = (report.passed / report.total * 100) if report.total > 0 else 0
-    if report.failed == 0 and report.skipped == 0:
-        print(_c(GREEN + BOLD, f"  ✓ All {report.total} tests passed! 🎉"))
-    elif report.failed == 0:
-        print(_c(GREEN, f"  ✓ {report.passed}/{report.total} tests passed ({percentage:.0f}%)"))
+    if exported.ok and bundle.exists() and repo.exists():
+        r.run("verify HEAD --identity-bundle", ["verify", "HEAD", "--identity-bundle", str(bundle)], cwd=repo)
     else:
-        print(
-            _c(
-                RED,
-                f"  ✗ {report.failed} failures, {report.passed} passed ({percentage:.0f}%)",
+        r.skip("verify HEAD --identity-bundle", "bundle export failed or no signed repo")
+
+
+def scenario_trust(r: Runner) -> None:
+    section("6. TRUST PINNING  (pin → list → show → remove)")
+    r.run("trust list (empty)", ["trust", "list"])
+
+    ident = r.run("whoami --json (for pin inputs)", ["--json", "whoami"], note="parsing did+key")
+    did = find_did(ident.stdout + ident.stderr)
+    key = find_hex_key(ident.stdout + ident.stderr)
+    if not key:
+        key_out = r.run("key list (for pin inputs)", ["--json", "key", "list"])
+        key = find_hex_key(key_out.stdout)
+    if did and key:
+        r.run("trust pin --did --key", ["trust", "pin", "--did", did, "--key", key])
+        r.run("trust list (pinned)", ["trust", "list"])
+        r.run("trust show", ["trust", "show", did])
+        r.run("trust remove", ["trust", "remove", did])
+    else:
+        r.skip("trust pin", f"could not parse did/key from whoami --json (did={bool(did)}, key={bool(key)})")
+
+
+def scenario_agent_delegation(r: Runner) -> None:
+    section("7. AGENT DELEGATION  (the supported agent path: id agent add)")
+    r.run(
+        "id agent add --label smoke-agent --scope sign_commit",
+        ["id", "agent", "add", "--label", "smoke-agent", "--key", "main",
+         "--scope", "sign_commit", "--expires-in", "3600"],
+        timeout=120,
+    )
+    r.run("id agent list", ["id", "agent", "list"])
+
+
+def scenario_rotation(r: Runner, work: Path) -> None:
+    section("8. KEY ROTATION  (id rotate → sign + verify again)")
+    r.run("id rotate", ["id", "rotate"], timeout=120)
+    r.run("status (after rotate)", ["status"])
+
+    artifact = work / "post-rotate.txt"
+    artifact.write_text("signed after rotation\n")
+    res = r.run("sign <file> (after rotate)", ["sign", str(artifact)], cwd=work)
+    sig = artifact.with_suffix(".txt.auths.json")
+    if res.ok and sig.exists():
+        r.run("verify <file> (after rotate)", ["verify", str(artifact)], cwd=work)
+    else:
+        r.skip("verify after rotate", "post-rotation signing failed")
+
+
+def scenario_ci(auths: Path, work: Path, report: Report) -> None:
+    section("9. CI PROFILE  (3 fresh HOMEs — flakiness probe for #246 — then env-block handoff)")
+    last_runner: Runner | None = None
+    last_init: StepResult | None = None
+    for i in range(1, 4):
+        ci = Runner(auths, work / f"home-ci-{i}", report)
+        ci_repo = ci.home / "ci-workspace"
+        ci_repo.mkdir(parents=True, exist_ok=True)
+        last_init = ci.run(
+            f"init --profile ci --non-interactive (run {i}/3)",
+            ["init", "--profile", "ci", "--non-interactive"],
+            cwd=ci_repo, timeout=180,
+        )
+        last_runner = ci
+
+    if last_runner and last_init and last_init.ok:
+        env_block = parse_env_block(last_init.stdout)
+        if env_block:
+            artifact = last_runner.home / "ci-artifact.txt"
+            artifact.write_text("ci artifact\n")
+            last_runner.run(
+                "sign <file> using printed CI env block",
+                ["sign", str(artifact)],
+                cwd=last_runner.home / "ci-workspace",
+                extra_env=env_block,
+                note=f"env block had {len(env_block)} vars",
             )
-        )
+        else:
+            last_runner.skip("CI env-block handoff", "init output contained no export lines to copy")
+    elif last_runner:
+        last_runner.skip("CI env-block handoff", "ci init failed")
 
-    print()
+
+def scenario_retired_agent_profile(auths: Path, work: Path, report: Report) -> None:
+    section("10. RETIRED PATH UX  (init --profile agent must fail with guidance)")
+    r = Runner(auths, work / "home-agent-profile", report)
+    res = r.run(
+        "init --profile agent --non-interactive (expected to fail)",
+        ["init", "--profile", "agent", "--non-interactive"],
+        expect_failure=True, timeout=120,
+    )
+    combined = res.stdout + res.stderr
+    if res.ok and "id agent add" not in combined:
+        res.ok = False
+        res.note = "failed as expected BUT the error does not point at `auths id agent add`"
+
+
+def scenario_hygiene(r: Runner) -> None:
+    section("11. HYGIENE  (doctor, config, error lookup, completions, json)")
+    r.run("doctor (0 or 2 = functional)", ["doctor"], ok_codes=(0, 2), timeout=60)
+    r.run("config show", ["config", "show"])
+    r.run("error show AUTHS-E4304", ["error", "AUTHS-E4304"])
+    r.run("error list", ["error", "list"])
+    r.run("completions bash", ["completions", "bash"])
+    r.run("--help", ["--help"])
+    r.run("--help-all", ["--help-all"])
+    r.run("--version", ["--version"])
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+
+def resolve_binary(release: bool) -> Path:
+    if env_bin := os.environ.get("AUTHS_BIN"):
+        return Path(env_bin)
+    profile = "release" if release else "debug"
+    return REPO_ROOT / "target" / profile / "auths"
 
 
 def main() -> int:
-    """Main entry point."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--release", action="store_true", help="test target/release/auths")
+    parser.add_argument("--keep", action="store_true", help="keep the temp work dir")
+    args = parser.parse_args()
 
-    print(_c(BOLD + GREEN, "\nauths CLI Full Coverage Smoke Test\n"))
-    print("This test exercises all auths CLI commands in a realistic identity lifecycle.")
-    print()
+    auths = resolve_binary(args.release)
+    if not auths.exists():
+        print(_c(RED, f"binary not found: {auths}\nbuild it first: cargo build -p auths-cli"))
+        return 2
 
-    report = TestReport()
+    version = subprocess.run([str(auths), "--version"], capture_output=True, text=True).stdout.strip()
+    print(_c(BOLD + GREEN, "\nAuths CLI Golden-Path Smoke Test"))
+    info(f"binary:  {auths}")
+    info(f"version: {version}")
 
-    # Create temp directory for testing
-    with tempfile.TemporaryDirectory() as temp_dir_str:
-        temp_dir = Path(temp_dir_str)
-        info(f"Test directory: {temp_dir}")
-        print()
+    report = Report()
+    work = Path(tempfile.mkdtemp(prefix="auths-smoke-"))
+    info(f"workdir: {work}")
 
-        try:
-            run_tests(temp_dir, report)
-        except Exception as e:
-            print_failure(f"Test suite failed with exception: {e}")
-            import traceback
-            traceback.print_exc()
-            return 1
+    try:
+        dev = scenario_developer(auths, work, report)
+        scenario_demo(dev)
+        scenario_artifact(dev, work)
+        repo = scenario_git_signing(dev, work)
+        scenario_bundle(dev, work, repo)
+        scenario_trust(dev)
+        scenario_agent_delegation(dev)
+        scenario_rotation(dev, work)
+        scenario_ci(auths, work, report)
+        scenario_retired_agent_profile(auths, work, report)
+        scenario_hygiene(dev)
+    finally:
+        RESULTS_PATH.write_text(json.dumps(
+            {
+                "binary": str(auths),
+                "version": version,
+                "steps": [vars(s) for s in report.steps],
+            },
+            indent=2,
+        ))
+        if not args.keep:
+            shutil.rmtree(work, ignore_errors=True)
 
-    print_summary(report)
-
-    return 0 if report.failed == 0 else 1
+    section("SUMMARY")
+    passed = sum(1 for s in report.steps if s.ok and not s.skipped)
+    skipped = sum(1 for s in report.steps if s.skipped)
+    failed = len(report.failed)
+    print(f"  total {len(report.steps)} · {_c(GREEN, f'passed {passed}')} · "
+          f"{_c(RED, f'failed {failed}')} · {_c(YELLOW, f'skipped {skipped}')}")
+    if report.failed:
+        print(_c(RED, "\n  Failures:"))
+        for s in report.failed:
+            print(f"    • {s.name}  {_c(DIM, f'rc={s.returncode}')}")
+    info(f"\nfull results: {RESULTS_PATH}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

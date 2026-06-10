@@ -5,7 +5,7 @@
 ```
 Maintainer's device-bound Ed25519 key (hardware keychain, Touch ID)
     ↓ signs git commits
-Commit signature (SSH, verifiable via allowed_signers)
+Commit signature (did:keri trailers, verifiable by KEL replay against pinned roots)
     ↓ CI verifies before building
 CI runner builds artifact from verified commit
     ↓ generates throwaway Ed25519 keypair (lives in memory, dies with the run)
@@ -33,7 +33,7 @@ An attacker who owns the runner controls the build. They can:
 - Generate their own ephemeral key and sign the malicious artifact
 - Claim any commit SHA in the attestation
 
-**Mitigation:** The commit SHA in the attestation is covered by the ephemeral signature. If the consumer verifies that the commit SHA is signed by a trusted maintainer (via the commit's SSH signature), they confirm the maintainer approved that specific code. The attacker can't forge the maintainer's commit signature without the maintainer's device key.
+**Mitigation:** The commit SHA in the attestation is covered by the ephemeral signature. If the consumer verifies that the commit SHA is signed by a trusted maintainer (by replaying the signer's KEL against the repo's pinned roots), they confirm the maintainer approved that specific code. The attacker can't forge the maintainer's commit signature without the maintainer's device key.
 
 **Remaining gap:** The attacker can use a real signed commit SHA but build different code from it. This is a CI-level compromise that no signing scheme prevents — including Sigstore. The only defense is reproducible builds (out of scope) or detection after the fact (maintainer notices unexpected attestations).
 
@@ -81,7 +81,7 @@ Without both conditions, the ephemeral signature is cryptographically valid but 
 
 **No CI runner honesty guarantee.** If the CI runner is fully compromised, the attacker controls the build output. The ephemeral signing scheme makes the attack detectable (via commit signature verification and attestation monitoring) but does not prevent it. Prevention requires either reproducible builds or hardware-attested build environments, both of which are out of scope.
 
-**No offline verification without the git repo.** Verifying an ephemeral attestation requires access to the git commit object (to check the commit's SSH signature). A consumer who only has the artifact + `.auths.json` and no git clone cannot complete the transitive verification. They can verify the ephemeral signature and check the artifact hash, but they're trusting the commit SHA claim without verification.
+**No offline verification without the git repo.** Verifying an ephemeral attestation requires access to the git commit object (to check the commit's signature against the signer's KEL and pinned roots). A consumer who only has the artifact + `.auths.json` and no git clone cannot complete the transitive verification. They can verify the ephemeral signature and check the artifact hash, but they're trusting the commit SHA claim without verification.
 
 ## 4. Comparison with Sigstore
 

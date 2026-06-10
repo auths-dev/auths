@@ -21,7 +21,6 @@ members = [
   "crates/auths-mcp-server",
   "crates/auths-pairing-daemon",
   "crates/auths-pairing-protocol",
-  "crates/auths-radicle",
   "crates/auths-scim",
   "crates/auths-scim-server",
   "crates/auths-utils",

@@ -82,28 +82,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
-name = "amplify"
-version = "4.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f7fb4ac7c881e54a8e7015e399b6112a2a5bc958b6c89ac510840ff20273b31"
-dependencies = [
- "amplify_num",
- "ascii",
- "getrandom 0.2.17",
- "getrandom 0.3.4",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "amplify_num"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99bcb75a2982047f733547042fc3968c0f460dfcf7d90b90dea3b2744580e9ad"
-dependencies = [
- "wasm-bindgen",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -212,12 +190,6 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
-
-[[package]]
-name = "ascii"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d92bec98840b8f03a5ff5413de5293bfcd8bf96467cf5452609f939ec6f5de16"
 
 [[package]]
 name = "asn1-rs"
@@ -500,7 +472,7 @@ dependencies = [
  "qrcode",
  "rand 0.8.6",
  "ring",
- "schemars 0.8.22",
+ "schemars",
  "secret-service",
  "security-framework 2.11.1",
  "security-framework-sys",
@@ -714,7 +686,7 @@ dependencies = [
  "p256 0.13.2",
  "proptest",
  "ring",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "subtle",
@@ -830,7 +802,7 @@ dependencies = [
  "rand 0.8.6",
  "regex-lite",
  "ring",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
@@ -848,28 +820,6 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "auths-radicle"
-version = "0.1.2"
-dependencies = [
- "auths-crypto",
- "auths-id",
- "auths-keri",
- "auths-verifier",
- "bs58",
- "chrono",
- "git2",
- "json-canon",
- "radicle-core",
- "radicle-crypto",
- "ring",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1005,7 +955,7 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "reqwest",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",
@@ -1082,7 +1032,7 @@ dependencies = [
  "pkcs8 0.10.2",
  "proptest",
  "ring",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",
@@ -2507,12 +2457,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ct-codecs"
-version = "1.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b10589d1a5e400d61f9f38f12f884cfd080ff345de8f17efda36fe0e4a02aa8"
-
-[[package]]
 name = "ctr"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2753,16 +2697,6 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
-
-[[package]]
-name = "ec25519"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdfd533a2fc01178c738c99412ae1f7e1ad2cb37c2e14bfd87e9d4618171c825"
-dependencies = [
- "ct-codecs",
- "getrandom 0.2.17",
-]
 
 [[package]]
 name = "ecdsa"
@@ -5314,35 +5248,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
-name = "radicle-core"
-version = "0.1.0"
-dependencies = [
- "multibase",
- "radicle-crypto",
- "radicle-oid",
- "schemars 1.2.1",
- "serde",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "radicle-crypto"
-version = "0.14.0"
-dependencies = [
- "amplify",
- "ec25519",
- "multibase",
- "serde",
- "signature 2.2.0",
- "thiserror 2.0.18",
- "zeroize",
-]
-
-[[package]]
-name = "radicle-oid"
-version = "0.1.0"
-
-[[package]]
 name = "rand"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5939,20 +5844,7 @@ checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
 dependencies = [
  "chrono",
  "dyn-clone",
- "schemars_derive 0.8.22",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "schemars"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2b42f36aa1cd011945615b92222f6bf73c599a102a300334cd7f8dbeec726cc"
-dependencies = [
- "dyn-clone",
- "ref-cast",
- "schemars_derive 1.2.1",
+ "schemars_derive",
  "serde",
  "serde_json",
 ]
@@ -5962,18 +5854,6 @@ name = "schemars_derive"
 version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32e265784ad618884abaea0600a9adf15393368d840e0222d101a072f3f7534d"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde_derive_internals",
- "syn",
-]
-
-[[package]]
-name = "schemars_derive"
-version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d115b50f4aaeea07e79c1912f645c7513d81715d0420f8bc77a18c6260b307f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8323,7 +8203,7 @@ dependencies = [
  "clap",
  "jsonschema",
  "regex-lite",
- "schemars 0.8.22",
+ "schemars",
  "serde",
  "serde_json",
  "tree-sitter",
@@ -8570,3 +8450,11 @@ dependencies = [
  "syn",
  "winnow 0.7.15",
 ]
+
+[[patch.unused]]
+name = "radicle-core"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "radicle-crypto"
+version = "0.14.0"

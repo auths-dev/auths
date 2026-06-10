@@ -112,6 +112,14 @@ auths verify
 
 </div>
 
+## All Sections
+
+- [CLI Command Reference](cli/commands/primary.md) -- every `auths` command, flags, and examples ([advanced commands](cli/commands/advanced.md))
+- [Design Notes](design/sigstore-comparison.md) -- threat models, comparisons, and design specs under `docs/design/`
+- [Essays](essays/the-repository-is-the-root-of-trust.md) -- longer-form writing on the trust model under `docs/essays/`
+- [Proposed Issues](proposed-issues/keri-ixn-anchored-attestations.md) -- drafted improvement proposals under `docs/proposed-issues/`
+- [Archive (pre-KEL-native)](archive/README.md) -- historical documents that predate the June-2026 KEL-native migration
+
 ---
 
 ## Open Source

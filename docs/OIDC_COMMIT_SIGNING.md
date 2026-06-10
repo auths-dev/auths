@@ -81,7 +81,7 @@ When a commit is signed in CI/CD:
    - Acquires OIDC token from platform
    - Creates machine identity from token
    ↓
-3. auths sign-commit <sha>
+3. auths signcommit <sha>
    - Fetches commit SHA and metadata
    - Constructs attestation with:
      * Commit SHA
@@ -229,7 +229,7 @@ EOF
 # (See auths_sdk::workflows::machine_identity tests)
 
 # 3. Sign a commit locally
-auths sign-commit HEAD
+auths signcommit HEAD
 
 # 4. Verify the attestation
 auths verify HEAD

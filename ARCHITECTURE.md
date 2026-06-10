@@ -50,6 +50,29 @@ flowchart TD
     VERIFIER --> CRYPTO
 ```
 
+### Crates not shown in the diagram
+
+The diagram shows the core dependency spine. The remaining workspace members sit at these layers:
+
+| Crate | Layer | One-liner |
+|---|---|---|
+| `auths-keri` | 0.5 | KERI protocol types, SAID, KEL validation, `Capability` (depends on auths-crypto only) |
+| `auths-jwt` | 1 | OIDC/JWT claim types |
+| `auths-transparency` | 1 | Merkle log checkpoints + consistency/inclusion proofs |
+| `auths-rp` | 1.5 | Relying-party transport (Auths-Presentation wire, challenge store); depends on auths-verifier only |
+| `auths-oidc-port` | 2 | OIDC provider port abstractions |
+| `auths-pairing-protocol` | 3 | Device-pairing wire protocol (SAS, secure envelope) |
+| `auths-index` | 4 | Indexed storage backend |
+| `auths-telemetry` | 4 | Audit/telemetry event types + sinks |
+| `auths-infra-rekor` | 5 | Rekor transparency-log adapter |
+| `auths-api` | 6 | Org control-plane HTTP server |
+| `auths-mcp-server` | 6 | MCP server |
+| `auths-scim` / `auths-scim-server` | 6 | SCIM resource types + server |
+| `auths-pairing-daemon` | 6 | Pairing relay daemon |
+| `auths-witness` / `auths-checkpoint-cosigner` / `auths-monitor` | 6 | Witness commons services |
+| `auths-utils`, `auths` (facade), `xtask` | — | Shared helpers, facade stub, CI enforcement tooling |
+| `auths-mobile-ffi` | — | UniFFI bindings; intentionally outside the workspace |
+
 ## Dependency Direction Rule
 
 Dependencies flow **inward only**. Core crates must not reference adapter, server, or CLI crates.

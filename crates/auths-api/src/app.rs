@@ -148,33 +148,6 @@ impl AppState {
     }
 }
 
-#[cfg(test)]
-mod idempotency_tests {
-    use super::*;
-
-    #[test]
-    fn cache_is_bounded_with_fifo_eviction() {
-        let mut cache = IdempotencyCache::default();
-        for n in 0..(IDEMPOTENCY_MAX_ENTRIES + 50) {
-            cache.insert(format!("key-{n}"), (n as u64, format!("resp-{n}")));
-        }
-        assert_eq!(cache.entries.len(), IDEMPOTENCY_MAX_ENTRIES);
-        assert!(cache.get("key-0").is_none(), "oldest entries evicted first");
-        let newest = format!("key-{}", IDEMPOTENCY_MAX_ENTRIES + 49);
-        assert!(cache.get(&newest).is_some(), "newest entries retained");
-    }
-
-    #[test]
-    fn reinserting_same_key_does_not_grow_order_queue() {
-        let mut cache = IdempotencyCache::default();
-        for _ in 0..10 {
-            cache.insert("same".to_string(), (1, "r".to_string()));
-        }
-        assert_eq!(cache.entries.len(), 1);
-        assert_eq!(cache.insertion_order.len(), 1);
-    }
-}
-
 /// Build the control-plane API router.
 ///
 /// Public: `/health`, `GET /v1/auth/challenge` (mint a single-use nonce). Protected
@@ -224,4 +197,31 @@ pub fn build_router(state: AppState) -> Router {
 /// Liveness probe.
 async fn health() -> &'static str {
     "ok"
+}
+
+#[cfg(test)]
+mod idempotency_tests {
+    use super::*;
+
+    #[test]
+    fn cache_is_bounded_with_fifo_eviction() {
+        let mut cache = IdempotencyCache::default();
+        for n in 0..(IDEMPOTENCY_MAX_ENTRIES + 50) {
+            cache.insert(format!("key-{n}"), (n as u64, format!("resp-{n}")));
+        }
+        assert_eq!(cache.entries.len(), IDEMPOTENCY_MAX_ENTRIES);
+        assert!(cache.get("key-0").is_none(), "oldest entries evicted first");
+        let newest = format!("key-{}", IDEMPOTENCY_MAX_ENTRIES + 49);
+        assert!(cache.get(&newest).is_some(), "newest entries retained");
+    }
+
+    #[test]
+    fn reinserting_same_key_does_not_grow_order_queue() {
+        let mut cache = IdempotencyCache::default();
+        for _ in 0..10 {
+            cache.insert("same".to_string(), (1, "r".to_string()));
+        }
+        assert_eq!(cache.entries.len(), 1);
+        assert_eq!(cache.insertion_order.len(), 1);
+    }
 }

@@ -16,7 +16,7 @@ use crate::agent::AgentHandle;
 use crate::api::runtime::{
     agent_sign_with_handle, export_key_openssh_pem, export_key_openssh_pub, rotate_key,
 };
-use crate::config::EnvironmentConfig;
+use crate::config::{EnvironmentConfig, KeychainConfig};
 use crate::config::{current_algorithm, set_encryption_algorithm};
 use crate::crypto::EncryptionAlgorithm;
 use crate::crypto::encryption::{decrypt_bytes, encrypt_bytes};
@@ -44,6 +44,10 @@ pub const FFI_OK: c_int = 0;
 pub const FFI_ERR_INVALID_UTF8: c_int = -1;
 /// Agent not initialized (call ffi_init_agent first)
 pub const FFI_ERR_AGENT_NOT_INITIALIZED: c_int = -2;
+/// Null configuration context (call ffi_context_new first)
+pub const FFI_ERR_NULL_CONTEXT: c_int = -3;
+/// Keychain backend failed to initialize
+pub const FFI_ERR_KEYCHAIN: c_int = 5;
 /// Internal panic occurred
 pub const FFI_ERR_PANIC: c_int = -127;
 
@@ -266,18 +270,163 @@ fn malloc_and_copy_string(s: &str) -> *mut c_char {
     }
 }
 
+// --- FFI Configuration Context ---
+
+/// Maximum accepted byte length for the `config_json` argument of [`ffi_context_new`].
+pub const FFI_CONTEXT_CONFIG_MAX_BYTES: usize = 64 * 1024;
+
+/// Opaque configuration context for keychain-backed FFI functions.
+///
+/// Carries the [`EnvironmentConfig`] that selects the keychain backend, the
+/// encrypted-file path/passphrase, and the Auths home directory. Created with
+/// [`ffi_context_new`] and released with [`ffi_context_free`]; passed as the
+/// first argument to every keychain-backed FFI function.
+pub struct AuthsFfiContext {
+    env: EnvironmentConfig,
+}
+
+/// JSON wire form accepted by [`ffi_context_new`]. All fields are optional;
+/// absent fields fall back to platform defaults (not environment variables).
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FfiContextConfig {
+    auths_home: Option<PathBuf>,
+    keychain_backend: Option<String>,
+    keychain_file: Option<PathBuf>,
+    keychain_passphrase: Option<String>,
+    ssh_agent_socket: Option<PathBuf>,
+}
+
+impl FfiContextConfig {
+    fn into_environment(self) -> EnvironmentConfig {
+        let mut builder = EnvironmentConfig::builder().keychain(KeychainConfig {
+            backend: self.keychain_backend,
+            file_path: self.keychain_file,
+            passphrase: self.keychain_passphrase,
+        });
+        if let Some(home) = self.auths_home {
+            builder = builder.auths_home(home);
+        }
+        if let Some(socket) = self.ssh_agent_socket {
+            builder = builder.ssh_agent_socket(socket);
+        }
+        builder.build()
+    }
+}
+
+/// Creates an FFI configuration context.
+///
+/// Args:
+/// * `config_json`: Null or empty to capture the process environment
+///   (`AUTHS_HOME`, `AUTHS_KEYCHAIN_BACKEND`, `AUTHS_KEYCHAIN_FILE`,
+///   `AUTHS_PASSPHRASE`, `SSH_AUTH_SOCK`), or a JSON object with optional
+///   fields `auths_home`, `keychain_backend` (`"file"` / `"memory"`),
+///   `keychain_file`, `keychain_passphrase`, `ssh_agent_socket`.
+///
+/// Usage:
+/// ```ignore
+/// let ctx = unsafe { ffi_context_new(std::ptr::null()) };
+/// // ... pass ctx to keychain-backed FFI functions ...
+/// unsafe { ffi_context_free(ctx) };
+/// ```
+///
+/// # Safety
+/// - `config_json` must be null or point to a valid, null-terminated C string.
+/// - The returned pointer must be released with `ffi_context_free` and must not
+///   be used after being freed.
+///
+/// # Returns
+/// - Non-null context pointer on success
+/// - NULL if `config_json` is invalid UTF-8, exceeds
+///   `FFI_CONTEXT_CONFIG_MAX_BYTES`, is not valid JSON, or a panic occurred
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ffi_context_new(config_json: *const c_char) -> *mut AuthsFfiContext {
+    let result = panic::catch_unwind(|| {
+        let json = match unsafe { c_str_to_str_safe(config_json) } {
+            Ok(s) => s,
+            Err(_) => {
+                error!("FFI ffi_context_new: config_json is not valid UTF-8");
+                return ptr::null_mut();
+            }
+        };
+        if json.len() > FFI_CONTEXT_CONFIG_MAX_BYTES {
+            error!(
+                "FFI ffi_context_new: config_json length {} exceeds maximum {}",
+                json.len(),
+                FFI_CONTEXT_CONFIG_MAX_BYTES
+            );
+            return ptr::null_mut();
+        }
+        let env = if json.is_empty() {
+            EnvironmentConfig::from_env()
+        } else {
+            match serde_json::from_str::<FfiContextConfig>(json) {
+                Ok(config) => config.into_environment(),
+                Err(e) => {
+                    error!("FFI ffi_context_new: invalid config JSON: {}", e);
+                    return ptr::null_mut();
+                }
+            }
+        };
+        Box::into_raw(Box::new(AuthsFfiContext { env }))
+    });
+    result.unwrap_or_else(|_| {
+        error!("FFI ffi_context_new: panic occurred");
+        ptr::null_mut()
+    })
+}
+
+/// Frees a context previously returned by `ffi_context_new`.
+/// Does nothing if `ctx` is null.
+///
+/// # Safety
+/// - `ctx` must be null or must have been returned by `ffi_context_new`.
+/// - `ctx` must not be used after calling this function.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ffi_context_free(ctx: *mut AuthsFfiContext) {
+    let _ = panic::catch_unwind(|| {
+        if !ctx.is_null() {
+            // Safety: ctx was allocated by Box::into_raw in ffi_context_new.
+            drop(unsafe { Box::from_raw(ctx) });
+        }
+    });
+    // Note: If panic occurs during free, we just swallow it to avoid UB from unwinding across FFI
+}
+
+/// Opens the keychain selected by an FFI context.
+///
+/// # Safety
+/// `ctx` must be null or a pointer returned by `ffi_context_new` that has not
+/// been freed.
+unsafe fn keychain_from_context(
+    ctx: *const AuthsFfiContext,
+    fn_name: &str,
+) -> Result<Box<dyn KeyStorage + Send + Sync>, c_int> {
+    if ctx.is_null() {
+        error!("FFI {}: null context — call ffi_context_new first", fn_name);
+        return Err(FFI_ERR_NULL_CONTEXT);
+    }
+    // Safety: non-null ctx points to a live AuthsFfiContext per function contract.
+    let env = unsafe { &(*ctx).env };
+    get_platform_keychain_with_config(env).map_err(|e| {
+        error!("FFI {}: Failed to get platform keychain: {}", fn_name, e);
+        FFI_ERR_KEYCHAIN
+    })
+}
+
 // --- FFI Functions ---
 
 /// Checks if a key with the given alias exists in the secure storage.
 ///
 /// # Safety
+/// - `ctx` must be null or a pointer returned by `ffi_context_new` that has not been freed.
 /// - `alias` must be null or point to a valid C string.
 ///
 /// # Returns
 /// - `true` if the key exists
-/// - `false` if key doesn't exist, invalid input, or internal error
+/// - `false` if key doesn't exist, `ctx` is null, invalid input, or internal error
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ffi_key_exists(alias: *const c_char) -> bool {
+pub unsafe extern "C" fn ffi_key_exists(ctx: *const AuthsFfiContext, alias: *const c_char) -> bool {
     let result = panic::catch_unwind(|| {
         let alias_str = match unsafe { c_str_to_str_safe(alias) } {
             Ok(s) => s,
@@ -286,13 +435,9 @@ pub unsafe extern "C" fn ffi_key_exists(alias: *const c_char) -> bool {
         if alias_str.is_empty() {
             return false;
         }
-        // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match unsafe { keychain_from_context(ctx, "ffi_key_exists") } {
             Ok(kc) => kc,
-            Err(e) => {
-                error!("FFI ffi_key_exists: Failed to get platform keychain: {}", e);
-                return false;
-            }
+            Err(_) => return false,
         };
         let alias = KeyAlias::new_unchecked(alias_str);
         keychain.load_key(&alias).is_ok()
@@ -308,6 +453,7 @@ pub unsafe extern "C" fn ffi_key_exists(alias: *const c_char) -> bool {
 /// local alias, associated with the given controller DID.
 ///
 /// # Safety
+/// - `ctx` must be null or a pointer returned by `ffi_context_new` that has not been freed.
 /// - `alias`, `controller_did`, `passphrase` must be valid C strings.
 /// - `key_ptr` must point to valid PKCS#8 key data of `key_len` bytes for the duration of the call.
 /// - `key_len` must be the correct length for the data pointed to by `key_ptr`.
@@ -317,11 +463,13 @@ pub unsafe extern "C" fn ffi_key_exists(alias: *const c_char) -> bool {
 /// - 1 if arguments are invalid
 /// - 2 if key data is not valid PKCS#8
 /// - 4 if encryption fails
-/// - 5 if keychain initialization fails
+/// - FFI_ERR_KEYCHAIN (5) if keychain initialization fails
 /// - FFI_ERR_INVALID_UTF8 (-1) if C strings contain invalid UTF-8
+/// - FFI_ERR_NULL_CONTEXT (-3) if `ctx` is null
 /// - FFI_ERR_PANIC (-127) if a panic occurred
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_import_key(
+    ctx: *const AuthsFfiContext,
     alias: *const c_char,    // Local keychain alias
     key_ptr: *const c_uchar, // Pointer to PKCS#8 bytes
     key_len: usize,
@@ -387,13 +535,9 @@ pub unsafe extern "C" fn ffi_import_key(
         let alias = KeyAlias::new_unchecked(alias_str);
 
         // Store
-        // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match unsafe { keychain_from_context(ctx, "ffi_import_key") } {
             Ok(kc) => kc,
-            Err(e) => {
-                error!("FFI import failed: Failed to get platform keychain: {}", e);
-                return 5; // Keychain initialization error
-            }
+            Err(code) => return code,
         };
         let store_result =
             keychain.store_key(&alias, &did_string, KeyRole::Primary, &encrypted_key);
@@ -414,6 +558,7 @@ pub unsafe extern "C" fn ffi_import_key(
 /// existing key in secure storage, keeping the association with the original Controller DID.
 ///
 /// # Safety
+/// - `ctx` must be null or a pointer returned by `ffi_context_new` that has not been freed.
 /// - `alias`, `new_passphrase` must be valid C strings.
 ///
 /// # Returns
@@ -422,10 +567,13 @@ pub unsafe extern "C" fn ffi_import_key(
 /// - 2 if the original key/alias is not found.
 /// - 3 if crypto operations fail.
 /// - 4 if secure storage or other errors occur.
+/// - FFI_ERR_KEYCHAIN (5) if keychain initialization fails
 /// - FFI_ERR_INVALID_UTF8 (-1) if C strings contain invalid UTF-8
+/// - FFI_ERR_NULL_CONTEXT (-3) if `ctx` is null
 /// - FFI_ERR_PANIC (-127) if a panic occurred
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_rotate_key(
+    ctx: *const AuthsFfiContext,
     alias: *const c_char,
     new_passphrase: *const c_char,
 ) -> c_int {
@@ -440,13 +588,9 @@ pub unsafe extern "C" fn ffi_rotate_key(
         };
 
         // Delegate to the runtime API function
-        // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match unsafe { keychain_from_context(ctx, "ffi_rotate_key") } {
             Ok(kc) => kc,
-            Err(e) => {
-                error!("FFI rotate_key: Failed to get platform keychain: {}", e);
-                return 5; // Keychain initialization error
-            }
+            Err(code) => return code,
         };
         let rotate_result = rotate_key(alias_str, pass_str, keychain.as_ref());
 
@@ -474,15 +618,17 @@ pub unsafe extern "C" fn ffi_rotate_key(
 /// This function does *not* require a passphrase.
 ///
 /// # Safety
+/// - `ctx` must be null or a pointer returned by `ffi_context_new` that has not been freed.
 /// - `alias` must be a valid C string.
 /// - `out_len` must be a valid pointer to `usize`.
 /// - The returned pointer (if not null) must be freed by the caller using `ffi_free_bytes`.
 ///
 /// # Returns
 /// - Non-null pointer to encrypted key bytes on success
-/// - NULL on error (invalid input, key not found, or panic)
+/// - NULL on error (null context, invalid input, key not found, or panic)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_export_encrypted_key(
+    ctx: *const AuthsFfiContext,
     alias: *const c_char,
     out_len: *mut usize,
 ) -> *mut u8 {
@@ -499,16 +645,9 @@ pub unsafe extern "C" fn ffi_export_encrypted_key(
         }
         unsafe { *out_len = 0 };
 
-        // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match unsafe { keychain_from_context(ctx, "ffi_export_encrypted_key") } {
             Ok(kc) => kc,
-            Err(e) => {
-                error!(
-                    "FFI export encrypted key: Failed to get platform keychain: {}",
-                    e
-                );
-                return ptr::null_mut();
-            }
+            Err(_) => return ptr::null_mut(),
         };
         let alias = KeyAlias::new_unchecked(alias_str);
         match keychain.load_key(&alias) {
@@ -538,15 +677,17 @@ pub unsafe extern "C" fn ffi_export_encrypted_key(
 /// If the passphrase is correct, returns a copy of the *encrypted* key data.
 ///
 /// # Safety
+/// - `ctx` must be null or a pointer returned by `ffi_context_new` that has not been freed.
 /// - `alias`, `passphrase` must be valid C strings.
 /// - `out_len` must be a valid pointer to `usize`.
 /// - The returned pointer (if not null) must be freed by the caller using `ffi_free_bytes`.
 ///
 /// # Returns
 /// - Non-null pointer to encrypted key bytes on success
-/// - NULL on error (invalid input, incorrect passphrase, or panic)
+/// - NULL on error (null context, invalid input, incorrect passphrase, or panic)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_export_private_key_with_passphrase(
+    ctx: *const AuthsFfiContext,
     alias: *const c_char,
     passphrase: *const c_char,
     out_len: *mut usize,
@@ -569,17 +710,11 @@ pub unsafe extern "C" fn ffi_export_private_key_with_passphrase(
         }
         unsafe { *out_len = 0 };
 
-        // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
-            Ok(kc) => kc,
-            Err(e) => {
-                error!(
-                    "FFI export_private_key_with_passphrase: Failed to get platform keychain: {}",
-                    e
-                );
-                return ptr::null_mut();
-            }
-        };
+        let keychain =
+            match unsafe { keychain_from_context(ctx, "ffi_export_private_key_with_passphrase") } {
+                Ok(kc) => kc,
+                Err(_) => return ptr::null_mut(),
+            };
         let alias = KeyAlias::new_unchecked(alias_str);
         let export_result = || -> Result<Vec<u8>, AgentError> {
             if keychain.is_hardware_backend() {
@@ -626,14 +761,16 @@ pub unsafe extern "C" fn ffi_export_private_key_with_passphrase(
 /// Requires the correct passphrase to decrypt the key.
 ///
 /// # Safety
+/// - `ctx` must be null or a pointer returned by `ffi_context_new` that has not been freed.
 /// - `alias`, `passphrase` must be valid C strings.
 /// - The returned pointer (if not null) must be freed by the caller using `ffi_free_str`.
 ///
 /// # Returns
 /// - Non-null pointer to PEM string on success
-/// - NULL on error (invalid input, incorrect passphrase, or panic)
+/// - NULL on error (null context, invalid input, incorrect passphrase, or panic)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_export_private_key_openssh(
+    ctx: *const AuthsFfiContext,
     alias: *const c_char,
     passphrase: *const c_char,
 ) -> *mut c_char {
@@ -651,13 +788,10 @@ pub unsafe extern "C" fn ffi_export_private_key_openssh(
             return ptr::null_mut();
         }
 
-        // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match unsafe { keychain_from_context(ctx, "ffi_export_private_key_openssh") }
+        {
             Ok(kc) => kc,
-            Err(e) => {
-                error!("FFI export PEM: Failed to get platform keychain: {}", e);
-                return ptr::null_mut();
-            }
+            Err(_) => return ptr::null_mut(),
         };
         match export_key_openssh_pem(alias_str, pass_str, keychain.as_ref()) {
             Ok(pem_zeroizing) => malloc_and_copy_string(pem_zeroizing.as_str()),
@@ -677,14 +811,16 @@ pub unsafe extern "C" fn ffi_export_private_key_openssh(
 /// Requires the correct passphrase to decrypt the associated private key first.
 ///
 /// # Safety
+/// - `ctx` must be null or a pointer returned by `ffi_context_new` that has not been freed.
 /// - `alias`, `passphrase` must be valid C strings.
 /// - The returned pointer (if not null) must be freed by the caller using `ffi_free_str`.
 ///
 /// # Returns
 /// - Non-null pointer to public key string on success
-/// - NULL on error (invalid input, incorrect passphrase, or panic)
+/// - NULL on error (null context, invalid input, incorrect passphrase, or panic)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ffi_export_public_key_openssh(
+    ctx: *const AuthsFfiContext,
     alias: *const c_char,
     passphrase: *const c_char,
 ) -> *mut c_char {
@@ -702,16 +838,10 @@ pub unsafe extern "C" fn ffi_export_public_key_openssh(
             return ptr::null_mut();
         }
 
-        // TODO: Refactor FFI to accept configuration context
-        let keychain = match get_platform_keychain_with_config(&EnvironmentConfig::from_env()) {
+        let keychain = match unsafe { keychain_from_context(ctx, "ffi_export_public_key_openssh") }
+        {
             Ok(kc) => kc,
-            Err(e) => {
-                error!(
-                    "FFI export OpenSSH pubkey: Failed to get platform keychain: {}",
-                    e
-                );
-                return ptr::null_mut();
-            }
+            Err(_) => return ptr::null_mut(),
         };
         match export_key_openssh_pub(alias_str, pass_str, keychain.as_ref()) {
             Ok(formatted_pubkey) => malloc_and_copy_string(&formatted_pubkey),

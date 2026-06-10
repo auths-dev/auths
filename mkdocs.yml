@@ -199,6 +199,7 @@ nav:
       - errors/index.md
       - auths-crypto:
           - "AUTHS-E1001": errors/AUTHS-E1001.md
+          - "AUTHS-E1002": errors/AUTHS-E1002.md
           - "AUTHS-E1003": errors/AUTHS-E1003.md
           - "AUTHS-E1004": errors/AUTHS-E1004.md
           - "AUTHS-E1005": errors/AUTHS-E1005.md
@@ -577,3 +578,7 @@ nav:
           - Architecture Decisions: contributing/architecture-decisions.md
           - Adding New Curves: contributing/adding_curves.md
           - Glossary: contributing/glossary.md
+
+  - Archive (pre-KEL-native):
+      - About the Archive: archive/README.md
+      - RIP-X Multi-Device Identity: archive/rip-x-multi-device-identity.md

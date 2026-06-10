@@ -9,7 +9,7 @@ auths init
 ```
 
 <!-- BEGIN GENERATED: auths init -->
-Set up your cryptographic identity and Git signing
+Create your signing identity and configure Git
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -19,9 +19,12 @@ Set up your cryptographic identity and Git signing
 | `--key-alias <KEY_ALIAS>` | `main` | Key alias for the identity key (default: main) |
 | `--force` | — | Force overwrite if identity already exists |
 | `--dry-run` | — | Preview agent configuration without creating files or identities |
-| `--registry <REGISTRY>` | `https://auths-registry.fly.dev` | Registry URL for identity registration |
+| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL for identity registration [env: AUTHS_REGISTRY_URL=] |
 | `--register` | — | Register identity with the Auths Registry after creation |
 | `--github-action` | — | Scaffold a GitHub Actions workflow using the auths attest-action |
+| `--device-count <DEVICE_COUNT>` | `1` | Number of device slots for a multi-key KEL (default 1) |
+| `--signing-threshold <SIGNING_THRESHOLD>` | — | Signing threshold: scalar integer (e.g. `"2"`) or fraction list (e.g. `"1/2,1/2,1/2"`). Required when `--device-count > 1` |
+| `--rotation-threshold <ROTATION_THRESHOLD>` | — | Rotation (next) threshold, same format as `--signing-threshold` |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -44,6 +47,7 @@ Sign a Git commit or artifact file.
 | `--device-key <DEVICE_KEY>` | — | Local alias of the device key (for artifact signing, required for files) |
 | `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--note <NOTE>` | — | Optional note to embed in the attestation (for artifact signing) |
+| `--scope <SCOPE>` | — | Capabilities this commit claims it exercises (comma-separated), e.g. `--scope sign_commit`. Emitted as an `Auths-Scope` trailer so a verifier can reject a claim outside the signer's delegator-anchored grant. Commit-only |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -60,13 +64,16 @@ Verify a signed commit or attestation.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--allowed-signers <ALLOWED_SIGNERS>` | `.auths/allowed_signers` | Path to allowed signers file (commit verification) |
 | `--identity-bundle <IDENTITY_BUNDLE>` | — | Path to identity bundle JSON (for CI/CD stateless commit verification) |
-| `--issuer-pk <ISSUER_PK>` | — | Issuer public key in hex format (attestation verification) |
-| `--issuer-did <ISSUER_DID>` | — | Issuer identity ID for attestation trust-based key resolution [aliases: --issuer] |
-| `--witness-receipts <WITNESS_RECEIPTS>` | — | Path to witness receipts JSON file |
-| `--witness-threshold <WITNESS_THRESHOLD>` | `1` | Witness quorum threshold |
+| `--signer-key <ISSUER_PK>` | — | Signer public key in hex format (attestation verification) |
+| `--signer <ISSUER_DID>` | — | Signer identity ID for attestation trust-based key resolution [aliases: --issuer-did] |
+| `--witness-signatures <WITNESS_RECEIPTS>` | — | Path to witness signatures JSON file |
+| `--witnesses-required <WITNESS_THRESHOLD>` | `1` | Number of witnesses required |
 | `--witness-keys <WITNESS_KEYS>...` | — | Witness public keys as DID:hex pairs |
+| `--signature <PATH>` | — | Path to signature file. Only used when verifying an artifact file (not a commit). Defaults to <FILE>.auths.json |
+| `--remote <REMOTE>` | — | Fetch a signer's KEL from this git remote when it is absent locally (opt-in). The local registry stays the trusted floor — a remote can only advance the key-state, never roll it back. Without it, resolution is local-only (no network) |
+| `--oobi <OOBI>` | — | Fetch signer KELs over HTTP from this OOBI base URL (SSRF-hardened: HTTPS-only, no redirects, private/loopback hosts blocked). Takes precedence over `--remote` |
+| `--require-witnesses` | — | Fail verification when the signer's root KEL has not reached witness quorum (fail-closed). Default: warn and continue |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -120,10 +127,82 @@ Link devices to your identity
 | `--join <CODE>` | — | Join an existing pairing session using a short code |
 | `--registry <URL>` | — | Registry URL for pairing relay (omit for LAN mode) |
 | `--timeout <SECONDS>` | `300` | Custom timeout in seconds for the pairing session (default: 300 = 5 minutes)  [aliases: --expiry] |
+| `--verify` | — | Prompt to manually verify the short-authentication-string (SAS) codes match between devices before completing the pair |
+| `--recover <OLD_DID>` | — | Lost/stolen-device recovery: pair a replacement delegated device, then revoke the old device's delegation (by `did:keri:`). The replacement is authorized before the old one is revoked, so the identity is never left with zero usable devices. Supported over the relay path (with `--registry`) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths pair -->
+
+### auths trust list
+
+```bash
+auths trust list
+```
+
+<!-- BEGIN GENERATED: auths trust list -->
+List all pinned identities
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths trust list -->
+
+### auths trust pin
+
+```bash
+auths trust pin
+```
+
+<!-- BEGIN GENERATED: auths trust pin -->
+Manually pin an identity as trusted
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--did <DID>` | — | The DID of the identity to pin (e.g., did:keri:E...) |
+| `--key <KEY>` | — | The public key in hex format (64 chars for Ed25519) |
+| `--kel-tip <KEL_TIP>` | — | Identity log checkpoint for tracking key changes (optional, advanced) |
+| `--note <NOTE>` | — | Optional note about this identity |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths trust pin -->
+
+### auths trust remove
+
+```bash
+auths trust remove
+```
+
+<!-- BEGIN GENERATED: auths trust remove -->
+Remove a pinned identity
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<DID>` | — | The DID of the identity to remove |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths trust remove -->
+
+### auths trust show
+
+```bash
+auths trust show
+```
+
+<!-- BEGIN GENERATED: auths trust show -->
+Show details of a pinned identity
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `<DID>` | — | The DID of the identity to show |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths trust show -->
 
 ### auths doctor
 
@@ -160,6 +239,22 @@ Interactive tutorial for learning Auths concepts
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths tutorial -->
+
+### auths demo
+
+```bash
+auths demo
+```
+
+<!-- BEGIN GENERATED: auths demo -->
+Sign and verify a demo artifact — works offline, no setup or registry needed
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths demo -->
 
 ## Utilities
 

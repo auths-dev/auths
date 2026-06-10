@@ -119,7 +119,6 @@ The script creates an isolated workspace under `/tmp/auths-e2e-XXXXX/`:
 ├── node2.seed              # 32-byte Ed25519 seed
 ├── metadata.json           # Identity metadata
 ├── keys.enc                # Encrypted keychain
-├── allowed_signers         # Git SSH signing keys
 └── logs/
     ├── node1.log
     ├── node2.log

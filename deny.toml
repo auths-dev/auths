@@ -61,7 +61,6 @@ deny = [
     "auths-infra-git",
     "auths-cli",
     "auths-index",
-    "auths-radicle",
     "auths-sdk",
     "auths-test-utils",
     "auths-api",
@@ -82,9 +81,7 @@ ignore = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# Radicle integration depends on a fork with auths integration patches.
-# Track upstream merge: https://github.com/radicle-dev/heartwood
-allow-git = ["https://github.com/bordumb/heartwood"]
+allow-git = []
 
 [graph]
 # Check every target we build for. Prevents a config that is green on

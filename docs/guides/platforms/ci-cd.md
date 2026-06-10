@@ -7,7 +7,7 @@ See [how this compares to Sigstore](../../design/sigstore-comparison.md) for a d
 ## How It Works
 
 1. **You sign commits** with your device-bound Ed25519 key (hardware keychain, Touch ID). This happens automatically after `auths init`.
-2. **CI verifies** the tagged commit is signed by a maintainer in `.auths/allowed_signers`.
+2. **CI verifies** the tagged commit is signed by a maintainer by replaying the signer's key event log against the repo's pinned trust roots (`.auths/roots`).
 3. **CI generates a throwaway key**, signs each artifact, and discards the key. No secrets needed.
 4. **Consumers verify**: artifact hash → ephemeral signature → commit SHA → maintainer's commit signature.
 

@@ -1,5 +1,12 @@
 # Device model: attestations vs. KEL controllers
 
+> **Historical note (June 2026):** The Model D (delegation) decision recorded below has since
+> been **implemented**. Devices are now KERI delegated identifiers (`dip`/`drt`) anchored by the
+> root identity, commit verification is KEL replay against the `.auths/roots` pin, and the
+> attestation-based device management and `allowed_signers` flow described in §1 as "today" no
+> longer ships. §1 is retained as the verified pre-migration state; the decision rationale
+> remains authoritative. Current model: `identity-model.md`.
+
 **Status:** Decision *recorded, not yet taken* (2026-06-02). This note is the authoritative
 description of how devices actually relate to an identity **today**, and the scoped plan for
 making the shared-KEL controller model live if/when we choose to.
