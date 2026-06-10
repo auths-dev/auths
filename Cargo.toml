@@ -34,7 +34,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 license = "Apache-2.0"
 rust-version = "1.93"
 repository = "https://github.com/auths-dev/auths"
@@ -80,23 +80,23 @@ aes-gcm = { version = "=0.10.3", features = ["std"] }
 # Exact pin: canonicalization changes silently break all existing attestation signatures.
 json-canon = "=0.1.3"
 
-auths-core = { path = "crates/auths-core", version = "0.1.1" }
-auths-keri = { path = "crates/auths-keri", version = "0.1.1" }
-auths-id = { path = "crates/auths-id", version = "0.1.1" }
-auths-verifier = { path = "crates/auths-verifier", version = "0.1.1", default-features = false }
-auths-policy = { path = "crates/auths-policy", version = "0.1.1" }
-auths-index = { path = "crates/auths-index", version = "0.1.1" }
-auths-telemetry = { path = "crates/auths-telemetry", version = "0.1.1" }
-auths-crypto = { path = "crates/auths-crypto", version = "0.1.1", default-features = false }
-auths-sdk = { path = "crates/auths-sdk", version = "0.1.1" }
-auths-infra-git = { path = "crates/auths-infra-git", version = "0.1.1" }
-auths-infra-http = { path = "crates/auths-infra-http", version = "0.1.1" }
-auths-jwt = { path = "crates/auths-jwt", version = "0.1.1" }
-auths-pairing-daemon = { path = "crates/auths-pairing-daemon", version = "0.1.1" }
-auths-pairing-protocol = { path = "crates/auths-pairing-protocol", version = "0.1.1" }
-auths-storage = { path = "crates/auths-storage", version = "0.1.1" }
-auths-transparency = { path = "crates/auths-transparency", version = "0.1.1", default-features = false }
-auths-utils = { path = "crates/auths-utils", version = "0.1.1" }
+auths-core = { path = "crates/auths-core", version = "0.1.2" }
+auths-keri = { path = "crates/auths-keri", version = "0.1.2" }
+auths-id = { path = "crates/auths-id", version = "0.1.2" }
+auths-verifier = { path = "crates/auths-verifier", version = "0.1.2", default-features = false }
+auths-policy = { path = "crates/auths-policy", version = "0.1.2" }
+auths-index = { path = "crates/auths-index", version = "0.1.2" }
+auths-telemetry = { path = "crates/auths-telemetry", version = "0.1.2" }
+auths-crypto = { path = "crates/auths-crypto", version = "0.1.2", default-features = false }
+auths-sdk = { path = "crates/auths-sdk", version = "0.1.2" }
+auths-infra-git = { path = "crates/auths-infra-git", version = "0.1.2" }
+auths-infra-http = { path = "crates/auths-infra-http", version = "0.1.2" }
+auths-jwt = { path = "crates/auths-jwt", version = "0.1.2" }
+auths-pairing-daemon = { path = "crates/auths-pairing-daemon", version = "0.1.2" }
+auths-pairing-protocol = { path = "crates/auths-pairing-protocol", version = "0.1.2" }
+auths-storage = { path = "crates/auths-storage", version = "0.1.2" }
+auths-transparency = { path = "crates/auths-transparency", version = "0.1.2", default-features = false }
+auths-utils = { path = "crates/auths-utils", version = "0.1.2" }
 insta = { version = "1", features = ["json"] }
 
 # Compile crypto-heavy crates with optimizations even in dev/test builds.

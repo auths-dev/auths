@@ -1,6 +1,6 @@
 {
   "name": "@auths-dev/express",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Drop-in Express middleware that authenticates an Auths-Presentation request and attaches a verified Principal.",
   "license": "Apache-2.0",
   "repository": {
