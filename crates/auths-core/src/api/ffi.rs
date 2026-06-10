@@ -169,32 +169,6 @@ pub unsafe fn c_str_to_str_safe<'a>(ptr: *const c_char) -> Result<&'a str, c_int
     }
 }
 
-/// Converts a C string pointer to a Rust `&str`.
-/// Returns an empty string if the pointer is null.
-/// Panics if the C string is not valid UTF-8.
-///
-/// # Safety
-/// The caller must ensure `ptr` is either null or points to a valid,
-/// null-terminated C string with a lifetime that encompasses this function call.
-/// The function itself needs to be marked `unsafe` because `CStr::from_ptr` is unsafe.
-///
-/// # Deprecated
-/// Use `c_str_to_str_safe` instead for panic-safe FFI code.
-#[deprecated(note = "Use c_str_to_str_safe for panic-safe FFI")]
-#[allow(clippy::expect_used)] // deprecated function — use c_str_to_str_safe instead
-pub unsafe fn c_str_to_str<'a>(ptr: *const c_char) -> &'a str {
-    if ptr.is_null() {
-        ""
-    } else {
-        // Safety: Assumes ptr is valid C string per function contract.
-        unsafe {
-            CStr::from_ptr(ptr)
-                .to_str()
-                .expect("FFI string inputs must be valid UTF-8")
-        }
-    }
-}
-
 /// Converts a Rust `Result<T, E: Display>` to a C-style integer error code.
 /// Logs the error on failure. Returns 0 on Ok, 1 on Err (general error).
 /// Consider more specific error codes in the future.
@@ -542,10 +516,7 @@ pub unsafe extern "C" fn ffi_import_key(
         let store_result =
             keychain.store_key(&alias, &did_string, KeyRole::Primary, &encrypted_key);
 
-        #[allow(deprecated)]
-        unsafe {
-            result_to_c_int(store_result, "ffi_import_key")
-        }
+        unsafe { result_to_c_int(store_result, "ffi_import_key") }
     });
     result.unwrap_or_else(|_| {
         error!("FFI ffi_import_key: panic occurred");

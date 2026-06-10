@@ -206,10 +206,10 @@ impl PairingProtocol {
 //
 // The existing `complete()` / `complete_with_response()` methods remain as
 // a fast-path convenience for callers that have already performed SAS
-// confirmation via an out-of-band channel. They are marked `#[deprecated]`
-// pointing at the typestate chain so new callers are nudged to the
-// stronger guarantee. Downstream (auths-sdk, auths-cli) callers continue
-// to compile unchanged; migration is tracked in a follow-up.
+// confirmation via an out-of-band channel. New callers should prefer the
+// typestate chain for the stronger guarantee. Downstream (auths-sdk,
+// auths-cli) callers continue to compile unchanged; migration is tracked
+// in a follow-up.
 // =============================================================================
 
 use std::marker::PhantomData;

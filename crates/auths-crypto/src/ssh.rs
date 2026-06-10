@@ -60,14 +60,3 @@ pub fn openssh_pub_to_raw(openssh_pub: &str) -> Result<(crate::CurveType, Vec<u8
     Err(SshKeyError::UnsupportedKeyType)
 }
 
-/// Parse an OpenSSH Ed25519 public key line and return the raw 32-byte public key.
-#[deprecated(note = "use openssh_pub_to_raw() which returns (CurveType, Vec<u8>)")]
-pub fn openssh_pub_to_raw_ed25519(openssh_pub: &str) -> Result<[u8; 32], SshKeyError> {
-    let (curve, bytes) = openssh_pub_to_raw(openssh_pub)?;
-    if curve != crate::CurveType::Ed25519 {
-        return Err(SshKeyError::UnsupportedKeyType);
-    }
-    bytes
-        .try_into()
-        .map_err(|_| SshKeyError::InvalidFormat("expected 32 bytes".into()))
-}

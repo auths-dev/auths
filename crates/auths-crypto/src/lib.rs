@@ -57,8 +57,6 @@ pub use provider::{
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use ring_provider::RingCryptoProvider;
 pub use secret::Secret;
-#[allow(deprecated)]
-pub use ssh::openssh_pub_to_raw_ed25519;
 pub use ssh::{SshKeyError, openssh_pub_to_raw};
 #[cfg(all(any(test, feature = "test-utils"), not(target_arch = "wasm32")))]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
