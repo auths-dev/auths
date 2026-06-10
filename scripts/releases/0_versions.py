@@ -3,9 +3,10 @@
 Sync every package version to the workspace version in Cargo.toml.
 
 Usage:
-    python scripts/releases/0_versions.py            # dry-run (shows drift table)
-    python scripts/releases/0_versions.py --check    # exit 1 on drift (CI gate)
-    python scripts/releases/0_versions.py --write    # stamp all files
+    python scripts/releases/0_versions.py                  # dry-run (shows drift table)
+    python scripts/releases/0_versions.py --check          # exit 1 on drift (CI gate)
+    python scripts/releases/0_versions.py --write          # stamp all files
+    python scripts/releases/0_versions.py --set 0.1.4      # bump workspace version, then stamp all files
 
 Source of truth: [workspace.package] version in the root Cargo.toml.
 
@@ -120,9 +121,41 @@ def stamp_workspace_deps(workspace_version: str) -> None:
         f.write_text(text)
 
 
+def set_workspace_version(new_version: str) -> None:
+    if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?", new_version):
+        print(f"ERROR: '{new_version}' is not a valid semver version", file=sys.stderr)
+        sys.exit(1)
+    text = CARGO_TOML.read_text()
+    section = re.search(
+        r'(\[workspace\.package\][^\[]*?version\s*=\s*)"[^"]+"', text
+    )
+    if not section:
+        print("ERROR: no version in [workspace.package] in Cargo.toml", file=sys.stderr)
+        sys.exit(1)
+    CARGO_TOML.write_text(
+        text[: section.start()] + f'{section.group(1)}"{new_version}"' + text[section.end() :]
+    )
+    print(f"Set workspace version -> {new_version}")
+
+
+def parse_set_arg() -> str | None:
+    if "--set" not in sys.argv:
+        return None
+    idx = sys.argv.index("--set")
+    if idx + 1 >= len(sys.argv):
+        print("ERROR: --set requires a version argument", file=sys.stderr)
+        sys.exit(1)
+    return sys.argv[idx + 1]
+
+
 def main() -> None:
     check = "--check" in sys.argv
     write = "--write" in sys.argv
+
+    new_version = parse_set_arg()
+    if new_version is not None:
+        set_workspace_version(new_version)
+        write = True
 
     workspace_version = get_workspace_version()
     print(f"Workspace version: {workspace_version}")

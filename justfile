@@ -106,6 +106,21 @@ install:
 release-versions:
     python scripts/releases/0_versions.py --write
 
+# One-shot release: bump every version, refresh locks, commit, auths-sign,
+# tag, and push commit + tag together. Local pre-push gates are skipped —
+# CI on the release commit and tag is the authority (issue #260).
+release version:
+    python scripts/releases/0_versions.py --set {{version}}
+    cd packages/auths-fastapi && uv lock
+    cd packages/auths-python && uv lock
+    cargo update --workspace
+    cargo run -p xtask -- gen-error-docs
+    git add -A
+    git commit -m "release: {{version}}"
+    auths sign HEAD
+    git tag v{{version}}
+    git push --no-verify origin main v{{version}}
+
 # Create and push a GitHub release (tag + binaries).
 release-github:
     python scripts/releases/1_github.py --push
