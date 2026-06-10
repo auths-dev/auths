@@ -257,6 +257,79 @@ fn snapshot_member_authority_matches_single_shot_resolution() {
 }
 
 #[test]
+fn snapshot_replays_kel_constant_times_per_request_not_per_member() {
+    use auths_sdk::domains::org::OrgKelSnapshot;
+    use auths_sdk::workflows::org::classify_authority_at_signing_with;
+
+    let backend = Arc::new(FakeRegistryBackend::new());
+    let org_prefix =
+        Prefix::new_unchecked("ECountOrg00000000000000000000000000000000000".to_string());
+    let icp = IcpEvent {
+        v: VersionString::placeholder(),
+        d: Said::default(),
+        i: org_prefix.clone(),
+        s: KeriSequence::new(0),
+        kt: Threshold::Simple(1),
+        k: vec![CesrKey::new_unchecked(
+            "DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        )],
+        nt: Threshold::Simple(1),
+        n: vec![Said::new_unchecked(
+            "EAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string(),
+        )],
+        bt: Threshold::Simple(0),
+        b: vec![],
+        c: vec![],
+        a: vec![],
+    };
+    backend
+        .append_event(&org_prefix, &Event::Icp(icp))
+        .expect("seed org KEL");
+
+    let counting = Arc::clone(&backend);
+    let ctx = AuthsContext::builder()
+        .registry(backend)
+        .key_storage(Arc::new(IsolatedKeychainHandle::new()))
+        .clock(Arc::new(SystemClock))
+        .identity_storage(Arc::new(FakeIdentityStorage::new()))
+        .attestation_sink(Arc::new(FakeAttestationSink::new()))
+        .attestation_source(Arc::new(FakeAttestationSource::new()))
+        .build();
+
+    let before_load = counting.visit_events_call_count();
+    let snapshot = OrgKelSnapshot::load(&ctx, &org_prefix).expect("load snapshot");
+    let load_cost = counting.visit_events_call_count() - before_load;
+    assert!(load_cost >= 1, "loading a snapshot replays the KEL");
+
+    // The per-member page loop must be I/O-free: resolving N members from the
+    // snapshot performs ZERO further KEL replays (this was the N+1: each member
+    // used to replay the full org KEL).
+    let after_load = counting.visit_events_call_count();
+    let member = Prefix::new_unchecked("ENotAMember000000000000000000000000000000000".to_string());
+    for _ in 0..10 {
+        let _ = snapshot.member_authority(&member);
+        let _ = classify_authority_at_signing_with(&snapshot, &member, None)
+            .expect("classification from snapshot");
+    }
+    assert_eq!(
+        counting.visit_events_call_count(),
+        after_load,
+        "per-member resolution from a snapshot must perform no KEL replays"
+    );
+
+    // The request cost is constant: a second request (snapshot load) costs the
+    // same number of replays as the first, independent of how many members
+    // were resolved in between.
+    let before_second = counting.visit_events_call_count();
+    let _ = OrgKelSnapshot::load(&ctx, &org_prefix).expect("second load");
+    assert_eq!(
+        counting.visit_events_call_count() - before_second,
+        load_cost,
+        "snapshot load cost is constant per request"
+    );
+}
+
+#[test]
 fn add_existing_member_rejects_foreign_delegator() {
     let (ctx, org_alias, org_prefix, _tmp) = setup();
 

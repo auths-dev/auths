@@ -37,6 +37,7 @@ struct FakeState {
 /// of `store_attestation` (latest + history must update together).
 pub struct FakeRegistryBackend {
     state: Mutex<FakeState>,
+    visit_events_calls: std::sync::atomic::AtomicUsize,
 }
 
 impl FakeRegistryBackend {
@@ -52,7 +53,16 @@ impl FakeRegistryBackend {
                 tel_events: HashMap::new(),
                 credentials: HashMap::new(),
             }),
+            visit_events_calls: std::sync::atomic::AtomicUsize::new(0),
         }
+    }
+
+    /// How many times `visit_events` (a KEL replay) has been called on this
+    /// fake. Lets tests assert that batch operations replay a KEL a constant
+    /// number of times per request rather than once per item.
+    pub fn visit_events_call_count(&self) -> usize {
+        self.visit_events_calls
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -171,6 +181,8 @@ impl RegistryBackend for FakeRegistryBackend {
         from_seq: u128,
         visitor: &mut dyn FnMut(&Event) -> ControlFlow<()>,
     ) -> Result<(), RegistryError> {
+        self.visit_events_calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let state = self.state.lock().unwrap();
         let key = prefix.as_str();
         let events = state
