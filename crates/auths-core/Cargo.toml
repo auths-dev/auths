@@ -88,7 +88,7 @@ ring.workspace = true
 anyhow = "1.0"
 p256 = { version = "=0.13.2", features = ["ecdsa"] }
 assert_matches = "1.5.0"
-auths-verifier = { workspace = true, features = ["test-utils"] }
+auths-verifier = { path = "../auths-verifier", features = ["test-utils"] }
 criterion = { version = "0.5", features = ["html_reports"] }
 mockall = "0.13.1"
 rand.workspace = true

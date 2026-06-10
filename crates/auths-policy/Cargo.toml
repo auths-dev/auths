@@ -21,4 +21,4 @@ blake3 = "=1.8.4"
 workspace = true
 
 [dev-dependencies]
-auths-verifier = { workspace = true, features = ["test-utils"] }
+auths-verifier = { path = "../auths-verifier", features = ["test-utils"] }

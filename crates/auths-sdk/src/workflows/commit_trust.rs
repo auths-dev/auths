@@ -400,6 +400,7 @@ mod tests {
             public_key_hex: auths_verifier::PublicKeyHex::new_unchecked("00".to_string()),
             curve: auths_crypto::CurveType::P256,
             attestation_chain: Vec::new(),
+            kel: Vec::new(),
             bundle_timestamp: ts,
             max_valid_for_secs: ttl,
         }

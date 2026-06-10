@@ -25,7 +25,7 @@ tracing = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
-auths-sdk = { workspace = true }
+auths-sdk = { path = "../auths-sdk" }
 http = "1"
 tokio = { version = "1", features = ["full"] }
 ring.workspace = true

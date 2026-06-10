@@ -1212,6 +1212,11 @@ pub struct IdentityBundle {
     pub curve: auths_crypto::CurveType,
     /// Chain of attestations linking the signing key to the identity
     pub attestation_chain: Vec<Attestation>,
+    /// The identity's raw KEL events (JSON, oldest first). Carried so
+    /// KEL-native commit verification stays stateless on CI runners with no
+    /// identity store. Empty in bundles exported before this field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kel: Vec<serde_json::Value>,
     /// UTC timestamp when this bundle was created
     pub bundle_timestamp: DateTime<Utc>,
     /// Maximum age in seconds before this bundle is considered stale
@@ -2369,6 +2374,7 @@ mod tests {
             public_key_hex: PublicKeyHex::new_unchecked("aabbccdd"),
             curve: Default::default(),
             attestation_chain: vec![],
+            kel: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc),
@@ -2418,6 +2424,7 @@ mod tests {
             ),
             curve: Default::default(),
             attestation_chain: vec![attestation],
+            kel: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc),

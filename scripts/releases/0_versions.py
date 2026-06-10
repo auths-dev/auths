@@ -90,19 +90,33 @@ WORKSPACE_DEP_RE = re.compile(
 )
 
 
+# Crate-local declarations (`path = "../auths-x", version = "..."`) need the
+# same treatment.
+CRATE_DEP_RE = re.compile(
+    r'(auths-[a-z0-9-]+ = \{ path = "\.\./[^"]+", version = )"([^"]+)"'
+)
+
+
+def dep_files() -> list[Path]:
+    return [REPO_ROOT / "Cargo.toml"] + sorted(REPO_ROOT.glob("crates/*/Cargo.toml"))
+
+
 def workspace_dep_drift(workspace_version: str) -> int:
-    text = (REPO_ROOT / "Cargo.toml").read_text()
-    return sum(
-        1 for m in WORKSPACE_DEP_RE.finditer(text) if m.group(2) != workspace_version
-    )
+    count = 0
+    for f in dep_files():
+        pattern = WORKSPACE_DEP_RE if f.parent == REPO_ROOT else CRATE_DEP_RE
+        text = f.read_text()
+        count += sum(
+            1 for m in pattern.finditer(text) if m.group(2) != workspace_version
+        )
+    return count
 
 
 def stamp_workspace_deps(workspace_version: str) -> None:
-    root = REPO_ROOT / "Cargo.toml"
-    text = WORKSPACE_DEP_RE.sub(
-        lambda m: f'{m.group(1)}"{workspace_version}"', root.read_text()
-    )
-    root.write_text(text)
+    for f in dep_files():
+        pattern = WORKSPACE_DEP_RE if f.parent == REPO_ROOT else CRATE_DEP_RE
+        text = pattern.sub(lambda m: f'{m.group(1)}"{workspace_version}"', f.read_text())
+        f.write_text(text)
 
 
 def main() -> None:

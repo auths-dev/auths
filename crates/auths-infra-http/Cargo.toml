@@ -15,7 +15,7 @@ auths-keri.workspace = true
 async-trait = "0.1"
 auths-core = { workspace = true }
 auths-crypto = { workspace = true }
-auths-oidc-port = { path = "../auths-oidc-port" }
+auths-oidc-port = { path = "../auths-oidc-port", version = "0.1.1" }
 auths-verifier = { workspace = true, features = ["native"] }
 futures-util = "0.3"
 jsonwebtoken = { version = "10.3.0", features = ["use_pem"] }
@@ -33,7 +33,7 @@ url = { version = "2", features = ["serde"] }
 urlencoding = "2"
 zeroize.workspace = true
 [dev-dependencies]
-auths-core = { workspace = true, features = ["witness-server"] }
+auths-core = { path = "../auths-core", features = ["witness-server"] }
 axum = "0.8"
 hex = "0.4"
 ring.workspace = true

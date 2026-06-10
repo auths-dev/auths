@@ -23,7 +23,7 @@ chrono = "0.4"
 log = "0.4"
 
 [dev-dependencies]
-auths-sdk = { workspace = true, features = ["test-utils"] }
+auths-sdk = { path = "../auths-sdk", features = ["test-utils"] }
 auths-test-utils = { path = "../auths-test-utils" }
 tempfile = "3"
 

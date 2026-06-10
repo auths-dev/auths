@@ -35,7 +35,7 @@ aws-sdk-s3 = { version = "1", optional = true }
 aws-config = { version = "1", optional = true }
 
 [dev-dependencies]
-auths-crypto = { workspace = true, features = ["test-utils"] }
+auths-crypto = { path = "../auths-crypto", features = ["test-utils"] }
 proptest = "1.4"
 ring.workspace = true
 tempfile = "3"

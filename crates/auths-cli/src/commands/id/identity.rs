@@ -757,6 +757,33 @@ pub fn handle_id(
             let public_key_hex =
                 auths_verifier::PublicKeyHex::new_unchecked(hex::encode(&public_key_bytes));
 
+            // Embed the identity's KEL so verifiers stay stateless: KEL-native
+            // commit verification on a CI runner has no identity store to
+            // resolve the signer from.
+            let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+                auths_sdk::storage::RegistryConfig::single_tenant(&repo_path),
+            );
+            let prefix = auths_sdk::keri::parse_did_keri(identity.controller_did.as_str())
+                .context("identity DID is not did:keri")?;
+            let mut kel: Vec<serde_json::Value> = Vec::new();
+            let mut kel_err: Option<String> = None;
+            let _ = registry.visit_events(&prefix, 0, &mut |e| {
+                match serde_json::to_value(e) {
+                    Ok(v) => kel.push(v),
+                    Err(err) => kel_err = Some(err.to_string()),
+                }
+                std::ops::ControlFlow::Continue(())
+            });
+            if let Some(err) = kel_err {
+                return Err(anyhow::anyhow!("failed to serialize KEL event: {err}"));
+            }
+            if kel.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "no KEL events found for {} — cannot export a verifiable bundle",
+                    identity.controller_did
+                ));
+            }
+
             // Create the bundle. Curve flows in-band from the typed keychain
             // extraction so verifiers never re-derive it from byte length.
             let bundle = IdentityBundle {
@@ -765,6 +792,7 @@ pub fn handle_id(
                 public_key_hex,
                 curve,
                 attestation_chain: attestations,
+                kel,
                 bundle_timestamp: now,
                 max_valid_for_secs: max_age_secs,
             };

@@ -62,10 +62,10 @@ keychain-secure-enclave = ["auths-core/keychain-secure-enclave"]
 
 [dev-dependencies]
 auths-sdk = { path = ".", features = ["test-utils"] }
-auths-core = { workspace = true, features = ["test-utils"] }
-auths-id = { workspace = true, features = ["test-utils"] }
-auths-verifier = { workspace = true, features = ["test-utils"] }
-auths-storage = { workspace = true, features = ["backend-git"] }
+auths-core = { path = "../auths-core", features = ["test-utils"] }
+auths-id = { path = "../auths-id", features = ["test-utils"] }
+auths-verifier = { path = "../auths-verifier", features = ["test-utils"] }
+auths-storage = { path = "../auths-storage", features = ["backend-git"] }
 base64 = "0.22"
 flate2 = "1"
 git2.workspace = true

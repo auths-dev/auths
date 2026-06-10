@@ -163,9 +163,13 @@ pub async fn handle_verify_commit(
     // `--identity-bundle` the caller supplied (stateless CI). An unusable bundle
     // fails closed — it must never silently leave trust unconstrained.
     let mut pinned_roots = super::verify_helpers::load_project_pinned_roots();
+    let mut bundle_kel: Option<(String, Vec<Event>)> = None;
     if let Some(bundle_path) = &cmd.identity_bundle {
-        match load_bundle_trust_root(bundle_path, chrono::Utc::now()) {
-            Ok(root) => {
+        match load_bundle_trust(bundle_path, chrono::Utc::now()) {
+            Ok((root, kel)) => {
+                if !kel.is_empty() {
+                    bundle_kel = Some((root.clone(), kel));
+                }
                 if !pinned_roots.contains(&root) {
                     pinned_roots.push(root);
                 }
@@ -192,6 +196,7 @@ pub async fn handle_verify_commit(
                 &receipt_lookup,
                 &sdk_ctx,
                 &cmd,
+                bundle_kel.as_ref(),
                 commit_ref,
             )
             .await,
@@ -201,18 +206,26 @@ pub async fn handle_verify_commit(
 }
 
 /// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
-/// (freshness-checked via the SDK trust resolver). Fails closed: any read, parse, or
-/// staleness error is returned so the caller can abort rather than verify unconstrained.
-fn load_bundle_trust_root(
+/// (freshness-checked via the SDK trust resolver) plus the KEL events it carries for
+/// stateless resolution. Fails closed: any read, parse, or staleness error is returned
+/// so the caller can abort rather than verify unconstrained.
+fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
-) -> std::result::Result<String, String> {
+) -> std::result::Result<(String, Vec<Event>), String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("could not read identity bundle {path:?}: {e}"))?;
     let bundle: IdentityBundle = serde_json::from_str(&content)
         .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
-    auths_sdk::workflows::commit_trust::trusted_root_from_bundle(&bundle, now)
-        .map_err(|e| e.to_string())
+    let root = auths_sdk::workflows::commit_trust::trusted_root_from_bundle(&bundle, now)
+        .map_err(|e| e.to_string())?;
+    let kel: Vec<Event> = bundle
+        .kel
+        .iter()
+        .map(|v| serde_json::from_value(v.clone()))
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|e| format!("identity bundle {path:?} carries an unparseable KEL: {e}"))?;
+    Ok((root, kel))
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -320,8 +333,19 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
 async fn resolve_signer_kel(
     registry: &dyn RegistryBackend,
     cmd: &VerifyCommitCommand,
+    bundle_kel: Option<&(String, Vec<Event>)>,
     did: &str,
 ) -> Result<Vec<Event>, String> {
+    // Stateless first: a bundle that carries the signer's KEL satisfies
+    // resolution without any identity store (CI runners). Prefix binding is
+    // still enforced, so a tampered bundle cannot smuggle a foreign KEL.
+    if let Some((bundle_did, events)) = bundle_kel
+        && bundle_did == did
+    {
+        let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
+        auths_sdk::keri::verify_prefix_binding(&prefix, events).map_err(|e| e.to_string())?;
+        return Ok(events.clone());
+    }
     if let Some(oobi_base) = &cmd.oobi {
         let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
         let resolver = HttpOobiResolver::new(oobi_base.clone()).map_err(|e| e.to_string())?;
@@ -354,6 +378,7 @@ async fn verify_one_commit(
     receipt_lookup: &dyn WitnessReceiptLookup,
     sdk_ctx: &auths_sdk::context::AuthsContext,
     cmd: &VerifyCommitCommand,
+    bundle_kel: Option<&(String, Vec<Event>)>,
     commit_ref: &str,
 ) -> VerifyCommitResult {
     let sha = match resolve_commit_sha(commit_ref) {
@@ -388,7 +413,7 @@ async fn verify_one_commit(
     // remote (`--remote`) or an SSRF-hardened HTTP OOBI host (`--oobi`). The
     // prefix-binding guard is applied regardless of transport. The command stays
     // presentation-thin.
-    let device_kel = match resolve_signer_kel(registry, cmd, &device_did).await {
+    let device_kel = match resolve_signer_kel(registry, cmd, bundle_kel, &device_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -397,7 +422,7 @@ async fn verify_one_commit(
             );
         }
     };
-    let root_kel = match resolve_signer_kel(registry, cmd, &root_did).await {
+    let root_kel = match resolve_signer_kel(registry, cmd, bundle_kel, &root_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(

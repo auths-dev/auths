@@ -58,8 +58,8 @@ auths-infra-http = { workspace = true, optional = true }
 auths-utils = { workspace = true, optional = true }
 
 [dev-dependencies]
-auths-core = { workspace = true, features = ["test-utils"] }
-auths-verifier = { workspace = true, features = ["test-utils"] }
+auths-core = { path = "../auths-core", features = ["test-utils"] }
+auths-verifier = { path = "../auths-verifier", features = ["test-utils"] }
 auths-test-utils = { path = "../auths-test-utils" }
 criterion = { version = "0.8.2", features = ["html_reports"] }
 rand = "0.10.0"
