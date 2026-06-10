@@ -36,6 +36,11 @@
         }
       ]
     },
+    "kel": {
+      "description": "The identity's raw KEL events (JSON, oldest first). Carried so KEL-native commit verification stays stateless on CI runners with no identity store. Empty in bundles exported before this field existed.",
+      "type": "array",
+      "items": true
+    },
     "max_valid_for_secs": {
       "description": "Maximum age in seconds before this bundle is considered stale",
       "type": "integer",
