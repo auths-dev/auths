@@ -159,17 +159,14 @@ pub async fn handle_verify_commit(
     // tree) — the source we replay to decide trust.
     let registry =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
-    // Trust roots = the committed `.auths/roots` pin, plus the verifier's own
-    // identity (self-trust — you can always verify what you signed), plus the
-    // root of any `--identity-bundle` the caller supplied (stateless CI). An
-    // unusable bundle fails closed — it must never silently leave trust
-    // unconstrained.
+    // Trust roots = the committed `.auths/roots` pin, plus the root of any
+    // `--identity-bundle` the caller supplied (stateless CI). An unusable
+    // bundle fails closed — it must never silently leave trust unconstrained.
+    // The verifier's own identity (self-trust — you can always verify what
+    // you signed) applies only when no explicit bundle constrains trust:
+    // a caller pinning a bundle is making a trust statement, and self-trust
+    // leaking in would let a wrong-root bundle verify anyway.
     let mut pinned_roots = super::verify_helpers::load_project_pinned_roots();
-    if let Some(own_root) = auths_sdk::workflows::commit_trust::local_self_root(&sdk_ctx)
-        && !pinned_roots.contains(&own_root)
-    {
-        pinned_roots.push(own_root);
-    }
     let mut bundle_kel: Option<(String, Vec<Event>)> = None;
     if let Some(bundle_path) = &cmd.identity_bundle {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
@@ -183,6 +180,10 @@ pub async fn handle_verify_commit(
             }
             Err(e) => return handle_error(&cmd, 2, &e),
         }
+    } else if let Some(own_root) = auths_sdk::workflows::commit_trust::local_self_root(&sdk_ctx)
+        && !pinned_roots.contains(&own_root)
+    {
+        pinned_roots.push(own_root);
     }
     let provider = auths_crypto::RingCryptoProvider;
     // Stored witness receipts live in the identity repo; the gate reads them

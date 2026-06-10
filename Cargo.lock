@@ -8450,11 +8450,3 @@ dependencies = [
  "syn",
  "winnow 0.7.15",
 ]
-
-[[patch.unused]]
-name = "radicle-core"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "radicle-crypto"
-version = "0.14.0"

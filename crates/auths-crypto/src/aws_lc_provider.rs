@@ -90,28 +90,24 @@ impl AwsLcProvider {
     /// or 65-byte uncompressed SEC1.
     pub fn p256_verify(pubkey: &[u8], message: &[u8], signature: &[u8]) -> Result<(), CryptoError> {
         use aws_lc_rs::signature::ECDSA_P256_SHA256_FIXED;
+        use p256::ecdsa::VerifyingKey;
 
-        // aws-lc-rs's fixed-format verify expects uncompressed (65 bytes).
-        // Decompress via p256 if we got the 33-byte form.
-        let uncompressed: Vec<u8>;
-        let pubkey_bytes: &[u8] = match pubkey.len() {
-            65 => pubkey,
-            33 => {
-                use p256::ecdsa::VerifyingKey;
-                let vk = VerifyingKey::from_sec1_bytes(pubkey)
-                    .map_err(|e| CryptoError::OperationFailed(format!("P-256 decompress: {e}")))?;
-                uncompressed = vk.to_encoded_point(false).as_bytes().to_vec();
-                uncompressed.as_slice()
-            }
-            other => {
-                return Err(CryptoError::InvalidKeyLength {
-                    expected: crate::provider::P256_PUBLIC_KEY_LEN,
-                    actual: other,
-                });
-            }
-        };
+        // Error contract (mirrors RingCryptoProvider): malformed *encodings*
+        // are OperationFailed — only a well-formed-but-wrong signature is
+        // InvalidSignature. Conflating them masks routing bugs as crypto
+        // failures (same hazard as length-dispatched curve tags).
+        let vk = VerifyingKey::from_sec1_bytes(pubkey)
+            .map_err(|e| CryptoError::OperationFailed(format!("P-256 key parse: {e}")))?;
+        let uncompressed = vk.to_encoded_point(false);
 
-        let peer = UnparsedPublicKey::new(&ECDSA_P256_SHA256_FIXED, pubkey_bytes);
+        if signature.len() != 64 {
+            return Err(CryptoError::OperationFailed(format!(
+                "P-256 sig parse: expected 64-byte fixed signature, got {}",
+                signature.len()
+            )));
+        }
+
+        let peer = UnparsedPublicKey::new(&ECDSA_P256_SHA256_FIXED, uncompressed.as_bytes());
         peer.verify(message, signature)
             .map_err(|_| CryptoError::InvalidSignature)
     }
