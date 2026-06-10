@@ -1,6 +1,7 @@
 # AUTHS-E5901
 
 **Crate:** `auths-sdk`
+
 **Type:** `SigningError::IdentityFrozen`
 
 ## Message

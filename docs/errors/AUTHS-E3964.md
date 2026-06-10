@@ -1,6 +1,7 @@
 # AUTHS-E3964
 
 **Crate:** `auths-core`
+
 **Type:** `NamespaceVerifyError::ChallengeExpired`
 
 ## Message

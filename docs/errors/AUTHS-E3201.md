@@ -1,6 +1,7 @@
 # AUTHS-E3201
 
 **Crate:** `auths-core`
+
 **Type:** `PairingError::Protocol`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E5404
 
 **Crate:** `auths-sdk`
+
 **Type:** `RegistrationError::IdentityLoadError`
 
 ## Message

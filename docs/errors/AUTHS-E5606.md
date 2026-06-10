@@ -1,6 +1,7 @@
 # AUTHS-E5606
 
 **Crate:** `auths-sdk`
+
 **Type:** `OrgError::InvalidPublicKey`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E2017
 
 **Crate:** `auths-verifier`
+
 **Type:** `AttestationError::BundleExpired`
 
 ## Message

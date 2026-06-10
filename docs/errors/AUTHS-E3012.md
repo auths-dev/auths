@@ -1,6 +1,7 @@
 # AUTHS-E3012
 
 **Crate:** `auths-core`
+
 **Type:** `AgentError::MutexError`
 
 ## Message

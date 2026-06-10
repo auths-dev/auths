@@ -62,8 +62,8 @@ pub enum CacheError {
 impl auths_core::error::AuthsErrorInfo for CacheError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::Io(_) => "AUTHS-E4981",
-            Self::Json(_) => "AUTHS-E4982",
+            Self::Io(_) => "AUTHS-E4986",
+            Self::Json(_) => "AUTHS-E4987",
         }
     }
 

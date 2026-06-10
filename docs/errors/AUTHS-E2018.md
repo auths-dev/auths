@@ -1,6 +1,7 @@
 # AUTHS-E2018
 
 **Crate:** `auths-verifier`
+
 **Type:** `AttestationError::AttestationTooOld`
 
 ## Message

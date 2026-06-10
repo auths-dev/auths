@@ -1,6 +1,7 @@
 # AUTHS-E3704
 
 **Crate:** `auths-core`
+
 **Type:** `ResolutionError::Network`
 
 ## Message

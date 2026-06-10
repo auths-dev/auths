@@ -1,6 +1,7 @@
 # AUTHS-E5902
 
 **Crate:** `auths-sdk`
+
 **Type:** `SigningError::KeyResolution`
 
 ## Message

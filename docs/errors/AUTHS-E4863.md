@@ -1,6 +1,7 @@
 # AUTHS-E4863
 
 **Crate:** `auths-id`
+
 **Type:** `RegistryError::InvalidDeviceDid`
 
 ## Message

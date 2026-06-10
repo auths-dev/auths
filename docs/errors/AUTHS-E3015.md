@@ -1,6 +1,7 @@
 # AUTHS-E3015
 
 **Crate:** `auths-core`
+
 **Type:** `AgentError::BackendUnavailable`
 
 ## Message

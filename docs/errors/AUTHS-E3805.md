@@ -1,6 +1,7 @@
 # AUTHS-E3805
 
 **Crate:** `auths-core`
+
 **Type:** `PlatformError::Network`
 
 ## Message

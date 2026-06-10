@@ -1,6 +1,7 @@
 # AUTHS-E2013
 
 **Crate:** `auths-verifier`
+
 **Type:** `AttestationError::InternalError`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E3963
 
 **Crate:** `auths-core`
+
 **Type:** `NamespaceVerifyError::OwnershipNotConfirmed`
 
 ## Message

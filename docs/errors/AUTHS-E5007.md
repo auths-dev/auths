@@ -1,6 +1,7 @@
 # AUTHS-E5007
 
 **Crate:** `auths-sdk`
+
 **Type:** `SetupError::InvalidSetupConfig`
 
 ## Message

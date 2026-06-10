@@ -1,6 +1,7 @@
 # AUTHS-E5202
 
 **Crate:** `auths-sdk`
+
 **Type:** `DeviceExtensionError::NoAttestationFound`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E4409
 
 **Crate:** `auths-id`
+
 **Type:** `StorageError::NotFound`
 
 ## Message

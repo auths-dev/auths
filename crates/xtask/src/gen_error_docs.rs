@@ -547,7 +547,11 @@ fn generate_doc(entry: &ErrorEntry) -> String {
     let mut out = String::new();
     out.push_str(&format!("# {}\n", entry.code));
     out.push('\n');
-    out.push_str(&format!("**Crate:** `{}`  \n", entry.crate_name));
+    // No trailing-double-space markdown hard breaks: the pre-commit
+    // trailing-whitespace hook strips them, which would make `--check`
+    // permanently disagree with the committed files.
+    out.push_str(&format!("**Crate:** `{}`\n", entry.crate_name));
+    out.push('\n');
     out.push_str(&format!(
         "**Type:** `{}::{}`\n",
         entry.type_name, entry.variant
@@ -712,6 +716,9 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
     out.push_str("///\n");
     out.push_str("/// Args:\n");
     out.push_str("/// * `code`: An error code string like `\"AUTHS-E3001\"`.\n");
+    // rustfmt would rewrap the long generated lines, making `--check`
+    // disagree with the committed file — skip formatting generated items.
+    out.push_str("#[rustfmt::skip]\n");
     out.push_str("pub fn explain(code: &str) -> Option<&'static str> {\n");
     out.push_str("    match code {\n");
 
@@ -742,6 +749,7 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
 
     // --- all_codes() ---
     out.push_str("/// Returns a sorted slice of all registered error codes.\n");
+    out.push_str("#[rustfmt::skip]\n");
     out.push_str("pub fn all_codes() -> &'static [&'static str] {\n");
     out.push_str("    static CODES: &[&str] = &[\n");
     for entry in entries {

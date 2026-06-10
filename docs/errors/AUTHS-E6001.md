@@ -1,6 +1,7 @@
 # AUTHS-E6001
 
 **Crate:** `auths-sdk`
+
 **Type:** `AuthChallengeError::EmptyNonce`
 
 ## Message

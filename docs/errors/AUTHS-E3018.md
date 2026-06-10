@@ -1,6 +1,7 @@
 # AUTHS-E3018
 
 **Crate:** `auths-core`
+
 **Type:** `AgentError::CredentialTooLarge`
 
 ## Message

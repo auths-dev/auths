@@ -1,6 +1,7 @@
 # AUTHS-E3952
 
 **Crate:** `auths-core`
+
 **Type:** `ConfigStoreError::Write`
 
 ## Message

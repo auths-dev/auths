@@ -1,6 +1,7 @@
 # AUTHS-E5551
 
 **Crate:** `auths-sdk`
+
 **Type:** `TrustError::UnknownIdentity`
 
 ## Message

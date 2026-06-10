@@ -1,6 +1,7 @@
 # AUTHS-E3305
 
 **Crate:** `auths-core`
+
 **Type:** `CryptoError::InvalidKeyFormat`
 
 ## Message

@@ -78,6 +78,7 @@ def targets(workspace_version: str) -> list[tuple[Path, re.Pattern, str]]:
         (REPO_ROOT / "packages/auths-verifier-ts/package.json", JSON_VERSION_RE, workspace_version),
         (REPO_ROOT / "packages/auths-express/package.json", JSON_VERSION_RE, workspace_version),
         (REPO_ROOT / "packages/auths-python/pyproject.toml", TOML_VERSION_RE, py_version),
+        (REPO_ROOT / "packages/auths-fastapi/pyproject.toml", TOML_VERSION_RE, py_version),
         (REPO_ROOT / "crates/auths-mobile-ffi/Cargo.toml", TOML_VERSION_RE, workspace_version),
     ]
 

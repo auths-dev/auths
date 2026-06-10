@@ -1,6 +1,7 @@
 # AUTHS-E4864
 
 **Crate:** `auths-id`
+
 **Type:** `RegistryError::EventExists`
 
 ## Message

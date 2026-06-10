@@ -1,6 +1,7 @@
 # AUTHS-E3304
 
 **Crate:** `auths-core`
+
 **Type:** `CryptoError::InvalidSeedLength`
 
 ## Message

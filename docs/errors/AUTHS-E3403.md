@@ -1,6 +1,7 @@
 # AUTHS-E3403
 
-**Crate:** `auths-core`
+**Crate:** `auths-keri`
+
 **Type:** `WitnessError::Rejected`
 
 ## Message

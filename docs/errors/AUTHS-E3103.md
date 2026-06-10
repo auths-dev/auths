@@ -1,6 +1,7 @@
 # AUTHS-E3103
 
 **Crate:** `auths-core`
+
 **Type:** `TrustError::NotFound`
 
 ## Message

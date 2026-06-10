@@ -1,6 +1,7 @@
 # AUTHS-E4807
 
 **Crate:** `auths-id`
+
 **Type:** `ResolveError::UnknownKeyType`
 
 ## Message

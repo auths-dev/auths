@@ -1,6 +1,7 @@
 # AUTHS-E1101
 
 **Crate:** `auths-crypto`
+
 **Type:** `DidKeyError::InvalidPrefix`
 
 ## Message

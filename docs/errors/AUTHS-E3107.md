@@ -1,6 +1,7 @@
 # AUTHS-E3107
 
 **Crate:** `auths-core`
+
 **Type:** `TrustError::PolicyRejected`
 
 ## Message

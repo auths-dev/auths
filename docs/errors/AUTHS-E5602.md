@@ -1,6 +1,7 @@
 # AUTHS-E5602
 
 **Crate:** `auths-sdk`
+
 **Type:** `OrgError::MemberNotFound`
 
 ## Message

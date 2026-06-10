@@ -1,6 +1,7 @@
 # AUTHS-E4001
 
 **Crate:** `auths-id`
+
 **Type:** `FreezeError::Io`
 
 ## Message

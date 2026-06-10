@@ -1,6 +1,7 @@
 # AUTHS-E5501
 
 **Crate:** `auths-sdk`
+
 **Type:** `McpAuthError::BridgeUnreachable`
 
 ## Message

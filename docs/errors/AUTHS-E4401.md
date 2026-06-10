@@ -1,6 +1,7 @@
 # AUTHS-E4401
 
 **Crate:** `auths-id`
+
 **Type:** `IdentityError::Keri`
 
 ## Message

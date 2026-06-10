@@ -1,6 +1,7 @@
 # AUTHS-E3951
 
 **Crate:** `auths-core`
+
 **Type:** `ConfigStoreError::Read`
 
 ## Message

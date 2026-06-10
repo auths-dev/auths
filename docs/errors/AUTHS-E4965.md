@@ -1,6 +1,7 @@
 # AUTHS-E4965
 
 **Crate:** `auths-id`
+
 **Type:** `AnchorError::NotFound`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E4101
 
 **Crate:** `auths-id`
+
 **Type:** `StorageError::Git`
 
 ## Message

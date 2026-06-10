@@ -1,31 +1,42 @@
 #!/usr/bin/env bash
 # Architectural boundary guard: detects violations in auths-sdk source.
-# Excludes test directories, comment lines, and doc strings to prevent false positives.
-# Run in CI before cargo test.
+# Excludes test directories, `#[cfg(test)]` modules, comment lines, and doc
+# strings to prevent false positives. Run in CI before cargo test.
 set -e
 
 SDK_SRC="crates/auths-sdk/src"
 VIOLATIONS=0
 
-# Filter from grep -rn "filepath:linenum:content" output:
-#   - lines where content part starts with // or /// (comments)
-#   - lines where content part starts with whitespace then // (indented comments)
-not_comment() {
-    grep -Ev ':[0-9]+:[[:space:]]*//'
+# Print "file:line:content" for the production region of a file — everything
+# before the first `#[cfg(test)]` marker. Test modules sit at the bottom of
+# files by convention (enforced by rustfmt ordering in this repo), and test
+# code is exempt from the clock/fs/storage rules (mirrors clippy.toml's
+# allow-unwrap-in-tests).
+production_lines() {
+    local file=$1
+    awk -v f="$file" '/#\[cfg\(test\)\]/{exit} {print f":"NR":"$0}' "$file"
 }
 
 check_pattern() {
     local pattern=$1
     local msg=$2
-    local matches
-    matches=$(grep -r --include="*.rs" \
-        --exclude-dir=tests \
-        -n \
-        "$pattern" $SDK_SRC 2>/dev/null \
-        | not_comment || true)
+    local exclude_file=${3:-}
+    local matches=""
+    local file hits
+    while IFS= read -r file; do
+        if [ -n "$exclude_file" ] && [ "$file" = "$exclude_file" ]; then
+            continue
+        fi
+        hits=$(production_lines "$file" \
+            | grep "$pattern" \
+            | grep -Ev ':[0-9]+:[[:space:]]*//' || true)
+        if [ -n "$hits" ]; then
+            matches+="$hits"$'\n'
+        fi
+    done < <(find "$SDK_SRC" -name '*.rs' -not -path '*/tests/*')
     if [ -n "$matches" ]; then
         echo "ARCHITECTURE VIOLATION: $msg"
-        echo "$matches"
+        printf '%s' "$matches"
         VIOLATIONS=$((VIOLATIONS + 1))
     fi
 }
@@ -33,7 +44,11 @@ check_pattern() {
 check_pattern "Utc::now()" "Use injected ClockProvider instead of Utc::now()"
 check_pattern "std::fs::" "Filesystem I/O in SDK layer — use storage port traits"
 check_pattern "git2::" "git2 in auths-sdk — inject RegistryBackend instead"
-check_pattern "GitRegistryBackend\|RegistryIdentityStorage" "Concrete storage types in auths-sdk — inject abstractions"
+# src/storage.rs is the sanctioned facade: a feature-gated re-export module so
+# presentation layers (CLI, servers) can compose concrete Git backends without
+# depending on auths-storage directly. SDK *logic* must still never name
+# concrete storage types — only the facade may.
+check_pattern "GitRegistryBackend\|RegistryIdentityStorage" "Concrete storage types in auths-sdk logic — inject abstractions (only src/storage.rs may re-export them)" "$SDK_SRC/storage.rs"
 
 if [ "$VIOLATIONS" -gt 0 ]; then
     echo ""

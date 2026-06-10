@@ -1,6 +1,7 @@
 # AUTHS-E5903
 
 **Crate:** `auths-sdk`
+
 **Type:** `SigningError::SigningFailed`
 
 ## Message

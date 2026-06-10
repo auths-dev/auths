@@ -1,6 +1,7 @@
 # AUTHS-E4873
 
 **Crate:** `auths-id`
+
 **Type:** `RegistryError::InvalidTenantId`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E3106
 
 **Crate:** `auths-core`
+
 **Type:** `TrustError::Lock`
 
 ## Message

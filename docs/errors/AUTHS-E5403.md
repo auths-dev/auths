@@ -1,6 +1,7 @@
 # AUTHS-E5403
 
 **Crate:** `auths-sdk`
+
 **Type:** `RegistrationError::InvalidDidFormat`
 
 ## Message

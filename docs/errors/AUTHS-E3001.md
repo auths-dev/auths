@@ -1,6 +1,7 @@
 # AUTHS-E3001
 
 **Crate:** `auths-core`
+
 **Type:** `AgentError::KeyNotFound`
 
 ## Message

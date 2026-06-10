@@ -1,6 +1,7 @@
 # AUTHS-E3409
 
-**Crate:** `auths-core`
+**Crate:** `auths-keri`
+
 **Type:** `WitnessError::Serialization`
 
 ## Message

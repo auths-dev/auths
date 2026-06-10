@@ -1,6 +1,7 @@
 # AUTHS-E2002
 
 **Crate:** `auths-verifier`
+
 **Type:** `AttestationError::DeviceSignatureFailed`
 
 ## Message

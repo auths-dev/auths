@@ -1,6 +1,7 @@
 # AUTHS-E4952
 
 **Crate:** `auths-id`
+
 **Type:** `IncrementalError::ChainContinuity`
 
 ## Message

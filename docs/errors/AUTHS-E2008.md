@@ -1,6 +1,7 @@
 # AUTHS-E2008
 
 **Crate:** `auths-verifier`
+
 **Type:** `AttestationError::DidResolutionError`
 
 ## Message

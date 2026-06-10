@@ -1,6 +1,7 @@
 # AUTHS-E2011
 
 **Crate:** `auths-verifier`
+
 **Type:** `AttestationError::InvalidInput`
 
 ## Message

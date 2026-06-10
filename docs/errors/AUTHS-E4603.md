@@ -1,6 +1,7 @@
 # AUTHS-E4603
 
 **Crate:** `auths-id`
+
 **Type:** `KelError::NotFound`
 
 ## Message

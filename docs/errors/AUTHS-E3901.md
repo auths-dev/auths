@@ -1,6 +1,7 @@
 # AUTHS-E3901
 
 **Crate:** `auths-core`
+
 **Type:** `SshAgentError::CommandFailed`
 
 ## Message

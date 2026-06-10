@@ -1,6 +1,7 @@
 # AUTHS-E5852
 
 **Crate:** `auths-sdk`
+
 **Type:** `ArtifactSigningError::KeyDecryptionFailed`
 
 ## Message

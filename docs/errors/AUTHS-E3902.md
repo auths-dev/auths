@@ -1,6 +1,7 @@
 # AUTHS-E3902
 
 **Crate:** `auths-core`
+
 **Type:** `SshAgentError::NotAvailable`
 
 ## Message

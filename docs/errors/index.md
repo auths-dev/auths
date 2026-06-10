@@ -11,14 +11,14 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E1005](AUTHS-E1005.md) | `auths-crypto` | `CryptoError::UnsupportedTarget` | Operation not supported on current compilation target |
 | [AUTHS-E1101](AUTHS-E1101.md) | `auths-crypto` | `DidKeyError::InvalidPrefix` | DID must start with 'did:key:z', got: {0} |
 | [AUTHS-E1102](AUTHS-E1102.md) | `auths-crypto` | `DidKeyError::Base58DecodeFailed` | Base58 decoding failed: {0} |
-| [AUTHS-E1103](AUTHS-E1103.md) | `auths-crypto` | `DidKeyError::UnsupportedMulticodec` | Unsupported or malformed multicodec: expected Ed25519 [0xED, 0x01] |
-| [AUTHS-E1104](AUTHS-E1104.md) | `auths-crypto` | `DidKeyError::InvalidKeyLength` | Invalid Ed25519 key length: expected 32 bytes, got {0} |
-| [AUTHS-E1201](AUTHS-E1201.md) | `auths-crypto` | `KeriDecodeError::InvalidPrefix` | Invalid KERI prefix: expected 'D' for Ed25519, got '{0}' |
-| [AUTHS-E1202](AUTHS-E1202.md) | `auths-crypto` | `KeriDecodeError::EmptyInput` | Missing KERI prefix: empty string |
-| [AUTHS-E1203](AUTHS-E1203.md) | `auths-crypto` | `KeriDecodeError::DecodeError` | Base64url decode failed: {0} |
-| [AUTHS-E1204](AUTHS-E1204.md) | `auths-crypto` | `KeriDecodeError::InvalidLength` | Invalid Ed25519 key length: expected 32 bytes, got {0} |
+| [AUTHS-E1103](AUTHS-E1103.md) | `auths-crypto` | `DidKeyError::UnsupportedMulticodec` | Unsupported multicodec: expected Ed25519 [0xED, 0x01] or P-256 [0x80, 0x24] |
+| [AUTHS-E1104](AUTHS-E1104.md) | `auths-crypto` | `DidKeyError::InvalidKeyLength` | Invalid key length: got {0} bytes |
+| [AUTHS-E1201](AUTHS-E1201.md) | `auths-keri` | `KeriDecodeError::UnsupportedKeyType` | Unsupported KERI key type: prefix '{0}' |
+| [AUTHS-E1202](AUTHS-E1202.md) | `auths-keri` | `KeriDecodeError::EmptyInput` | Missing KERI prefix: empty string |
+| [AUTHS-E1203](AUTHS-E1203.md) | `auths-keri` | `KeriDecodeError::DecodeError` | Base64url decode failed: {0} |
+| [AUTHS-E1204](AUTHS-E1204.md) | `auths-keri` | `KeriDecodeError::InvalidLength` | Invalid key length: expected {expected} bytes, got {actual} |
 | [AUTHS-E1301](AUTHS-E1301.md) | `auths-crypto` | `SshKeyError::InvalidFormat` | Malformed or invalid OpenSSH public key: {0} |
-| [AUTHS-E1302](AUTHS-E1302.md) | `auths-crypto` | `SshKeyError::UnsupportedKeyType` | Unsupported key type: expected ssh-ed25519 |
+| [AUTHS-E1302](AUTHS-E1302.md) | `auths-crypto` | `SshKeyError::UnsupportedKeyType` | Unsupported key type: expected ssh-ed25519 or ecdsa-sha2-nistp256 |
 | [AUTHS-E2001](AUTHS-E2001.md) | `auths-verifier` | `AttestationError::IssuerSignatureFailed` | Issuer signature verification failed: {0} |
 | [AUTHS-E2002](AUTHS-E2002.md) | `auths-verifier` | `AttestationError::DeviceSignatureFailed` | Device signature verification failed: {0} |
 | [AUTHS-E2003](AUTHS-E2003.md) | `auths-verifier` | `AttestationError::AttestationExpired` | Attestation expired on {at} |
@@ -37,6 +37,10 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E2016](AUTHS-E2016.md) | `auths-verifier` | `AttestationError::OrgDidResolutionFailed` | Organizational DID resolution failed: {0} |
 | [AUTHS-E2017](AUTHS-E2017.md) | `auths-verifier` | `AttestationError::BundleExpired` | Bundle is {age_secs}s old (max {max_secs}s). Refresh with: auths id export-bundle |
 | [AUTHS-E2018](AUTHS-E2018.md) | `auths-verifier` | `AttestationError::AttestationTooOld` | Attestation is {age_secs}s old (max {max_secs}s) |
+| [AUTHS-E2019](AUTHS-E2019.md) | `auths-verifier` | `AttestationError::CapabilityEscalation` | Delegated attestation escalates capability beyond its delegator |
+| [AUTHS-E2020](AUTHS-E2020.md) | `auths-verifier` | `AttestationError::DelegationOutlivesParent` | Delegated attestation outlives its delegator |
+| [AUTHS-E2021](AUTHS-E2021.md) | `auths-verifier` | `AttestationError::DelegatorRevoked` | Delegator attestation is revoked |
+| [AUTHS-E2022](AUTHS-E2022.md) | `auths-verifier` | `AttestationError::DelegatorUnresolved` | Delegator attestation could not be resolved |
 | [AUTHS-E2101](AUTHS-E2101.md) | `auths-verifier` | `CommitVerificationError::UnsignedCommit` | commit is unsigned |
 | [AUTHS-E2102](AUTHS-E2102.md) | `auths-verifier` | `CommitVerificationError::GpgNotSupported` | GPG signatures not supported, use SSH signing |
 | [AUTHS-E2103](AUTHS-E2103.md) | `auths-verifier` | `CommitVerificationError::SshSigParseFailed` | SSHSIG parse failed: {0} |
@@ -70,6 +74,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E3022](AUTHS-E3022.md) | `auths-core` | `AgentError::HsmDeviceRemoved` | HSM device removed |
 | [AUTHS-E3023](AUTHS-E3023.md) | `auths-core` | `AgentError::HsmSessionExpired` | HSM session expired |
 | [AUTHS-E3024](AUTHS-E3024.md) | `auths-core` | `AgentError::HsmUnsupportedMechanism` | HSM does not support mechanism: {0} |
+| [AUTHS-E3025](AUTHS-E3025.md) | `auths-core` | `AgentError::HardwareKeyNotExportable` | Operation '{operation}' requires a software-backed key; hardware-backed keys (e.g. Secure Enclave) cannot export raw material |
 | [AUTHS-E3101](AUTHS-E3101.md) | `auths-core` | `TrustError::Io` | I/O error: {0} |
 | [AUTHS-E3102](AUTHS-E3102.md) | `auths-core` | `TrustError::InvalidData` | {0} |
 | [AUTHS-E3103](AUTHS-E3103.md) | `auths-core` | `TrustError::NotFound` | not found: {0} |
@@ -89,15 +94,15 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E3303](AUTHS-E3303.md) | `auths-core` | `CryptoError::PemEncoding` | PEM encoding failed: {0} |
 | [AUTHS-E3304](AUTHS-E3304.md) | `auths-core` | `CryptoError::InvalidSeedLength` | invalid seed length: expected 32, got {0} |
 | [AUTHS-E3305](AUTHS-E3305.md) | `auths-core` | `CryptoError::InvalidKeyFormat` | invalid key format: {0} |
-| [AUTHS-E3401](AUTHS-E3401.md) | `auths-core` | `WitnessError::Network` | network error: {0} |
-| [AUTHS-E3402](AUTHS-E3402.md) | `auths-core` | `WitnessError::Duplicity` | duplicity detected: {0} |
-| [AUTHS-E3403](AUTHS-E3403.md) | `auths-core` | `WitnessError::Rejected` | event rejected: {reason} |
-| [AUTHS-E3404](AUTHS-E3404.md) | `auths-core` | `WitnessError::Timeout` | timeout after {0}ms |
-| [AUTHS-E3405](AUTHS-E3405.md) | `auths-core` | `WitnessError::InvalidSignature` | invalid receipt signature from witness {witness_id} |
-| [AUTHS-E3406](AUTHS-E3406.md) | `auths-core` | `WitnessError::InsufficientReceipts` | insufficient receipts: got {got}, need {required} |
-| [AUTHS-E3407](AUTHS-E3407.md) | `auths-core` | `WitnessError::SaidMismatch` | receipt SAID mismatch: expected {expected}, got {got} |
-| [AUTHS-E3408](AUTHS-E3408.md) | `auths-core` | `WitnessError::Storage` | storage error: {0} |
-| [AUTHS-E3409](AUTHS-E3409.md) | `auths-core` | `WitnessError::Serialization` | serialization error: {0} |
+| [AUTHS-E3401](AUTHS-E3401.md) | `auths-keri` | `WitnessError::Network` | network error: {0} |
+| [AUTHS-E3402](AUTHS-E3402.md) | `auths-keri` | `WitnessError::Duplicity` | duplicity detected: {0} |
+| [AUTHS-E3403](AUTHS-E3403.md) | `auths-keri` | `WitnessError::Rejected` | event rejected: {reason} |
+| [AUTHS-E3404](AUTHS-E3404.md) | `auths-keri` | `WitnessError::Timeout` | timeout after {0}ms |
+| [AUTHS-E3405](AUTHS-E3405.md) | `auths-keri` | `WitnessError::InvalidSignature` | invalid receipt signature from witness {witness_id} |
+| [AUTHS-E3406](AUTHS-E3406.md) | `auths-keri` | `WitnessError::InsufficientReceipts` | insufficient receipts: got {got}, need {required} |
+| [AUTHS-E3407](AUTHS-E3407.md) | `auths-keri` | `WitnessError::SaidMismatch` | receipt SAID mismatch: expected {expected}, got {got} |
+| [AUTHS-E3408](AUTHS-E3408.md) | `auths-keri` | `WitnessError::Storage` | storage error: {0} |
+| [AUTHS-E3409](AUTHS-E3409.md) | `auths-keri` | `WitnessError::Serialization` | serialization error: {0} |
 | [AUTHS-E3501](AUTHS-E3501.md) | `auths-core` | `StorageError::NotFound` | not found: {path} |
 | [AUTHS-E3502](AUTHS-E3502.md) | `auths-core` | `StorageError::AlreadyExists` | already exists: {path} |
 | [AUTHS-E3503](AUTHS-E3503.md) | `auths-core` | `StorageError::CasConflict` | compare-and-swap conflict |
@@ -151,11 +156,6 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4206](AUTHS-E4206.md) | `auths-id` | `InitError::Registry` | registry error: {0} |
 | [AUTHS-E4207](AUTHS-E4207.md) | `auths-id` | `InitError::Crypto` | crypto operation failed: {0} |
 | [AUTHS-E4208](AUTHS-E4208.md) | `auths-id` | `InitError::Identity` | identity error: {0} |
-| [AUTHS-E4301](AUTHS-E4301.md) | `auths-id` | `AgentProvisioningError::RepoCreation` | repository creation failed: {0} |
-| [AUTHS-E4302](AUTHS-E4302.md) | `auths-id` | `AgentProvisioningError::IdentityCreation` | identity creation failed: {0} |
-| [AUTHS-E4303](AUTHS-E4303.md) | `auths-id` | `AgentProvisioningError::AttestationCreation` | attestation creation failed: {0} |
-| [AUTHS-E4304](AUTHS-E4304.md) | `auths-id` | `AgentProvisioningError::KeychainAccess` | keychain access failed: {0} |
-| [AUTHS-E4305](AUTHS-E4305.md) | `auths-id` | `AgentProvisioningError::ConfigWrite` | config write failed: {0} |
 | [AUTHS-E4401](AUTHS-E4401.md) | `auths-id` | `IdentityError::Keri` | KERI error: {0} |
 | [AUTHS-E4402](AUTHS-E4402.md) | `auths-id` | `IdentityError::Pkcs8EncodeError` | PKCS#8 encoding error: {0} |
 | [AUTHS-E4403](AUTHS-E4403.md) | `auths-id` | `IdentityError::Pkcs8DecodeError` | PKCS#8 decoding error: {0} |
@@ -167,16 +167,6 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4409](AUTHS-E4409.md) | `auths-id` | `StorageError::NotFound` | _(transparent)_ |
 | [AUTHS-E4410](AUTHS-E4410.md) | `auths-id` | `StorageError::CasConflict` | _(transparent)_ |
 | [AUTHS-E4411](AUTHS-E4411.md) | `auths-id` | `StorageError::Io` | _(transparent)_ |
-| [AUTHS-E4501](AUTHS-E4501.md) | `auths-id` | `ValidationError::InvalidSaid` | Invalid SAID: expected {expected}, got {actual} |
-| [AUTHS-E4502](AUTHS-E4502.md) | `auths-id` | `ValidationError::BrokenChain` | Broken chain: event {sequence} references {referenced}, but previous was {actual} |
-| [AUTHS-E4503](AUTHS-E4503.md) | `auths-id` | `ValidationError::InvalidSequence` | Invalid sequence: expected {expected}, got {actual} |
-| [AUTHS-E4504](AUTHS-E4504.md) | `auths-id` | `ValidationError::CommitmentMismatch` | Pre-rotation commitment mismatch at sequence {sequence} |
-| [AUTHS-E4505](AUTHS-E4505.md) | `auths-id` | `ValidationError::SignatureFailed` | Signature verification failed at sequence {sequence} |
-| [AUTHS-E4506](AUTHS-E4506.md) | `auths-id` | `ValidationError::NotInception` | First event must be inception |
-| [AUTHS-E4507](AUTHS-E4507.md) | `auths-id` | `ValidationError::EmptyKel` | Empty KEL |
-| [AUTHS-E4508](AUTHS-E4508.md) | `auths-id` | `ValidationError::MultipleInceptions` | Multiple inception events in KEL |
-| [AUTHS-E4509](AUTHS-E4509.md) | `auths-id` | `ValidationError::Serialization` | Serialization error: {0} |
-| [AUTHS-E4510](AUTHS-E4510.md) | `auths-id` | `ValidationError::MalformedSequence` | Malformed sequence number: {raw:?} |
 | [AUTHS-E4601](AUTHS-E4601.md) | `auths-id` | `KelError::Git` | Git error: {0} |
 | [AUTHS-E4602](AUTHS-E4602.md) | `auths-id` | `KelError::Serialization` | Serialization error: {0} |
 | [AUTHS-E4603](AUTHS-E4603.md) | `auths-id` | `KelError::NotFound` | KEL not found for prefix: {0} |
@@ -184,14 +174,6 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4605](AUTHS-E4605.md) | `auths-id` | `KelError::InvalidData` | Invalid data: {0} |
 | [AUTHS-E4606](AUTHS-E4606.md) | `auths-id` | `KelError::ChainIntegrity` | Chain integrity error: {0} |
 | [AUTHS-E4607](AUTHS-E4607.md) | `auths-id` | `KelError::ValidationFailed` | Validation failed: {0} |
-| [AUTHS-E4701](AUTHS-E4701.md) | `auths-id` | `RotationError::KeyGeneration` | Key generation failed: {0} |
-| [AUTHS-E4702](AUTHS-E4702.md) | `auths-id` | `RotationError::Kel` | KEL error: {0} |
-| [AUTHS-E4703](AUTHS-E4703.md) | `auths-id` | `RotationError::Storage` | Storage error: {0} |
-| [AUTHS-E4704](AUTHS-E4704.md) | `auths-id` | `RotationError::Validation` | Validation error: {0} |
-| [AUTHS-E4705](AUTHS-E4705.md) | `auths-id` | `RotationError::IdentityAbandoned` | Identity is abandoned (cannot rotate) |
-| [AUTHS-E4706](AUTHS-E4706.md) | `auths-id` | `RotationError::CommitmentMismatch` | Commitment mismatch: next key does not match previous commitment |
-| [AUTHS-E4707](AUTHS-E4707.md) | `auths-id` | `RotationError::Serialization` | Serialization error: {0} |
-| [AUTHS-E4708](AUTHS-E4708.md) | `auths-id` | `RotationError::InvalidKey` | Invalid key: {0} |
 | [AUTHS-E4801](AUTHS-E4801.md) | `auths-id` | `ResolveError::InvalidFormat` | Invalid DID format: {0} |
 | [AUTHS-E4802](AUTHS-E4802.md) | `auths-id` | `ResolveError::NotFound` | KEL not found for prefix: {0} |
 | [AUTHS-E4803](AUTHS-E4803.md) | `auths-id` | `ResolveError::Kel` | KEL error: {0} |
@@ -199,6 +181,17 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4805](AUTHS-E4805.md) | `auths-id` | `ResolveError::InvalidKeyEncoding` | Invalid key encoding: {0} |
 | [AUTHS-E4806](AUTHS-E4806.md) | `auths-id` | `ResolveError::NoCurrentKey` | No current key in identity |
 | [AUTHS-E4807](AUTHS-E4807.md) | `auths-id` | `ResolveError::UnknownKeyType` | Unknown key type: {0} |
+| [AUTHS-E4821](AUTHS-E4821.md) | `auths-id` | `RotationError::Kel` | KEL error: {0} |
+| [AUTHS-E4822](AUTHS-E4822.md) | `auths-id` | `RotationError::Validation` | Validation error: {0} |
+| [AUTHS-E4823](AUTHS-E4823.md) | `auths-id` | `RotationError::KeyGeneration` | Key generation failed: {0} |
+| [AUTHS-E4824](AUTHS-E4824.md) | `auths-id` | `RotationError::InvalidKey` | Invalid key: {0} |
+| [AUTHS-E4825](AUTHS-E4825.md) | `auths-id` | `RotationError::CommitmentMismatch` | Key commitment mismatch |
+| [AUTHS-E4826](AUTHS-E4826.md) | `auths-id` | `RotationError::IdentityAbandoned` | Identity is abandoned (empty next commitment) |
+| [AUTHS-E4827](AUTHS-E4827.md) | `auths-id` | `RotationError::Serialization` | Serialization error: {0} |
+| [AUTHS-E4828](AUTHS-E4828.md) | `auths-id` | `RotationError::Storage` | Storage error: {0} |
+| [AUTHS-E4829](AUTHS-E4829.md) | `auths-id` | `RotationError::RotationFailed` | Rotation failed: {0} |
+| [AUTHS-E4830](AUTHS-E4830.md) | `auths-id` | `RotationError::KeyNotFound` | Key not found: {0} |
+| [AUTHS-E4831](AUTHS-E4831.md) | `auths-id` | `RotationError::KeyDecryptionFailed` | Key decryption failed: {0} |
 | [AUTHS-E4851](AUTHS-E4851.md) | `auths-id` | `TenantIdError::InvalidLength` | must be 1–64 characters (got {0}) |
 | [AUTHS-E4852](AUTHS-E4852.md) | `auths-id` | `TenantIdError::InvalidCharacter` | contains disallowed character {0:?} (only [a-z0-9_-] allowed) |
 | [AUTHS-E4853](AUTHS-E4853.md) | `auths-id` | `TenantIdError::Reserved` | '{0}' is reserved |
@@ -224,6 +217,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4903](AUTHS-E4903.md) | `auths-id` | `InceptionError::Storage` | Storage error: {0} |
 | [AUTHS-E4904](AUTHS-E4904.md) | `auths-id` | `InceptionError::Validation` | Validation error: {0} |
 | [AUTHS-E4905](AUTHS-E4905.md) | `auths-id` | `InceptionError::Serialization` | Serialization error: {0} |
+| [AUTHS-E4906](AUTHS-E4906.md) | `auths-id` | `InceptionError::InvalidThreshold` | Invalid threshold {threshold} for key_count={key_count}: {reason} |
 | [AUTHS-E4951](AUTHS-E4951.md) | `auths-id` | `IncrementalError::Kel` | KEL error: {0} |
 | [AUTHS-E4952](AUTHS-E4952.md) | `auths-id` | `IncrementalError::ChainContinuity` | Chain continuity error: expected previous SAID {expected}, got {actual} |
 | [AUTHS-E4953](AUTHS-E4953.md) | `auths-id` | `IncrementalError::SequenceError` | Sequence error: expected {expected}, got {actual} |
@@ -236,11 +230,19 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4963](AUTHS-E4963.md) | `auths-id` | `AnchorError::Serialization` | Serialization error: {0} |
 | [AUTHS-E4964](AUTHS-E4964.md) | `auths-id` | `AnchorError::InvalidDid` | Invalid DID format: {0} |
 | [AUTHS-E4965](AUTHS-E4965.md) | `auths-id` | `AnchorError::NotFound` | KEL not found for prefix: {0} |
+| [AUTHS-E4966](AUTHS-E4966.md) | `auths-id` | `AnchorError::Signing` | Signing error: {0} |
+| [AUTHS-E4967](AUTHS-E4967.md) | `auths-id` | `AnchorError::IxnForbidden` | Identity cannot emit interaction events: {0} |
+| [AUTHS-E4968](AUTHS-E4968.md) | `auths-id` | `AnchorError::WitnessQuorumNotMet` | Witness quorum not met: {0} |
 | [AUTHS-E4971](AUTHS-E4971.md) | `auths-id` | `WitnessIntegrationError::Collection` | Receipt collection failed: {0} |
 | [AUTHS-E4972](AUTHS-E4972.md) | `auths-id` | `WitnessIntegrationError::Storage` | Receipt storage failed: {0} |
 | [AUTHS-E4973](AUTHS-E4973.md) | `auths-id` | `WitnessIntegrationError::Runtime` | Tokio runtime error: {0} |
-| [AUTHS-E4981](AUTHS-E4981.md) | `auths-id` | `CacheError::Io` | I/O error: {0} |
-| [AUTHS-E4982](AUTHS-E4982.md) | `auths-id` | `CacheError::Json` | JSON serialization error: {0} |
+| [AUTHS-E4974](AUTHS-E4974.md) | `auths-id` | `WitnessIntegrationError::QuorumNotMet` | witness quorum not met: {valid} valid receipt(s), need {required} |
+| [AUTHS-E4981](AUTHS-E4981.md) | `auths-id` | `CredentialRegistryError::ThresholdUnsupported` | issuer '{issuer}' is multi-signature (kt≥2); credential registry anchoring is single-author only |
+| [AUTHS-E4982](AUTHS-E4982.md) | `auths-id` | `CredentialRegistryError::Tel` | TEL event error: {0} |
+| [AUTHS-E4983](AUTHS-E4983.md) | `auths-id` | `CredentialRegistryError::Anchor` | KEL anchoring failed: {0} |
+| [AUTHS-E4984](AUTHS-E4984.md) | `auths-id` | `CredentialRegistryError::Storage` | registry storage error: {0} |
+| [AUTHS-E4986](AUTHS-E4986.md) | `auths-id` | `CacheError::Io` | I/O error: {0} |
+| [AUTHS-E4987](AUTHS-E4987.md) | `auths-id` | `CacheError::Json` | JSON serialization error: {0} |
 | [AUTHS-E4991](AUTHS-E4991.md) | `auths-id` | `HookError::Io` | IO error: {0} |
 | [AUTHS-E4992](AUTHS-E4992.md) | `auths-id` | `HookError::NotGitRepo` | Not a Git repository: {0} |
 | [AUTHS-E5001](AUTHS-E5001.md) | `auths-sdk` | `SetupError::IdentityAlreadyExists` | identity already exists: {did} |
@@ -252,6 +254,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5102](AUTHS-E5102.md) | `auths-sdk` | `DeviceError::DeviceNotFound` | device not found: {did} |
 | [AUTHS-E5103](AUTHS-E5103.md) | `auths-sdk` | `DeviceError::AttestationError` | attestation error: {0} |
 | [AUTHS-E5105](AUTHS-E5105.md) | `auths-sdk` | `DeviceError::DeviceDidMismatch` | device DID mismatch: expected {expected}, got {actual} |
+| [AUTHS-E5106](AUTHS-E5106.md) | `auths-sdk` | `DeviceError::DelegationError` | device delegation failed: {0} |
 | [AUTHS-E5201](AUTHS-E5201.md) | `auths-sdk` | `DeviceExtensionError::IdentityNotFound` | identity not found |
 | [AUTHS-E5202](AUTHS-E5202.md) | `auths-sdk` | `DeviceExtensionError::NoAttestationFound` | no attestation found for device {device_did} |
 | [AUTHS-E5203](AUTHS-E5203.md) | `auths-sdk` | `DeviceExtensionError::AlreadyRevoked` | device {device_did} is already revoked |
@@ -262,6 +265,13 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5304](AUTHS-E5304.md) | `auths-sdk` | `RotationError::KelHistoryFailed` | KEL history error: {0} |
 | [AUTHS-E5305](AUTHS-E5305.md) | `auths-sdk` | `RotationError::RotationFailed` | rotation failed: {0} |
 | [AUTHS-E5306](AUTHS-E5306.md) | `auths-sdk` | `RotationError::PartialRotation` | rotation event committed to KEL but keychain write failed — manual recovery required: {0} |
+| [AUTHS-E5307](AUTHS-E5307.md) | `auths-sdk` | `RotationError::HardwareKeyNotRotatable` | rotation requires a software-backed key; alias '{alias}' is hardware-backed (Secure Enclave) and cannot export the raw key material rotation needs |
+| [AUTHS-E5311](AUTHS-E5311.md) | `auths-sdk` | `AgentError::IdentityNotFound` | identity not found: {did} |
+| [AUTHS-E5312](AUTHS-E5312.md) | `auths-sdk` | `AgentError::AlreadyDelegated` | an agent key already exists under alias '{alias}' |
+| [AUTHS-E5313](AUTHS-E5313.md) | `auths-sdk` | `AgentError::DelegationError` | agent delegation failed: {0} |
+| [AUTHS-E5314](AUTHS-E5314.md) | `auths-sdk` | `AgentError::AgentNotFound` | agent not found: {did} |
+| [AUTHS-E5315](AUTHS-E5315.md) | `auths-sdk` | `AgentError::Revoked` | agent {did} is revoked |
+| [AUTHS-E5316](AUTHS-E5316.md) | `auths-sdk` | `AgentError::OutsideDelegatorScope` | requested capability '{capability}' exceeds the delegator's scope |
 | [AUTHS-E5401](AUTHS-E5401.md) | `auths-sdk` | `RegistrationError::AlreadyRegistered` | identity already registered at this registry |
 | [AUTHS-E5402](AUTHS-E5402.md) | `auths-sdk` | `RegistrationError::QuotaExceeded` | registration quota exceeded — try again later |
 | [AUTHS-E5403](AUTHS-E5403.md) | `auths-sdk` | `RegistrationError::InvalidDidFormat` | invalid DID format: {did} |
@@ -286,26 +296,36 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5608](AUTHS-E5608.md) | `auths-sdk` | `OrgError::Identity` | identity error: {0} |
 | [AUTHS-E5609](AUTHS-E5609.md) | `auths-sdk` | `OrgError::KeyStorage` | key storage error: {0} |
 | [AUTHS-E5610](AUTHS-E5610.md) | `auths-sdk` | `OrgError::Storage` | storage error: {0} |
+| [AUTHS-E5611](AUTHS-E5611.md) | `auths-sdk` | `OrgError::Anchor` | anchor error: {0} |
+| [AUTHS-E5612](AUTHS-E5612.md) | `auths-sdk` | `OrgError::OrgThresholdDelegationUnsupported` | organization '{org}' uses a multi-signature controller (kt≥2); KERI-native member delegation requires a single-signature (kt=1) org |
+| [AUTHS-E5613](AUTHS-E5613.md) | `auths-sdk` | `OrgError::MemberKeyExists` | a member key already exists under alias '{alias}' |
+| [AUTHS-E5614](AUTHS-E5614.md) | `auths-sdk` | `OrgError::Delegation` | member delegation failed: {0} |
+| [AUTHS-E5615](AUTHS-E5615.md) | `auths-sdk` | `OrgError::IdentityExists` | an identity already exists at {location}; refusing to create an organization over it |
+| [AUTHS-E5616](AUTHS-E5616.md) | `auths-sdk` | `OrgError::IdentityInit` | failed to initialize organization identity: {0} |
+| [AUTHS-E5617](AUTHS-E5617.md) | `auths-sdk` | `OrgError::Attestation` | failed to create admin attestation: {0} |
+| [AUTHS-E5618](AUTHS-E5618.md) | `auths-sdk` | `OrgError::MemberNotDelegable` | member '{did}' is not a delegated identifier of organization '{org}' |
+| [AUTHS-E5619](AUTHS-E5619.md) | `auths-sdk` | `OrgError::BundleIntegrity` | bundle integrity failure for '{id}': {reason} |
+| [AUTHS-E5620](AUTHS-E5620.md) | `auths-sdk` | `OrgError::BundleMissingMemberKel` | bundle is missing the KEL for delegated member '{member}' |
+| [AUTHS-E5621](AUTHS-E5621.md) | `auths-sdk` | `OrgError::BundleMissingDelegatorSeal` | member '{member}' has no delegation seal in the org KEL |
+| [AUTHS-E5622](AUTHS-E5622.md) | `auths-sdk` | `OrgError::PolicyCompile` | invalid org policy: {reason} |
+| [AUTHS-E5623](AUTHS-E5623.md) | `auths-sdk` | `OrgError::PolicyBlobMissing` | org policy blob for hash '{hash}' is missing from storage |
+| [AUTHS-E5624](AUTHS-E5624.md) | `auths-sdk` | `OrgError::PolicyIntegrity` | org policy integrity failure: KEL committed hash '{expected}' but the stored blob hashes to '{actual}' |
+| [AUTHS-E5625](AUTHS-E5625.md) | `auths-sdk` | `OrgError::ChainCycle` | delegation chain cycle detected at '{did}' |
+| [AUTHS-E5626](AUTHS-E5626.md) | `auths-sdk` | `OrgError::ChainTooDeep` | delegation chain exceeds the maximum depth of {max} hops |
+| [AUTHS-E5627](AUTHS-E5627.md) | `auths-sdk` | `OrgError::ChainBrokenHop` | delegation chain is broken: no KEL found for '{did}' |
 | [AUTHS-E5701](AUTHS-E5701.md) | `auths-sdk` | `ApprovalError::NotApprovalRequired` | decision is not RequiresApproval |
 | [AUTHS-E5702](AUTHS-E5702.md) | `auths-sdk` | `ApprovalError::RequestNotFound` | approval request not found: {hash} |
 | [AUTHS-E5703](AUTHS-E5703.md) | `auths-sdk` | `ApprovalError::RequestExpired` | approval request expired at {expires_at} |
 | [AUTHS-E5704](AUTHS-E5704.md) | `auths-sdk` | `ApprovalError::ApprovalAlreadyUsed` | approval already used (JTI: {jti}) |
 | [AUTHS-E5705](AUTHS-E5705.md) | `auths-sdk` | `ApprovalError::PartialApproval` | approval partially applied — attestation stored but nonce/cleanup failed: {0} |
 | [AUTHS-E5706](AUTHS-E5706.md) | `auths-sdk` | `ApprovalError::ApprovalStorage` | storage error: {0} |
-| [AUTHS-E5801](AUTHS-E5801.md) | `auths-sdk` | `AllowedSignersError::InvalidEmail` | invalid email address: {0} |
-| [AUTHS-E5802](AUTHS-E5802.md) | `auths-sdk` | `AllowedSignersError::InvalidKey` | invalid SSH key: {0} |
-| [AUTHS-E5803](AUTHS-E5803.md) | `auths-sdk` | `AllowedSignersError::FileRead` | failed to read {path}: {source} |
-| [AUTHS-E5804](AUTHS-E5804.md) | `auths-sdk` | `AllowedSignersError::FileWrite` | failed to write {path}: {source} |
-| [AUTHS-E5805](AUTHS-E5805.md) | `auths-sdk` | `AllowedSignersError::ParseError` | line {line}: {detail} |
-| [AUTHS-E5806](AUTHS-E5806.md) | `auths-sdk` | `AllowedSignersError::DuplicatePrincipal` | principal already exists: {0} |
-| [AUTHS-E5807](AUTHS-E5807.md) | `auths-sdk` | `AllowedSignersError::AttestationEntryProtected` | cannot remove attestation-managed entry: {0} |
-| [AUTHS-E5808](AUTHS-E5808.md) | `auths-sdk` | `AllowedSignersError::Storage` | attestation storage error: {0} |
 | [AUTHS-E5850](AUTHS-E5850.md) | `auths-sdk` | `ArtifactSigningError::IdentityNotFound` | identity not found in configured identity storage |
 | [AUTHS-E5851](AUTHS-E5851.md) | `auths-sdk` | `ArtifactSigningError::KeyResolutionFailed` | key resolution failed: {0} |
 | [AUTHS-E5852](AUTHS-E5852.md) | `auths-sdk` | `ArtifactSigningError::KeyDecryptionFailed` | key decryption failed: {0} |
 | [AUTHS-E5853](AUTHS-E5853.md) | `auths-sdk` | `ArtifactSigningError::DigestFailed` | digest computation failed: {0} |
 | [AUTHS-E5854](AUTHS-E5854.md) | `auths-sdk` | `ArtifactSigningError::AttestationFailed` | attestation creation failed: {0} |
 | [AUTHS-E5855](AUTHS-E5855.md) | `auths-sdk` | `ArtifactSigningError::ResignFailed` | attestation re-signing failed: {0} |
+| [AUTHS-E5856](AUTHS-E5856.md) | `auths-sdk` | `ArtifactSigningError::InvalidCommitSha` | invalid commit SHA: {0} (expected 40 or 64 hex characters) |
 | [AUTHS-E5901](AUTHS-E5901.md) | `auths-sdk` | `SigningError::IdentityFrozen` | identity is frozen: {0} |
 | [AUTHS-E5902](AUTHS-E5902.md) | `auths-sdk` | `SigningError::KeyResolution` | key resolution failed: {0} |
 | [AUTHS-E5903](AUTHS-E5903.md) | `auths-sdk` | `SigningError::SigningFailed` | signing operation failed: {0} |
@@ -319,8 +339,12 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E6001](AUTHS-E6001.md) | `auths-sdk` | `AuthChallengeError::EmptyNonce` | nonce must not be empty |
 | [AUTHS-E6002](AUTHS-E6002.md) | `auths-sdk` | `AuthChallengeError::EmptyDomain` | domain must not be empty |
 | [AUTHS-E6003](AUTHS-E6003.md) | `auths-sdk` | `AuthChallengeError::Canonicalization` | canonical JSON serialization failed: {0} |
-| [AUTHS-E6004](AUTHS-E6004.md) | `auths-sdk` | `AuthChallengeError::SigningFailed` | signing failed: {0} |
-
+| [AUTHS-E6101](AUTHS-E6101.md) | `auths-sdk` | `CredentialError::IssueeNotFound` | issuee identity not found (no KEL): {did} |
+| [AUTHS-E6102](AUTHS-E6102.md) | `auths-sdk` | `CredentialError::RegistryError` | credential registry error: {0} |
+| [AUTHS-E6103](AUTHS-E6103.md) | `auths-sdk` | `CredentialError::AlreadyRevoked` | credential already revoked: {said} |
+| [AUTHS-E6104](AUTHS-E6104.md) | `auths-sdk` | `CredentialError::KtThresholdUnsupported` | issuer is multi-signature (kt≥2); credential anchoring is single-author only |
+| [AUTHS-E6105](AUTHS-E6105.md) | `auths-sdk` | `CredentialError::SchemaUnknown` | capability schema unknown or uncomputable |
+| [AUTHS-E6106](AUTHS-E6106.md) | `auths-sdk` | `CredentialError::StaleOrUnresolvable` | credential status is stale or unresolvable: {reason} |
 | [AUTHS-E8001](AUTHS-E8001.md) | `auths-oidc-port` | `OidcError::JwtDecode` | JWT decode failed: {0} |
 | [AUTHS-E8002](AUTHS-E8002.md) | `auths-oidc-port` | `OidcError::SignatureVerificationFailed` | signature verification failed |
 | [AUTHS-E8003](AUTHS-E8003.md) | `auths-oidc-port` | `OidcError::ClaimsValidationFailed` | claim validation failed - {claim}: {reason} |
@@ -329,3 +353,10 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E8006](AUTHS-E8006.md) | `auths-oidc-port` | `OidcError::AlgorithmMismatch` | algorithm mismatch: expected {expected}, got {got} |
 | [AUTHS-E8007](AUTHS-E8007.md) | `auths-oidc-port` | `OidcError::ClockSkewExceeded` | token expired (exp: {token_exp}, now: {current_time}, leeway: {leeway}s) |
 | [AUTHS-E8008](AUTHS-E8008.md) | `auths-oidc-port` | `OidcError::TokenReplayDetected` | token replay detected (jti: {0}) |
+| [AUTHS-E9001](AUTHS-E9001.md) | `auths-core` | `LogError::SubmissionRejected` | submission rejected: {reason} |
+| [AUTHS-E9002](AUTHS-E9002.md) | `auths-core` | `LogError::NetworkError` | network error: {0} |
+| [AUTHS-E9003](AUTHS-E9003.md) | `auths-core` | `LogError::RateLimited` | rate limited, retry after {retry_after_secs}s |
+| [AUTHS-E9004](AUTHS-E9004.md) | `auths-core` | `LogError::InvalidResponse` | invalid response: {0} |
+| [AUTHS-E9005](AUTHS-E9005.md) | `auths-core` | `LogError::EntryNotFound` | entry not found |
+| [AUTHS-E9006](AUTHS-E9006.md) | `auths-core` | `LogError::ConsistencyViolation` | consistency violation: {0} |
+| [AUTHS-E9007](AUTHS-E9007.md) | `auths-core` | `LogError::Unavailable` | log unavailable: {0} |

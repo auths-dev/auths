@@ -1,6 +1,7 @@
 # AUTHS-E5102
 
 **Crate:** `auths-sdk`
+
 **Type:** `DeviceError::DeviceNotFound`
 
 ## Message

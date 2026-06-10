@@ -1,6 +1,7 @@
 # AUTHS-E5601
 
 **Crate:** `auths-sdk`
+
 **Type:** `OrgError::AdminNotFound`
 
 ## Message

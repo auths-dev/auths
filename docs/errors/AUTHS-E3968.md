@@ -1,6 +1,7 @@
 # AUTHS-E3968
 
 **Crate:** `auths-core`
+
 **Type:** `NamespaceVerifyError::RateLimited`
 
 ## Message

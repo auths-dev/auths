@@ -1,6 +1,7 @@
 # AUTHS-E4206
 
 **Crate:** `auths-id`
+
 **Type:** `InitError::Registry`
 
 ## Message

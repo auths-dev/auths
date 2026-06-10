@@ -1,6 +1,7 @@
 # AUTHS-E1202
 
-**Crate:** `auths-crypto`
+**Crate:** `auths-keri`
+
 **Type:** `KeriDecodeError::EmptyInput`
 
 ## Message

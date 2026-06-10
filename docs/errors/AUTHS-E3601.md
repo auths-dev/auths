@@ -1,6 +1,7 @@
 # AUTHS-E3601
 
 **Crate:** `auths-core`
+
 **Type:** `NetworkError::Unreachable`
 
 ## Message

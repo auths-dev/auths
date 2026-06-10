@@ -1,6 +1,7 @@
 # AUTHS-E4869
 
 **Crate:** `auths-id`
+
 **Type:** `RegistryError::SaidMismatch`
 
 ## Message

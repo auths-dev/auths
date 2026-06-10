@@ -1,6 +1,7 @@
 # AUTHS-E5105
 
 **Crate:** `auths-sdk`
+
 **Type:** `DeviceError::DeviceDidMismatch`
 
 ## Message

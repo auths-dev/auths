@@ -1,6 +1,7 @@
 # AUTHS-E4991
 
 **Crate:** `auths-id`
+
 **Type:** `HookError::Io`
 
 ## Message

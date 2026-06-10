@@ -1,6 +1,7 @@
 # AUTHS-E2109
 
 **Crate:** `auths-verifier`
+
 **Type:** `CommitVerificationError::CommitParseFailed`
 
 ## Message

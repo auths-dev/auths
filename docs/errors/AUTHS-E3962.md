@@ -1,6 +1,7 @@
 # AUTHS-E3962
 
 **Crate:** `auths-core`
+
 **Type:** `NamespaceVerifyError::PackageNotFound`
 
 ## Message

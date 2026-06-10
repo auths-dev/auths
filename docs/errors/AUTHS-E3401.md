@@ -1,6 +1,7 @@
 # AUTHS-E3401
 
-**Crate:** `auths-core`
+**Crate:** `auths-keri`
+
 **Type:** `WitnessError::Network`
 
 ## Message

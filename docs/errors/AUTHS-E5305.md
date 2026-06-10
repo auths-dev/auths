@@ -1,6 +1,7 @@
 # AUTHS-E5305
 
 **Crate:** `auths-sdk`
+
 **Type:** `RotationError::RotationFailed`
 
 ## Message

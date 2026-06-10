@@ -1,6 +1,7 @@
 # AUTHS-E3402
 
-**Crate:** `auths-core`
+**Crate:** `auths-keri`
+
 **Type:** `WitnessError::Duplicity`
 
 ## Message

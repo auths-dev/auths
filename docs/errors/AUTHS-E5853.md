@@ -1,6 +1,7 @@
 # AUTHS-E5853
 
 **Crate:** `auths-sdk`
+
 **Type:** `ArtifactSigningError::DigestFailed`
 
 ## Message

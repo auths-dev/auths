@@ -1,6 +1,7 @@
 # AUTHS-E3010
 
 **Crate:** `auths-core`
+
 **Type:** `AgentError::GitError`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E5554
 
 **Crate:** `auths-sdk`
+
 **Type:** `TrustError::TofuRequiresInteraction`
 
 ## Message

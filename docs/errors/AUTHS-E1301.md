@@ -1,6 +1,7 @@
 # AUTHS-E1301
 
 **Crate:** `auths-crypto`
+
 **Type:** `SshKeyError::InvalidFormat`
 
 ## Message

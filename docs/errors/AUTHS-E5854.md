@@ -1,6 +1,7 @@
 # AUTHS-E5854
 
 **Crate:** `auths-sdk`
+
 **Type:** `ArtifactSigningError::AttestationFailed`
 
 ## Message

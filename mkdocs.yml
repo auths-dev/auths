@@ -206,10 +206,12 @@ nav:
           - "AUTHS-E1102": errors/AUTHS-E1102.md
           - "AUTHS-E1103": errors/AUTHS-E1103.md
           - "AUTHS-E1104": errors/AUTHS-E1104.md
+      - auths-keri:
           - "AUTHS-E1201": errors/AUTHS-E1201.md
           - "AUTHS-E1202": errors/AUTHS-E1202.md
           - "AUTHS-E1203": errors/AUTHS-E1203.md
           - "AUTHS-E1204": errors/AUTHS-E1204.md
+      - auths-crypto:
           - "AUTHS-E1301": errors/AUTHS-E1301.md
           - "AUTHS-E1302": errors/AUTHS-E1302.md
       - auths-verifier:
@@ -231,6 +233,10 @@ nav:
           - "AUTHS-E2016": errors/AUTHS-E2016.md
           - "AUTHS-E2017": errors/AUTHS-E2017.md
           - "AUTHS-E2018": errors/AUTHS-E2018.md
+          - "AUTHS-E2019": errors/AUTHS-E2019.md
+          - "AUTHS-E2020": errors/AUTHS-E2020.md
+          - "AUTHS-E2021": errors/AUTHS-E2021.md
+          - "AUTHS-E2022": errors/AUTHS-E2022.md
           - "AUTHS-E2101": errors/AUTHS-E2101.md
           - "AUTHS-E2102": errors/AUTHS-E2102.md
           - "AUTHS-E2103": errors/AUTHS-E2103.md
@@ -265,6 +271,7 @@ nav:
           - "AUTHS-E3022": errors/AUTHS-E3022.md
           - "AUTHS-E3023": errors/AUTHS-E3023.md
           - "AUTHS-E3024": errors/AUTHS-E3024.md
+          - "AUTHS-E3025": errors/AUTHS-E3025.md
           - "AUTHS-E3101": errors/AUTHS-E3101.md
           - "AUTHS-E3102": errors/AUTHS-E3102.md
           - "AUTHS-E3103": errors/AUTHS-E3103.md
@@ -284,6 +291,7 @@ nav:
           - "AUTHS-E3303": errors/AUTHS-E3303.md
           - "AUTHS-E3304": errors/AUTHS-E3304.md
           - "AUTHS-E3305": errors/AUTHS-E3305.md
+      - auths-keri:
           - "AUTHS-E3401": errors/AUTHS-E3401.md
           - "AUTHS-E3402": errors/AUTHS-E3402.md
           - "AUTHS-E3403": errors/AUTHS-E3403.md
@@ -293,6 +301,7 @@ nav:
           - "AUTHS-E3407": errors/AUTHS-E3407.md
           - "AUTHS-E3408": errors/AUTHS-E3408.md
           - "AUTHS-E3409": errors/AUTHS-E3409.md
+      - auths-core:
           - "AUTHS-E3501": errors/AUTHS-E3501.md
           - "AUTHS-E3502": errors/AUTHS-E3502.md
           - "AUTHS-E3503": errors/AUTHS-E3503.md
@@ -347,11 +356,6 @@ nav:
           - "AUTHS-E4206": errors/AUTHS-E4206.md
           - "AUTHS-E4207": errors/AUTHS-E4207.md
           - "AUTHS-E4208": errors/AUTHS-E4208.md
-          - "AUTHS-E4301": errors/AUTHS-E4301.md
-          - "AUTHS-E4302": errors/AUTHS-E4302.md
-          - "AUTHS-E4303": errors/AUTHS-E4303.md
-          - "AUTHS-E4304": errors/AUTHS-E4304.md
-          - "AUTHS-E4305": errors/AUTHS-E4305.md
           - "AUTHS-E4401": errors/AUTHS-E4401.md
           - "AUTHS-E4402": errors/AUTHS-E4402.md
           - "AUTHS-E4403": errors/AUTHS-E4403.md
@@ -363,16 +367,6 @@ nav:
           - "AUTHS-E4409": errors/AUTHS-E4409.md
           - "AUTHS-E4410": errors/AUTHS-E4410.md
           - "AUTHS-E4411": errors/AUTHS-E4411.md
-          - "AUTHS-E4501": errors/AUTHS-E4501.md
-          - "AUTHS-E4502": errors/AUTHS-E4502.md
-          - "AUTHS-E4503": errors/AUTHS-E4503.md
-          - "AUTHS-E4504": errors/AUTHS-E4504.md
-          - "AUTHS-E4505": errors/AUTHS-E4505.md
-          - "AUTHS-E4506": errors/AUTHS-E4506.md
-          - "AUTHS-E4507": errors/AUTHS-E4507.md
-          - "AUTHS-E4508": errors/AUTHS-E4508.md
-          - "AUTHS-E4509": errors/AUTHS-E4509.md
-          - "AUTHS-E4510": errors/AUTHS-E4510.md
           - "AUTHS-E4601": errors/AUTHS-E4601.md
           - "AUTHS-E4602": errors/AUTHS-E4602.md
           - "AUTHS-E4603": errors/AUTHS-E4603.md
@@ -380,14 +374,6 @@ nav:
           - "AUTHS-E4605": errors/AUTHS-E4605.md
           - "AUTHS-E4606": errors/AUTHS-E4606.md
           - "AUTHS-E4607": errors/AUTHS-E4607.md
-          - "AUTHS-E4701": errors/AUTHS-E4701.md
-          - "AUTHS-E4702": errors/AUTHS-E4702.md
-          - "AUTHS-E4703": errors/AUTHS-E4703.md
-          - "AUTHS-E4704": errors/AUTHS-E4704.md
-          - "AUTHS-E4705": errors/AUTHS-E4705.md
-          - "AUTHS-E4706": errors/AUTHS-E4706.md
-          - "AUTHS-E4707": errors/AUTHS-E4707.md
-          - "AUTHS-E4708": errors/AUTHS-E4708.md
           - "AUTHS-E4801": errors/AUTHS-E4801.md
           - "AUTHS-E4802": errors/AUTHS-E4802.md
           - "AUTHS-E4803": errors/AUTHS-E4803.md
@@ -395,6 +381,17 @@ nav:
           - "AUTHS-E4805": errors/AUTHS-E4805.md
           - "AUTHS-E4806": errors/AUTHS-E4806.md
           - "AUTHS-E4807": errors/AUTHS-E4807.md
+          - "AUTHS-E4821": errors/AUTHS-E4821.md
+          - "AUTHS-E4822": errors/AUTHS-E4822.md
+          - "AUTHS-E4823": errors/AUTHS-E4823.md
+          - "AUTHS-E4824": errors/AUTHS-E4824.md
+          - "AUTHS-E4825": errors/AUTHS-E4825.md
+          - "AUTHS-E4826": errors/AUTHS-E4826.md
+          - "AUTHS-E4827": errors/AUTHS-E4827.md
+          - "AUTHS-E4828": errors/AUTHS-E4828.md
+          - "AUTHS-E4829": errors/AUTHS-E4829.md
+          - "AUTHS-E4830": errors/AUTHS-E4830.md
+          - "AUTHS-E4831": errors/AUTHS-E4831.md
           - "AUTHS-E4851": errors/AUTHS-E4851.md
           - "AUTHS-E4852": errors/AUTHS-E4852.md
           - "AUTHS-E4853": errors/AUTHS-E4853.md
@@ -420,6 +417,7 @@ nav:
           - "AUTHS-E4903": errors/AUTHS-E4903.md
           - "AUTHS-E4904": errors/AUTHS-E4904.md
           - "AUTHS-E4905": errors/AUTHS-E4905.md
+          - "AUTHS-E4906": errors/AUTHS-E4906.md
           - "AUTHS-E4951": errors/AUTHS-E4951.md
           - "AUTHS-E4952": errors/AUTHS-E4952.md
           - "AUTHS-E4953": errors/AUTHS-E4953.md
@@ -432,11 +430,19 @@ nav:
           - "AUTHS-E4963": errors/AUTHS-E4963.md
           - "AUTHS-E4964": errors/AUTHS-E4964.md
           - "AUTHS-E4965": errors/AUTHS-E4965.md
+          - "AUTHS-E4966": errors/AUTHS-E4966.md
+          - "AUTHS-E4967": errors/AUTHS-E4967.md
+          - "AUTHS-E4968": errors/AUTHS-E4968.md
           - "AUTHS-E4971": errors/AUTHS-E4971.md
           - "AUTHS-E4972": errors/AUTHS-E4972.md
           - "AUTHS-E4973": errors/AUTHS-E4973.md
+          - "AUTHS-E4974": errors/AUTHS-E4974.md
           - "AUTHS-E4981": errors/AUTHS-E4981.md
           - "AUTHS-E4982": errors/AUTHS-E4982.md
+          - "AUTHS-E4983": errors/AUTHS-E4983.md
+          - "AUTHS-E4984": errors/AUTHS-E4984.md
+          - "AUTHS-E4986": errors/AUTHS-E4986.md
+          - "AUTHS-E4987": errors/AUTHS-E4987.md
           - "AUTHS-E4991": errors/AUTHS-E4991.md
           - "AUTHS-E4992": errors/AUTHS-E4992.md
       - auths-sdk:
@@ -449,6 +455,7 @@ nav:
           - "AUTHS-E5102": errors/AUTHS-E5102.md
           - "AUTHS-E5103": errors/AUTHS-E5103.md
           - "AUTHS-E5105": errors/AUTHS-E5105.md
+          - "AUTHS-E5106": errors/AUTHS-E5106.md
           - "AUTHS-E5201": errors/AUTHS-E5201.md
           - "AUTHS-E5202": errors/AUTHS-E5202.md
           - "AUTHS-E5203": errors/AUTHS-E5203.md
@@ -459,6 +466,13 @@ nav:
           - "AUTHS-E5304": errors/AUTHS-E5304.md
           - "AUTHS-E5305": errors/AUTHS-E5305.md
           - "AUTHS-E5306": errors/AUTHS-E5306.md
+          - "AUTHS-E5307": errors/AUTHS-E5307.md
+          - "AUTHS-E5311": errors/AUTHS-E5311.md
+          - "AUTHS-E5312": errors/AUTHS-E5312.md
+          - "AUTHS-E5313": errors/AUTHS-E5313.md
+          - "AUTHS-E5314": errors/AUTHS-E5314.md
+          - "AUTHS-E5315": errors/AUTHS-E5315.md
+          - "AUTHS-E5316": errors/AUTHS-E5316.md
           - "AUTHS-E5401": errors/AUTHS-E5401.md
           - "AUTHS-E5402": errors/AUTHS-E5402.md
           - "AUTHS-E5403": errors/AUTHS-E5403.md
@@ -483,26 +497,36 @@ nav:
           - "AUTHS-E5608": errors/AUTHS-E5608.md
           - "AUTHS-E5609": errors/AUTHS-E5609.md
           - "AUTHS-E5610": errors/AUTHS-E5610.md
+          - "AUTHS-E5611": errors/AUTHS-E5611.md
+          - "AUTHS-E5612": errors/AUTHS-E5612.md
+          - "AUTHS-E5613": errors/AUTHS-E5613.md
+          - "AUTHS-E5614": errors/AUTHS-E5614.md
+          - "AUTHS-E5615": errors/AUTHS-E5615.md
+          - "AUTHS-E5616": errors/AUTHS-E5616.md
+          - "AUTHS-E5617": errors/AUTHS-E5617.md
+          - "AUTHS-E5618": errors/AUTHS-E5618.md
+          - "AUTHS-E5619": errors/AUTHS-E5619.md
+          - "AUTHS-E5620": errors/AUTHS-E5620.md
+          - "AUTHS-E5621": errors/AUTHS-E5621.md
+          - "AUTHS-E5622": errors/AUTHS-E5622.md
+          - "AUTHS-E5623": errors/AUTHS-E5623.md
+          - "AUTHS-E5624": errors/AUTHS-E5624.md
+          - "AUTHS-E5625": errors/AUTHS-E5625.md
+          - "AUTHS-E5626": errors/AUTHS-E5626.md
+          - "AUTHS-E5627": errors/AUTHS-E5627.md
           - "AUTHS-E5701": errors/AUTHS-E5701.md
           - "AUTHS-E5702": errors/AUTHS-E5702.md
           - "AUTHS-E5703": errors/AUTHS-E5703.md
           - "AUTHS-E5704": errors/AUTHS-E5704.md
           - "AUTHS-E5705": errors/AUTHS-E5705.md
           - "AUTHS-E5706": errors/AUTHS-E5706.md
-          - "AUTHS-E5801": errors/AUTHS-E5801.md
-          - "AUTHS-E5802": errors/AUTHS-E5802.md
-          - "AUTHS-E5803": errors/AUTHS-E5803.md
-          - "AUTHS-E5804": errors/AUTHS-E5804.md
-          - "AUTHS-E5805": errors/AUTHS-E5805.md
-          - "AUTHS-E5806": errors/AUTHS-E5806.md
-          - "AUTHS-E5807": errors/AUTHS-E5807.md
-          - "AUTHS-E5808": errors/AUTHS-E5808.md
           - "AUTHS-E5850": errors/AUTHS-E5850.md
           - "AUTHS-E5851": errors/AUTHS-E5851.md
           - "AUTHS-E5852": errors/AUTHS-E5852.md
           - "AUTHS-E5853": errors/AUTHS-E5853.md
           - "AUTHS-E5854": errors/AUTHS-E5854.md
           - "AUTHS-E5855": errors/AUTHS-E5855.md
+          - "AUTHS-E5856": errors/AUTHS-E5856.md
           - "AUTHS-E5901": errors/AUTHS-E5901.md
           - "AUTHS-E5902": errors/AUTHS-E5902.md
           - "AUTHS-E5903": errors/AUTHS-E5903.md
@@ -516,7 +540,12 @@ nav:
           - "AUTHS-E6001": errors/AUTHS-E6001.md
           - "AUTHS-E6002": errors/AUTHS-E6002.md
           - "AUTHS-E6003": errors/AUTHS-E6003.md
-          - "AUTHS-E6004": errors/AUTHS-E6004.md
+          - "AUTHS-E6101": errors/AUTHS-E6101.md
+          - "AUTHS-E6102": errors/AUTHS-E6102.md
+          - "AUTHS-E6103": errors/AUTHS-E6103.md
+          - "AUTHS-E6104": errors/AUTHS-E6104.md
+          - "AUTHS-E6105": errors/AUTHS-E6105.md
+          - "AUTHS-E6106": errors/AUTHS-E6106.md
       - auths-oidc-port:
           - "AUTHS-E8001": errors/AUTHS-E8001.md
           - "AUTHS-E8002": errors/AUTHS-E8002.md
@@ -526,6 +555,14 @@ nav:
           - "AUTHS-E8006": errors/AUTHS-E8006.md
           - "AUTHS-E8007": errors/AUTHS-E8007.md
           - "AUTHS-E8008": errors/AUTHS-E8008.md
+      - auths-core:
+          - "AUTHS-E9001": errors/AUTHS-E9001.md
+          - "AUTHS-E9002": errors/AUTHS-E9002.md
+          - "AUTHS-E9003": errors/AUTHS-E9003.md
+          - "AUTHS-E9004": errors/AUTHS-E9004.md
+          - "AUTHS-E9005": errors/AUTHS-E9005.md
+          - "AUTHS-E9006": errors/AUTHS-E9006.md
+          - "AUTHS-E9007": errors/AUTHS-E9007.md
   # --- END ERROR CODES ---
   - Contributing:
       - Getting Started:

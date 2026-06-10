@@ -1,6 +1,7 @@
 # AUTHS-E4806
 
 **Crate:** `auths-id`
+
 **Type:** `ResolveError::NoCurrentKey`
 
 ## Message

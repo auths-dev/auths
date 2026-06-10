@@ -1,6 +1,7 @@
 # AUTHS-E4410
 
 **Crate:** `auths-id`
+
 **Type:** `StorageError::CasConflict`
 
 ## Message

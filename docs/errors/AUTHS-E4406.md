@@ -1,6 +1,7 @@
 # AUTHS-E4406
 
 **Crate:** `auths-id`
+
 **Type:** `IdentityError::KeyStorage`
 
 ## Message

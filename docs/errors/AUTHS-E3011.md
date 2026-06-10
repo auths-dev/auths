@@ -1,6 +1,7 @@
 # AUTHS-E3011
 
 **Crate:** `auths-core`
+
 **Type:** `AgentError::InvalidInput`
 
 ## Message

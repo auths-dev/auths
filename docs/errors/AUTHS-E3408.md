@@ -1,6 +1,7 @@
 # AUTHS-E3408
 
-**Crate:** `auths-core`
+**Crate:** `auths-keri`
+
 **Type:** `WitnessError::Storage`
 
 ## Message

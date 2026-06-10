@@ -1,6 +1,7 @@
 # AUTHS-E5609
 
 **Crate:** `auths-sdk`
+
 **Type:** `OrgError::KeyStorage`
 
 ## Message

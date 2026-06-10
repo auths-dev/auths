@@ -1,6 +1,7 @@
 # AUTHS-E5552
 
 **Crate:** `auths-sdk`
+
 **Type:** `TrustError::KeyResolutionFailed`
 
 ## Message

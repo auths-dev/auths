@@ -1,6 +1,7 @@
 # AUTHS-E5201
 
 **Crate:** `auths-sdk`
+
 **Type:** `DeviceExtensionError::IdentityNotFound`
 
 ## Message

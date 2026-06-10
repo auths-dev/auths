@@ -1,6 +1,7 @@
 # AUTHS-E4867
 
 **Crate:** `auths-id`
+
 **Type:** `RegistryError::Serialization`
 
 ## Message

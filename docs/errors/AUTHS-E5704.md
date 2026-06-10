@@ -1,6 +1,7 @@
 # AUTHS-E5704
 
 **Crate:** `auths-sdk`
+
 **Type:** `ApprovalError::ApprovalAlreadyUsed`
 
 ## Message

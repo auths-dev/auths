@@ -1,6 +1,7 @@
 # AUTHS-E5906
 
 **Crate:** `auths-sdk`
+
 **Type:** `SigningError::AgentUnavailable`
 
 ## Message

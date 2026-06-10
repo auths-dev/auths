@@ -1,6 +1,7 @@
 # AUTHS-E5405
 
 **Crate:** `auths-sdk`
+
 **Type:** `RegistrationError::RegistryReadError`
 
 ## Message

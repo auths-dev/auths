@@ -73,13 +73,13 @@ impl From<auths_core::AgentError> for AgentError {
 impl AuthsErrorInfo for AgentError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::IdentityNotFound { .. } => "AUTHS-E5301",
-            Self::AlreadyDelegated { .. } => "AUTHS-E5302",
+            Self::IdentityNotFound { .. } => "AUTHS-E5311",
+            Self::AlreadyDelegated { .. } => "AUTHS-E5312",
             Self::CryptoError(e) => e.error_code(),
-            Self::DelegationError(_) => "AUTHS-E5303",
-            Self::AgentNotFound { .. } => "AUTHS-E5304",
-            Self::Revoked { .. } => "AUTHS-E5305",
-            Self::OutsideDelegatorScope { .. } => "AUTHS-E5306",
+            Self::DelegationError(_) => "AUTHS-E5313",
+            Self::AgentNotFound { .. } => "AUTHS-E5314",
+            Self::Revoked { .. } => "AUTHS-E5315",
+            Self::OutsideDelegatorScope { .. } => "AUTHS-E5316",
         }
     }
 

@@ -1,8 +1,9 @@
 # AUTHS-E4982
 
 **Crate:** `auths-id`
-**Type:** `CacheError::Json`
+
+**Type:** `CredentialRegistryError::Tel`
 
 ## Message
 
-JSON serialization error: {0}
+TEL event error: {0}

@@ -1,6 +1,7 @@
 # AUTHS-E3504
 
 **Crate:** `auths-core`
+
 **Type:** `StorageError::Io`
 
 ## Message

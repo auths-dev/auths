@@ -1,6 +1,7 @@
 # AUTHS-E3406
 
-**Crate:** `auths-core`
+**Crate:** `auths-keri`
+
 **Type:** `WitnessError::InsufficientReceipts`
 
 ## Message

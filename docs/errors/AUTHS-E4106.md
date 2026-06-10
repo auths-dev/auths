@@ -1,6 +1,7 @@
 # AUTHS-E4106
 
 **Crate:** `auths-id`
+
 **Type:** `StorageError::SchemaValidation`
 
 ## Message

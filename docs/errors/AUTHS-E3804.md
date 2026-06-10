@@ -1,6 +1,7 @@
 # AUTHS-E3804
 
 **Crate:** `auths-core`
+
 **Type:** `PlatformError::ExpiredToken`
 
 ## Message

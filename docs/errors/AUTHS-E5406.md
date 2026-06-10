@@ -1,6 +1,7 @@
 # AUTHS-E5406
 
 **Crate:** `auths-sdk`
+
 **Type:** `RegistrationError::SerializationError`
 
 ## Message

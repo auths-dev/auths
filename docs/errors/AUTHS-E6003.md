@@ -1,6 +1,7 @@
 # AUTHS-E6003
 
 **Crate:** `auths-sdk`
+
 **Type:** `AuthChallengeError::Canonicalization`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E5101
 
 **Crate:** `auths-sdk`
+
 **Type:** `DeviceError::IdentityNotFound`
 
 ## Message

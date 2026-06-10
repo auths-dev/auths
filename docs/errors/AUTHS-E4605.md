@@ -1,6 +1,7 @@
 # AUTHS-E4605
 
 **Crate:** `auths-id`
+
 **Type:** `KelError::InvalidData`
 
 ## Message

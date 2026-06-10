@@ -1,6 +1,7 @@
 # AUTHS-E2105
 
 **Crate:** `auths-verifier`
+
 **Type:** `CommitVerificationError::NamespaceMismatch`
 
 ## Message

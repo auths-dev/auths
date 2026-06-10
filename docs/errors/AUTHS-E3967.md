@@ -1,6 +1,7 @@
 # AUTHS-E3967
 
 **Crate:** `auths-core`
+
 **Type:** `NamespaceVerifyError::NetworkError`
 
 ## Message

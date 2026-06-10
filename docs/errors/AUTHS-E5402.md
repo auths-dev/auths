@@ -1,6 +1,7 @@
 # AUTHS-E5402
 
 **Crate:** `auths-sdk`
+
 **Type:** `RegistrationError::QuotaExceeded`
 
 ## Message

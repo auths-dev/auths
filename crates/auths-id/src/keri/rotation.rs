@@ -68,17 +68,17 @@ impl From<auths_core::error::AgentError> for RotationError {
 impl auths_core::error::AuthsErrorInfo for RotationError {
     fn error_code(&self) -> &'static str {
         match self {
-            Self::Kel(_) => "AUTHS-E4801",
-            Self::Validation(_) => "AUTHS-E4802",
-            Self::KeyGeneration(_) => "AUTHS-E4803",
-            Self::InvalidKey(_) => "AUTHS-E4804",
-            Self::CommitmentMismatch => "AUTHS-E4805",
-            Self::IdentityAbandoned => "AUTHS-E4806",
-            Self::Serialization(_) => "AUTHS-E4807",
-            Self::Storage(_) => "AUTHS-E4808",
-            Self::RotationFailed(_) => "AUTHS-E4809",
-            Self::KeyNotFound(_) => "AUTHS-E4810",
-            Self::KeyDecryptionFailed(_) => "AUTHS-E4811",
+            Self::Kel(_) => "AUTHS-E4821",
+            Self::Validation(_) => "AUTHS-E4822",
+            Self::KeyGeneration(_) => "AUTHS-E4823",
+            Self::InvalidKey(_) => "AUTHS-E4824",
+            Self::CommitmentMismatch => "AUTHS-E4825",
+            Self::IdentityAbandoned => "AUTHS-E4826",
+            Self::Serialization(_) => "AUTHS-E4827",
+            Self::Storage(_) => "AUTHS-E4828",
+            Self::RotationFailed(_) => "AUTHS-E4829",
+            Self::KeyNotFound(_) => "AUTHS-E4830",
+            Self::KeyDecryptionFailed(_) => "AUTHS-E4831",
         }
     }
 

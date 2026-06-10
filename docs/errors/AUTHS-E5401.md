@@ -1,6 +1,7 @@
 # AUTHS-E5401
 
 **Crate:** `auths-sdk`
+
 **Type:** `RegistrationError::AlreadyRegistered`
 
 ## Message

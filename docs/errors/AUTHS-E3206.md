@@ -1,6 +1,7 @@
 # AUTHS-E3206
 
 **Crate:** `auths-core`
+
 **Type:** `PairingError::NoPeerFound`
 
 ## Message

@@ -1,6 +1,7 @@
 # AUTHS-E2003
 
 **Crate:** `auths-verifier`
+
 **Type:** `AttestationError::AttestationExpired`
 
 ## Message

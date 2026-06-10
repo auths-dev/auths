@@ -1,6 +1,7 @@
 # AUTHS-E2102
 
 **Crate:** `auths-verifier`
+
 **Type:** `CommitVerificationError::GpgNotSupported`
 
 ## Message

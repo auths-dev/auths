@@ -1,6 +1,7 @@
 # AUTHS-E6002
 
 **Crate:** `auths-sdk`
+
 **Type:** `AuthChallengeError::EmptyDomain`
 
 ## Message

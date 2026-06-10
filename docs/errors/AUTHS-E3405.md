@@ -1,6 +1,7 @@
 # AUTHS-E3405
 
-**Crate:** `auths-core`
+**Crate:** `auths-keri`
+
 **Type:** `WitnessError::InvalidSignature`
 
 ## Message

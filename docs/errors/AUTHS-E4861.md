@@ -1,6 +1,7 @@
 # AUTHS-E4861
 
 **Crate:** `auths-id`
+
 **Type:** `RegistryError::Storage`
 
 ## Message
