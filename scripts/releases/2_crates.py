@@ -39,9 +39,9 @@ CRATES_IO_API = "https://crates.io/api/v1/crates"
 # Deliberately excluded: auths-radicle (deprecated), auths-api (server bin),
 # auths-test-utils (test helper, only a dev-dependency of published crates).
 PUBLISH_BATCHES: list[list[str]] = [
-    ["auths", "auths-crypto", "auths-jwt", "auths-telemetry", "auths-utils"],
+    ["auths", "auths-crypto", "auths-telemetry", "auths-utils"],
     ["auths-keri", "auths-oidc-port"],
-    ["auths-pairing-protocol", "auths-verifier"],
+    ["auths-jwt", "auths-pairing-protocol", "auths-verifier"],
     ["auths-index", "auths-policy", "auths-rp", "auths-scim", "auths-transparency"],
     ["auths-core"],
     ["auths-infra-http", "auths-infra-rekor", "auths-pairing-daemon"],
