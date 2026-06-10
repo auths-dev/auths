@@ -1,0 +1,82 @@
+name: Publish FastAPI middleware
+
+# Launch-critical (audit Open Question 3): auths-fastapi ships on the same
+# release train as the SDK. Pure-python (hatchling) — no wheel matrix needed.
+#
+# OPS prerequisite: a PyPI "trusted publisher" must be configured for the
+# `auths-fastapi` project pointing at this workflow (same setup as the
+# `auths` project uses for publish-python.yml).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+        default: testpypi
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        working-directory: packages/auths-fastapi
+        run: uv sync --locked
+
+      - name: Test
+        working-directory: packages/auths-fastapi
+        run: uv run pytest
+
+  build:
+    name: Build sdist + wheel
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Build
+        working-directory: packages/auths-fastapi
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fastapi-dist
+          path: packages/auths-fastapi/dist/*
+
+  publish:
+    name: Publish to ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'TestPyPI' || 'PyPI' }}
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    environment:
+      name: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'testpypi' || 'pypi' }}
+      url: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'https://test.pypi.org/p/auths-fastapi' || 'https://pypi.org/p/auths-fastapi' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: fastapi-dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
+          packages-dir: dist/
+          repository-url: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') && 'https://test.pypi.org/legacy/' || '' }}

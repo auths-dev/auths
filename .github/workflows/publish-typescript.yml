@@ -76,17 +76,23 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
+      - name: Install pnpm
+        # Pinned to match the CI middleware workflow and local dev; bare
+        # `npm install` would build the published artifact against different
+        # dependency resolutions than the ones CI tested (pnpm-lock.yaml).
+        run: npm install -g pnpm@10.27.0
+
       - name: Install dependencies
         working-directory: packages/auths-express
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build
         working-directory: packages/auths-express
-        run: npm run build
+        run: pnpm build
 
       - name: Test
         working-directory: packages/auths-express
-        run: npm test
+        run: pnpm test
 
       - name: Publish
         working-directory: packages/auths-express

@@ -25,6 +25,8 @@ pub fn run(workspace_root: &Path, check: bool) -> Result<()> {
 
     let mut stale: Vec<String> = Vec::new();
 
+    enforce_code_freeze(workspace_root, &entries, check, &mut stale)?;
+
     // --- docs/errors/*.md ---
     let docs_dir = workspace_root.join("docs/errors");
     if !check {
@@ -540,6 +542,114 @@ fn validate_unique_codes(entries: &[ErrorEntry]) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// Code freeze: docs/errors/registry.lock
+// ---------------------------------------------------------------------------
+
+const REGISTRY_LOCK_HEADER: &str = "\
+# AUTHS error-code registry lock — `code = crate::Type::Variant` bindings.
+#
+# Error codes are a public contract: users grep logs, write runbooks, and
+# match on these strings. This file makes every binding change a deliberate,
+# reviewable diff instead of a silent drift:
+#
+#   - NEW codes are appended automatically by `cargo xtask gen-error-docs`.
+#   - REASSIGNING or REMOVING a code fails the build (and CI) until the
+#     corresponding line here is edited by hand in the same change.
+#
+# Pre-launch this is a speed bump; at launch it becomes the freeze.
+";
+
+/// Enforce the error-code freeze against `docs/errors/registry.lock`.
+///
+/// Additions are ratcheted in automatically (write mode) or reported as stale
+/// (check mode). A code whose binding changed, or that disappeared, is an
+/// error in BOTH modes — absorbing a reassignment silently would defeat the
+/// freeze. Intentional changes require hand-editing the lock file in the same
+/// change, which makes them visible in review.
+///
+/// Args:
+/// * `workspace_root`: Path to the repository root.
+/// * `entries`: The scanned error registry.
+/// * `check`: If `true`, never write — report additions as stale instead.
+/// * `stale`: Accumulator for out-of-date artifacts (check mode).
+fn enforce_code_freeze(
+    workspace_root: &Path,
+    entries: &[ErrorEntry],
+    check: bool,
+    stale: &mut Vec<String>,
+) -> Result<()> {
+    let lock_path = workspace_root.join("docs/errors/registry.lock");
+
+    let current: BTreeMap<String, String> = entries
+        .iter()
+        .map(|e| {
+            (
+                e.code.clone(),
+                format!("{}::{}::{}", e.crate_name, e.type_name, e.variant),
+            )
+        })
+        .collect();
+
+    let locked = read_registry_lock(&lock_path)?;
+
+    let mut violations: Vec<String> = Vec::new();
+    for (code, locked_binding) in &locked {
+        match current.get(code) {
+            None => violations.push(format!(
+                "{code} was removed (was {locked_binding}) — removing a published \
+                 error code is a breaking change"
+            )),
+            Some(binding) if binding != locked_binding => violations.push(format!(
+                "{code} was reassigned: {locked_binding} -> {binding}"
+            )),
+            Some(_) => {}
+        }
+    }
+    if !violations.is_empty() {
+        bail!(
+            "Error-code freeze violated (docs/errors/registry.lock). If this \
+             change is intentional, edit the affected lines in registry.lock in \
+             the same commit so the contract change is reviewable:\n{}",
+            violations
+                .iter()
+                .map(|v| format!("  - {v}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    let mut content = String::from(REGISTRY_LOCK_HEADER);
+    for (code, binding) in &current {
+        content.push_str(&format!("{code} = {binding}\n"));
+    }
+    check_or_write(&lock_path, &content, check, stale, "docs/errors/registry.lock")?;
+    Ok(())
+}
+
+/// Parse `registry.lock` into `code -> binding`, ignoring comments/blanks.
+/// A missing file is an empty freeze (first generation bootstraps it).
+fn read_registry_lock(path: &Path) -> Result<BTreeMap<String, String>> {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(BTreeMap::new());
+    };
+    let mut locked = BTreeMap::new();
+    for (n, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let Some((code, binding)) = line.split_once('=') else {
+            bail!(
+                "docs/errors/registry.lock:{}: expected `CODE = binding`, got: {line}",
+                n + 1
+            );
+        };
+        locked.insert(code.trim().to_string(), binding.trim().to_string());
+    }
+    Ok(locked)
+}
+
+// ---------------------------------------------------------------------------
 // Generation: docs/errors/*.md
 // ---------------------------------------------------------------------------
 
@@ -616,24 +726,14 @@ fn update_mkdocs_nav(
     let marker_start = "  # --- ERROR CODES (auto-generated) ---";
     let marker_end = "  # --- END ERROR CODES ---";
 
+    // A single nav entry: errors/index.md is the generated table that links every
+    // per-code page. Listing 350+ stub pages in the nav drowned the rest of the
+    // site; the pages stay on disk and reachable, just not nav-listed.
+    let _ = entries;
     let mut nav_block = String::new();
     nav_block.push_str(marker_start);
     nav_block.push('\n');
-    nav_block.push_str("  - Error Codes:\n");
-    nav_block.push_str("      - errors/index.md\n");
-
-    let mut prev_crate = String::new();
-    for entry in entries {
-        if entry.crate_name != prev_crate {
-            nav_block.push_str(&format!("      - {}:\n", entry.crate_name));
-            prev_crate.clone_from(&entry.crate_name);
-        }
-        nav_block.push_str(&format!(
-            "          - \"{}\": errors/{}.md\n",
-            entry.code, entry.code
-        ));
-    }
-
+    nav_block.push_str("  - Error Codes: errors/index.md\n");
     nav_block.push_str(marker_end);
 
     if let Some(start_idx) = content.find(marker_start) {
