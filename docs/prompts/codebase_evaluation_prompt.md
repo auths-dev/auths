@@ -100,7 +100,7 @@ Evaluate `auths` against these competitors. For each, identify where `auths` win
 | Competitor | Model | Market Position |
 |------------|-------|-----------------|
 | **Legacy GPG** | Manual key management, Web of Trust | Default for Git signing. <5% of GitHub commits are signed. Terrible DX. |
-| **SSH Signing (GitHub native)** | `git config gpg.format ssh` + `allowed_signers` | Built into GitHub. No identity lifecycle, no attestation chain, no rotation. |
+| **SSH Signing (GitHub native)** | `git config gpg.format ssh` + a signer allowlist | Built into GitHub. No identity lifecycle, no attestation chain, no rotation. |
 | **Sigstore / Gitsign** | Keyless OIDC-based signing via Fulcio CA + Rekor transparency log | Google-backed. Requires network for every sign and verify. Central CA. Identity borrowed from OIDC providers. No delegation. |
 | **Chainguard** | Hardened container images + Sigstore-based signing | $3.5B valuation. Focuses on container/artifact signing, not developer identity. Complementary or potential acquirer. |
 | **Centralized IAM (Okta, Azure AD, AWS IAM)** | Federated identity with SAML/OIDC tokens | Not developer-native. Cannot sign Git commits. No cryptographic proof of authorship. |

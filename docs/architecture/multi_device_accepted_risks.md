@@ -135,7 +135,7 @@ Commits signed before this phase carry a single `Auths-Signer: did:key:z…`
 trailer. Verifiers now read two `did:keri:` trailers written by `auths sign`:
 `Auths-Id` (the root identity) and `Auths-Device` (the signing device). Trust
 is decided by KEL replay against the `.auths/roots` pin — there is no
-`allowed_signers` allowlist. Pre-launch zero-user migration: dev machines
+signer-allowlist file. Pre-launch zero-user migration: dev machines
 that signed under the old format must `rm -rf ~/.auths && auths init`
 followed by re-signing. No code epic — this is a status acknowledgement,
 not a future task. Authoritative migration note in

@@ -185,7 +185,7 @@ Eight packages in five languages, and the v0.1.2 release needed six attempts. Ea
 6. Every map in `rate_limiter.rs` and the API idempotency cache has a capacity bound with a test, ChallengeStore-style.
 7. `0_versions.py --check` covers all 8 packages; express/fastapi/go have committed lockfiles and a CI workflow.
 8. TS and Python verifier test suites load `crates/auths-verifier/tests/fixtures/*.json`.
-9. `rg -l "allowed_signers" docs/ --glob '!docs/archive/**'` → empty.
+9. `rg -l "allowed_signers" docs/ --glob '!docs/archive/**' --glob '!docs/plans/audit.md' --glob '!docs/architecture/device-model.md' --glob '!docs/architecture/keri-only-roadmap.md'` → empty. (Signal refined during execution: the audit itself quotes the finding; `device-model.md` carries a historical-note banner and is retained as the verified pre-migration record; `keri-only-roadmap.md` is an active, ADR-referenced roadmap whose Epic B documents the migration *off* `allowed_signers` and whose interop item #209 is a live forward reference. Every other non-archive mention was fixed or rephrased — no doc presents `allowed_signers` as part of the current verification model.)
 10. auths-crypto has negative tests for wrong-curve, truncated-signature, and bad-seed-length inputs (T23); `crates/auths-sdk/src/audit.rs` has no `unwrap_or_default()` on the emission path (T22).
 
 ---

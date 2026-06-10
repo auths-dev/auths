@@ -229,7 +229,7 @@ When in doubt: read more code before suggesting changes. The codebase is dense a
 
 - **Sigstore** (Fulcio CA + Rekor transparency log). Comparison doc: `docs/design/sigstore-comparison.md`. They solve a different problem; Auths and Sigstore compose, they don't compete.
 - **SPIFFE/SPIRE**. Workload identity for service meshes. Auths covers what SPIFFE doesn't: cross-boundary identity + delegation chains.
-- **SSH `allowed_signers`**. The mechanism every Git host already verifies against. Auths emits SSH-format signatures for Git compatibility, but trust resolution is KEL replay against pinned roots — not an `allowed_signers` allowlist.
+- **SSH signer allowlists** (git's `gpg.ssh.allowedSignersFile`). The mechanism local `git verify-commit` checks against. Auths emits SSH-format signatures for Git compatibility, but trust resolution is KEL replay against pinned roots — not a static signer allowlist.
 
 ### Internal references
 

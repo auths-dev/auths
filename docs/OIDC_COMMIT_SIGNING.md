@@ -158,24 +158,27 @@ The attestation stored for a commit looks like:
 
 GitHub only recognizes verification for commits signed with:
 - **GPG keys** (traditional PGP signatures)
-- **SSH keys** (SSH signature verification via allowed_signers)
+- **SSH keys** (checked against the SSH signing keys uploaded to the committer's GitHub account)
 
 GitHub does NOT recognize:
 - Custom attestations (even if cryptographically valid)
 - Refs stored in your repository
 
-Our auths attestations are **not** GPG or SSH signatures, so GitHub's UI won't show them as verified.
+Auths signs commits with standard SSH-format signatures, so GitHub *can* show
+them as "Verified" — but only when the signing device's public key is uploaded
+to the committer's account as a signing key. GitHub's badge is a key-match
+only: it knows nothing about KEL key-state, so it cannot see rotation,
+revocation, or delegation. A green badge is strictly weaker than `auths
+verify`'s KEL replay.
 
 ### What You Can Do Instead
 
 1. **Verify locally** with `auths verify`
-   - See the OIDC binding and attestation details
-   - Cryptographically valid but custom format
+   - KEL replay against pinned roots: rotation-, revocation-, and delegation-aware
+   - Also surfaces the OIDC binding and attestation details
 
-2. **Register SSH keys** (future work)
-   - If signed via auths, could export as SSH signature
-   - Then GitHub would recognize it as verified
-   - This is a planned enhancement
+2. **Upload the device signing key to GitHub**
+   - GitHub then shows the commits as "Verified" (key-match only, see above)
 
 3. **Trust the attestation format**
    - Attestations are standard JSON with cryptographic signatures
