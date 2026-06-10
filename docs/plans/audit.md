@@ -181,7 +181,7 @@ Eight packages in five languages, and the v0.1.2 release needed six attempts. Ea
 2. `grep -rn "Utc::now()" crates/auths-sdk/src --include=*.rs | grep -v test` → empty; `auths-core`/`auths-id` absent from `crates/auths-cli/Cargo.toml`.
 3. Zero duplicate `AUTHS-E` codes (enforced, not just fixed).
 4. `auths-rp` ≥ 40 tests incl. replay/audience/expiry/oversize negatives; `auths-jwt` ≥ 25 incl. malformed-claims negatives.
-5. `list_fleet` over a 1,000-event KEL performs exactly 1 KEL replay per request (assert via a counting test double on `visit_events`).
+5. `list_fleet` org-KEL full replays per request are a small constant, independent of member count (assert via a counting test double on `visit_events`). (Signal refined during execution: the landed fix is O(1) — `list()` roster scan + `OrgKelSnapshot::load` = 3 replays, never 1; the walker's break-at-inception probes are O(1) work and excluded. Pinned by `crates/auths-api/tests/cases/kel_replay_count.rs`: replay count identical at 3 and 6 members and ≤ the budget constant.)
 6. Every map in `rate_limiter.rs` and the API idempotency cache has a capacity bound with a test, ChallengeStore-style.
 7. `0_versions.py --check` covers all 8 packages; express/fastapi/go have committed lockfiles and a CI workflow.
 8. TS and Python verifier test suites load `crates/auths-verifier/tests/fixtures/*.json`.

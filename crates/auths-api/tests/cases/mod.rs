@@ -5,4 +5,5 @@
 //! exercise the current surface over the SDK.
 
 mod control_plane_http;
+mod kel_replay_count;
 mod rp_auth;
