@@ -110,6 +110,32 @@ pub fn trusted_root_from_bundle(
     Ok(bundle.identity_did.to_string())
 }
 
+/// The verifier's own root identity DID, implicitly trusted for its own
+/// verifications.
+///
+/// Self-trust is the floor of the trust model: a verifier always trusts keys it
+/// itself controls, so the signer can verify their own commits and artifacts with
+/// zero pinning ceremony. Returns `None` when no local identity exists (behavior
+/// is then unchanged — only explicit pins apply). The returned DID resolves
+/// through the same KEL replay as any pinned root; this adds a root, never a
+/// shortcut around verification.
+///
+/// Args:
+/// * `ctx`: Auths context (identity storage).
+///
+/// Usage:
+/// ```ignore
+/// if let Some(own_root) = local_self_root(&ctx) {
+///     pinned_roots.push(own_root);
+/// }
+/// ```
+pub fn local_self_root(ctx: &crate::context::AuthsContext) -> Option<String> {
+    ctx.identity_storage
+        .load_identity()
+        .ok()
+        .map(|managed| managed.controller_did.into_inner())
+}
+
 /// Verify a commit against the locally-replayed KEL and the pinned trusted roots.
 ///
 /// Local-only (no network, no witness gate): resolves the device and root KELs from

@@ -138,10 +138,13 @@ pub async fn handle_verify(
     }
 
     // 5. Resolve identity public key
+    // Exit-code contract: 0 = verified, 1 = verification failed (a trust or
+    // signature verdict — an unresolvable/untrusted issuer is a verdict), 2 =
+    // could not attempt (I/O, malformed input).
     let (root_pk, identity_did) = match resolve_identity_key(&identity_bundle, &attestation) {
         Ok(v) => v,
         Err(e) => {
-            return output_error(&file_str, 2, &e.to_string());
+            return output_error(&file_str, 1, &format!("{e:#}"));
         }
     };
 
@@ -341,16 +344,22 @@ fn resolve_identity_key(
     }
 }
 
-/// Extract raw Ed25519 public key bytes from a DID string.
+/// Resolve a DID's current public key bytes.
 ///
-/// Supports `did:keri:<base58>` and `did:key:z<base58multicodec>`.
+/// `did:keri:` resolves by replaying the issuer's KEL from the local registry —
+/// a KERI prefix is a digest of its inception event, never raw key bytes, and
+/// only KEL replay yields the post-rotation *current* key. This is what makes
+/// self-verification work: the signer's own KEL is always in the local registry.
+/// `did:key:` decodes in-band (the key IS the identifier).
 fn resolve_pk_from_did(did: &str) -> Result<(Vec<u8>, auths_crypto::CurveType)> {
-    if let Some(encoded) = did.strip_prefix("did:keri:") {
-        let pk = bs58::decode(encoded)
-            .into_vec()
-            .context("Invalid base58 in did:keri")?;
-        // KERI DIDs are currently Ed25519-only
-        Ok((pk, auths_crypto::CurveType::Ed25519))
+    if did.starts_with("did:keri:") {
+        let auths_home = auths_sdk::paths::auths_home()
+            .map_err(|e| anyhow!("Could not locate ~/.auths: {e}"))?;
+        let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+            auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+        );
+        let (pk, curve) = auths_sdk::keri::resolve_current_public_key(&registry, did)?;
+        Ok((pk, curve))
     } else if did.starts_with("did:key:z") {
         match auths_crypto::did_key_decode(did) {
             Ok(auths_crypto::DecodedDidKey::Ed25519(pk)) => {

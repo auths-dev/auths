@@ -564,6 +564,7 @@ pub fn handle_id(
                 println!("   Witnesses required: {}", thresh);
             }
 
+            let rotation_config_next_alias = next_key_alias.clone();
             let rotation_config = auths_sdk::types::IdentityRotationConfig {
                 repo_path: repo_path.clone(),
                 identity_key_alias: identity_key_alias.map(KeyAlias::new_unchecked),
@@ -617,14 +618,45 @@ pub fn handle_id(
                 result.previous_key_fingerprint
             );
             println!("   New key fingerprint: {}...", result.new_key_fingerprint);
-            println!(
-                "⚠️  Your old key name is no longer active. Update any scripts that reference it."
-            );
+            println!("   Key name: {} (unchanged)", result.new_key_alias);
+
+            // The rotation advanced the KEL — restamp the commit-trailers file so
+            // hook-stamped commits carry the new anchor position.
+            if let Err(e) = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(
+                &rotation_ctx,
+                &repo_path,
+            ) {
+                println!("⚠️  Could not refresh commit trailers ({e}); run `auths doctor`.");
+            }
+
+            // Stable alias keeps git signing working untouched. Only an explicit
+            // --next-key-alias changes the name — repoint user.signingkey then.
+            if let Some(ref explicit) = rotation_config_next_alias {
+                let new_signing_key = format!("auths:{explicit}");
+                let updated = crate::subprocess::git_command(&[
+                    "config",
+                    "--global",
+                    "user.signingKey",
+                    &new_signing_key,
+                ])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+                if updated {
+                    println!("   Git signing key updated to {new_signing_key}");
+                } else {
+                    println!(
+                        "⚠️  Could not update git user.signingKey — set it manually: \
+                         git config --global user.signingKey {new_signing_key}"
+                    );
+                }
+            }
 
             log::info!(
-                "Key rotation completed: old_key={}, new_key={}",
+                "Key rotation completed: old_key={}, new_key={}, alias={}",
                 result.previous_key_fingerprint,
                 result.new_key_fingerprint,
+                result.new_key_alias,
             );
 
             Ok(())

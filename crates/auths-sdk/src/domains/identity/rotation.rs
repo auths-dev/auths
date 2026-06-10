@@ -262,13 +262,16 @@ pub fn rotate_identity(
     clock: &dyn ClockProvider,
 ) -> Result<IdentityRotationResult, RotationError> {
     let (identity, prefix, current_alias) = resolve_rotation_context(&config, ctx)?;
-    let next_alias = config.next_key_alias.unwrap_or_else(|| {
-        KeyAlias::new_unchecked(format!(
-            "{}-rotated-{}",
-            current_alias,
-            clock.now().format("%Y%m%d%H%M%S")
-        ))
-    });
+    // Stable alias by default: the rotated-in key lands under the SAME alias the
+    // old key held, so everything bound to the alias — git `user.signingkey`,
+    // the commit-trailers file, CI env blocks, bundle exports — keeps working
+    // across rotations. The rotated-away private key is deleted (it must never
+    // sign again; verification replays public keys from the KEL). An explicit
+    // `next_key_alias` still overrides for callers that want a new name.
+    let _ = clock;
+    let next_alias = config
+        .next_key_alias
+        .unwrap_or_else(|| current_alias.clone());
 
     let previous_key_fingerprint = extract_previous_fingerprint(ctx, &current_alias)?;
 
@@ -304,6 +307,7 @@ pub fn rotate_identity(
         new_key_fingerprint: hex::encode(&new_pubkey[..8]),
         previous_key_fingerprint,
         sequence: state.sequence + 1,
+        new_key_alias: next_alias.to_string(),
     })
 }
 

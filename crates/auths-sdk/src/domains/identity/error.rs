@@ -34,6 +34,18 @@ pub enum SetupError {
     #[error("crypto error: {0}")]
     CryptoError(#[source] auths_core::AgentError),
 
+    /// The supplied passphrase fails the strength policy. Carries which input
+    /// supplied it so the user knows exactly what to fix — vital in
+    /// `--non-interactive` runs where there is no prompt fallback.
+    #[error("passphrase from {source_name} is too weak: {reason}")]
+    WeakPassphrase {
+        /// The input that supplied the passphrase (e.g. "the AUTHS_PASSPHRASE
+        /// environment variable").
+        source_name: String,
+        /// The policy violation, rendered for display.
+        reason: String,
+    },
+
     /// A storage operation failed.
     #[error("storage error: {0}")]
     StorageError(#[source] crate::error::SdkStorageError),
@@ -178,6 +190,7 @@ impl AuthsErrorInfo for SetupError {
             Self::IdentityAlreadyExists { .. } => "AUTHS-E5001",
             Self::KeychainUnavailable { .. } => "AUTHS-E5002",
             Self::CryptoError(e) => e.error_code(),
+            Self::WeakPassphrase { .. } => "AUTHS-E5008",
             Self::StorageError(e) => e.error_code(),
             Self::GitConfigError(_) => "AUTHS-E5004",
             Self::InvalidSetupConfig(_) => "AUTHS-E5007",
@@ -195,11 +208,16 @@ impl AuthsErrorInfo for SetupError {
                 Some("Run `auths doctor` to diagnose keychain issues")
             }
             Self::CryptoError(e) => e.suggestion(),
+            Self::WeakPassphrase { .. } => Some(
+                "Use at least 12 characters with 3 of 4 character classes (lowercase, uppercase, digit, symbol)",
+            ),
             Self::StorageError(e) => e.suggestion(),
             Self::GitConfigError(_) => {
                 Some("Ensure Git is configured: git config --global user.name/email")
             }
-            Self::InvalidSetupConfig(_) => Some("Check identity setup configuration parameters"),
+            // The variant message carries the specific guidance; a generic
+            // fix-line under it would only dilute it.
+            Self::InvalidSetupConfig(_) => None,
             Self::RegistrationFailed(e) => e.suggestion(),
             Self::PlatformVerificationFailed(_) => Some(
                 "Platform identity verification failed; check your platform credentials and network connectivity",

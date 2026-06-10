@@ -1,14 +1,14 @@
 # Identity Lifecycle
 
-An Auths identity moves through distinct phases: creation, device linking, key rotation, and optionally recovery or abandonment. This page walks through each phase and how attestations tie them together.
+An Auths identity moves through distinct phases: creation, device delegation, key rotation, and optionally recovery or abandonment. This page walks through each phase.
 
 ## Lifecycle overview
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Inception: auths id create
+    [*] --> Inception: auths init
     Inception --> Active: Identity created<br/>KEL seq 0
-    Active --> Active: Link device<br/>IXN event anchors attestation
+    Active --> Active: Delegate device/agent<br/>dip + anchoring ixn
     Active --> Rotated: Rotate keys<br/>ROT event, KEL seq +1
     Rotated --> Active: New key active
     Active --> Recovered: Recovery via<br/>pre-committed next key
@@ -19,65 +19,65 @@ stateDiagram-v2
 
 ## Phase 1: Inception (creation)
 
-Identity creation generates two Ed25519 keypairs and writes a single inception event to the Key Event Log.
-
-```
-auths id create --local-key-alias my-key
-```
+Identity creation (`auths init`) generates two keypairs (P-256 by default) and writes a single inception event to the Key Event Log.
 
 What happens internally:
 
 1. **Current keypair** generated -- used for signing immediately
 2. **Next keypair** generated -- committed to but not yet used (pre-rotation)
 3. **Inception event** constructed with:
-    - The current public key in the `k` field (prefixed with `D` for Ed25519)
-    - A Blake3 hash of the next public key in the `n` field (prefixed with `E`)
-4. The event's **SAID** (Self-Addressing Identifier) is computed via Blake3 hash of the canonical event JSON
+    - The current public key in the `k` field (with its CESR derivation code — `1AAJ` for P-256, `D` for Ed25519)
+    - A hash of the next public key in the `n` field (prefixed with `E`)
+4. The event's **SAID** (Self-Addressing Identifier) is computed over the canonical event bytes
 5. The SAID becomes both the event identifier (`d`) and the identity prefix (`i`)
-6. The event is **signed** with the current key and stored at `refs/did/keri/<prefix>/kel`
+6. The event is **signed** with the current key (the signature travels as a CESR attachment) and stored in the registry
 7. Both keypairs are **encrypted** and stored in the platform keychain
 
-The resulting identity DID is `did:keri:<prefix>`, where the prefix starts with `E` (the Blake3 derivation code).
+The whole sequence is transactional — if any step fails (for example, a passphrase that fails the strength policy), nothing is left behind.
 
-## Phase 2: Device linking
+The resulting identity DID is `did:keri:<prefix>`, where the prefix starts with `E`.
 
-Each machine gets its own `did:key` identifier -- its own Ed25519 keypair. Linking a device to your identity creates a **dual-signed attestation**.
+## Phase 2: Device delegation
+
+Each additional machine gets **its own identity, delegated under yours**. The device generates its own keypair and a *delegated inception* event (`dip`) naming your root as delegator; your root anchors that delegation in its own KEL with an interaction event. The result is a two-way cryptographic link a verifier can replay.
 
 ```
-auths device link
+auths pair          # QR / short-code pairing with the new device
+auths device add    # or: create a delegated device directly
 ```
-
-The attestation binds the identity to the device:
-
-- **Issuer**: your `did:keri:E...` identity
-- **Subject**: the device's `did:key:z6Mk...`
-- **Signatures**: both the identity key and the device key sign the canonical attestation data
-- **Capabilities**: what the device is authorized to do (e.g., `sign_commit`, `sign_release`)
-
-The attestation is stored as a JSON blob under `refs/auths/devices/nodes/<device-did>/signatures`. It is also anchored in the KEL via an interaction event (`ixn`) that includes a seal containing the attestation's digest.
 
 ```mermaid
 flowchart TD
-    A["Identity<br/>did:keri:E..."]
-    B["Device A<br/>did:key:z6Mk...<br/>laptop"]
-    C["Device B<br/>did:key:z6Mk...<br/>phone"]
+    A["Root identity<br/>did:keri:E(root)"]
+    B["Laptop<br/>did:keri:E(laptop)<br/>dip: delegated by root"]
+    C["Phone<br/>did:keri:E(phone)<br/>dip: delegated by root"]
 
-    A -->|"attestation<br/>(dual-signed)"| B
-    A -->|"attestation<br/>(dual-signed)"| C
-
-    D["KEL"]
-    D -->|"ixn event with seal"| A
+    B -->|"dip names delegator"| A
+    C -->|"dip names delegator"| A
+    A -->|"ixn anchors each delegation"| B
+    A -->|"ixn anchors each delegation"| C
 ```
+
+Delegations can carry **capability scopes** (an agent that may only `sign_commit`) and
+**expirations**. Agents use exactly the same mechanism — see
+[Agent Identities](../guides/agents/agent-identities.md).
 
 ### Multi-device model
 
-You can link multiple devices to the same identity. Each device gets its own attestation with its own capabilities and expiration. Devices are independent -- revoking one does not affect the others.
+Each device has its own KEL and its own keys. Devices are independent — revoking one
+does not affect the others, and a root key rotation does not invalidate device
+delegations (verifiers resolve authority by replaying the logs).
 
-| Device | Capabilities | Expires |
-|--------|-------------|---------|
-| Laptop | `sign_commit`, `sign_release` | 2027-01-01 |
-| Phone | `sign_commit` | 2026-06-01 |
-| CI runner | `sign_release` | 2026-04-01 |
+| Device | Mechanism | Scope |
+|--------|-----------|-------|
+| Laptop | delegated `did:keri:` | unrestricted |
+| Phone | delegated `did:keri:` | unrestricted |
+| Deploy agent | delegated `did:keri:` | `sign_commit`, expires in 7 days |
+
+!!! note "Legacy: attestation-based linking"
+    The older `auths device link` flow binds a device via a dual-signed attestation
+    instead of delegation. It is kept for compatibility; new setups should use
+    `auths pair` / `auths device add`.
 
 ## Phase 3: Key rotation
 
@@ -94,7 +94,7 @@ What happens internally:
 3. A new **next keypair** is generated for future rotation
 4. A **rotation event** (`rot`) is constructed:
     - `k`: the new current key (the former next key)
-    - `n`: Blake3 hash of the new next key (new pre-commitment)
+    - `n`: hash of the new next key (new pre-commitment)
     - `p`: SAID of the previous event (chain linkage)
     - `s`: incremented sequence number
 5. The event is signed with the new current key and appended to the KEL
@@ -105,7 +105,7 @@ KEL after one rotation:
   ┌──────────────────────┐     ┌──────────────────────┐
   │ icp (seq 0)          │     │ rot (seq 1)          │
   │ d: E<said>           │────>│ p: E<said>           │
-  │ k: [D<key_A>]        │     │ k: [D<key_B>]        │
+  │ k: [<key_A>]         │     │ k: [<key_B>]         │
   │ n: [E<hash(key_B)>]  │     │ n: [E<hash(key_C)>]  │
   └──────────────────────┘     └──────────────────────┘
 ```
@@ -147,7 +147,7 @@ KEL after abandonment:
 
   ┌──────────────────────┐     ┌──────────────────────┐
   │ icp (seq 0)          │     │ rot (seq 1)          │
-  │ k: [D<key_A>]        │────>│ k: [D<key_B>]        │
+  │ k: [<key_A>]         │────>│ k: [<key_B>]         │
   │ n: [E<hash(key_B)>]  │     │ n: []                 │
   │                      │     │ nt: "0"               │
   └──────────────────────┘     └──────────────────────┘
@@ -158,21 +158,14 @@ KEL after abandonment:
 
 The `KeyState.is_abandoned` flag is set to `true` and `can_rotate()` returns `false`. The identity can still be used for verification of historical data, but cannot issue new attestations or rotate keys.
 
-## Attestation chain
+## Attestation chains (artifact provenance)
 
-Attestations can form chains for delegation. The `delegated_by` field links an attestation to the parent attestation that granted authority. Verification walks the chain from the root identity to the leaf device, checking each link:
-
-```mermaid
-flowchart LR
-    A["Root Identity<br/>did:keri:E..."] -->|"attestation"| B["Admin Device<br/>did:key:z6Mk..."]
-    B -->|"delegated attestation"| C["Team Member<br/>did:key:z6Mk..."]
-    C -->|"delegated attestation"| D["CI Runner<br/>did:key:z6Mk..."]
-```
-
-At each link in the chain:
+Attestations still play a role outside device identity: artifact signing produces
+attestation chains, and the `delegated_by` field links an attestation to the parent
+that granted authority. Verification walks the chain, checking each link:
 
 - The `subject` of the previous attestation must match the `issuer` of the next
-- Both the `identity_signature` and `device_signature` must be valid
+- All signatures must be valid
 - The attestation must not be expired or revoked
 - The delegating attestation must have sufficient capabilities
 
@@ -183,7 +176,7 @@ Chain verification is performed by `verify_chain()` in the `auths-verifier` crat
 | Phase | KEL event | What changes | What stays the same |
 |-------|-----------|-------------|-------------------|
 | Inception | `icp` (seq 0) | Identity created | -- |
-| Device link | `ixn` | New attestation anchored | Identity DID, keys |
+| Device delegation | `dip` + anchoring `ixn` | New delegated device/agent identity | Identity DID, keys |
 | Rotation | `rot` (seq +1) | Active signing key, next-key commitment | Identity DID, attestation history |
 | Revocation | `ixn` | Device attestation marked revoked | Identity DID, keys |
 | Recovery | `rot` (seq +1) | Active signing key (emergency) | Identity DID |

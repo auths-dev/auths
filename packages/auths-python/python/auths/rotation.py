@@ -21,6 +21,9 @@ class IdentityRotationResult:
     """Fingerprint of the key that was rotated out."""
     sequence: int
     """KERI sequence number after rotation."""
+    new_key_alias: str = ""
+    """Alias the rotated-in key is stored under. Equals the pre-rotation alias
+    by default (stable alias) — git signing config keeps working unchanged."""
 
     def __repr__(self) -> str:
         return (

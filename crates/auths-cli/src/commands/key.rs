@@ -53,11 +53,13 @@ pub enum KeySubcommand {
         key_alias: String,
 
         /// Passphrase to decrypt the key (needed for 'pem'/'pub' formats).
+        /// Omit it to be prompted — passing it as an argument leaves it in
+        /// shell history.
         #[arg(
             long,
-            help = "Passphrase to decrypt the key (needed for 'pem'/'pub' formats)."
+            help = "Passphrase to decrypt the key (omit to be prompted securely)."
         )]
-        passphrase: String,
+        passphrase: Option<String>,
 
         /// Export format: pem (OpenSSH private), pub (OpenSSH public), enc (raw encrypted bytes).
         #[arg(
@@ -146,7 +148,13 @@ pub fn handle_key(cmd: KeyCommand) -> Result<()> {
             key_alias,
             passphrase,
             format,
-        } => key_export(&key_alias, &passphrase, format),
+        } => {
+            let passphrase = match passphrase {
+                Some(p) => p,
+                None => prompt_export_passphrase()?,
+            };
+            key_export(&key_alias, &passphrase, format)
+        }
         KeySubcommand::Delete { key_alias } => key_delete(&key_alias),
         KeySubcommand::Import {
             key_alias,
@@ -236,6 +244,18 @@ impl Drop for FfiContextGuard {
 
 /// Exports a stored key in one of several formats using FFI calls.
 #[inline]
+/// Prompt for the export passphrase on the terminal — never via a CLI argument
+/// (which would land in shell history). Falls back to AUTHS_PASSPHRASE for
+/// headless use.
+fn prompt_export_passphrase() -> Result<String> {
+    #[allow(clippy::disallowed_methods)] // CLI boundary: env fallback for headless export
+    if let Ok(pass) = std::env::var("AUTHS_PASSPHRASE") {
+        return Ok(pass);
+    }
+    rpassword::prompt_password("Enter passphrase: ")
+        .map_err(|e| anyhow::anyhow!("Failed to read passphrase from terminal: {e}"))
+}
+
 fn key_export(alias: &str, passphrase: &str, format: ExportFormat) -> Result<()> {
     let c_alias = CString::new(alias).context("Alias contains null byte")?;
     let c_passphrase = CString::new(passphrase).context("Passphrase contains null byte")?;

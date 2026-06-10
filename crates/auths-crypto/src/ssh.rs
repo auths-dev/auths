@@ -59,4 +59,3 @@ pub fn openssh_pub_to_raw(openssh_pub: &str) -> Result<(crate::CurveType, Vec<u8
 
     Err(SshKeyError::UnsupportedKeyType)
 }
-

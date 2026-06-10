@@ -1,162 +1,118 @@
 # Smoke Tests
 
-End-to-end smoke tests that exercise the full Auths + Radicle stack locally.
+Golden-path smoke tests for the `auths` CLI: the lifecycle a real developer, CI job, and
+agent operator hit, run headlessly against the **locally built binary** (never the PATH
+install — stale installed binaries have burned us before).
 
-## `end_to_end.py`
+> The previous version of `end_to_end.py` exercised the Auths + Radicle stack. Radicle is
+> deprecated and `auths-radicle` removed; the script was rewritten 2026-06-10 as the CLI
+> golden-path test described below.
 
-Orchestrates the complete local stack from scratch:
+## Files
 
-```
-Phase 0   Prerequisites & Build       cargo build auths, radicle-httpd; verify rad, node, npm
-Phase 1   Set up two Radicle nodes    rad auth with deterministic seeds, extract DIDs
-Phase 2   Create Auths identity       auths id create → KERI controller DID
-Phase 3   Link devices                auths key import + auths device link (x2)
-Phase 4   Create Radicle project      git init → rad init (new project, not a clone)
-Phase 5   Start Radicle nodes         node 1 (P2P:19876) + node 2 (P2P:19877), connect
-Phase 6   Push signed patches         Device 1: signed commit + git push rad HEAD:refs/patches
-                                      Device 2: clone via node 2, signed commit + push
-Phase 7   Start radicle-httpd         Serves API on port 8080 (reads from node 1 storage)
-Phase 8   Start frontend              npm run build + serve on port 3000
-Phase 9   Verify HTTP API             Asserts on /delegates, /identity/kel, /attestations, /patches
-Phase 10  Summary                     Prints all URLs for manual browser inspection
-```
+| File | What it is |
+|------|------------|
+| `end_to_end.py` | The harness. 11 scenarios, ~44 steps, ~30 s, fully headless. |
+| `last_run.json` | Machine-readable results of the most recent run (per-step rc, duration, full stdout/stderr). |
+| `findings_2026_06_10.md` | Analysis of the run as opinionated design decisions (D1–D10): what's broken, what the UX should be, alternatives rejected. |
+| `implementation_plan_2026_06_10.md` | Execution companion: verified entry points (`file:line`), resolved micro-decisions, acceptance criteria keyed to smoke-step names, phase ordering. |
+| `cli_improvements.md` | Older CLI UX notes. |
 
-### Prerequisites
-
-| Tool | Install |
-|------|---------|
-| `rad` CLI | https://radicle.xyz |
-| Rust toolchain | https://rustup.rs |
-| Node.js 20+ / npm | https://nodejs.org |
-| Python 3.10+ | System or pyenv |
-
-Repository layout expected:
-
-```
-workspace/
-├── auths-base/
-│   └── auths/              ← this repo (auths CLI + auths-radicle crate)
-└── radicle-base/
-    └── radicle-explorer/   ← frontend + modified radicle-httpd
-        └── radicle-httpd/  ← radicle-httpd with auths-radicle integration
-```
-
-### Quick start
+## Running
 
 ```bash
-# Full run — builds everything, runs all phases, cleans up
-python3 docs/smoketests/end_to_end.py
-
-# Skip builds (use existing binaries)
-python3 docs/smoketests/end_to_end.py --skip-build
-
-# Keep services running for manual browser testing
-python3 docs/smoketests/end_to_end.py --keep-alive
-
-# Skip the frontend (API-only testing)
-python3 docs/smoketests/end_to_end.py --no-frontend
-
-# Open browser to the profile page automatically
-python3 docs/smoketests/end_to_end.py --keep-alive --open-browser
-
-# Use a fixed workspace (persists between runs)
-python3 docs/smoketests/end_to_end.py --workspace /tmp/my-e2e
-
-# ALL
-python3 docs/smoketests/end_to_end.py --keep-alive --open-browser
+cargo build -p auths-cli                      # build first — the script does not build
+python3 docs/smoketests/end_to_end.py         # full run
+python3 docs/smoketests/end_to_end.py --keep  # keep temp HOMEs for inspection
+python3 docs/smoketests/end_to_end.py --release   # test target/release/auths
+AUTHS_BIN=/path/to/auths python3 docs/smoketests/end_to_end.py  # explicit binary
 ```
 
-### What gets built
+Exit code 0 = no failures. Per-step detail lands in `last_run.json`.
 
-| Binary | Source | Build command |
-|--------|--------|---------------|
-| `auths` + `auths-sign` | `crates/auths-cli` | `cargo build --release --package auths_cli` |
-| `radicle-httpd` | `radicle-explorer/radicle-httpd` | `cargo build` (debug) |
-| `@auths-dev/verifier` | `packages/auths-verifier-ts` | `wasm-pack build` + `npm run build:ts` |
-| Frontend | `radicle-explorer` | `npm install && npm run build` |
+## What it covers
 
-The modified `radicle-httpd` includes `auths-radicle` as a dependency, which adds
-the `/delegates/{did}`, `/identity/{did}/kel`, and `/identity/{did}/attestations`
-endpoints needed for KERI identity display.
+1. Developer first-run (`init` → `status` → `whoami` → key/device list)
+2. The 30-second aha (`auths demo` — must be headless and fast)
+3. Artifact signing (`sign <file>` → `verify <file>`)
+4. Git commit signing (plain `git commit` per the README, then `auths sign HEAD`)
+5. Stateless verification (`id export-bundle` → `verify --identity-bundle`)
+6. Trust pinning (pin → list → show → remove)
+7. Agent delegation (`id agent add`, the supported agent path)
+8. Key rotation (`id rotate` → sign + verify again)
+9. CI profile (3 fresh HOMEs — flakiness probe — then signing via the printed env block)
+10. Retired-path UX (`init --profile agent` must fail with actionable guidance)
+11. Hygiene (doctor, config, error lookup, completions, `--json`, help surfaces)
 
-### Ports
+## Harness invariants (keep these when editing)
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| Radicle node 1 | 19876 | P2P protocol |
-| Radicle node 2 | 19877 | P2P protocol |
-| radicle-httpd | 8080 | HTTP API (matches `defaultLocalHttpdPort` in explorer config) |
-| Frontend | 3000 | Vite preview server |
+- **Test the local build.** Resolve the binary from `target/{debug,release}/auths` or
+  `AUTHS_BIN`; never bare `auths` from PATH.
+- **Isolated HOME per scenario** — never touch the real `~/.auths`.
+- **Headless always**: `AUTHS_KEYCHAIN_BACKEND=file`, `stdin=DEVNULL`, timeouts on every
+  step, `--non-interactive` everywhere. Nothing may reach the Secure Enclave / Touch ID.
+- **The passphrase fixture must satisfy the policy** (≥12 chars, ≥3 of 4 character
+  classes — `crates/auths-core/src/crypto/encryption.rs`). A weak fixture fails init and
+  cascades. Current fixture: `Smoke-Test-Pass1!`.
+- **Parse stdout *and* stderr** — human output goes to stderr by convention.
+- A failing step never aborts the suite; dependent steps skip with a reason.
 
-### Manual verification
+---
 
-After running with `--keep-alive`, open these URLs in your browser:
+## Prompt: recreate this analysis from scratch
 
-- **Node view**: http://localhost:3000/nodes/127.0.0.1:8080
-- **Project**: http://localhost:3000/nodes/127.0.0.1:8080/{PROJECT_RID}
-- **Profile (KERI)**: http://localhost:3000/nodes/127.0.0.1:8080/users/{CONTROLLER_DID}
-
-The script prints the actual URLs with your test DIDs at the end.
-
-On the profile page you should see:
-- KERI Identity badge (Verified/Unverified)
-- Linked Devices list (2 devices)
-- Person/Device view toggle
-- Repositories from both devices
-
-### Workspace layout
-
-The script creates an isolated workspace under `/tmp/auths-e2e-XXXXX/`:
+Paste the following into a fresh Claude Code session at the repo root to reproduce the
+whole exercise (smoke run → findings → implementation plan) against the current state of
+the codebase:
 
 ```
-/tmp/auths-e2e-XXXXX/
-├── .auths/                 # Auths identity storage (Git repo)
-├── rad-node-1/             # RAD_HOME for node 1
-├── rad-node-2/             # RAD_HOME for node 2
-├── e2e-project/            # Project (node 1 working copy)
-├── e2e-project-node2/      # Project (node 2 clone)
-├── node1.seed              # 32-byte Ed25519 seed
-├── node2.seed              # 32-byte Ed25519 seed
-├── metadata.json           # Identity metadata
-├── keys.enc                # Encrypted keychain
-└── logs/
-    ├── node1.log
-    ├── node2.log
-    ├── httpd.log
-    └── frontend.log
+Run a golden-path audit of the auths CLI and write up the results. Work from evidence,
+not docs or memory — the deliverable is what the tool ACTUALLY does today.
+
+1. BUILD & BASELINE
+   - Build the CLI from source: `cargo build -p auths-cli`. Never test the PATH-installed
+     binary; resolve `target/debug/auths` explicitly (stale installs have caused false
+     bug reports before).
+   - Discover the real command tree from `--help-all` and `crates/auths-cli/src/cli.rs`,
+     and the real flags from the command modules — do not trust README/docs examples.
+
+2. SMOKE RUN
+   - Read `docs/smoketests/end_to_end.py`. Update it if the command tree drifted; keep
+     its invariants (listed in docs/smoketests/README.md: local binary, isolated HOMEs,
+     headless file keychain, policy-compliant passphrase fixture, stdout+stderr parsing,
+     skip-with-reason on dependent failures).
+   - Run it. For EVERY failure, trace the root cause in source before classifying it —
+     cite file:line. A failure whose root cause is the harness (e.g. weak passphrase
+     fixture) is a fix to the harness AND a UX finding about the error message that
+     misled you. Re-run until results are stable and every failure is explained.
+
+3. COMPARE PROMISES TO REALITY
+   - Walk the golden path as documented in README.md ("Sign your first commit") and
+     docs/getting-started/signing-commits.md. Any step where the documented command fails
+     live is a P0 finding. Count user-visible steps; every step beyond
+     `auths init` + normal git usage is a friction finding.
+
+4. WRITE THE FINDINGS DOC (docs/smoketests/findings_<date>.md)
+   - Opinionated, not neutral. Open with the bar: after `auths init`, the product is
+     ZERO new verbs — `git commit` then `auths verify HEAD`, nothing else.
+   - Each finding = evidence (terse, with file:line) → THE DECISION (one prescribed
+     design) → rejected alternatives, named, with why. No "options to consider".
+   - Include: a before/after table of the golden path in steps; a "what already meets
+     the bar" section (protect what works); a punch list ordered by leverage, not
+     severity.
+   - Judge UX, not just correctness: contradictions between adjacent outputs, errors
+     that recommend unrunnable commands, data printed to stderr, dead-end menu options,
+     inconsistent exit codes, jargon leaks.
+
+5. WRITE THE IMPLEMENTATION PLAN (docs/smoketests/implementation_plan_<date>.md)
+   - Written so one session could execute it cold: verified file:line entry points for
+     every change (grep them — don't guess); resolve every micro-decision the findings
+     doc left open (e.g. WHICH git hook mechanism, what happens on --amend, where a
+     transaction's commit point is); acceptance criteria keyed to smoke-test step names
+     ("step X flips to PASS"); collateral list (README, docs, doctor, harness updates);
+     phase ordering with dependencies.
+   - Respect the architecture rules in CLAUDE.md: business logic in SDK/core, never in
+     CLI handlers; clock injection; typed errors.
+
+6. Leave the smoke harness committed and the results file (last_run.json) refreshed.
 ```
-
-### Environment variables
-
-The script sets these automatically for headless operation:
-
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `AUTHS_KEYCHAIN_BACKEND` | `file` | File-based keychain (no OS keyring) |
-| `AUTHS_KEYCHAIN_FILE` | `{workspace}/keys.enc` | Keychain location |
-| `AUTHS_PASSPHRASE` | `e2e-smoke-test` | Keychain passphrase |
-| `RAD_HOME` | `{workspace}/rad-node-{N}` | Per-node Radicle home |
-| `RAD_PASSPHRASE` | `e2e-rad` | Node passphrase |
-| `RAD_KEYGEN_SEED` | Deterministic hex | Reproducible key generation |
-
-### Troubleshooting
-
-**"radicle-httpd not found"**: Build it from the explorer repo:
-```bash
-cd radicle-base/radicle-explorer/radicle-httpd && cargo build
-```
-
-**"delegates endpoint returned 404"**: You're running the stock `radicle-httpd` instead
-of the modified one. Make sure to build from `radicle-explorer/radicle-httpd/` which
-includes the `auths-radicle` dependency.
-
-**Port conflicts**: If port 8080 or 3000 is in use, stop the conflicting service.
-The ports must match the explorer's `defaultLocalHttpdPort` config (8080).
-
-**Node fails to start**: Check `logs/node1.log`. Common cause: leftover `control.sock`
-from a previous run. Use `--workspace /tmp/my-e2e` with a fresh directory, or delete
-the stale workspace.
-
-**Clone fails between nodes**: Nodes need a few seconds to discover each other. The
-script waits 2-3 seconds after connecting. If clone still fails, check `logs/node2.log`
-for connection errors.

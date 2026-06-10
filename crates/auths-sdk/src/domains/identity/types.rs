@@ -619,6 +619,10 @@ pub struct IdentityRotationResult {
     pub previous_key_fingerprint: String,
     /// KERI sequence number after this rotation event.
     pub sequence: u128,
+    /// The alias the rotated-in signing key is stored under. Stays equal to the
+    /// pre-rotation alias by default (stable alias); differs only when the
+    /// caller passed an explicit `next_key_alias`.
+    pub new_key_alias: String,
 }
 
 /// Outcome of a successful registry registration.

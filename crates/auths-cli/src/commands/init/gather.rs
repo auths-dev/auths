@@ -77,8 +77,14 @@ pub(crate) fn gather_ci_config(
     };
     let keychain_file = registry_path.join("keys.enc");
     #[allow(clippy::disallowed_methods)] // CLI boundary: CI passphrase from env
-    let passphrase = std::env::var("AUTHS_PASSPHRASE")
-        .unwrap_or_else(|_| auths_sdk::types::DEFAULT_CI_PASSPHRASE.to_string());
+    let (passphrase, passphrase_source) = match std::env::var("AUTHS_PASSPHRASE") {
+        Ok(p) => (p, "the AUTHS_PASSPHRASE environment variable"),
+        Err(_) => (
+            auths_sdk::types::DEFAULT_CI_PASSPHRASE.to_string(),
+            "the built-in CI default passphrase",
+        ),
+    };
+    preflight_passphrase(&passphrase, passphrase_source)?;
 
     // Persist the CI key to an encrypted file co-located with the registry so a
     // separate `auths sign` process can load it — the in-memory backend would lose
@@ -248,9 +254,39 @@ pub(crate) fn check_keychain_access(out: &Output) -> Result<Box<dyn KeyStorage +
                 "  Keychain: {} (accessible)",
                 out.success(keychain.backend_name())
             ));
+            preflight_env_passphrase(&*keychain)?;
             Ok(keychain)
         }
         Err(e) => Err(anyhow!("Keychain not accessible: {}", e)),
+    }
+}
+
+/// Preflight a passphrase against the strength policy before any setup side
+/// effect, so the failure lands at the prerequisites step with the input named —
+/// not mid-flow behind a generic storage error.
+pub(crate) fn preflight_passphrase(passphrase: &str, source_name: &str) -> Result<()> {
+    auths_sdk::keychain::validate_passphrase(passphrase).map_err(|e| {
+        anyhow!(
+            "The passphrase from {source_name} fails the strength policy: {e}\n  \
+             Use at least 12 characters with 3 of 4 character classes \
+             (lowercase, uppercase, digit, symbol)."
+        )
+    })
+}
+
+/// Validate an env-supplied passphrase up front for software keychain backends.
+/// Hardware backends (Secure Enclave) never use a passphrase, so nothing is
+/// checked — and an interactive prompt is validated at point of use instead.
+fn preflight_env_passphrase(keychain: &(dyn KeyStorage + Send + Sync)) -> Result<()> {
+    if keychain.is_hardware_backend() {
+        return Ok(());
+    }
+    #[allow(clippy::disallowed_methods)] // CLI boundary: env read for preflight
+    match std::env::var("AUTHS_PASSPHRASE") {
+        Ok(passphrase) => {
+            preflight_passphrase(&passphrase, "the AUTHS_PASSPHRASE environment variable")
+        }
+        Err(_) => Ok(()),
     }
 }
 

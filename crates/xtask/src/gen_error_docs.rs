@@ -622,7 +622,13 @@ fn enforce_code_freeze(
     for (code, binding) in &current {
         content.push_str(&format!("{code} = {binding}\n"));
     }
-    check_or_write(&lock_path, &content, check, stale, "docs/errors/registry.lock")?;
+    check_or_write(
+        &lock_path,
+        &content,
+        check,
+        stale,
+        "docs/errors/registry.lock",
+    )?;
     Ok(())
 }
 

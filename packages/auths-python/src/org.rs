@@ -222,15 +222,20 @@ pub fn add_org_member(
             .parse()
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid role: {e}")))?;
 
-        let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-            serde_json::from_str(&json).map_err(|e| {
+        let capabilities: Vec<auths_verifier::core::Capability> = if let Some(json) =
+            capabilities_json
+        {
+            let raw: Vec<String> = serde_json::from_str(&json).map_err(|e| {
                 PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid capabilities JSON: {e}"))
-            })?
+            })?;
+            raw.iter()
+                .map(|s| auths_verifier::core::Capability::parse(s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| {
+                    PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] Invalid capability: {e}"))
+                })?
         } else {
             role.default_capabilities()
-                .iter()
-                .map(|c| c.as_str().to_string())
-                .collect()
         };
 
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;

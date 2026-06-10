@@ -1,156 +1,108 @@
 # Sharing Your Identity
 
-Register your identity on a public registry so others can discover and verify your work.
+Make your identity verifiable by other people and machines. Today that works two ways:
+**inside a repository** (automatic, via the committed trust file) and **out-of-band**
+(via an exported identity bundle). A public registry for discovery is coming soon.
 
-## Register with the Auths Registry
+## In a repository: the committed trust file
 
-If you ran `auths init --profile developer` interactively, your identity was registered automatically during setup. To register manually or re-register with a different registry:
-
-```bash
-auths id register
-```
-
-```
-Success! Identity registered at https://auths-registry.fly.dev
-DID: EAbcd1234...
-```
-
-By default this publishes to the Auths public registry. To use a different registry:
+If you and a teammate work in the same repo, you may not need to share anything
+explicitly. Your first signed commit in a repo pins your identity root into the
+committed file `.auths/roots`. Teammates get that file when they pull, and their
+`auths verify` trusts commits delegated under the roots it lists.
 
 ```bash
-auths id register --registry https://your-registry.example.com
+cat .auths/roots
 ```
 
-Registration uploads your identity document and device attestations so that anyone with your DID can look up your public key and verify your signatures.
-
-## Link a platform account
-
-Platform claims connect your cryptographic identity to accounts on platforms like GitHub. This makes it possible to look up an Auths identity by a GitHub username instead of a raw DID.
-
-During `auths init`, you are offered the option to link GitHub. To add a claim after setup:
-
-```bash
-auths id claim github
+```
+# Pinned by auths init — the trusted root for this identity.
+did:keri:EGOASorjKXRvDzrmdX7WdCTu-5sFxzvhdUkY8YJeQrP9
 ```
 
-The command walks you through an OAuth flow: it opens your browser, authenticates you with GitHub, publishes a signed proof (a GitHub Gist), and submits the claim to the registry.
+Review changes to `.auths/roots` like you review code — adding a root to this file is
+granting trust. See [Team Workflows](../guides/git/team-workflows.md).
 
-## What are attestations?
+## Out-of-band: identity bundles
 
-Attestations are the foundation of trust in Auths. An attestation is a signed JSON document that records a specific authorization, such as "identity X authorizes device Y to sign commits."
-
-Every attestation contains:
-
-| Field | Purpose |
-|-------|---------|
-| `issuer` | The `did:keri` identity that granted the authorization |
-| `subject` | The `did:key` device being authorized |
-| `device_public_key` | The raw Ed25519 public key of the authorized device |
-| `identity_signature` | Signature from the identity controller |
-| `device_signature` | Counter-signature from the device |
-| `capabilities` | What the device is allowed to do (e.g., `sign_commit`) |
-| `expires_at` | Optional expiration timestamp |
-
-Attestations are stored as Git refs under `refs/auths/` in the identity repository at `~/.auths`. They are dual-signed -- both the identity controller and the device must sign -- so a compromised device alone cannot forge an authorization.
-
-### Why attestations matter
-
-Without attestations, a public key proves nothing on its own. Anyone can generate a keypair. Attestations create a verifiable chain from a long-lived identity to an ephemeral device key, answering the question: "Was this device actually authorized by the person who controls this identity?"
-
-When someone verifies your commit, the verification checks:
-
-1. **SSH signature** -- the commit was signed by a specific public key
-2. **Attestation chain** -- that public key was authorized by your identity
-3. **Identity** -- the identity is registered and discoverable
-
-This three-layer check means a verifier does not need to trust a central authority. They can independently verify the entire chain using only Git data and the public registry.
-
-## View your attestations
-
-List all devices authorized under your identity:
-
-```bash
-auths device list
-```
-
-To include revoked or expired devices:
-
-```bash
-auths device list --include-revoked
-```
-
-## CI/CD & automated agent identity
-
-CI runners and automated agents should hold their own identities — not borrow a human's credentials. Auths supports this through dedicated agent identities with scoped, time-limited attestations.
-
-### Create a dedicated agent identity
-
-Rather than exporting a human's identity bundle to CI, create a separate identity for the runner:
-
-```bash
-# On the CI runner (or during provisioning)
-auths init --profile agent
-```
-
-This gives the runner its own `did:keri` identity and device key, independent of any human operator.
-
-### Issue a scoped attestation from a human
-
-A human operator issues an attestation granting the CI agent specific capabilities:
-
-```bash
-auths device link \
-  --device did:key:z6MkCIRunner... \
-  --key my-key \
-  --capabilities "sign:commit,sign:release" \
-  --expires-in 7d
-```
-
-The attestation:
-
-- Grants only `sign:commit` and `sign:release` — not `deploy:production` or `manage_members`
-- Expires in 7 days, requiring periodic re-authorization
-- Links back to the authorizing human's identity through the attestation chain
-
-### Agent signs artifacts
-
-The CI agent signs commits and releases using its own key:
-
-```bash
-git commit -S -m "Release v2.1.0"
-auths sign release-v2.1.0.tar.gz
-```
-
-Every signature is traceable through the attestation chain: `CI runner → human admin → organization`.
-
-### Verify agent signatures
-
-Any verifier can validate the agent's work by checking the full chain:
-
-```bash
-auths verify HEAD
-```
-
-The verifier confirms: the commit was signed by a device with a valid attestation, the attestation was issued by an authorized human, and the capabilities include `sign:commit`.
-
-### Export an identity bundle
-
-For environments where the full identity repository is unavailable, export a portable bundle:
+For anyone who doesn't share a repo with you (or for CI that verifies statelessly),
+export a portable bundle:
 
 ```bash
 auths id export-bundle --alias main --output identity-bundle.json --max-age-secs 86400
 ```
 
-The bundle contains the public key and attestation chain. Use it in CI:
+The bundle contains your identity DID, current public key, and key event log — enough
+to verify your signatures with no access to your machine and no network. It is
+freshness-bounded (`--max-age-secs`); a stale bundle fails verification rather than
+silently passing.
+
+The recipient can either verify directly against it:
 
 ```bash
 auths verify HEAD --identity-bundle identity-bundle.json
+auths verify release.tar.gz --identity-bundle identity-bundle.json
 ```
 
-### Cloud credentials via OIDC
+or pin you as a trusted identity from it:
 
-For CI agents that need cloud access (AWS, GCP, Azure), the [OIDC bridge](../architecture/oidc-bridge.md) exchanges the attestation chain for a standard JWT — no static API keys or long-lived service account credentials required.
+```bash
+auths trust pin --did did:keri:EGOASorj... --bundle identity-bundle.json
+```
 
-## Next: How It Works
+After pinning, your signatures verify for them with no flags at all.
 
-You have a signed identity, signed commits, and a public registry entry. To understand the cryptographic primitives and storage model behind all of this, continue to the [How It Works](how-it-works.md) section.
+!!! note "You never need to share raw key material"
+    `trust pin` resolves keys from the bundle or from a locally-replayed key event
+    log. The `--key <hex>` form exists only for air-gapped ceremonies.
+
+## Link a platform account
+
+Platform claims connect your cryptographic identity to accounts on platforms like
+GitHub, so people who know your GitHub handle can find your DID.
+
+```bash
+auths id claim github
+```
+
+The command walks you through an OAuth flow: it opens your browser, authenticates you
+with GitHub, and publishes a signed proof (a GitHub Gist).
+
+## The public registry (coming soon)
+
+```bash
+auths id register
+```
+
+publishes your identity document to a registry so others can discover it by DID. The
+default registry (`https://registry.auths.dev`) is not yet live — registration is
+**opt-in** (`auths init --register`) and nothing is published during normal setup.
+Until the registry ships, bundles and the committed `.auths/roots` file are the
+supported sharing mechanisms.
+
+## Sharing with machines: CI and agents
+
+CI runners and automated agents should hold their own identities — not borrow a
+human's credentials.
+
+- **CI runners** get an ephemeral identity from `auths init --profile ci`, which prints
+  a copy-pasteable env block (see [CI/CD](../guides/platforms/ci-cd.md)).
+- **Agents** are *delegated* identifiers under your root identity — scoped and
+  time-limited:
+
+```bash
+auths id agent add --label deploy-bot --key main --scope sign_commit --expires-in 604800
+```
+
+The agent gets its own `did:keri:` whose delegation is anchored in your identity's
+event log. A verifier replaying the log sees exactly what you authorized and until
+when. Full guide: [Agent Identities](../guides/agents/agent-identities.md).
+
+For CI agents that need cloud access (AWS, GCP, Azure), the
+[OIDC bridge](../architecture/oidc-bridge.md) exchanges the identity proof for a
+standard JWT — no static API keys or long-lived service account credentials required.
+
+## Next
+
+To understand the cryptography behind all of this — the event log, pre-rotation, and
+why no central authority is needed — continue to [How It Works](how-it-works.md).

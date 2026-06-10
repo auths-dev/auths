@@ -124,6 +124,88 @@ impl<'a> KelResolverChain<'a> {
     }
 }
 
+/// Failure resolving a DID's current signing key from its locally-replayed KEL.
+#[derive(Debug, thiserror::Error)]
+pub enum CurrentKeyError {
+    /// The DID's KEL could not be resolved from the registry.
+    #[error("KEL for {did} could not be resolved: {source}")]
+    Resolve {
+        /// The DID whose KEL was requested.
+        did: String,
+        /// The underlying resolver error.
+        source: KelResolveError,
+    },
+    /// The resolved KEL failed replay validation.
+    #[error("KEL for {did} failed validation: {reason}")]
+    InvalidKel {
+        /// The DID whose KEL failed validation.
+        did: String,
+        /// The validation failure, rendered for display.
+        reason: String,
+    },
+    /// The replayed key state holds no current signing key (abandoned identity).
+    #[error("KEL for {did} has no current signing key")]
+    NoCurrentKey {
+        /// The DID whose key state is empty.
+        did: String,
+    },
+    /// The current key uses a CESR code this build cannot decode.
+    #[error("current key for {did} could not be decoded: {reason}")]
+    UnsupportedKey {
+        /// The DID whose key could not be decoded.
+        did: String,
+        /// The decode failure, rendered for display.
+        reason: String,
+    },
+}
+
+/// Resolve a DID's *current* signing public key by replaying its KEL from the
+/// local registry.
+///
+/// This is the self-trust primitive: a verifier resolving its own identity (or
+/// any identity whose KEL the local registry holds) gets the post-rotation
+/// current key, never a stale inception key. Local-only — no network.
+///
+/// Args:
+/// * `registry`: The backend holding the identity's KEL.
+/// * `did`: The `did:keri:` whose current key to resolve.
+///
+/// Usage:
+/// ```ignore
+/// let (pk_bytes, curve) = resolve_current_public_key(registry.as_ref(), &did)?;
+/// ```
+pub fn resolve_current_public_key(
+    registry: &dyn RegistryBackend,
+    did: &str,
+) -> Result<(Vec<u8>, auths_crypto::CurveType), CurrentKeyError> {
+    let kel = KelResolverChain::local(registry)
+        .resolve_kel(did)
+        .map_err(|source| CurrentKeyError::Resolve {
+            did: did.to_string(),
+            source,
+        })?;
+    let state = auths_keri::validate_kel(&kel).map_err(|e| CurrentKeyError::InvalidKel {
+        did: did.to_string(),
+        reason: e.to_string(),
+    })?;
+    let key = state
+        .current_key()
+        .ok_or_else(|| CurrentKeyError::NoCurrentKey {
+            did: did.to_string(),
+        })?;
+    let parsed = key.parse().map_err(|e| CurrentKeyError::UnsupportedKey {
+        did: did.to_string(),
+        reason: e.to_string(),
+    })?;
+    let (bytes, curve) = match parsed {
+        auths_keri::KeriPublicKey::Ed25519(pk) => (pk.to_vec(), auths_crypto::CurveType::Ed25519),
+        auths_keri::KeriPublicKey::P256 { key, .. } => {
+            (key.to_vec(), auths_crypto::CurveType::P256)
+        }
+    };
+    Ok((bytes, curve))
+}
+
 /// Fetch from a remote and immediately apply the prefix-binding guard, mapping
 /// transport errors into the unified [`KelResolveError`] taxonomy.
 fn fetch_remote_guarded(

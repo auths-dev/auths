@@ -31,11 +31,12 @@ pub(crate) fn display_developer_result(
     out.key_value("Next step     ", "auths demo   or   auths sign <file>");
     out.key_value("Share identity", "auths id export-bundle");
     out.newline();
-    out.print_success("Your next commit will be signed with Auths!");
-    out.println("  Run `auths status` to check your identity");
-    out.println("  Run `auths demo` to test sign + verify right now");
+    out.print_success("Your next `git commit` will be signed and verifiable with Auths!");
+    out.println("  Verify any commit:  auths verify HEAD");
+    out.println("  Check your setup:   auths status");
 }
 
+#[allow(clippy::print_stdout)]
 pub(crate) fn display_ci_result(
     out: &Output,
     result: &auths_sdk::result::CiIdentityResult,
@@ -46,8 +47,11 @@ pub(crate) fn display_ci_result(
 
     out.print_heading("Add these to your CI secrets:");
     out.println("─".repeat(50).as_str());
+    // The env block is DATA, not prose: it must survive
+    // `auths init --profile ci > secrets.env`, so it goes to stdout while the
+    // surrounding guidance stays on stderr.
     for line in &result.env_block {
-        out.println(line);
+        println!("{line}");
     }
     out.println("─".repeat(50).as_str());
     out.newline();

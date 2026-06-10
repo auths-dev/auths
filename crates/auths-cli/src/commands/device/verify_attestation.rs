@@ -1,6 +1,7 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
 use auths_keri::witness::SignedReceipt;
+use auths_sdk::ports::IdentityStorage;
 use auths_sdk::trust::{PinnedIdentity, PinnedIdentityStore, RootsFile, TrustLevel, TrustPolicy};
 use auths_verifier::core::Attestation;
 use auths_verifier::verify::{verify_chain_with_witnesses, verify_with_keys};
@@ -162,13 +163,36 @@ fn bytes_to_device_public_key(
         .map_err(|e| anyhow!("Invalid {} public key: {e}", source))
 }
 
+/// Resolve the issuer key via self-trust: when the issuer is the verifier's own
+/// local identity, replay its KEL from the local registry for the current key.
+///
+/// Self-trust is the floor of the trust model — a verifier always trusts keys it
+/// itself controls, so signing and verifying your own attestation needs zero
+/// pinning ceremony. Returns `None` for any other issuer (normal trust
+/// resolution applies).
+fn resolve_self_issuer_key(did: &str) -> Option<auths_verifier::DevicePublicKey> {
+    let auths_home = auths_sdk::paths::auths_home().ok()?;
+    let local = auths_sdk::storage::RegistryIdentityStorage::new(auths_home.clone())
+        .load_identity()
+        .ok()?;
+    if local.controller_did.as_str() != did {
+        return None;
+    }
+    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+    );
+    let (pk, curve) = auths_sdk::keri::resolve_current_public_key(&registry, did).ok()?;
+    auths_verifier::DevicePublicKey::try_new(curve, &pk).ok()
+}
+
 /// Resolve the issuer public key from various sources.
 ///
 /// Resolution precedence:
 /// 1. `--issuer-pk` (direct key, bypasses trust)
-/// 2. Pinned identity store
-/// 3. `roots.json` file
-/// 4. Trust policy (TOFU prompt or explicit rejection)
+/// 2. Self-trust (the verifier's own identity, resolved from its local KEL)
+/// 3. Pinned identity store
+/// 4. `roots.json` file
+/// 5. Trust policy (TOFU prompt or explicit rejection)
 fn resolve_issuer_key(
     now: chrono::DateTime<Utc>,
     cmd: &VerifyCommand,
@@ -188,6 +212,14 @@ fn resolve_issuer_key(
 
     // Determine the DID to look up
     let did = cmd.issuer_did.as_deref().unwrap_or(att.issuer.as_str());
+
+    // 2. Self-trust: the verifier's own identity resolves from its local KEL.
+    if let Some(pk) = resolve_self_issuer_key(did) {
+        if !is_json_mode() {
+            println!("Using local identity (self-trust): {}", did);
+        }
+        return Ok(pk);
+    }
 
     // Get trust policy
     let policy = effective_trust_policy(cmd);

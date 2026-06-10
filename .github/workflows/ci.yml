@@ -81,6 +81,31 @@ jobs:
           bash scripts/check-arch.sh
           bash scripts/check_sdk_boundary.sh
 
+  smoke:
+    name: Golden-path smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-smoke-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-smoke-
+      - name: Build CLI
+        run: cargo build -p auths-cli
+      - name: Run golden-path smoke test
+        run: python3 docs/smoketests/end_to_end.py
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-last-run
+          path: docs/smoketests/last_run.json
+
   schemas:
     name: Schema validation
     runs-on: ubuntu-latest

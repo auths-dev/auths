@@ -64,11 +64,16 @@ impl NapiPairingHandle {
         let timeout = timeout_secs.unwrap_or(300) as u64;
         let mdns = enable_mdns.unwrap_or(true);
 
-        let capabilities: Vec<String> = if let Some(json) = capabilities_json {
+        let capability_names: Vec<String> = if let Some(json) = capabilities_json {
             serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
         } else {
             vec!["sign:commit".to_string()]
         };
+        let capabilities: Vec<auths_verifier::Capability> = capability_names
+            .iter()
+            .map(|s| auths_verifier::Capability::parse(s))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format_error("AUTHS_PAIRING_ERROR", format!("Invalid capability: {e}")))?;
 
         let identity_storage = RegistryIdentityStorage::new(repo.clone());
         let managed = identity_storage
@@ -295,11 +300,12 @@ pub async fn join_pairing_session(
         .as_str()
         .unwrap_or("")
         .to_string();
-    let capabilities: Vec<String> = token_data["capabilities"]
+    let capabilities: Vec<auths_verifier::Capability> = token_data["capabilities"]
         .as_array()
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .filter_map(|v| v.as_str())
+                .filter_map(|s| auths_verifier::Capability::parse(s).ok())
                 .collect()
         })
         .unwrap_or_default();

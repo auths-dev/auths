@@ -63,7 +63,7 @@ Cryptographic commit signing with Git-native storage. One identity, multiple dev
 
     ---
 
-    Create a stable `did:keri` identity and link your laptop, phone, and CI server via signed attestations. Every device signs as **you**. Revoke a lost device in one command.
+    Create a stable `did:keri` identity and delegate your laptop, phone, and CI server under it — each device gets its own key, anchored in your identity's event log. Every device signs as **you**. Revoke a lost device in one command.
 
 -   :material-check-decagram: **Verifiable Everywhere**
 
@@ -78,14 +78,15 @@ Cryptographic commit signing with Git-native storage. One identity, multiple dev
 ## Quick Tour
 
 ```bash
-# Create your cryptographic identity
+# Try sign + verify in-process — zero setup, no prompts, under a second
+auths demo
+
+# One-time: create your identity, configure Git signing, install the commit hook
 auths init
 
-# Sign a commit (after configuring Git)
-auths sign
-
-# Verify a signed commit or attestation
-auths verify
+# Commit as normal — signed and verifiable automatically
+git commit -m "my first signed commit"
+auths verify HEAD
 ```
 
 ---

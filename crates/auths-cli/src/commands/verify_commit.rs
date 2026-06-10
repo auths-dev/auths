@@ -159,10 +159,17 @@ pub async fn handle_verify_commit(
     // tree) — the source we replay to decide trust.
     let registry =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
-    // Trust roots = the committed `.auths/roots` pin, plus the root of any
-    // `--identity-bundle` the caller supplied (stateless CI). An unusable bundle
-    // fails closed — it must never silently leave trust unconstrained.
+    // Trust roots = the committed `.auths/roots` pin, plus the verifier's own
+    // identity (self-trust — you can always verify what you signed), plus the
+    // root of any `--identity-bundle` the caller supplied (stateless CI). An
+    // unusable bundle fails closed — it must never silently leave trust
+    // unconstrained.
     let mut pinned_roots = super::verify_helpers::load_project_pinned_roots();
+    if let Some(own_root) = auths_sdk::workflows::commit_trust::local_self_root(&sdk_ctx)
+        && !pinned_roots.contains(&own_root)
+    {
+        pinned_roots.push(own_root);
+    }
     let mut bundle_kel: Option<(String, Vec<Event>)> = None;
     if let Some(bundle_path) = &cmd.identity_bundle {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
@@ -402,8 +409,11 @@ async fn verify_one_commit(
             None => {
                 return VerifyCommitResult::failure(
                     sha,
-                    "Commit carries no Auths-Id/Auths-Device trailer — it was not signed by \
-                 `auths sign` (or predates KEL-native signing). Nothing to verify against."
+                    "Commit carries no Auths-Id/Auths-Device trailer. The prepare-commit-msg \
+                     hook installed by `auths init` adds these on every commit — if this repo \
+                     sets its own core.hooksPath (e.g. husky), the hook is bypassed; run \
+                     `auths doctor` to check. Backfill existing commits with `auths sign <ref>` \
+                     (rewrites the commit)."
                         .to_string(),
                 );
             }

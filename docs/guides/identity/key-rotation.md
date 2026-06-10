@@ -11,7 +11,7 @@ Key rotation replaces your active signing key while preserving your `did:keri` i
 
 ## How rotation works
 
-When your identity is created (`auths init` or `auths id create`), two Ed25519 keypairs are generated:
+When your identity is created (`auths init`), two keypairs are generated (P-256 by default):
 
 1. **Current key** -- used for signing now
 2. **Next key** -- a pre-committed rotation key, stored encrypted in the keychain under a derived alias (`<alias>--next-<sequence>`)
@@ -60,7 +60,7 @@ You will be prompted for:
 auths id rotate --alias my-key --next-key-alias my-key-v2
 ```
 
-After this command, `my-key-v2` is the active signing key alias. Update any Git configuration or CI secrets that reference the old alias.
+After this command, `my-key-v2` is the active signing key alias. The CLI updates git's `user.signingKey` for you; update any CI secrets that reference the old alias. (Without `--next-key-alias`, the alias stays the same and nothing needs updating.)
 
 ### Using `--current-key-alias` (alternative flag)
 
@@ -98,10 +98,14 @@ This launches an interactive flow that:
 2. Prompts for a new key alias
 3. Requires typing `ROTATE` to confirm
 4. Performs the rotation
-5. Prints next steps for re-authorizing devices
+5. Refreshes the commit-trailer file and prints a post-rotation checklist
 
-!!! warning "All devices must re-authorize after rotation"
-    Rotation changes the active identity key. Existing device attestations were signed by the old key. Run `auths device link` on each device to create fresh attestations signed by the new key.
+!!! note "Delegated devices survive rotation"
+    Rotation changes the root's active key, not your devices' delegations — those are
+    anchored in the key event log, and verifiers replay the log to resolve authority
+    at any point in time. Signing and verification work immediately after rotation
+    with no extra steps. (Only the legacy attestation-linked flow — `auths device
+    link` — produced attestations that may need re-issuing.)
 
 For non-interactive use (CI, scripts):
 
@@ -121,19 +125,37 @@ auths emergency rotate-now --dry-run
 
 ## What happens to old signatures after rotation
 
-**Old signatures remain valid.** Verification resolves the key state at signing time by walking the Key Event Log. A commit signed by `pk_A` at sequence 0 still verifies against `pk_A`, even after the identity has rotated to `pk_B` at sequence 1.
+The honest answer has two halves:
+
+**Attestations and signed artifacts remain valid.** They are verified against the key
+that was active at their recorded signing time — the Key Event Log proves which key
+that was, so rotation never invalidates artifact or attestation history.
+
+**Old commits get a precise classification, not a pass.** Commit verification checks
+the signer's *current* key. A commit signed before a rotation returns the explicit
+verdict `SignedBySupersededKey` — the verifier recognizes the signature as a
+legitimate former key that has since rotated away, clearly distinguished from an
+unknown or forged signer. This is deliberate: silently accepting any historical key
+would let a *stolen* old key forge "old" commits (a backdating attack). If your
+policy requires old commits to verify green under the current key, re-sign them with
+`auths sign <ref>` — note this amends the commits, so SHAs change; never rewrite
+pushed history without coordinating.
 
 ### What stays the same
 
 - Your `did:keri:E...` identifier
-- Your attestation history
-- Historical signature validity
+- Your key alias (`main` stays `main` — git signing config, the commit hook, and CI
+  env blocks keep working untouched)
+- Your attestation history and artifact signature validity
+- Your device and agent delegations
 
 ### What changes
 
-- The active signing key (the keypair used for new signatures)
+- The active signing key (the keypair used for new signatures; stored under the same alias)
 - The KEL gains a rotation event entry
-- Device attestations need to be re-created with the new key
+- Pre-rotation commits verify as `SignedBySupersededKey` (recognized legacy) rather than valid
+- The rotated-away private key is deleted from the keychain — it must never sign
+  again, and verification only ever needs the public keys recorded in the KEL
 
 ## Key Event Log (KEL)
 
@@ -158,7 +180,7 @@ The KEL is stored in Git at `refs/keri/kel` (legacy backend) or packed under `re
 
 ## Post-rotation checklist
 
-1. Re-authorize devices: `auths device link` on each device
+1. Sign something and verify it round-trips: `git commit --allow-empty -m test && auths verify HEAD`
 2. Update CI/CD secrets if they reference the old key alias
 3. Verify the setup: `auths doctor`
 4. Confirm the new key is active: `auths id show`

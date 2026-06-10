@@ -7,7 +7,7 @@ Auths enables cryptographic verification without a central authority. This page 
 Auths implements the core tenets of zero-trust architecture (NIST SP 800-207) as structural properties, not bolted-on policies:
 
 - **Never trust, always verify.** Every attestation is verified cryptographically — signatures, expiration, capability scope. No implicit trust is granted based on network location, credential source, or issuer reputation. Verification is a pure computation requiring no server contact.
-- **Least privilege.** Attestations grant specific capabilities (`sign:commit`, `deploy:staging`) with mandatory expiration. Delegation chains enforce capability narrowing: a child entity can never hold more authority than its parent granted.
+- **Least privilege.** Delegations grant specific capabilities (`sign_commit`, `sign_release`) with expiration. Delegation chains enforce capability narrowing: a child entity can never hold more authority than its parent granted.
 - **Assume breach.** KERI pre-rotation means key compromise is survivable. The next rotation key is pre-committed as a hash in the current event — an attacker who steals the active key cannot rotate to a key they control.
 - **Verify explicitly.** Dual signatures (identity + device) on every attestation, hash-chained Key Event Logs, and optional witness receipts provide independent, layered verification that does not depend on a single trust anchor.
 
@@ -25,13 +25,41 @@ Trust in Auths is rooted in three properties:
 
 A verifier does not need to contact a server or look up a registry. Given the Key Event Log and the relevant attestations, verification is a pure computation.
 
+## Who do you trust? The pinned-roots model
+
+Cryptography proves a signature chain is *internally* consistent — it cannot tell you
+whether the root identity at the top of the chain is someone you should trust. That
+decision is explicit in Auths, and it comes from exactly three sources:
+
+1. **The committed `.auths/roots` file.** A repository declares which root identities
+   it trusts, one `did:keri:` per line, in a file that is itself version-controlled.
+   Your first signed commit in a repo seeds it with your own root automatically;
+   teammates inherit it by cloning. Changing this file is granting or revoking trust —
+   review it like code.
+2. **Self-trust.** Your own identity is always a trusted root for your own
+   verifications. You can verify everything you signed with zero setup; pinning is for
+   *other people's* roots.
+3. **Identity bundles.** A stateless verifier (CI, an air-gapped auditor) can be handed
+   a freshness-bounded bundle (`auths id export-bundle`) whose root is trusted for that
+   verification only (`--identity-bundle`).
+
+A commit signed by a device delegated under a root that appears in none of these is
+reported as untrusted — valid math, unknown signer.
+
+!!! warning "Accepted risk: kt=1, no witnesses"
+    Auths currently runs single-signature key event logs without witness
+    infrastructure. Concurrent rotations from different devices can fork a shared log;
+    the duplicity detector surfaces this rather than silently picking a side. The full
+    tradeoff analysis is in
+    [Multi-device accepted risks](../architecture/multi_device_accepted_risks.md).
+
 ## Inception events: the root of trust
 
 The inception event is the foundation of all trust in an Auths identity. It establishes:
 
 - The **identity prefix** (`i` field) -- derived from the event's own SAID
-- The **initial signing key** (`k` field) -- Ed25519 public key with `D` derivation code prefix
-- The **next-key commitment** (`n` field) -- Blake3 hash of the next rotation key with `E` prefix
+- The **initial signing key** (`k` field) -- the public key with its CESR derivation code prefix (`1AAJ` for P-256, the default; `D` for Ed25519)
+- The **next-key commitment** (`n` field) -- hash of the next rotation key with `E` prefix
 - The **witness configuration** (`bt`/`b` fields) -- threshold and list of witnesses
 
 Because the prefix equals the SAID of the inception event, any modification to the inception event would change the prefix. This makes the inception event immutable by construction: altering it produces a different identity, not a corrupted one.
@@ -40,16 +68,19 @@ Because the prefix equals the SAID of the inception event, any modification to t
 Inception event (icp, sequence 0):
 
   ┌─────────────────────────────────────────┐
-  │  d: E<blake3-hash>  ← SAID             │
-  │  i: E<blake3-hash>  ← same as d        │
-  │  k: [D<pubkey>]     ← current key      │
-  │  n: [E<hash>]       ← next-key commit  │
-  │  x: <signature>     ← signed by k      │
+  │  d: E<said-hash>     ← SAID             │
+  │  i: E<said-hash>     ← same as d        │
+  │  k: [1AAJ<pubkey>]   ← current key      │
+  │  n: [E<hash>]        ← next-key commit  │
   └─────────────────────────────────────────┘
+    + CESR signature attachment (signed by k)
        │
        └─── This hash IS the identity.
             Change anything, get a different identity.
 ```
+
+Signatures are never *inside* the event JSON — they travel beside it as CESR
+attachments, so the bytes that are hashed for the SAID are exactly the event content.
 
 ## Key Event Logs: tamper-evident history
 
@@ -59,11 +90,11 @@ The Key Event Log (KEL) is a sequence of signed events stored at `refs/did/keri/
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │ icp (seq 0)  │     │ rot (seq 1)  │     │ ixn (seq 2)  │
 │ d: ESAID_0   │────>│ p: ESAID_0   │────>│ p: ESAID_1   │
-│ k: [D<key1>] │     │ d: ESAID_1   │     │ d: ESAID_2   │
-│ n: [E<hash>] │     │ k: [D<key2>] │     │ a: [{seal}]  │
-│ x: <sig1>    │     │ n: [E<hash>] │     │ x: <sig3>    │
-└──────────────┘     │ x: <sig2>    │     └──────────────┘
-                     └──────────────┘
+│ k: [<key1>]  │     │ d: ESAID_1   │     │ d: ESAID_2   │
+│ n: [E<hash>] │     │ k: [<key2>]  │     │ a: [{seal}]  │
+└──────────────┘     │ n: [E<hash>] │     └──────────────┘
+   + sig attach      └──────────────┘        + sig attach
+                        + sig attach
 ```
 
 ### Validation rules
@@ -77,7 +108,7 @@ KEL validation (`validate_kel`) enforces these invariants:
 | SAID matches content | Blake3 hash of canonical JSON = `d` field | `InvalidSaid` |
 | Chain is linked | `p` field = previous event's `d` field | `BrokenChain` |
 | Pre-rotation commitment holds | New key matches previous `n` commitment | `CommitmentMismatch` |
-| Signature is valid | Ed25519 signature over canonical event JSON | `SignatureFailed` |
+| Signature is valid | Signature (P-256 or Ed25519, per the key's CESR code) over canonical event bytes | `SignatureFailed` |
 
 Validation is a **pure function**: it takes a slice of events and returns a `KeyState` or an error. No filesystem, network, or platform access. This makes it suitable for property-based testing and embedding in any environment.
 

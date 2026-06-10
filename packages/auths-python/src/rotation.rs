@@ -26,6 +26,8 @@ pub struct PyIdentityRotationResult {
     pub previous_key_fingerprint: String,
     #[pyo3(get)]
     pub sequence: u128,
+    #[pyo3(get)]
+    pub new_key_alias: String,
 }
 
 #[pymethods]
@@ -123,6 +125,7 @@ pub fn rotate_identity_ffi(
             new_key_fingerprint: result.new_key_fingerprint,
             previous_key_fingerprint: result.previous_key_fingerprint,
             sequence: result.sequence,
+            new_key_alias: result.new_key_alias,
         })
     }
 }

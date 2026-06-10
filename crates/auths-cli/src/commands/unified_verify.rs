@@ -85,6 +85,11 @@ Artifact Verification:
   Pass the artifact file directly — auths finds <file>.auths.json automatically.
   Pass --signature to override the default sidecar path.
 
+Exit codes:
+  0  verified
+  1  verification failed (signature, trust, or untrusted/unresolvable signer)
+  2  could not attempt (I/O error, malformed input, missing repository)
+
 Related:
   auths sign     — Create signatures
   auths publish  — Sign and publish to registry

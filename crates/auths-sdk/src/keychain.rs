@@ -1,5 +1,6 @@
 //! Re-exports of keychain, encrypted file storage, and passphrase cache types from `auths-core`.
 
+pub use auths_core::crypto::encryption::validate_passphrase;
 pub use auths_core::storage::encrypted_file::EncryptedFileStorage;
 pub use auths_core::storage::keychain;
 pub use auths_core::storage::keychain::{

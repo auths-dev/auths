@@ -12,7 +12,7 @@ mod prompts;
 use anyhow::{Result, anyhow};
 use clap::{Args, ValueEnum};
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
@@ -374,8 +374,41 @@ fn run_developer_setup(
     guide.section("Shell & Signing Setup");
     offer_shell_completions(interactive, out)?;
 
+    // Commit-time trailers: install the prepare-commit-msg hook and point
+    // core.hooksPath at it, so a plain `git commit` carries the Auths-Id /
+    // Auths-Device trailers `auths verify` replays — zero extra commands.
+    // Trailer values come from the signer resolver (same source as `auths sign`):
+    // on the root machine Auths-Device is the root `did:keri:` itself, on a
+    // delegate it is the device's delegated AID — always a replayable KEL.
+    if let Some(git_config) = git_config_provider.as_deref() {
+        match auths_sdk::domains::identity::local::resolve_local_signer(&sdk_ctx) {
+            Ok(signer) => {
+                match auths_sdk::workflows::commit_hooks::enable_commit_trailers(
+                    &registry_path,
+                    &signer.root_did,
+                    &signer.signer_did,
+                    git_config,
+                ) {
+                    Ok(()) => {
+                        // Refresh stamps the current KEL position (Auths-Anchor-Seq)
+                        // into the trailer file the hook reads.
+                        let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(
+                            &sdk_ctx,
+                            &registry_path,
+                        );
+                        out.println("  Commit trailers enabled (prepare-commit-msg hook)");
+                    }
+                    Err(e) => out.println(&format!("  Note: could not install commit hook ({e})")),
+                }
+            }
+            Err(e) => out.println(&format!("  Note: could not resolve signer for hook ({e})")),
+        }
+    }
+
     // Pin the local identity as a trusted root for KEL-native verification (Epic B):
     // the committed `<repo>/.auths/roots` is the root of trust — no allowed_signers file.
+    // The hook seeds the same pin into every repo on first signed commit; this covers
+    // the repo the user is standing in right now.
     if let Ok(output) = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"]).output()
         && output.status.success()
     {
@@ -462,7 +495,16 @@ fn run_agent_setup(
         return Ok(());
     }
 
-    // EXECUTE
+    // The user said "I want an agent" — deliver one. An agent is a KERI
+    // delegated identifier under an existing root, so when a root identity
+    // exists, route straight into the delegation flow (the same machinery as
+    // `auths id agent add`), reusing the capabilities just selected.
+    if interactive && delegate_agent_interactively(out, cmd, ctx, &config, &registry_path)? {
+        return Ok(());
+    }
+
+    // EXECUTE — no root identity (or non-interactive): the SDK returns the
+    // actionable "delegate via `auths id agent add`" guidance.
     guide.section("Creating Agent Identity");
     ensure_registry_dir(&registry_path)?;
     let sdk_ctx = build_auths_context(&registry_path, &ctx.env_config, None)?;
@@ -486,6 +528,63 @@ fn run_agent_setup(
     display_agent_result(out, &result);
 
     Ok(())
+}
+
+/// Delegate an agent under the existing root identity, interactively. Returns
+/// `Ok(false)` when no root identity exists (the caller falls through to the
+/// guidance path).
+fn delegate_agent_interactively(
+    out: &Output,
+    cmd: &InitCommand,
+    ctx: &CliConfig,
+    config: &auths_sdk::types::CreateAgentIdentityConfig,
+    registry_path: &Path,
+) -> Result<bool> {
+    let sdk_ctx = build_auths_context(
+        registry_path,
+        &ctx.env_config,
+        Some(Arc::clone(&ctx.passphrase_provider)),
+    )?;
+    if sdk_ctx.identity_storage.load_identity().is_err() {
+        out.print_info("No root identity found — an agent is delegated under a root identity.");
+        out.println("  Run `auths init` (developer profile) first, then choose Agent again.");
+        return Ok(false);
+    }
+
+    let label: String = dialoguer::Input::new()
+        .with_prompt("Agent label (also the keychain alias for its key)")
+        .default("agent".to_string())
+        .interact_text()
+        .unwrap_or_else(|_| "agent".to_string());
+
+    let root_alias = auths_sdk::keychain::KeyAlias::new_unchecked(&cmd.key_alias);
+    let agent_alias = auths_sdk::keychain::KeyAlias::new_unchecked(&label);
+    #[allow(clippy::disallowed_methods)] // CLI boundary: clock injected here
+    let expires_at = config
+        .expires_in
+        .map(|secs| chrono::Utc::now().timestamp() + secs as i64);
+
+    let result = auths_sdk::domains::agents::add_scoped(
+        &sdk_ctx,
+        &root_alias,
+        &agent_alias,
+        auths_crypto::CurveType::default(),
+        &config.capabilities,
+        expires_at,
+    )
+    .map_err(anyhow::Error::new)?;
+    let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&sdk_ctx, registry_path);
+
+    out.newline();
+    out.print_success("Agent delegated as a KERI delegated identifier:");
+    out.println(&format!("  {}", out.info(&result.agent_did)));
+    let cap_display: Vec<String> = config.capabilities.iter().map(|c| c.to_string()).collect();
+    if !cap_display.is_empty() {
+        out.println(&format!("  Capabilities: {}", cap_display.join(", ")));
+    }
+    out.newline();
+    out.println("  Manage it: auths id agent list / auths id agent revoke");
+    Ok(true)
 }
 
 impl crate::commands::executable::ExecutableCommand for InitCommand {

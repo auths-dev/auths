@@ -125,7 +125,9 @@ class Runner:
             {
                 "HOME": str(home),
                 "AUTHS_KEYCHAIN_BACKEND": "file",
-                "AUTHS_PASSPHRASE": "smoke-test-passphrase",
+                # Must satisfy the strength policy: >=12 chars, >=3 of 4 character
+                # classes (crates/auths-core/src/crypto/encryption.rs).
+                "AUTHS_PASSPHRASE": "Smoke-Test-Pass1!",
                 "GIT_AUTHOR_NAME": "Smoke Tester",
                 "GIT_AUTHOR_EMAIL": "smoke@auths.dev",
                 "GIT_COMMITTER_NAME": "Smoke Tester",
@@ -238,7 +240,11 @@ def scenario_developer(auths: Path, work: Path, report: Report) -> Runner:
 
     r.run("init --profile developer --non-interactive",
           ["init", "--profile", "developer", "--non-interactive"], timeout=180)
-    r.run("status", ["status"])
+    status = r.run("status", ["status"])
+    combined = status.stdout + status.stderr
+    if status.ok and "this device" not in combined:
+        status.ok = False
+        status.note = "status must count the current machine, not report 'Devices: none'"
     r.run("whoami", ["whoami"])
     r.run("whoami --json", ["--json", "whoami"])
     r.run("key list", ["key", "list"])
@@ -273,7 +279,7 @@ def scenario_artifact(r: Runner, work: Path) -> None:
 
 
 def scenario_git_signing(r: Runner, work: Path) -> Path:
-    section("4. GIT COMMIT SIGNING  (git commit auto-sign → verify HEAD)")
+    section("4. GIT COMMIT SIGNING  (README path: git commit → verify; then auths sign HEAD)")
     repo = work / "demo-repo"
     repo.mkdir(exist_ok=True)
     git(r, repo, "init", "-q", name="git init")
@@ -281,7 +287,21 @@ def scenario_git_signing(r: Runner, work: Path) -> Path:
     git(r, repo, "add", ".", name="git add")
     commit = git(r, repo, "commit", "-q", "-m", "smoke: signed commit", name="git commit (auto-sign)")
     if commit.ok:
-        r.run("verify HEAD", ["verify", "HEAD"], cwd=repo)
+        r.run("verify HEAD (README path: plain git commit)", ["verify", "HEAD"], cwd=repo)
+
+        # Amend must not duplicate trailers (hook uses --if-exists replace).
+        amend = git(r, repo, "commit", "--amend", "-q", "-m", "smoke: amended commit",
+                    name="git commit --amend")
+        if amend.ok:
+            count = git(r, repo, "log", "-1", "--format=%B", name="trailer dedup check (1 Auths-Id)")
+            ids = count.stdout.count("Auths-Id:")
+            if ids != 1:
+                count.ok = False
+                count.note = f"expected exactly 1 Auths-Id trailer after amend, found {ids}"
+            r.run("verify HEAD (after amend)", ["verify", "HEAD"], cwd=repo)
+
+        r.run("sign HEAD (repair/backfill path)", ["sign", "HEAD"], cwd=repo, timeout=120)
+        r.run("verify HEAD (after auths sign HEAD)", ["verify", "HEAD"], cwd=repo)
     else:
         r.skip("verify HEAD", "commit failed — git signing config from init is broken")
     return repo
@@ -296,27 +316,31 @@ def scenario_bundle(r: Runner, work: Path, repo: Path) -> None:
     )
     if exported.ok and bundle.exists() and repo.exists():
         r.run("verify HEAD --identity-bundle", ["verify", "HEAD", "--identity-bundle", str(bundle)], cwd=repo)
+        artifact = repo.parent / "artifact.txt"
+        if artifact.exists():
+            r.run("verify <artifact> --identity-bundle",
+                  ["verify", str(artifact), "--identity-bundle", str(bundle)], cwd=repo.parent)
     else:
         r.skip("verify HEAD --identity-bundle", "bundle export failed or no signed repo")
 
 
 def scenario_trust(r: Runner) -> None:
-    section("6. TRUST PINNING  (pin → list → show → remove)")
+    section("6. TRUST PINNING  (pin --did only → list → show → remove)")
     r.run("trust list (empty)", ["trust", "list"])
 
-    ident = r.run("whoami --json (for pin inputs)", ["--json", "whoami"], note="parsing did+key")
+    ident = r.run("whoami --json (for pin inputs)", ["--json", "whoami"], note="parsing did")
     did = find_did(ident.stdout + ident.stderr)
     key = find_hex_key(ident.stdout + ident.stderr)
-    if not key:
-        key_out = r.run("key list (for pin inputs)", ["--json", "key", "list"])
-        key = find_hex_key(key_out.stdout)
-    if did and key:
-        r.run("trust pin --did --key", ["trust", "pin", "--did", did, "--key", key])
+    if ident.ok and not key:
+        ident.ok = False
+        ident.note = "whoami --json must expose public_key_hex"
+    if did:
+        r.run("trust pin --did (key resolved from KEL)", ["trust", "pin", "--did", did])
         r.run("trust list (pinned)", ["trust", "list"])
         r.run("trust show", ["trust", "show", did])
         r.run("trust remove", ["trust", "remove", did])
     else:
-        r.skip("trust pin", f"could not parse did/key from whoami --json (did={bool(did)}, key={bool(key)})")
+        r.skip("trust pin", "could not parse did from whoami --json")
 
 
 def scenario_agent_delegation(r: Runner) -> None:
@@ -331,9 +355,21 @@ def scenario_agent_delegation(r: Runner) -> None:
 
 
 def scenario_rotation(r: Runner, work: Path) -> None:
-    section("8. KEY ROTATION  (id rotate → sign + verify again)")
+    section("8. KEY ROTATION  (id rotate → sign + verify again, stable alias)")
+    repo = work / "demo-repo"
+    pre_sha = ""
+    if repo.exists():
+        pre_sha = git(r, repo, "rev-parse", "HEAD",
+                      name="capture pre-rotation HEAD").stdout.strip()
+
     r.run("id rotate", ["id", "rotate"], timeout=120)
-    r.run("status (after rotate)", ["status"])
+    status = r.run("status (after rotate)", ["status"])
+
+    # Stable alias: the signing key name must NOT change across rotation.
+    keys = r.run("key list (after rotate)", ["--json", "key", "list"])
+    if keys.ok and '"main"' not in keys.stdout:
+        keys.ok = False
+        keys.note = "stable-alias regression: 'main' missing after rotation"
 
     artifact = work / "post-rotate.txt"
     artifact.write_text("signed after rotation\n")
@@ -343,6 +379,29 @@ def scenario_rotation(r: Runner, work: Path) -> None:
         r.run("verify <file> (after rotate)", ["verify", str(artifact)], cwd=work)
     else:
         r.skip("verify after rotate", "post-rotation signing failed")
+
+    if repo.exists():
+        # Plain `git commit` must keep working after rotation — this is the
+        # exact regression that shipped in <=0.1.2 (alias rename broke
+        # user.signingKey silently).
+        (repo / "post-rotate.md").write_text("post-rotation commit\n")
+        git(r, repo, "add", "-A", name="git add (after rotate)")
+        commit = git(r, repo, "commit", "-q", "-m", "smoke: post-rotation commit",
+                     name="git commit (after rotate)")
+        if commit.ok:
+            r.run("verify HEAD (after rotate)", ["verify", "HEAD"], cwd=repo)
+        else:
+            r.skip("verify HEAD (after rotate)", "post-rotation commit failed")
+
+        # Pre-rotation commits get the explicit superseded classification —
+        # recognized legacy, never confused with a forgery.
+        if pre_sha:
+            sup = r.run("verify pre-rotation commit (expect superseded)",
+                        ["verify", pre_sha], cwd=repo, expect_failure=True)
+            combined = sup.stdout + sup.stderr
+            if sup.ok and "superseded" not in combined:
+                sup.ok = False
+                sup.note = "expected the SignedBySupersededKey classification"
 
 
 def scenario_ci(auths: Path, work: Path, report: Report) -> None:
@@ -361,6 +420,8 @@ def scenario_ci(auths: Path, work: Path, report: Report) -> None:
         last_runner = ci
 
     if last_runner and last_init and last_init.ok:
+        # The env block must be pipeable: parsing stdout ONLY is the regression
+        # test for "data goes to stdout" (D8).
         env_block = parse_env_block(last_init.stdout)
         if env_block:
             artifact = last_runner.home / "ci-artifact.txt"
@@ -378,8 +439,60 @@ def scenario_ci(auths: Path, work: Path, report: Report) -> None:
         last_runner.skip("CI env-block handoff", "ci init failed")
 
 
+def scenario_weak_passphrase(auths: Path, work: Path, report: Report) -> None:
+    section("10. TRANSACTIONAL INIT  (weak passphrase → typed error, zero state left)")
+    r = Runner(auths, work / "home-weak-pass", report)
+    res = r.run(
+        "init with weak AUTHS_PASSPHRASE (expected to fail)",
+        ["init", "--profile", "developer", "--non-interactive"],
+        expect_failure=True, timeout=120,
+        extra_env={"AUTHS_PASSPHRASE": "weak-passphrase"},
+    )
+    combined = res.stdout + res.stderr
+    if res.ok and "AUTHS_PASSPHRASE" not in combined:
+        res.ok = False
+        res.note = "error must name the AUTHS_PASSPHRASE env var as the input to fix"
+
+    status = r.run("status (must show no identity)", ["status"],
+                   extra_env={"AUTHS_PASSPHRASE": "weak-passphrase"})
+    if status.ok and "not initialized" not in (status.stdout + status.stderr):
+        status.ok = False
+        status.note = "failed init left a half-created identity behind"
+    keys = r.run("key list (must be empty)", ["--json", "key", "list"],
+                 extra_env={"AUTHS_PASSPHRASE": "weak-passphrase"})
+    if keys.ok and '"count": 0' not in keys.stdout and '"count":0' not in keys.stdout:
+        keys.ok = False
+        keys.note = "failed init left keys behind"
+
+
+def scenario_exit_codes(r: Runner, work: Path) -> None:
+    section("12. EXIT-CODE CONTRACT  (0 verified · 1 failed · 2 could-not-attempt)")
+    artifact = work / "artifact.txt"
+    sig = artifact.with_suffix(".txt.auths.json")
+    if sig.exists():
+        tampered_dir = work / "tampered"
+        tampered_dir.mkdir(exist_ok=True)
+        tampered = tampered_dir / "artifact.txt"
+        tampered.write_text("tampered content\n")
+        tampered_sig = tampered_dir / "artifact.txt.auths.json"
+        tampered_sig.write_text(sig.read_text())
+        res = r.run("verify tampered artifact (expect rc=1)",
+                    ["verify", str(tampered)], cwd=tampered_dir, expect_failure=True)
+        if res.ok and res.returncode != 1:
+            res.ok = False
+            res.note = f"verification failure must exit 1, got {res.returncode}"
+    else:
+        r.skip("verify tampered artifact", "no signed artifact available")
+
+    res = r.run("verify malformed input (expect rc=2)",
+                ["verify", "definitely-not-a-ref-or-file"], expect_failure=True)
+    if res.ok and res.returncode != 2:
+        res.ok = False
+        res.note = f"could-not-attempt must exit 2, got {res.returncode}"
+
+
 def scenario_retired_agent_profile(auths: Path, work: Path, report: Report) -> None:
-    section("10. RETIRED PATH UX  (init --profile agent must fail with guidance)")
+    section("11. AGENT PROFILE, NON-INTERACTIVE  (must fail with delegation guidance)")
     r = Runner(auths, work / "home-agent-profile", report)
     res = r.run(
         "init --profile agent --non-interactive (expected to fail)",
@@ -393,10 +506,10 @@ def scenario_retired_agent_profile(auths: Path, work: Path, report: Report) -> N
 
 
 def scenario_hygiene(r: Runner) -> None:
-    section("11. HYGIENE  (doctor, config, error lookup, completions, json)")
+    section("13. HYGIENE  (doctor, config, error lookup, completions, json)")
     r.run("doctor (0 or 2 = functional)", ["doctor"], ok_codes=(0, 2), timeout=60)
     r.run("config show", ["config", "show"])
-    r.run("error show AUTHS-E4304", ["error", "AUTHS-E4304"])
+    r.run("error show AUTHS-E3020", ["error", "AUTHS-E3020"])
     r.run("error list", ["error", "list"])
     r.run("completions bash", ["completions", "bash"])
     r.run("--help", ["--help"])
@@ -444,7 +557,9 @@ def main() -> int:
         scenario_agent_delegation(dev)
         scenario_rotation(dev, work)
         scenario_ci(auths, work, report)
+        scenario_weak_passphrase(auths, work, report)
         scenario_retired_agent_profile(auths, work, report)
+        scenario_exit_codes(dev, work)
         scenario_hygiene(dev)
     finally:
         RESULTS_PATH.write_text(json.dumps(

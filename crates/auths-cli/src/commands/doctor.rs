@@ -178,10 +178,93 @@ fn run_checks() -> Vec<Check> {
     checks.push(check_auths_repo());
     checks.push(check_identity_valid(now));
 
+    // Advisory: commit-trailer hook wiring (plain `git commit` verifiability)
+    checks.push(check_commit_hook_installed());
+    checks.push(check_repo_hooks_path_override());
+
     // Advisory: network connectivity
     checks.push(check_registry_connectivity());
 
     checks
+}
+
+/// Advisory: the prepare-commit-msg hook is installed, current, and wired via
+/// the global `core.hooksPath` — what makes a plain `git commit` verifiable.
+fn check_commit_hook_installed() -> Check {
+    let (passed, detail) = match auths_sdk::paths::auths_home() {
+        Ok(home) if !home.join("commit-trailers").exists() => {
+            // No identity / pre-hook install — not a failure, just not set up yet.
+            (
+                true,
+                "no identity initialized (hook not applicable)".to_string(),
+            )
+        }
+        Ok(home) => {
+            let hook_current = auths_sdk::workflows::commit_hooks::hook_is_current(&home);
+            let hooks_path_set =
+                crate::subprocess::git_command(&["config", "--global", "core.hooksPath"])
+                    .output()
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map(|o| {
+                        String::from_utf8_lossy(&o.stdout).trim()
+                            == home.join("githooks").to_string_lossy()
+                    })
+                    .unwrap_or(false);
+            match (hook_current, hooks_path_set) {
+                (true, true) => (true, "prepare-commit-msg hook installed".to_string()),
+                (false, _) => (false, "hook file missing or stale".to_string()),
+                (true, false) => (false, "core.hooksPath not pointing at the hook".to_string()),
+            }
+        }
+        Err(e) => (false, format!("could not locate ~/.auths: {e}")),
+    };
+    Check {
+        name: "Commit trailer hook".to_string(),
+        passed,
+        detail,
+        suggestion: if passed {
+            None
+        } else {
+            Some("Re-run `auths init` to reinstall the commit hook.".to_string())
+        },
+        category: CheckCategory::Advisory,
+    }
+}
+
+/// Advisory: a repo-local `core.hooksPath` (husky-style hook managers) bypasses
+/// the global auths hook — commits in this repo won't carry trailers unless the
+/// trailer hook is added to that directory.
+fn check_repo_hooks_path_override() -> Check {
+    let local_override = crate::subprocess::git_command(&["config", "--local", "core.hooksPath"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|path| !path.is_empty());
+    let (passed, detail, suggestion) = match local_override {
+        None => (
+            true,
+            "no repo-local core.hooksPath override".to_string(),
+            None,
+        ),
+        Some(path) => (
+            false,
+            format!(
+                "this repo overrides core.hooksPath to '{path}' — the auths trailer hook is bypassed"
+            ),
+            Some(format!(
+                "Copy the prepare-commit-msg hook from ~/.auths/githooks/ into '{path}' (or chain it from your hook manager)."
+            )),
+        ),
+    };
+    Check {
+        name: "Repo hook override".to_string(),
+        passed,
+        detail,
+        suggestion,
+        category: CheckCategory::Advisory,
+    }
 }
 
 fn apply_fixes(checks: &[Check], out: Option<&Output>) -> Vec<FixApplied> {

@@ -42,7 +42,11 @@ check_pattern() {
 }
 
 check_pattern "Utc::now()" "Use injected ClockProvider instead of Utc::now()"
-check_pattern "std::fs::" "Filesystem I/O in SDK layer — use storage port traits"
+# workflows/commit_hooks.rs is the sanctioned host-filesystem boundary for git
+# hook wiring: git itself must execute the hook from a real path with a real
+# executable bit, so abstracting these writes behind a storage port would be a
+# seam with exactly one implementation. Same precedent as the storage.rs facade.
+check_pattern "std::fs::" "Filesystem I/O in SDK layer — use storage port traits" "$SDK_SRC/workflows/commit_hooks.rs"
 check_pattern "git2::" "git2 in auths-sdk — inject RegistryBackend instead"
 # src/storage.rs is the sanctioned facade: a feature-gated re-export module so
 # presentation layers (CLI, servers) can compose concrete Git backends without

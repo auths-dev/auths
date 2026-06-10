@@ -124,12 +124,28 @@ fn initialize_ci(
     let now = ctx.clock.now();
     let (controller_did, key_alias) = initialize_ci_keys(ctx, keychain, passphrase_provider, now)?;
     let device_did = bind_device(&key_alias, ctx, keychain, signer, passphrase_provider, now)?;
+    // Commit-time trailers for CI: the hook reads `$AUTHS_REPO/commit-trailers`
+    // (AUTHS_REPO is in the env block), so commits made in CI carry the
+    // Auths-Id/Auths-Device trailers without an `auths sign HEAD` step. The CI
+    // identity is a root identity signing directly, so Auths-Device is the root
+    // `did:keri:` itself (a replayable KEL), matching `resolve_local_signer`.
+    // Best-effort: a hook-install failure must not fail CI identity creation —
+    // the explicit `auths sign <ref>` path still works without it.
+    let hooks_dir = crate::workflows::commit_hooks::install_commit_hooks(
+        &config.registry_path,
+        &controller_did,
+        &controller_did,
+    )
+    .ok();
+    // Stamp the current KEL position into the trailer file (best-effort).
+    let _ = crate::workflows::commit_hooks::refresh_commit_trailers(ctx, &config.registry_path);
     let env_block = generate_ci_env_block(
         &key_alias,
         &config.registry_path,
         &config.keychain_file,
         &config.passphrase,
         &config.ci_environment,
+        hooks_dir.as_deref(),
     );
 
     Ok(CiIdentityResult {
@@ -227,6 +243,32 @@ fn resolve_or_create_identity(
     Ok((did, alias, false))
 }
 
+/// Map an identity-initialization failure to a `SetupError`, preserving the
+/// weak-passphrase case as its own typed variant (E5008) instead of flattening
+/// it into a generic storage error — the message names the input to fix.
+fn map_init_error(e: auths_id::error::InitError) -> SetupError {
+    match e {
+        auths_id::error::InitError::Key(auths_core::AgentError::WeakPassphrase(reason)) => {
+            SetupError::WeakPassphrase {
+                source_name: passphrase_source_name(),
+                reason,
+            }
+        }
+        other => SetupError::StorageError(other.into()),
+    }
+}
+
+/// Which input supplied the passphrase. Env-sourced passphrases (the CI and
+/// scripted paths) are named explicitly so a `--non-interactive` failure tells
+/// the user exactly what to change.
+fn passphrase_source_name() -> String {
+    if std::env::var_os("AUTHS_PASSPHRASE").is_some() {
+        "the AUTHS_PASSPHRASE environment variable".to_string()
+    } else {
+        "the entered passphrase".to_string()
+    }
+}
+
 fn derive_keys(
     config: &CreateDeveloperIdentityConfig,
     ctx: &AuthsContext,
@@ -242,7 +284,7 @@ fn derive_keys(
         config.witness_config.as_ref(),
         config.curve,
     )
-    .map_err(|e| SetupError::StorageError(e.into()))?;
+    .map_err(map_init_error)?;
 
     let did_str = controller_did.into_inner();
     ctx.identity_storage
@@ -422,7 +464,7 @@ fn initialize_ci_keys(
         None,
         auths_crypto::CurveType::default(),
     )
-    .map_err(|e| SetupError::StorageError(e.into()))?;
+    .map_err(map_init_error)?;
 
     Ok((controller_did.into_inner(), key_alias))
 }
@@ -433,59 +475,26 @@ fn generate_ci_env_block(
     keychain_file: &Path,
     passphrase: &str,
     environment: &CiEnvironment,
+    hooks_dir: Option<&Path>,
 ) -> Vec<String> {
+    let mut lines = base_env_lines(key_alias, repo_path, keychain_file, passphrase, hooks_dir);
+    lines.push(String::new());
     match environment {
         CiEnvironment::GitHubActions => {
-            generate_github_env_block(key_alias, repo_path, keychain_file, passphrase)
+            lines.push("# GitHub Actions: add these as repository secrets".to_string());
+            lines.push("# then reference them in your workflow env: block".to_string());
         }
         CiEnvironment::GitLabCi => {
-            generate_gitlab_env_block(key_alias, repo_path, keychain_file, passphrase)
+            lines.push("# GitLab CI: add these as CI/CD variables".to_string());
+            lines.push("# in Settings > CI/CD > Variables".to_string());
         }
         CiEnvironment::Custom { name } => {
-            generate_generic_env_block(key_alias, repo_path, keychain_file, passphrase, name)
+            lines.push(format!("# {name}: add these as environment variables"));
         }
         CiEnvironment::Unknown => {
-            generate_generic_env_block(key_alias, repo_path, keychain_file, passphrase, "ci")
+            lines.push("# ci: add these as environment variables".to_string());
         }
     }
-}
-
-fn generate_github_env_block(
-    key_alias: &KeyAlias,
-    repo_path: &Path,
-    keychain_file: &Path,
-    passphrase: &str,
-) -> Vec<String> {
-    let mut lines = base_env_lines(key_alias, repo_path, keychain_file, passphrase);
-    lines.push(String::new());
-    lines.push("# GitHub Actions: add these as repository secrets".to_string());
-    lines.push("# then reference them in your workflow env: block".to_string());
-    lines
-}
-
-fn generate_gitlab_env_block(
-    key_alias: &KeyAlias,
-    repo_path: &Path,
-    keychain_file: &Path,
-    passphrase: &str,
-) -> Vec<String> {
-    let mut lines = base_env_lines(key_alias, repo_path, keychain_file, passphrase);
-    lines.push(String::new());
-    lines.push("# GitLab CI: add these as CI/CD variables".to_string());
-    lines.push("# in Settings > CI/CD > Variables".to_string());
-    lines
-}
-
-fn generate_generic_env_block(
-    key_alias: &KeyAlias,
-    repo_path: &Path,
-    keychain_file: &Path,
-    passphrase: &str,
-    platform: &str,
-) -> Vec<String> {
-    let mut lines = base_env_lines(key_alias, repo_path, keychain_file, passphrase);
-    lines.push(String::new());
-    lines.push(format!("# {platform}: add these as environment variables"));
     lines
 }
 
@@ -494,8 +503,9 @@ fn base_env_lines(
     repo_path: &Path,
     keychain_file: &Path,
     passphrase: &str,
+    hooks_dir: Option<&Path>,
 ) -> Vec<String> {
-    vec![
+    let mut lines = vec![
         "# CI signing secrets — store these securely and rotate per environment".to_string(),
         format!("export AUTHS_KEYCHAIN_BACKEND=\"file\""),
         format!("export AUTHS_KEYCHAIN_FILE=\"{}\"", keychain_file.display()),
@@ -503,16 +513,22 @@ fn base_env_lines(
         format!("export AUTHS_REPO=\"{}\"", repo_path.display()),
         format!("export AUTHS_KEY_ALIAS=\"{key_alias}\""),
         String::new(),
-        format!("export GIT_CONFIG_COUNT=4"),
-        format!("export GIT_CONFIG_KEY_0=\"gpg.format\""),
-        format!("export GIT_CONFIG_VALUE_0=\"ssh\""),
-        format!("export GIT_CONFIG_KEY_1=\"gpg.ssh.program\""),
-        format!("export GIT_CONFIG_VALUE_1=\"auths-sign\""),
-        format!("export GIT_CONFIG_KEY_2=\"user.signingKey\""),
-        format!("export GIT_CONFIG_VALUE_2=\"auths:{key_alias}\""),
-        format!("export GIT_CONFIG_KEY_3=\"commit.gpgSign\""),
-        format!("export GIT_CONFIG_VALUE_3=\"true\""),
+    ];
+    let git_configs: Vec<(String, String)> = [
+        ("gpg.format".to_string(), "ssh".to_string()),
+        ("gpg.ssh.program".to_string(), "auths-sign".to_string()),
+        ("user.signingKey".to_string(), format!("auths:{key_alias}")),
+        ("commit.gpgSign".to_string(), "true".to_string()),
     ]
+    .into_iter()
+    .chain(hooks_dir.map(|dir| ("core.hooksPath".to_string(), dir.display().to_string())))
+    .collect();
+    lines.push(format!("export GIT_CONFIG_COUNT={}", git_configs.len()));
+    for (i, (key, value)) in git_configs.iter().enumerate() {
+        lines.push(format!("export GIT_CONFIG_KEY_{i}=\"{key}\""));
+        lines.push(format!("export GIT_CONFIG_VALUE_{i}=\"{value}\""));
+    }
+    lines
 }
 
 fn build_agent_identity_proposal(

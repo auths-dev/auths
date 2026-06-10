@@ -140,6 +140,9 @@ pub fn handle_agent(
                 expires_at,
             )
             .map_err(anyhow::Error::new)?;
+            // The delegation advanced the root KEL — restamp the trailer file's
+            // Auths-Anchor-Seq (best-effort; doctor surfaces a stale hook setup).
+            let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&ctx, &repo_path);
 
             if is_json_mode() {
                 JsonResponse::success(
@@ -163,6 +166,9 @@ pub fn handle_agent(
             let root_alias = KeyAlias::new_unchecked(key);
             auths_sdk::domains::agents::rotate(&ctx, &root_alias, &agent_did)
                 .map_err(anyhow::Error::new)?;
+            // The delegation advanced the root KEL — restamp the trailer file's
+            // Auths-Anchor-Seq (best-effort; doctor surfaces a stale hook setup).
+            let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&ctx, &repo_path);
 
             if is_json_mode() {
                 JsonResponse::success(
@@ -181,6 +187,9 @@ pub fn handle_agent(
             let root_alias = KeyAlias::new_unchecked(key);
             auths_sdk::domains::agents::revoke(&ctx, &root_alias, &agent_did)
                 .map_err(anyhow::Error::new)?;
+            // The delegation advanced the root KEL — restamp the trailer file's
+            // Auths-Anchor-Seq (best-effort; doctor surfaces a stale hook setup).
+            let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&ctx, &repo_path);
 
             if is_json_mode() {
                 JsonResponse::success(

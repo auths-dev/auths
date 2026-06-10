@@ -5,6 +5,8 @@ pub mod audit;
 pub mod auth;
 /// CI workflows — batch attestation, OIDC machine identity, and future CI automations.
 pub mod ci;
+/// Commit-time trailer injection (prepare-commit-msg hook + data files).
+pub mod commit_hooks;
 /// KEL-native commit-trust resolution (successor to the `allowed_signers` allowlist).
 pub mod commit_trust;
 /// Compliance-as-a-query: evidence packs, DSSE org-signing, offline verification.

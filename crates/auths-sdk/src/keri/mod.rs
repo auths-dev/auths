@@ -20,4 +20,4 @@ pub use auths_id::storage::keri::KeriGitStorage;
 pub use auths_id::storage::registry::backend::AtomicWriteBatch;
 pub use auths_id::trailer::parse_trailers;
 #[cfg(feature = "backend-git")]
-pub use resolver::KelResolverChain;
+pub use resolver::{CurrentKeyError, KelResolverChain, resolve_current_public_key};

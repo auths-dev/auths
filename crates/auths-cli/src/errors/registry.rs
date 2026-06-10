@@ -340,7 +340,8 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5002" => Some("# AUTHS-E5002\n\n**Crate:** `auths-sdk`\n\n**Type:** `SetupError::KeychainUnavailable`\n\n## Message\n\nkeychain unavailable ({backend}): {reason}\n"),
         "AUTHS-E5004" => Some("# AUTHS-E5004\n\n**Crate:** `auths-sdk`\n\n**Type:** `SetupError::GitConfigError`\n\n## Message\n\ngit config error: {0}\n"),
         "AUTHS-E5006" => Some("# AUTHS-E5006\n\n**Crate:** `auths-sdk`\n\n**Type:** `SetupError::PlatformVerificationFailed`\n\n## Message\n\nplatform verification failed: {0}\n"),
-        "AUTHS-E5007" => Some("# AUTHS-E5007\n\n**Crate:** `auths-sdk`\n\n**Type:** `SetupError::InvalidSetupConfig`\n\n## Message\n\ninvalid setup config: {0}\n\n## Suggestion\n\nCheck identity setup configuration parameters\n"),
+        "AUTHS-E5007" => Some("# AUTHS-E5007\n\n**Crate:** `auths-sdk`\n\n**Type:** `SetupError::InvalidSetupConfig`\n\n## Message\n\ninvalid setup config: {0}\n"),
+        "AUTHS-E5008" => Some("# AUTHS-E5008\n\n**Crate:** `auths-sdk`\n\n**Type:** `SetupError::WeakPassphrase`\n\n## Message\n\npassphrase from {source_name} is too weak: {reason}\n"),
 
         // --- auths-sdk (DeviceError) ---
         "AUTHS-E5101" => Some("# AUTHS-E5101\n\n**Crate:** `auths-sdk`\n\n**Type:** `DeviceError::IdentityNotFound`\n\n## Message\n\nidentity not found: {did}\n\n## Suggestion\n\nRun `auths init` to create an identity first\n"),
@@ -736,6 +737,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5004",
         "AUTHS-E5006",
         "AUTHS-E5007",
+        "AUTHS-E5008",
         "AUTHS-E5101",
         "AUTHS-E5102",
         "AUTHS-E5103",
@@ -880,6 +882,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 356);
+        assert_eq!(all_codes().len(), 357);
     }
 }

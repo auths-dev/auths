@@ -4,14 +4,21 @@ Make a signed commit and verify the signature. If you ran `auths init --profile 
 
 ## How signing works
 
-When you run `git commit`, Git calls the program specified in `gpg.ssh.program`. Auths sets this to `auths-sign`, a standalone binary that:
+`auths init` wires two pieces into Git; together they make a plain `git commit` fully verifiable:
 
-1. Reads the commit payload from stdin
-2. Looks up the signing key alias from `user.signingKey` (format: `auths:<alias>`)
-3. Loads and decrypts the key from the platform keychain
-4. Returns an SSH signature to Git
+1. **The signature** -- Git calls the program specified in `gpg.ssh.program`. Auths sets this to `auths-sign`, a standalone binary that reads the commit payload from stdin, looks up the signing key alias from `user.signingKey` (format: `auths:<alias>`), loads the key from the platform keychain, and returns an SSH signature to Git.
+2. **The identity trailers** -- Git runs the `prepare-commit-msg` hook init installed (via the global `core.hooksPath`, under `~/.auths/githooks/`). The hook appends the `Auths-Id` and `Auths-Device` trailers to the commit message -- the in-band pointers `auths verify` replays your key event log from. On your first commit in a repo it also pins your identity root into the repo's committed `.auths/roots`, the trust declaration teammates and CI inherit.
 
-You never call `auths-sign` directly. Git handles the integration transparently.
+You never call `auths-sign` or the hook directly. Git handles both transparently.
+
+!!! note
+    Repositories that set their own `core.hooksPath` (hook managers like husky do this) bypass the auths hook, so commits there won't carry trailers. `auths doctor` detects this and explains how to chain the hook. Commits made before the hook existed can be backfilled with `auths sign <ref>` -- note that it amends, so the commit SHA changes.
+
+!!! note "Key rotation and old commits"
+    After `auths id rotate`, commits signed with the previous key verify as
+    `SignedBySupersededKey` -- recognized legacy history, never confused with a
+    forgery. Attestations and signed artifacts are unaffected. Details in
+    [Key Rotation](../guides/identity/key-rotation.md).
 
 ## Make a signed commit
 

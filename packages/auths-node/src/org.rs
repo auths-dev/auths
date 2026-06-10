@@ -234,16 +234,16 @@ pub fn add_org_member(
         .parse()
         .map_err(|e| format_error("AUTHS_ORG_ERROR", format!("Invalid role: {e}")))?;
 
-    let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-        serde_json::from_str(&json).map_err(|e| {
+    let capabilities: Vec<auths_verifier::Capability> = if let Some(json) = capabilities_json {
+        let raw: Vec<String> = serde_json::from_str(&json).map_err(|e| {
             format_error("AUTHS_ORG_ERROR", format!("Invalid capabilities JSON: {e}"))
-        })?
+        })?;
+        raw.iter()
+            .map(|s| auths_verifier::Capability::parse(s))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format_error("AUTHS_ORG_ERROR", format!("Invalid capability: {e}")))?
     } else {
-        role_parsed
-            .default_capabilities()
-            .iter()
-            .map(|c| c.as_str().to_string())
-            .collect()
+        role_parsed.default_capabilities()
     };
 
     let keychain = get_keychain(&passphrase_str, &repo_path)?;

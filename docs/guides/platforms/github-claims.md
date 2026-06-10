@@ -39,7 +39,7 @@ Platform claim indexed: github @<username> -> did:keri:E...
 
 ### Custom registry URL
 
-By default, claims are submitted to `https://auths-registry.fly.dev`. To use a different registry:
+By default, claims are submitted to `https://registry.auths.dev` (the public registry is not yet live). To use a different registry:
 
 ```bash
 auths id claim github --registry https://your-registry.example.com

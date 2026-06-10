@@ -145,6 +145,7 @@ class IdentityService:
             new_key_fingerprint=native_result.new_key_fingerprint,
             previous_key_fingerprint=native_result.previous_key_fingerprint,
             sequence=native_result.sequence,
+            new_key_alias=native_result.new_key_alias,
         )
 
     def create_agent(

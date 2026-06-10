@@ -28,7 +28,29 @@ The interactive wizard prompts you to choose between global and per-repository s
 auths init --profile developer --non-interactive
 ```
 
-This sets `gpg.format`, `gpg.ssh.program`, `user.signingKey`, and `commit.gpgSign` automatically. The sections below explain each setting for manual configuration or debugging.
+This sets `gpg.format`, `gpg.ssh.program`, `user.signingKey`, `commit.gpgSign`, and
+`core.hooksPath` automatically. The sections below explain each setting for manual
+configuration or debugging.
+
+## The Commit Hook (`core.hooksPath`)
+
+Beyond the signature itself, a verifiable commit needs the `Auths-Id` /
+`Auths-Device` identity trailers in its message — they tell `auths verify` whose key
+event log to replay. `auths init` installs a `prepare-commit-msg` hook at
+`~/.auths/githooks/` and points the global `core.hooksPath` at it. The hook:
+
+- appends the identity trailers to every commit message (idempotent — amending never
+  duplicates them)
+- seeds the repo's committed `.auths/roots` trust file on your first signed commit
+- chains to the repository's own `prepare-commit-msg` hook if one exists
+
+!!! warning "Hook managers (husky, lefthook)"
+    A repository that sets a *local* `core.hooksPath` bypasses the global auths hook —
+    commits in that repo won't carry trailers. `auths doctor` detects this and tells
+    you how to chain the auths hook from your hook manager's directory.
+
+To backfill commits made before the hook existed, use `auths sign <ref>` — it amends
+the commit (the SHA changes), so never backfill pushed commits without coordinating.
 
 ## Manual Git Configuration
 

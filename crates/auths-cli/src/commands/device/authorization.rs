@@ -298,6 +298,8 @@ pub fn handle_device(
             let result =
                 auths_sdk::domains::device::add_device(&ctx, &root_alias, &device_alias, curve)
                     .map_err(anyhow::Error::new)?;
+            // KEL advanced — restamp the trailer file's anchor position.
+            let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&ctx, &repo_path);
             display_add_result(&result.device_did, &repo_path)
         }
 
@@ -326,6 +328,7 @@ pub fn handle_device(
             let root_alias = KeyAlias::new_unchecked(key);
             auths_sdk::domains::device::remove_device(&ctx, &root_alias, &device_did)
                 .map_err(anyhow::Error::new)?;
+            let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&ctx, &repo_path);
             display_revoke_result(&device_did, &repo_path)
         }
 

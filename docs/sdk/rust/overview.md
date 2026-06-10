@@ -90,7 +90,7 @@ All crates share a single workspace version declared in the root `Cargo.toml`:
 
 ```toml
 [workspace.package]
-version = "0.0.1-rc.5"
+version = "0.1.2"
 license = "Apache-2.0"
 rust-version = "1.93"
 ```

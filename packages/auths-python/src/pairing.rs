@@ -115,11 +115,18 @@ pub fn create_pairing_session_ffi(
     let bind_addr: IpAddr = bind_address
         .parse()
         .unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)));
-    let capabilities: Vec<String> = if let Some(json) = capabilities_json {
-        serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign:commit".to_string()])
+    let capability_names: Vec<String> = if let Some(json) = capabilities_json {
+        serde_json::from_str(&json).unwrap_or_else(|_| vec!["sign_commit".to_string()])
     } else {
-        vec!["sign:commit".to_string()]
+        vec!["sign_commit".to_string()]
     };
+    let capabilities: Vec<auths_verifier::core::Capability> = capability_names
+        .iter()
+        .map(|s| auths_verifier::core::Capability::parse(s))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| {
+            PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] Invalid capability: {e}"))
+        })?;
 
     {
         let identity_storage = RegistryIdentityStorage::new(repo.clone());
@@ -299,11 +306,14 @@ pub fn join_pairing_session_ffi(
             .as_str()
             .unwrap_or("")
             .to_string();
-        let capabilities: Vec<String> = token_data["capabilities"]
+        // Fail-closed: a capability the wire carried but we cannot parse is
+        // dropped rather than smuggled through as an unchecked string.
+        let capabilities: Vec<auths_verifier::core::Capability> = token_data["capabilities"]
             .as_array()
             .map(|arr| {
                 arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .filter_map(|v| v.as_str())
+                    .filter_map(|s| auths_verifier::core::Capability::parse(s).ok())
                     .collect()
             })
             .unwrap_or_default();

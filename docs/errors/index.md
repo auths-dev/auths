@@ -251,6 +251,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5004](AUTHS-E5004.md) | `auths-sdk` | `SetupError::GitConfigError` | git config error: {0} |
 | [AUTHS-E5006](AUTHS-E5006.md) | `auths-sdk` | `SetupError::PlatformVerificationFailed` | platform verification failed: {0} |
 | [AUTHS-E5007](AUTHS-E5007.md) | `auths-sdk` | `SetupError::InvalidSetupConfig` | invalid setup config: {0} |
+| [AUTHS-E5008](AUTHS-E5008.md) | `auths-sdk` | `SetupError::WeakPassphrase` | passphrase from {source_name} is too weak: {reason} |
 | [AUTHS-E5101](AUTHS-E5101.md) | `auths-sdk` | `DeviceError::IdentityNotFound` | identity not found: {did} |
 | [AUTHS-E5102](AUTHS-E5102.md) | `auths-sdk` | `DeviceError::DeviceNotFound` | device not found: {did} |
 | [AUTHS-E5103](AUTHS-E5103.md) | `auths-sdk` | `DeviceError::AttestationError` | attestation error: {0} |

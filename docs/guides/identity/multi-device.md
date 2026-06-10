@@ -1,6 +1,6 @@
 # Multi-Device Setup
 
-Use multiple devices -- laptops, desktops, CI runners -- under a single `did:keri` identity. Each device gets its own Ed25519 keypair and a signed device attestation that delegates trust from the identity key.
+Use multiple devices -- laptops, desktops, CI runners -- under a single `did:keri` identity. Each device gets **its own keypair and its own delegated identity**: a delegated inception (`dip`) naming your root as delegator, anchored in your root's key event log.
 
 ## Prerequisites
 
@@ -10,16 +10,17 @@ Use multiple devices -- laptops, desktops, CI runners -- under a single `did:ker
 
 ## Adding a second device
 
-There are two paths: **pairing** (automated, recommended) and **manual linking** (full control over key material).
+There are three paths:
 
 | Approach | Command | When to use |
 |----------|---------|-------------|
-| Pairing | `auths device pair` | Default for most setups. Handles key exchange and attestation automatically. |
-| Manual linking | `auths device link` | When you need explicit control over key material, or no network is available. |
+| Pairing | `auths device pair` (or `auths pair`) | Default for most setups. Handles key exchange and delegation automatically. |
+| Direct delegation | `auths device add` | Delegate a device whose public key you already have — no pairing session. |
+| Legacy linking | `auths device link` | Compatibility with the pre-delegation attestation flow only. |
 
 ## Pairing flow
 
-Pairing uses X25519 ECDH key agreement with Ed25519 signature binding. The binding signature covers `short_code || initiator_x25519_pubkey || device_x25519_pubkey`, preventing replay and MITM attacks.
+Pairing uses X25519 ECDH key agreement with signature binding. The binding signature covers `short_code || initiator_x25519_pubkey || device_x25519_pubkey`, preventing replay and MITM attacks. The outcome is a **KERI delegation**: the joining device ends up with its own delegated identity anchored by yours.
 
 ### LAN mode (default -- no server required)
 
@@ -57,7 +58,7 @@ From another terminal or device:
 auths device pair --join Z43-8JR
 ```
 
-The joiner discovers the host via mDNS, performs the ECDH key exchange, and the host creates a device attestation in `~/.auths`.
+The joiner discovers the host via mDNS, performs the ECDH key exchange, and the host anchors the new device's delegation in `~/.auths`.
 
 !!! tip "Code formatting is flexible"
     Dashes and spaces in the code are ignored. `Z43-8JR`, `Z438JR`, and `z43 8jr` all resolve to the same session.
@@ -110,9 +111,21 @@ auths device pair --join Z43-8JR --registry http://localhost:3000
 | `auths device pair --join CODE --registry URL` | Online join: registry relay |
 | `auths device pair --offline` | Offline: QR only, no server |
 
-## Manual linking
+## Direct delegation (`auths device add`)
 
-Use manual linking when you need full control over key material or cannot run a network service.
+When you already have the new device's public key (no pairing session), delegate it
+directly — the device becomes a delegated identifier of your identity:
+
+```bash
+auths device add --help    # see the flags for your version
+```
+
+This is the keripy-native, device-bound way to grant a device signing authority.
+
+## Manual linking (legacy)
+
+The attestation-based flow predates KERI delegation and is kept for compatibility.
+Prefer pairing or `device add` for new setups.
 
 ### 1. Import the device key on the new device
 
@@ -120,9 +133,9 @@ Use manual linking when you need full control over key material or cannot run a 
 IDENTITY=$(auths id show | grep 'Identity:' | awk '{print $NF}')
 
 auths key import \
-  --alias laptop-key \
+  --key-alias laptop-key \
   --seed-file ~/device_key.seed \
-  --identity "$IDENTITY"
+  --controller-did "$IDENTITY"
 ```
 
 The seed file must contain exactly 32 bytes of raw Ed25519 key material. You will be prompted for a passphrase to encrypt the key before storing it in the platform keychain.
@@ -161,9 +174,9 @@ git config --global commit.gpgSign true
 
 Commits from this device will now be signed by the same identity.
 
-## How attestations delegate trust
+## How attestations delegate trust (legacy flow)
 
-When a device is linked, Auths creates a **device attestation** -- a JSON document dual-signed by both the identity key and the device key. The attestation contains:
+When a device is *linked* (rather than delegated), Auths creates a **device attestation** -- a JSON document dual-signed by both the identity key and the device key. The attestation contains:
 
 - The identity DID (`did:keri:...`) as the issuer
 - The device DID (`did:key:z...`) as the subject

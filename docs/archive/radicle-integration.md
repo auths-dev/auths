@@ -1,4 +1,11 @@
-# Radicle Integration
+# Radicle Integration (removed)
+
+!!! danger "This integration has been removed"
+    The `auths-radicle` crate was removed from the workspace in June 2026 as part of
+    the KERI-native consolidation. This page is preserved for historical reference
+    only — the commands and crate described below no longer exist. The Radicle
+    storage-layout preset (`LayoutPreset::Radicle`) survives in `auths-storage` for
+    repositories that adopted its ref conventions.
 
 Use Auths with [Radicle](https://radicle.xyz) for sovereign code forge identity. The `auths-radicle` crate provides an adapter layer that bridges Radicle's peer-to-peer Git collaboration with Auths' policy-based authorization, without introducing any new signature formats.
 

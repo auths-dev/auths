@@ -27,11 +27,11 @@ What it does:
 1. Verifies keychain access (macOS Keychain, Linux Secret Service, Windows Credential Manager, or encrypted file fallback)
 2. Checks Git version compatibility
 3. Prompts for a key name (default: `main`)
-4. Generates an Ed25519 keypair with KERI pre-rotation
-5. Links the current device to the identity
-6. Configures Git signing (`gpg.format`, `gpg.ssh.program`, `user.signingKey`, `commit.gpgSign`)
+4. Generates a P-256 keypair (the default; Ed25519 available) with KERI pre-rotation
+5. Configures Git signing (`gpg.format`, `gpg.ssh.program`, `user.signingKey`, `commit.gpgSign`)
+6. Installs the commit-trailer hook (`core.hooksPath` → `~/.auths/githooks/`) so plain `git commit` is verifiable
 7. Optionally links your GitHub account for identity verification
-8. Optionally registers the identity on the public Auths Registry
+8. Optionally (`--register`) publishes the identity to a registry — never automatic
 
 Interactive prompts include:
 
@@ -51,58 +51,67 @@ auths init --profile developer --non-interactive --key-alias my-key
 | `--key-alias` | `main` | Alias for the identity key |
 | `--force` | `false` | Overwrite existing identity |
 | `--non-interactive` | `false` | Skip all prompts, use defaults |
-| `--registry` | `https://auths-registry.fly.dev` | Registry URL for identity registration |
+| `--registry` | `https://registry.auths.dev` | Registry URL for identity registration (registry not yet live) |
 | `--register` | `false` | Register identity with the Auths Registry |
 
 ### CI profile
 
-Creates an ephemeral identity for CI/CD pipelines. Uses an in-memory keychain backend and produces environment variable blocks for injecting into CI secrets.
+Creates an identity for CI/CD pipelines backed by an encrypted key file, and prints a
+copy-pasteable env block for your CI secrets.
 
 ```bash
-auths init --profile ci --non-interactive
+auths init --profile ci --non-interactive > auths-ci.env
 ```
 
 What it does:
 
 1. Detects the CI environment (GitHub Actions, GitLab CI, or custom)
-2. Sets `AUTHS_KEYCHAIN_BACKEND=memory` for the session
-3. Creates an ephemeral identity in `.auths-ci/` within the working directory
-4. Outputs environment variables to add to your CI secrets
+2. Creates an identity with a file-backed keychain (`.auths-ci/keys.enc` in the working directory)
+3. Installs the commit-trailer hook so CI commits are verifiable
+4. Prints the env block to **stdout** (pipeable): keychain settings, `AUTHS_REPO`, the
+   key alias, and `GIT_CONFIG_*` entries wiring up signing + the hook
 
-The CI profile reads the passphrase from the `AUTHS_PASSPHRASE` environment variable (falling back to a default for ephemeral use).
+The passphrase comes from `AUTHS_PASSPHRASE` if set (it must meet the strength policy —
+12+ chars, 3 of 4 character classes — or init fails fast with `AUTHS-E5008`), falling
+back to a built-in CI default.
 
-!!! note "CI identities are ephemeral by design"
-    The in-memory keychain does not persist between runs. Each CI job creates a fresh identity. For persistent CI signing, use the developer profile with `auths key copy-backend` to provision a file-based keychain.
+!!! note "Run init and sign in the same job"
+    The file-backed key lives where init put it. Initialize and sign within one CI
+    job, or persist `.auths-ci/` between steps.
 
 ### Agent profile
 
-Creates a scoped identity for AI agents with restricted capabilities and an expiration time.
+An agent is not a standalone identity — it is a **delegated identifier under your root
+identity**, scoped and time-limited. The Agent profile routes you into that delegation
+flow.
 
 ```bash
 auths init --profile agent
 ```
 
-What it does:
+What it does (interactive, with an existing root identity):
 
-1. Prompts for capability scope (or auto-selects in non-interactive mode)
-2. Generates a keypair with alias `agent`
-3. Creates a device attestation with the selected capabilities and a 1-year default expiry
-4. Outputs the agent configuration
+1. Prompts for capability scope (e.g. `sign_commit`) as a checklist
+2. Prompts for a label (also the keychain alias for the agent's key; default `agent`)
+3. Delegates the agent: a new `did:keri:` whose delegation your root anchors in its
+   key event log, carrying the selected capabilities and a default 1-year expiry
 
-Available capabilities are presented as an interactive checklist. Common capabilities include `sign_commit` and `sign_tag`.
+If no root identity exists yet, the wizard tells you to run `auths init` (developer)
+first. In `--non-interactive` mode the profile intentionally errors with guidance —
+scripted callers should use the explicit command instead:
 
-Use `--dry-run` to preview the configuration without creating files:
+```bash
+auths id agent add --label deploy-bot --key main --scope sign_commit --expires-in 31536000
+```
+
+Use `--dry-run` to preview the configuration without creating anything:
 
 ```bash
 auths init --profile agent --dry-run
 ```
 
-After setup, manage the agent with:
-
-```bash
-auths agent start
-auths agent status
-```
+Manage agents with `auths id agent list`, `auths id agent rotate`, and
+`auths id agent revoke`. Full guide: [Agent Identities](../agents/agent-identities.md).
 
 ## Organization identities
 

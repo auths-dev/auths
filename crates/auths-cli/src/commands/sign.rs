@@ -127,6 +127,33 @@ fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Ensure the signer's root is pinned in the repo's committed `.auths/roots` and
+/// staged, so the pin (the trust declaration teammates and CI inherit) lands with
+/// the next commit. Idempotent and best-effort — a pin failure never fails the
+/// sign; self-trust already covers the signer's own verification.
+fn ensure_repo_root_pin(signer: &LocalSigner) {
+    let Ok(output) = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"]).output()
+    else {
+        return;
+    };
+    if !output.status.success() {
+        return;
+    }
+    let toplevel = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let auths_dir = toplevel.join(".auths");
+    let store = crate::adapters::config_store::FileConfigStore;
+    let root_did = signer.root_did.to_string();
+    if auths_sdk::workflows::roots::is_pinned_root(&store, &auths_dir, &root_did).unwrap_or(false) {
+        return;
+    }
+    if auths_sdk::workflows::roots::add_pinned_root(&store, &auths_dir, &root_did).is_ok() {
+        let roots_file = auths_dir.join("roots");
+        let _ =
+            crate::subprocess::git_command(&["add", "--", &roots_file.to_string_lossy()]).output();
+        eprintln!("auths: pinned your identity root in .auths/roots (staged for the next commit)");
+    }
+}
+
 /// Sign a Git commit range, embedding the `Auths-Id` / `Auths-Device` trailers
 /// in-band so a verifier knows which KEL to replay. Amending triggers auths-sign
 /// via git's signing program; the trailer (idempotent via git's
@@ -137,6 +164,7 @@ fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
 /// * `signer` - The resolved local signing identity (root + device DIDs).
 /// * `scope` - Capabilities this commit claims (emitted as an `Auths-Scope` trailer).
 fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String]) -> Result<()> {
+    ensure_repo_root_pin(signer);
     let trailers = commit_trailer_args(signer, scope);
     let is_range = range.contains("..");
     if is_range {

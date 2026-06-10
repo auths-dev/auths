@@ -7,9 +7,11 @@
 | **AID** | Autonomic Identifier. A self-certifying identifier derived from the inception event's public key. In Auths, the AID is the KERI prefix embedded in the `did:keri:E...` identifier. |
 | **Attestation** | A signed JSON document binding a device to an identity. Contains two signatures: one from the identity key (identity_signature) and one from the device key (device_signature). Fields include version, rid, issuer, subject, device_public_key, capabilities, and expires_at. |
 | **Canonical JSON** | Deterministic JSON serialization with sorted keys and no whitespace (RFC 8785). Used to produce consistent signing payloads via the `json-canon` crate. |
-| **Capabilities** | Permissions granted in an attestation (e.g., `sign-commit`). Child attestations inherit the intersection of parent capabilities. |
+| **Capabilities** | Permissions granted in a delegation or attestation (e.g., `sign_commit`, `sign_release`). A delegated entity can never hold more capabilities than its delegator granted. |
+| **Delegation** | Creating a device or agent identity under a root identity. The new identifier's inception (`dip`) names its delegator, and the delegator anchors the delegation in its own KEL — a two-way link a verifier can replay. |
 | **DID** | Decentralized Identifier. A URI scheme for self-sovereign identifiers defined by the W3C specification. Auths uses two DID methods: `did:keri` and `did:key`. |
-| **Ed25519** | An elliptic curve digital signature algorithm over Curve25519. Used for all Auths signing operations. Produces 64-byte signatures from 32-byte keys. |
+| **Ed25519** | An elliptic curve digital signature algorithm over Curve25519. Supported by Auths (`--curve ed25519`); the default signing curve is P-256. |
+| **P-256** | The NIST secp256r1 elliptic curve. The default Auths signing curve — chosen because phone secure hardware (e.g. the iPhone Secure Enclave) supports only P-256, which hardware-backed mobile pairing requires. |
 | **Inception event** | The first event in a KERI Key Event Log. Creates the identity, commits to the initial public key, and pre-commits to the first rotation key via a hash. The inception event's content hash becomes the permanent identity prefix (AID). |
 | **KEL** | Key Event Log. A hash-linked, append-only sequence of KERI events (inception, rotation, interaction). Stored in Auths as a Git commit chain at `refs/did/keri/<prefix>/kel`. |
 | **KERI** | Key Event Receipt Infrastructure. A protocol for decentralized key management with pre-rotation, enabling key rotation without changing the identifier. |
@@ -23,16 +25,16 @@
 | Term | Definition |
 |------|-----------|
 | **`did:keri`** | DID method using KERI. The identifier is derived from the inception event and remains stable across key rotations. Format: `did:keri:E<base64url-encoded-prefix>`. Used as the primary identity identifier (Controller DID). |
-| **`did:key`** | DID method where the Ed25519 public key is directly embedded in the identifier using multicodec encoding. Format: `did:key:z6Mk<base58btc-encoded-key>`. Self-resolving but not rotatable. Used as the device identifier (Device DID). |
+| **`did:key`** | DID method where the public key is directly embedded in the identifier using multicodec encoding. Format: `did:key:zDna…` (P-256) or `did:key:z6Mk…` (Ed25519). Self-resolving but not rotatable — used where a bare key needs a name. |
 | **Controller DID** | The identity's `did:keri:E...` identifier. Called "controller" because this key controls the identity. |
-| **Device DID** | A `did:key:z6Mk...` identifier for a device. Derived directly from the device's Ed25519 public key. |
-| **Multicodec** | A self-describing codec identifier prefix. Ed25519 public keys use the `0xED01` prefix in multicodec encoding. |
+| **Device DID** | A device's identifier. Under KERI delegation, a device's authoritative identity is its delegated `did:keri:` AID; the underlying key also has a `did:key` form. |
+| **Multicodec** | A self-describing codec identifier prefix. P-256 keys use `0x1200`; Ed25519 keys use `0xED01`. |
 
 ## Devices and keys
 
 | Term | Definition |
 |------|-----------|
-| **Device** | Any machine holding a keypair that acts on behalf of an identity. Each device is identified by a `did:key` derived from its Ed25519 public key. |
+| **Device** | Any machine holding a keypair that acts on behalf of an identity. Under KERI delegation each device has its own delegated `did:keri:` identity anchored by the root. |
 | **Identity** | A stable cryptographic identifier (`did:keri`) representing a person or entity. Survives key rotation because the DID is derived from the inception event, not from the current key. |
 | **Platform keychain** | OS-native secure storage used to hold key material: macOS Keychain (Security Framework), Linux Secret Service, or Windows Credential Manager. |
 | **Revocation** | The act of disabling a device's attestation. Sets `revoked_at` on the attestation record. Revoked devices can no longer sign on behalf of the identity. |

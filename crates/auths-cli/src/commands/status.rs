@@ -90,6 +90,11 @@ pub struct AgentStatusInfo {
 /// Devices summary.
 #[derive(Debug, Serialize)]
 pub struct DevicesSummary {
+    /// The device the user is on right now (the root signing device). Always
+    /// counted — "Devices: none" seconds after init authorized this machine
+    /// reads as "setup didn't take".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub this_device: Option<String>,
     pub linked: usize,
     pub revoked: usize,
     pub unanchored: usize,
@@ -204,10 +209,13 @@ fn print_status(report: &StatusReport, now: DateTime<Utc>) {
         out.println(&format!("Agent:      {}", out.warn("stopped")));
     }
 
-    // Devices
+    // Devices — the machine the user is on always counts.
     let mut parts = Vec::new();
+    if let Some(ref this_device) = report.devices.this_device {
+        parts.push(format!("this device ({})", out.dim(this_device)));
+    }
     if report.devices.linked > 0 {
-        parts.push(format!("{} linked", report.devices.linked));
+        parts.push(format!("{} other linked", report.devices.linked));
     }
     if report.devices.revoked > 0 {
         parts.push(format!("{} revoked", report.devices.revoked));
@@ -468,6 +476,7 @@ fn get_agent_status() -> AgentStatusInfo {
 /// Load the devices summary from the delegation set (live = delegated − revoked).
 fn load_devices_summary(repo_path: &Path, env_config: &EnvironmentConfig) -> DevicesSummary {
     let empty = DevicesSummary {
+        this_device: None,
         linked: 0,
         revoked: 0,
         unanchored: 0,
@@ -479,9 +488,17 @@ fn load_devices_summary(repo_path: &Path, env_config: &EnvironmentConfig) -> Dev
         Ok(ctx) => ctx,
         Err(_) => return empty,
     };
+    let this_device = auths_sdk::domains::identity::local::resolve_local_signer(&ctx)
+        .ok()
+        .map(|signer| signer.signer_did.to_string());
     let devices = match auths_sdk::domains::device::list_delegated_devices(&ctx) {
         Ok(devices) => devices,
-        Err(_) => return empty,
+        Err(_) => {
+            return DevicesSummary {
+                this_device,
+                ..empty
+            };
+        }
     };
 
     let mut linked = 0;
@@ -510,6 +527,7 @@ fn load_devices_summary(repo_path: &Path, env_config: &EnvironmentConfig) -> Dev
     // KERI delegation carries no timestamps: no expiry / expiring-soon set, and a
     // delegated device is inherently anchored.
     DevicesSummary {
+        this_device,
         linked,
         revoked,
         unanchored: 0,
@@ -545,10 +563,16 @@ fn compute_next_steps(
         return steps;
     }
 
-    // No devices linked
+    // The current machine counts as a device — only suggest pairing as an
+    // *addition*, never contradict the init success message with "none".
     if devices.linked == 0 {
+        let summary = if devices.this_device.is_some() {
+            "Add another device"
+        } else {
+            "Link your first device"
+        };
         steps.push(NextStep {
-            summary: "Link your first device".to_string(),
+            summary: summary.to_string(),
             command: "auths pair".to_string(),
         });
     }
@@ -618,6 +642,7 @@ mod tests {
                 socket_path: Some("/tmp/agent.sock".to_string()),
             },
             devices: DevicesSummary {
+                this_device: Some("did:keri:EThisDevice".to_string()),
                 linked: 2,
                 revoked: 1,
                 unanchored: 0,

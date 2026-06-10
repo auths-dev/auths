@@ -17,8 +17,10 @@ use serde::Serialize;
     about = "Pin identities you trust for verification",
     after_help = "Examples:
   auths trust list          # Show all pinned trusted identities
-  auths trust pin --did did:keri:EExample --key 7f8c9d0e1a2b3c4d...
-                            # Pin an identity as trusted
+  auths trust pin --did did:keri:EExample
+                            # Pin an identity (key resolved from its local KEL)
+  auths trust pin --did did:keri:EExample --bundle their-bundle.json
+                            # Pin from an exported identity bundle
   auths trust remove did:keri:EExample
                             # Remove a pinned identity
   auths trust show did:keri:EExample
@@ -60,9 +62,16 @@ pub struct TrustPinCommand {
     #[clap(long, required = true)]
     pub did: String,
 
-    /// The public key in hex format (64 chars for Ed25519).
-    #[clap(long, required = true)]
-    pub key: String,
+    /// The public key in hex format. Omit it to resolve the current key from
+    /// the identity's locally-replayed KEL (air-gapped ceremony is the only
+    /// case that needs the explicit hex).
+    #[clap(long)]
+    pub key: Option<String>,
+
+    /// Path to an identity bundle JSON to resolve the key from (alternative to
+    /// --key and to local KEL resolution).
+    #[clap(long)]
+    pub bundle: Option<std::path::PathBuf>,
 
     /// Identity log checkpoint for tracking key changes (optional, advanced).
     #[clap(long)]
@@ -178,8 +187,49 @@ fn handle_list(_cmd: TrustListCommand) -> Result<()> {
     Ok(())
 }
 
+/// Resolve the key material for a pin: explicit `--key` hex, a `--bundle`
+/// file, or the identity's locally-replayed KEL — in that order. Humans never
+/// have to produce raw hex on the happy path.
+fn resolve_pin_key(cmd: &TrustPinCommand) -> Result<(PublicKeyHex, auths_crypto::CurveType)> {
+    if let Some(ref key_hex) = cmd.key {
+        let public_key_hex = PublicKeyHex::parse(key_hex).context("Invalid public key hex")?;
+        let curve = auths_crypto::did_key_decode(&cmd.did)
+            .map(|d| d.curve())
+            .unwrap_or_default();
+        return Ok((public_key_hex, curve));
+    }
+    if let Some(ref bundle_path) = cmd.bundle {
+        let content = std::fs::read_to_string(bundle_path)
+            .with_context(|| format!("Failed to read identity bundle: {bundle_path:?}"))?;
+        let bundle: auths_verifier::IdentityBundle = serde_json::from_str(&content)
+            .with_context(|| format!("Failed to parse identity bundle: {bundle_path:?}"))?;
+        if bundle.identity_did.as_str() != cmd.did {
+            anyhow::bail!(
+                "Bundle is for {} but --did is {}",
+                bundle.identity_did.as_str(),
+                cmd.did
+            );
+        }
+        return Ok((bundle.public_key_hex.clone(), bundle.curve));
+    }
+    let auths_home = auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))?;
+    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+    );
+    let (pk, curve) = auths_sdk::keri::resolve_current_public_key(&registry, &cmd.did)
+        .with_context(|| {
+            format!(
+                "Could not resolve {} from the local registry. Provide --bundle <file> \
+                 (ask the identity owner for `auths id export-bundle`) or --key <hex>.",
+                cmd.did
+            )
+        })?;
+    #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
+    Ok((PublicKeyHex::new_unchecked(hex::encode(pk)), curve))
+}
+
 fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
-    let public_key_hex = PublicKeyHex::parse(&cmd.key).context("Invalid public key hex")?;
+    let (public_key_hex, curve) = resolve_pin_key(&cmd)?;
 
     let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
 
@@ -196,9 +246,7 @@ fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
     let pin = PinnedIdentity {
         did: cmd.did.clone(),
         public_key_hex: public_key_hex.clone(),
-        curve: auths_crypto::did_key_decode(&cmd.did)
-            .map(|d| d.curve())
-            .unwrap_or_default(),
+        curve,
         kel_tip_said: cmd.kel_tip,
         kel_sequence: None,
         first_seen: now,

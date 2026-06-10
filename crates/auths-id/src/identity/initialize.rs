@@ -51,6 +51,20 @@ pub fn initialize_keri_identity(
     now: chrono::DateTime<chrono::Utc>,
     curve: auths_crypto::CurveType,
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
+    let is_hardware_backend = keychain.is_hardware_backend();
+    // Policy preflight: a weak passphrase must abort before any durable write
+    // (the KERI inception below writes git refs that cannot be rolled back).
+    let passphrase = if is_hardware_backend {
+        // Hardware backends generate keys internally — no passphrase needed,
+        // Touch ID / HSM PIN replaces the passphrase.
+        None
+    } else {
+        let pass = passphrase_provider
+            .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
+        auths_core::crypto::encryption::validate_passphrase(&pass)?;
+        Some(pass)
+    };
+
     let repo = Repository::open(repo_path)?;
     let result = create_keri_identity_with_curve(&repo, None, now, curve)
         .map_err(|e| InitError::Keri(e.to_string()))?;
@@ -58,51 +72,38 @@ pub fn initialize_keri_identity(
     // INVARIANT: create_keri_identity returns a valid did:keri: DID
     let controller_did = IdentityDID::new_unchecked(result.did());
 
-    let is_hardware_backend = keychain.is_hardware_backend();
+    // pass the curve-tagged PKCS8 blob through unchanged. The old
+    // extract-seed + encode_seed_as_pkcs8 pattern silently wrapped P-256
+    // scalars in an Ed25519 OID.
+    let (current_data, next_data) = match &passphrase {
+        None => (Vec::new(), Vec::new()),
+        Some(pass) => (
+            encrypt_keypair(result.current_keypair_pkcs8.as_ref(), pass)?,
+            encrypt_keypair(result.next_keypair_pkcs8.as_ref(), pass)?,
+        ),
+    };
 
-    if is_hardware_backend {
-        // Hardware backends generate keys internally — no passphrase needed,
-        // Touch ID / HSM PIN replaces the passphrase
-        keychain.store_key(
-            local_key_alias,
-            &controller_did,
-            KeyRole::Primary,
-            &[], // ignored by hardware backends
-        )?;
-        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-        keychain.store_key(
-            &next_alias,
-            &controller_did,
-            KeyRole::NextRotation,
-            &[], // ignored by hardware backends
-        )?;
-    } else {
-        let passphrase = passphrase_provider
-            .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
-
-        // pass the curve-tagged PKCS8 blob through unchanged. The old
-        // extract-seed + encode_seed_as_pkcs8 pattern silently wrapped P-256
-        // scalars in an Ed25519 OID.
-        let encrypted_current =
-            encrypt_keypair(result.current_keypair_pkcs8.as_ref(), &passphrase)?;
-        let encrypted_next = encrypt_keypair(result.next_keypair_pkcs8.as_ref(), &passphrase)?;
-
-        keychain.store_key(
-            local_key_alias,
-            &controller_did,
-            KeyRole::Primary,
-            &encrypted_current,
-        )?;
-        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-        keychain.store_key(
-            &next_alias,
-            &controller_did,
-            KeyRole::NextRotation,
-            &encrypted_next,
-        )?;
+    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
+    keychain.store_key(
+        local_key_alias,
+        &controller_did,
+        KeyRole::Primary,
+        &current_data,
+    )?;
+    if let Err(e) = keychain.store_key(
+        &next_alias,
+        &controller_did,
+        KeyRole::NextRotation,
+        &next_data,
+    ) {
+        let _ = keychain.delete_key(local_key_alias);
+        return Err(e.into());
     }
-
-    identity_storage.create_identity(controller_did.as_str(), metadata)?;
+    if let Err(e) = identity_storage.create_identity(controller_did.as_str(), metadata) {
+        let _ = keychain.delete_key(local_key_alias);
+        let _ = keychain.delete_key(&next_alias);
+        return Err(e.into());
+    }
 
     Ok((controller_did, local_key_alias.clone()))
 }
@@ -151,6 +152,14 @@ pub fn initialize_registry_identity(
     let next = crate::keri::inception::generate_keypair_for_init(curve)
         .map_err(|e| InitError::Crypto(e.to_string()))?;
 
+    // Encrypt BEFORE any durable write: a weak passphrase (or any crypto
+    // failure) must abort with zero side effects — never an orphaned identity
+    // whose keys were rejected after the registry already recorded it.
+    let passphrase = passphrase_provider
+        .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
+    let encrypted_current = encrypt_keypair(current.pkcs8.as_ref(), &passphrase)?;
+    let encrypted_next = encrypt_keypair(next.pkcs8.as_ref(), &passphrase)?;
+
     let current_pub_encoded = current.cesr_encoded.clone();
     let next_commitment = compute_next_commitment(&next.verkey());
 
@@ -192,33 +201,34 @@ pub fn initialize_registry_identity(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    backend
-        .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
-        .map_err(|e| InitError::Registry(e.to_string()))?;
-
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format
     let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
 
-    let passphrase = passphrase_provider
-        .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
-
-    let encrypted_current = encrypt_keypair(current.pkcs8.as_ref(), &passphrase)?;
-    let encrypted_next = encrypt_keypair(next.pkcs8.as_ref(), &passphrase)?;
-
+    // Keys land first, then the registry append is the commit point. A failure
+    // at any step rolls back the keys already stored, so a failed init leaves
+    // the machine exactly as it found it.
+    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
     keychain.store_key(
         local_key_alias,
         &controller_did,
         KeyRole::Primary,
         &encrypted_current,
     )?;
-    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
-    keychain.store_key(
+    if let Err(e) = keychain.store_key(
         &next_alias,
         &controller_did,
         KeyRole::NextRotation,
         &encrypted_next,
-    )?;
+    ) {
+        let _ = keychain.delete_key(local_key_alias);
+        return Err(e.into());
+    }
+    if let Err(e) = backend.append_signed_event(&prefix, &Event::Icp(finalized), &attachment) {
+        let _ = keychain.delete_key(local_key_alias);
+        let _ = keychain.delete_key(&next_alias);
+        return Err(InitError::Registry(e.to_string()));
+    }
 
     Ok((controller_did, local_key_alias.clone()))
 }
@@ -266,11 +276,43 @@ fn initialize_hardware_registry_identity(
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
 
     keychain.store_key(local_key_alias, &placeholder, KeyRole::Primary, &[])?;
-    keychain.store_key(&next_alias, &placeholder, KeyRole::NextRotation, &[])?;
+    if let Err(e) = keychain.store_key(&next_alias, &placeholder, KeyRole::NextRotation, &[]) {
+        let _ = keychain.delete_key(local_key_alias);
+        return Err(e.into());
+    }
 
+    // Hardware keys exist from here on. Any later failure must delete them —
+    // an orphaned hardware key with a `pending` identity is unusable and blocks
+    // re-initialization under the same alias.
+    let result = incept_with_hardware_keys(
+        &backend,
+        local_key_alias,
+        &next_alias,
+        keychain,
+        witness_config,
+        curve,
+    );
+    if result.is_err() {
+        let _ = keychain.delete_key(local_key_alias);
+        let _ = keychain.delete_key(&next_alias);
+    }
     let _ = passphrase_provider;
+    result.map(|controller_did| (controller_did, local_key_alias.clone()))
+}
+
+/// Incept the KEL over already-stored hardware keys and rebind them to the
+/// derived prefix. Split out so the caller can delete the hardware keys when any
+/// step fails (the rollback that prevents orphaned Secure Enclave keys).
+fn incept_with_hardware_keys(
+    backend: &Arc<dyn RegistryBackend + Send + Sync>,
+    local_key_alias: &KeyAlias,
+    next_alias: &KeyAlias,
+    keychain: &(dyn KeyStorage + Send + Sync),
+    witness_config: Option<&WitnessConfig>,
+    curve: auths_crypto::CurveType,
+) -> Result<IdentityDID, InitError> {
     let current_pub = keychain.export_public_key(local_key_alias)?;
-    let next_pub = keychain.export_public_key(&next_alias)?;
+    let next_pub = keychain.export_public_key(next_alias)?;
 
     let current_norm = auths_crypto::normalize_verkey(&current_pub, curve)
         .map_err(|e| InitError::Crypto(format!("hardware current key: {e}")))?;
@@ -329,9 +371,9 @@ fn initialize_hardware_registry_identity(
     let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
 
     keychain.rebind_identity(local_key_alias, &controller_did)?;
-    keychain.rebind_identity(&next_alias, &controller_did)?;
+    keychain.rebind_identity(next_alias, &controller_did)?;
 
-    Ok((controller_did, local_key_alias.clone()))
+    Ok(controller_did)
 }
 
 /// Initialize a multi-key KERI identity.
@@ -434,43 +476,75 @@ pub fn initialize_registry_identity_multi(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    backend
-        .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
-        .map_err(|e| InitError::Registry(e.to_string()))?;
-
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format.
     let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
 
     let is_hardware_backend = keychain.is_hardware_backend();
+    // One passphrase for every slot — prompt once, not once per device slot.
+    let passphrase = if is_hardware_backend {
+        None
+    } else {
+        Some(
+            passphrase_provider
+                .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?,
+        )
+    };
 
-    // Store each current + next keypair under {alias}--{idx} / {alias}--next-0-{idx}.
-    for (idx, (cur, nxt)) in current_kps.iter().zip(next_kps.iter()).enumerate() {
-        let cur_alias = KeyAlias::new_unchecked(format!("{}--{}", local_key_alias, idx));
-        let nxt_alias = KeyAlias::new_unchecked(format!("{}--next-0-{}", local_key_alias, idx));
-
-        if is_hardware_backend {
-            keychain.store_key(&cur_alias, &controller_did, KeyRole::Primary, &[])?;
-            keychain.store_key(&nxt_alias, &controller_did, KeyRole::NextRotation, &[])?;
-        } else {
-            let passphrase = passphrase_provider
-                .get_passphrase(&format!("Enter passphrase for key '{}':", local_key_alias))?;
-            let encrypted_current = encrypt_keypair(cur.pkcs8.as_ref(), &passphrase)?;
-            let encrypted_next = encrypt_keypair(nxt.pkcs8.as_ref(), &passphrase)?;
-            keychain.store_key(
-                &cur_alias,
-                &controller_did,
-                KeyRole::Primary,
-                &encrypted_current,
-            )?;
-            keychain.store_key(
-                &nxt_alias,
-                &controller_did,
-                KeyRole::NextRotation,
-                &encrypted_next,
-            )?;
+    // Keys land first, then the registry append is the commit point. Any
+    // failure rolls back every alias stored so far — a failed init leaves the
+    // machine exactly as it found it.
+    let mut stored: Vec<KeyAlias> = Vec::with_capacity(current_kps.len() * 2);
+    let commit_result = store_multi_slot_keys(
+        keychain,
+        &controller_did,
+        local_key_alias,
+        &current_kps,
+        &next_kps,
+        passphrase.as_ref().map(|p| p.as_str()),
+        &mut stored,
+    )
+    .and_then(|()| {
+        backend
+            .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
+            .map_err(|e| InitError::Registry(e.to_string()))
+    });
+    if let Err(e) = commit_result {
+        for alias in &stored {
+            let _ = keychain.delete_key(alias);
         }
+        return Err(e);
     }
 
     Ok((controller_did, local_key_alias.clone()))
+}
+
+/// Store every device slot's current + next keypair under
+/// `{alias}--{idx}` / `{alias}--next-0-{idx}`, recording each stored alias in
+/// `stored` so the caller can roll all of them back if any later step fails.
+fn store_multi_slot_keys(
+    keychain: &(dyn KeyStorage + Send + Sync),
+    controller_did: &IdentityDID,
+    local_key_alias: &KeyAlias,
+    current_kps: &[crate::keri::inception::GeneratedKeypair],
+    next_kps: &[crate::keri::inception::GeneratedKeypair],
+    passphrase: Option<&str>,
+    stored: &mut Vec<KeyAlias>,
+) -> Result<(), InitError> {
+    for (idx, (cur, nxt)) in current_kps.iter().zip(next_kps.iter()).enumerate() {
+        let cur_alias = KeyAlias::new_unchecked(format!("{}--{}", local_key_alias, idx));
+        let nxt_alias = KeyAlias::new_unchecked(format!("{}--next-0-{}", local_key_alias, idx));
+        let (cur_data, nxt_data) = match passphrase {
+            None => (Vec::new(), Vec::new()),
+            Some(pass) => (
+                encrypt_keypair(cur.pkcs8.as_ref(), pass)?,
+                encrypt_keypair(nxt.pkcs8.as_ref(), pass)?,
+            ),
+        };
+        keychain.store_key(&cur_alias, controller_did, KeyRole::Primary, &cur_data)?;
+        stored.push(cur_alias);
+        keychain.store_key(&nxt_alias, controller_did, KeyRole::NextRotation, &nxt_data)?;
+        stored.push(nxt_alias);
+    }
+    Ok(())
 }

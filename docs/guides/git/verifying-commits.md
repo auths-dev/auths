@@ -17,6 +17,30 @@ Commit verification is **KEL-native** — there is no key list file to maintain.
 
 Resolution is local-only by default (no network). A remote can only advance a signer's key state, never roll it back — the local store stays the trusted floor.
 
+## Who Verifies Green: Self-Trust and Pinned Roots
+
+A cryptographically valid signature still needs a trust decision about the *root*
+identity behind it. Three sources make a root trusted:
+
+- **Self-trust** — your own identity is always trusted for your own verifications.
+  Commits and artifacts you signed verify on your machine with zero setup.
+- **The committed `.auths/roots` file** — the repo's trust declaration, seeded
+  automatically by the first signed commit and shared with everyone who clones.
+- **An identity bundle** (`--identity-bundle`) — trusted for that verification only.
+
+A valid signature from a root in none of these fails with `Root … is not a pinned
+trusted root`. Pin the signer (`auths trust pin --did <did>` or add the DID to
+`.auths/roots`) and re-verify.
+
+### "Commit carries no Auths-Id/Auths-Device trailer"
+
+This means the commit message lacks the identity trailers verification replays. The
+`prepare-commit-msg` hook installed by `auths init` adds them on every commit. If a
+repository sets its own `core.hooksPath` (hook managers like husky do), the hook is
+bypassed there — run `auths doctor` to detect this. Commits made before the hook
+existed can be backfilled with `auths sign <ref>` (note: it amends, so the SHA
+changes; never backfill already-pushed commits without coordinating).
+
 ## Verifying a Single Commit
 
 Verify the latest commit:
@@ -61,7 +85,13 @@ For machine-readable output, use the `--json` flag:
 auths verify HEAD --json
 ```
 
-Returns a JSON object with fields: `commit`, `valid`, `ssh_valid`, `chain_valid`, `signer`, `error`, and `warnings`.
+Returns a JSON object per commit:
+
+```json
+{"commit":"d4e7393e...","valid":true,"ssh_valid":true,"signer":"did:keri:EDxfiyav..."}
+```
+
+(`error` and `warnings` fields appear when relevant.)
 
 ## Verifying a Commit Range
 
@@ -158,7 +188,7 @@ jobs:
 
       - uses: auths-dev/verify@v1
         with:
-          auths-version: '0.0.1-rc.12'           # pin — a verifier must not resolve `latest`
+          auths-version: '0.1.2'                 # pin — a verifier must not resolve `latest`
           identity-bundle: '.auths/ci-bundle.json'  # omit for KEL-native verification
           fail-on-unsigned: 'true'
 ```
@@ -186,11 +216,13 @@ verify-signatures:
 
 ### Exit Codes
 
+The exit-code contract (also in `auths verify --help`):
+
 | Code | Meaning |
 |------|---------|
-| `0` | All commits verified successfully |
-| `1` | At least one commit is invalid or unsigned |
-| `2` | Runtime error (invalid args, etc.) |
+| `0` | Verified |
+| `1` | Verification failed — bad signature, missing trailers, or an untrusted/unresolvable signer |
+| `2` | Could not attempt — I/O error, malformed input, missing repository |
 
 ### Using the Audit Command
 

@@ -18,15 +18,36 @@ auths verify origin/main..HEAD --remote origin
 
 This is opt-in (resolution is local-only by default). A remote can only advance a signer's key state, never roll it back — your local store stays the trusted floor.
 
-### Option 2: Pin the Teammate's Identity
+### Option 2: The Committed Trust File (`.auths/roots`)
 
-For explicit, offline-first trust, pin each teammate's root identity once:
+The repository itself carries its trust declaration: `.auths/roots`, one trusted root
+`did:keri:` per line, version-controlled like any other file. A member's first signed
+commit seeds their root into it automatically; everyone who pulls inherits it.
+
+```
+# .auths/roots
+did:keri:EAliceRoot...
+did:keri:EBobRoot...
+```
+
+Review changes to `.auths/roots` like you review code — a new line in this file is a
+trust grant. This is the lowest-friction team model: trust ships with the repo.
+
+### Option 3: Pin the Teammate's Identity Locally
+
+For explicit per-verifier trust independent of any repo, pin a teammate's root once.
+No raw key material needed — the key resolves from their key event log or an exported
+bundle:
 
 ```bash
-auths trust pin \
-  --did did:keri:E... \
-  --key abcdef1234567890... \
-  --note "Alice — platform team"
+# from a bundle they shared
+auths trust pin --did did:keri:E... --bundle alice-bundle.json --note "Alice — platform team"
+
+# or, if their KEL is already in your local store
+auths trust pin --did did:keri:E... --note "Alice — platform team"
+
+# air-gapped ceremony only: explicit key bytes
+auths trust pin --did did:keri:E... --key <hex-public-key>
 ```
 
 After pinning, their commits verify with no network access:
@@ -45,24 +66,29 @@ The new team member sets up Auths on their machine:
 auths init
 ```
 
-This creates their cryptographic identity, generates a key pair, stores it in the platform keychain, and configures Git signing.
+This creates their cryptographic identity, stores the key in the platform keychain,
+configures Git signing, and installs the commit hook.
 
-### Step 2: Member Shares Their Identity
-
-The new member shares their DID and root public key over a trusted channel (PR description, internal directory, or in person):
-
-```bash
-auths whoami        # prints the did:keri: identifier
-auths id show       # full identity details including the public key
-```
-
-### Step 3: Teammates Pin the New Identity
-
-Each verifier (or a maintainer acting for the team) pins the new member:
+### Step 2: Member Makes Their First Signed Commit
 
 ```bash
-auths trust pin --did did:keri:E... --key <hex-public-key> --note "newdev"
+git commit -m "docs: add myself to CONTRIBUTORS"
 ```
+
+The commit hook stamps the commit with their identity and stages their root into the
+repo's `.auths/roots`. The PR containing that change **is** the trust request — the
+reviewer who merges it is approving the new root.
+
+### Step 3 (optional): Share a Bundle for Out-of-Repo Verification
+
+For teammates who verify outside this repo, the member exports a bundle over a trusted
+channel:
+
+```bash
+auths id export-bundle --alias main --output me.json --max-age-secs 604800
+```
+
+and verifiers pin it: `auths trust pin --did <their-did> --bundle me.json`.
 
 Teams using an organization identity can skip per-member pinning and add the member to the org instead (see below).
 
@@ -171,13 +197,13 @@ Auths supports trust-on-first-use (TOFU) and explicit trust pinning for identity
 
 ### Pinning a Trusted Identity
 
-Manually pin an identity as trusted:
+Manually pin an identity as trusted. The key material resolves automatically from the
+identity's key event log or a supplied bundle:
 
 ```bash
-auths trust pin \
-  --did did:keri:E... \
-  --key abcdef1234567890... \
-  --note "Org root key"
+auths trust pin --did did:keri:E... --note "Org root key"
+auths trust pin --did did:keri:E... --bundle org-root.json
+auths trust pin --did did:keri:E... --key <hex>   # air-gapped ceremony only
 ```
 
 ### Listing Pinned Identities
@@ -332,8 +358,9 @@ auths audit --repo . --signer did:keri:E...
 # Each team member (once)
 auths init
 
-# Each member pins teammates' identities (or use an org identity)
-auths trust pin --did did:keri:E... --key <hex> --note "alice"
+# Trust ships with the repo: each member's first signed commit adds their root
+# to the committed .auths/roots. For out-of-repo verification, pin explicitly:
+auths trust pin --did did:keri:E... --note "alice"
 ```
 
 ### Adding a New Member
@@ -341,7 +368,7 @@ auths trust pin --did did:keri:E... --key <hex> --note "alice"
 ```bash
 # New member runs:
 auths init
-auths whoami            # shares the did:keri: + public key with the team
+auths whoami            # shares the did:keri: with the team
 
 # Teammates pin it, or an org admin runs:
 auths org add-member --org did:keri:E... --member did:keri:E... --role member --key org-myorg
@@ -356,7 +383,7 @@ steps:
       fetch-depth: 0
   - uses: auths-dev/verify@v1
     with:
-      auths-version: '0.0.1-rc.12'
+      auths-version: '0.1.2'
       identity-bundle: '.auths/ci-bundle.json'
 ```
 
