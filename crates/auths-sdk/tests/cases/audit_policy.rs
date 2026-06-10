@@ -121,7 +121,7 @@ fn commit_policy_decisions_are_recorded_in_the_audit_sink() {
         &org_alias,
         &KeyAlias::new_unchecked("agent-1"),
         CurveType::Ed25519,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add agent");

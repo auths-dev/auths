@@ -57,7 +57,7 @@ pub enum CredentialSubcommand {
 
         /// Capability to grant (repeatable).
         #[arg(long = "cap", help = "Capability to grant (repeatable).")]
-        cap: Vec<String>,
+        cap: Vec<auths_keri::Capability>,
 
         /// Informational role claim.
         #[arg(long, help = "Informational role claim (e.g. deployer).")]
@@ -300,7 +300,11 @@ pub fn handle_credential(
                         "  {} → {} [{}]{}",
                         c.credential_said,
                         c.subject_did,
-                        c.capabilities.join(","),
+                        c.capabilities
+                            .iter()
+                            .map(|cap| cap.as_str())
+                            .collect::<Vec<_>>()
+                            .join(","),
                         status
                     );
                 }

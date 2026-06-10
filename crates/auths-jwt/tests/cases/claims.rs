@@ -1,4 +1,5 @@
 use auths_jwt::{ActorClaim, IdpBindingClaim, OidcClaims, WitnessQuorumClaim};
+use auths_keri::Capability;
 use serde_json::{Value, json};
 
 fn minimal_claims_json() -> Value {
@@ -24,7 +25,10 @@ fn fully_populated_claims() -> OidcClaims {
         jti: "jti-full".into(),
         keri_prefix: "ETest".into(),
         target_provider: Some("aws".into()),
-        capabilities: vec!["sign-commit".into(), "deploy".into()],
+        capabilities: vec![
+            Capability::parse("sign-commit").unwrap(),
+            Capability::parse("deploy").unwrap(),
+        ],
         witness_quorum: Some(WitnessQuorumClaim {
             required: 3,
             verified: 3,
@@ -75,7 +79,13 @@ fn fully_populated_claims_round_trip_preserves_nested_fields() {
     assert_eq!(parsed.jti, claims.jti);
     assert_eq!(parsed.keri_prefix, claims.keri_prefix);
     assert_eq!(parsed.target_provider.as_deref(), Some("aws"));
-    assert_eq!(parsed.capabilities, vec!["sign-commit", "deploy"]);
+    assert_eq!(
+        parsed.capabilities,
+        vec![
+            Capability::parse("sign-commit").unwrap(),
+            Capability::parse("deploy").unwrap(),
+        ]
+    );
 
     let quorum = parsed.witness_quorum.unwrap();
     assert_eq!(quorum.required, 3);

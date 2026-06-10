@@ -80,7 +80,7 @@ fn add_agent(ctx: &AuthsContext, org_alias: &KeyAlias, label: &str) -> String {
         org_alias,
         &KeyAlias::new_unchecked(label.to_string()),
         CurveType::Ed25519,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add agent")

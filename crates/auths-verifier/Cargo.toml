@@ -65,7 +65,7 @@ native = ["dep:ring", "auths-crypto/native"]
 ffi = ["libc", "native", "dep:tokio"]
 wasm = ["wasm-bindgen", "dep:wasm-bindgen-futures", "getrandom/wasm_js", "getrandom_02/js", "auths-crypto/wasm"]
 test-utils = ["auths-crypto/test-utils"]
-schema = ["dep:schemars"]
+schema = ["dep:schemars", "auths-keri/schema"]
 
 [lints]
 workspace = true

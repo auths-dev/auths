@@ -252,13 +252,14 @@ fn generate_test_keypair() -> Result<(TypedSeed, Vec<u8>), ProtocolError> {
 mod tests {
     use super::*;
     use crate::token::PairingToken;
+    use auths_keri::Capability;
 
     fn make_token() -> crate::token::PairingSession {
         PairingToken::generate(
             chrono::Utc::now(),
             "did:keri:test123".to_string(),
             "http://localhost:3000".to_string(),
-            vec!["sign_commit".to_string()],
+            vec![Capability::sign_commit()],
         )
         .unwrap()
     }

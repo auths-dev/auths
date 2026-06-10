@@ -5,14 +5,15 @@
 //! working across CLI, Node, and Python crates.
 
 pub use crate::domains::org::audit::{
-    AuthorityAtSigning, classify_authority_at_signing, list_offboarding_records,
+    AuthorityAtSigning, classify_authority_at_signing, classify_authority_at_signing_with,
+    list_offboarding_records,
 };
 pub use crate::domains::org::bundle::{
     AIR_GAPPED_ORG_BUNDLE_SCHEMA_VERSION, AirGappedOrgBundle, BundledKel, build_org_bundle,
 };
 pub use crate::domains::org::delegation::{
-    OrgMemberAuthority, OrgMemberResult, add_existing_member, add_member, list_members,
-    member_policy_context, resolve_member_authority, revoke_member,
+    OrgKelSnapshot, OrgMemberAuthority, OrgMemberResult, OrgSnapshotCache, add_existing_member,
+    add_member, list_members, member_policy_context, resolve_member_authority, revoke_member,
 };
 pub use crate::domains::org::metrics::{FleetMetrics, fleet_metrics};
 pub use crate::domains::org::offboarding::{
@@ -24,5 +25,5 @@ pub use crate::domains::org::policy::{
 };
 pub use crate::domains::org::service::*;
 pub use crate::domains::org::trace::{
-    ChainHop, DelegationChain, MAX_CHAIN_DEPTH, walk_delegation_chain,
+    ChainHop, DelegationChain, MAX_CHAIN_DEPTH, walk_delegation_chain, walk_delegation_chain_cached,
 };

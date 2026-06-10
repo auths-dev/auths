@@ -7,6 +7,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 
+use crate::capability::Capability;
 use crate::types::{CesrKey, ConfigTrait, Prefix, Said, Threshold, VersionString};
 
 /// KERI protocol version prefix string.
@@ -1062,7 +1063,7 @@ pub struct SourceSeal {
 pub struct AgentScope {
     /// Capabilities granted to the agent (empty = unrestricted). Capability strings
     /// may contain `:` (e.g. `repo:foo`) but not `,` (the list separator).
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Expiry as Unix epoch seconds; `None` = never expires.
     pub expires_at: Option<i64>,
 }
@@ -1078,18 +1079,27 @@ const AGENT_SCOPE_MARKER: &str = "agentscope:";
 ///
 /// Usage:
 /// ```
-/// use auths_keri::{AgentScope, encode_agent_scope};
-/// let s = AgentScope { capabilities: vec!["sign_commit".into()], expires_at: Some(99) };
+/// use auths_keri::{AgentScope, Capability, encode_agent_scope};
+/// let s = AgentScope {
+///     capabilities: vec![Capability::sign_commit()],
+///     expires_at: Some(99),
+/// };
 /// assert_eq!(encode_agent_scope("Eabc", &s), "agentscope:Eabc:99:sign_commit");
 /// ```
 pub fn encode_agent_scope(agent_prefix: &str, scope: &AgentScope) -> String {
     let expires = scope.expires_at.unwrap_or(0);
-    let caps = scope.capabilities.join(",");
+    let caps = scope
+        .capabilities
+        .iter()
+        .map(Capability::as_str)
+        .collect::<Vec<_>>()
+        .join(",");
     format!("{AGENT_SCOPE_MARKER}{agent_prefix}:{expires}:{caps}")
 }
 
 /// Decode an agent-scope seal value into `(agent_prefix, AgentScope)`, or `None` if
-/// the value is not an `agentscope:` marker. Inverse of [`encode_agent_scope`].
+/// the value is not an `agentscope:` marker or any capability fails validation.
+/// Inverse of [`encode_agent_scope`].
 ///
 /// Args:
 /// * `value`: A `Seal::Digest` value to interpret.
@@ -1104,7 +1114,11 @@ pub fn decode_agent_scope(value: &str) -> Option<(String, AgentScope)> {
     let capabilities = if caps_csv.is_empty() {
         Vec::new()
     } else {
-        caps_csv.split(',').map(|c| c.to_string()).collect()
+        caps_csv
+            .split(',')
+            .map(Capability::parse)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?
     };
     Some((
         prefix,

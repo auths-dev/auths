@@ -1,5 +1,6 @@
 //! Shared types for the MCP server.
 
+use auths_verifier::Capability;
 use serde::Serialize;
 
 /// A verified agent identity extracted from a validated JWT.
@@ -19,5 +20,5 @@ use serde::Serialize;
 pub struct VerifiedAgent {
     pub did: String,
     pub keri_prefix: String,
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
 }

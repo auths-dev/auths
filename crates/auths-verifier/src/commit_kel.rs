@@ -702,7 +702,7 @@ fn reject_unauthorized_delegate(
         }
         if !scope.capabilities.is_empty() {
             for claimed in parse_scope_claim(commit_bytes) {
-                if !scope.capabilities.contains(&claimed) {
+                if !scope.capabilities.iter().any(|c| c.as_str() == claimed) {
                     return Some(CommitVerdict::OutsideAgentScope {
                         signer_did: device_did.to_string(),
                         capability: claimed,

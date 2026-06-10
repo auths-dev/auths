@@ -21,7 +21,8 @@ use auths_id::keri::types::Prefix;
 use auths_id::keri::{parse_did_keri, Event};
 use auths_sdk::domains::agents::{add_scoped, list, revoke, revoke_batch};
 use auths_sdk::domains::org::offboarding::find_revocation_event;
-use auths_sdk::workflows::org::{resolve_member_authority, walk_delegation_chain};
+use auths_sdk::workflows::org::{walk_delegation_chain_cached, OrgKelSnapshot, OrgSnapshotCache};
+use auths_verifier::Capability;
 
 use crate::app::{AppState, IdempotencyHit};
 use crate::error::ApiError;
@@ -36,7 +37,7 @@ pub struct IssuePassportRequest {
     /// Keychain alias to store the new agent key under (must be fresh).
     pub label: String,
     /// Capabilities to grant the agent (must be non-empty).
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Optional lifetime in seconds; the passport expires `now + expires_in_secs`.
     pub expires_in_secs: Option<u64>,
 }
@@ -47,7 +48,7 @@ pub struct PassportSummary {
     /// The agent's `did:keri:`.
     pub agent: String,
     /// Capabilities granted by the delegator-anchored scope seal.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Delegator-anchored expiry (Unix epoch seconds), if any.
     pub expires_at: Option<i64>,
     /// Whether the delegator has revoked this agent.
@@ -96,7 +97,7 @@ pub struct FleetMember {
     /// The agent's `did:keri:`.
     pub agent: String,
     /// Capabilities granted by the delegator-anchored scope seal.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Delegator-anchored expiry (Unix epoch seconds), if any.
     pub expires_at: Option<i64>,
     /// Whether the delegator has revoked this agent.
@@ -133,8 +134,8 @@ fn fingerprint(org: &str, req: &IssuePassportRequest) -> u64 {
     let mut hasher = DefaultHasher::new();
     org.hash(&mut hasher);
     req.label.hash(&mut hasher);
-    let mut caps = req.capabilities.clone();
-    caps.sort();
+    let mut caps: Vec<Capability> = req.capabilities.clone();
+    caps.sort_by(|a, b| a.as_str().cmp(b.as_str()));
     caps.hash(&mut hasher);
     req.expires_in_secs.hash(&mut hasher);
     hasher.finish()
@@ -185,7 +186,7 @@ pub async fn issue_agent(
     Json(req): Json<IssuePassportRequest>,
 ) -> Result<Json<PassportSummary>, ApiError> {
     state.ensure_org(&org)?;
-    if req.capabilities.is_empty() || req.capabilities.iter().all(|c| c.trim().is_empty()) {
+    if req.capabilities.is_empty() {
         return Err(ApiError::BadRequest(
             "capabilities must not be empty".to_string(),
         ));
@@ -254,14 +255,15 @@ pub async fn list_agents(
     .map_err(|()| ApiError::BadRequest("stale or unknown cursor".to_string()))?;
 
     let org_prefix = Prefix::new_unchecked(state.org_prefix.clone());
+    // One org-KEL replay for the whole page; per-agent resolution is pure.
+    let snapshot = OrgKelSnapshot::load(&state.ctx, &org_prefix)?;
     let mut agents = Vec::with_capacity(end - start);
     for info in &all[start..end] {
         let agent_prefix = parse_did_keri(&info.agent_did).map_err(|_| ApiError::InternalError)?;
-        let (capabilities, expires_at) =
-            match resolve_member_authority(&state.ctx, &org_prefix, &agent_prefix)? {
-                Some(a) => (a.capabilities, a.expires_at),
-                None => (Vec::new(), None),
-            };
+        let (capabilities, expires_at) = match snapshot.member_authority(&agent_prefix) {
+            Some(a) => (a.capabilities, a.expires_at),
+            None => (Vec::new(), None),
+        };
         agents.push(PassportSummary {
             agent: info.agent_did.clone(),
             capabilities,
@@ -297,19 +299,26 @@ pub async fn list_fleet(
     .map_err(|()| ApiError::BadRequest("stale or unknown cursor".to_string()))?;
 
     let org_prefix = Prefix::new_unchecked(state.org_prefix.clone());
+    // One replay per distinct delegator KEL for the whole page: the org
+    // snapshot is shared by every member, and the chain walker memoizes any
+    // upstream delegators it encounters in the same cache.
+    let mut kel_cache = OrgSnapshotCache::new();
+    kel_cache.insert(OrgKelSnapshot::load(&state.ctx, &org_prefix)?);
     let mut members = Vec::with_capacity(end - start);
     for info in &all[start..end] {
         let agent_prefix = parse_did_keri(&info.agent_did).map_err(|_| ApiError::InternalError)?;
-        let (capabilities, expires_at) =
-            match resolve_member_authority(&state.ctx, &org_prefix, &agent_prefix)? {
-                Some(a) => (a.capabilities, a.expires_at),
-                None => (Vec::new(), None),
-            };
+        let (capabilities, expires_at) = match kel_cache
+            .get_or_load(&state.ctx, &org_prefix)?
+            .member_authority(&agent_prefix)
+        {
+            Some(a) => (a.capabilities, a.expires_at),
+            None => (Vec::new(), None),
+        };
 
         // Current-state chain view (no in-band signing position → any revoked link is
         // not live). A broken hop is surfaced per-member, fail-closed.
         let (chain_to_human, live, chain_error) =
-            match walk_delegation_chain(&state.ctx, &agent_prefix, None) {
+            match walk_delegation_chain_cached(&state.ctx, &mut kel_cache, &agent_prefix, None) {
                 Ok(chain) => {
                     let mut path = vec![chain.leaf_did.clone()];
                     path.extend(chain.hops.iter().map(|h| h.delegator_did.clone()));
@@ -383,6 +392,10 @@ mod tests {
         (0..n).map(|i| format!("did:keri:E{i}")).collect()
     }
 
+    fn cap(s: &str) -> Capability {
+        Capability::parse(s).unwrap()
+    }
+
     #[test]
     fn page_window_first_page_and_cursor() {
         let ids = ids(5);
@@ -423,13 +436,13 @@ mod tests {
     fn fingerprint_is_stable_and_body_sensitive() {
         let a = IssuePassportRequest {
             label: "agent-1".into(),
-            capabilities: vec!["sign_commit".into(), "open-PR".into()],
+            capabilities: vec![cap("sign_commit"), cap("open-PR")],
             expires_in_secs: Some(3600),
         };
         // Same logical request (capability order does not matter) → same fingerprint.
         let b = IssuePassportRequest {
             label: "agent-1".into(),
-            capabilities: vec!["open-PR".into(), "sign_commit".into()],
+            capabilities: vec![cap("open-PR"), cap("sign_commit")],
             expires_in_secs: Some(3600),
         };
         assert_eq!(
@@ -439,7 +452,7 @@ mod tests {
 
         // A different capability set → different fingerprint (idempotency-key reuse is a conflict).
         let c = IssuePassportRequest {
-            capabilities: vec!["deploy".into()],
+            capabilities: vec![cap("deploy")],
             ..a.clone()
         };
         assert_ne!(

@@ -37,7 +37,7 @@ pub async fn handle_initiate_lan(
     verify: bool,
     recover: Option<String>,
     expiry_secs: u64,
-    capabilities: &[String],
+    capabilities: &[auths_keri::Capability],
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
 ) -> Result<()> {
@@ -177,7 +177,11 @@ pub async fn handle_initiate_lan(
         println!(
             "  {} {}",
             style("Capabilities:").dim(),
-            capabilities.join(", ")
+            capabilities
+                .iter()
+                .map(|c| c.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     println!(

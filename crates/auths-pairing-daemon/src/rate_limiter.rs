@@ -244,12 +244,10 @@ impl TieredRateLimiter {
                 return CheckOutcome::RateLimited { retry_after: None };
             }
         }
-        let entry = guard
-            .entry(session_id.to_string())
-            .or_insert(SasState {
-                count: 0,
-                first_seen: now,
-            });
+        let entry = guard.entry(session_id.to_string()).or_insert(SasState {
+            count: 0,
+            first_seen: now,
+        });
         entry.count += 1;
         if entry.count > self.cfg.sas_submissions_per_session {
             CheckOutcome::RateLimited { retry_after: None }
@@ -629,7 +627,10 @@ mod tests {
             CheckOutcome::RateLimited { .. }
         ));
         // Already-tracked IPs are unaffected by saturation.
-        assert!(matches!(l.check(Tier::Other, nth_ip(0)), CheckOutcome::Allowed));
+        assert!(matches!(
+            l.check(Tier::Other, nth_ip(0)),
+            CheckOutcome::Allowed
+        ));
     }
 
     #[test]

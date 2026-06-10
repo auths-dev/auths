@@ -15,7 +15,7 @@ pub type DidParseError = auths_verifier::DidParseError;
 
 /// A validated capability identifier.
 ///
-/// Enforces the same rules as `Capability::validate_custom`:
+/// Enforces the same rules as `Capability::parse`:
 /// alphanumeric + colon/hyphen/underscore, max 64 chars. Stored in canonical
 /// lowercase form.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

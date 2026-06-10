@@ -92,7 +92,7 @@ fn no_policy_is_legacy_allow() {
         &org_alias,
         &KeyAlias::new_unchecked("agent-1"),
         CurveType::Ed25519,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add agent");
@@ -112,7 +112,7 @@ fn capability_policy_gates_the_signer_grant() {
         &org_alias,
         &KeyAlias::new_unchecked("agent-1"),
         CurveType::Ed25519,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add agent");
@@ -160,7 +160,7 @@ fn signer_type_distinguishes_agent_from_human() {
         &org_alias,
         &KeyAlias::new_unchecked("agent-1"),
         CurveType::Ed25519,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add agent");
@@ -171,7 +171,7 @@ fn signer_type_distinguishes_agent_from_human() {
         &KeyAlias::new_unchecked("human-1"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add member");

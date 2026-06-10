@@ -21,7 +21,7 @@ pub(crate) async fn handle_initiate_online(
     registry: &str,
     no_qr: bool,
     expiry_secs: u64,
-    capabilities: &[String],
+    capabilities: &[auths_keri::Capability],
     env_config: &EnvironmentConfig,
     recover: Option<String>,
 ) -> Result<()> {
@@ -85,7 +85,12 @@ pub(crate) async fn handle_initiate_online(
                 println!(
                     "  {} {}",
                     style("Capabilities:").dim(),
-                    token.capabilities.join(", ")
+                    token
+                        .capabilities
+                        .iter()
+                        .map(|c| c.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
             }
             println!(

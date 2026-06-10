@@ -74,8 +74,8 @@ pub struct PairingBindingContext {
     /// the session ID via `GET /v1/pairing/sessions/by-code/{short_code}`).
     short_code: String,
 
-    /// Capability strings from the pairing URI.
-    capabilities: Vec<String>,
+    /// Capabilities from the pairing URI (validated at URI-parse time).
+    capabilities: Vec<auths_keri::Capability>,
 
     /// ECDH shared secret, hex-encoded. Held inside `Zeroizing` bytes on
     /// the Rust side; the caller receives it as a hex string for parity
@@ -130,7 +130,10 @@ impl PairingBindingContext {
 
     /// Capability strings requested by the pairing URI.
     pub fn capabilities(&self) -> Vec<String> {
-        self.capabilities.clone()
+        self.capabilities
+            .iter()
+            .map(|c| c.as_str().to_string())
+            .collect()
     }
 
     /// Hex-encoded 32-byte X25519 ECDH shared secret.

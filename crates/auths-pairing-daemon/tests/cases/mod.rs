@@ -29,7 +29,7 @@ pub fn test_session() -> CreateSessionRequest {
         controller_did: "did:keri:test123".to_string(),
         ephemeral_pubkey: Base64UrlEncoded::from_raw("dGVzdC1wdWJrZXk".to_string()),
         short_code: "ABC123".to_string(),
-        capabilities: vec!["sign_commit".to_string()],
+        capabilities: vec![auths_keri::Capability::sign_commit()],
         expires_at: 9999999999,
 
         recovery_target: None,

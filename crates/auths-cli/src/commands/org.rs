@@ -154,7 +154,7 @@ pub enum OrgSubcommand {
 
         /// Override default capabilities (comma-separated)
         #[arg(long, value_delimiter = ',')]
-        capabilities: Option<Vec<String>>,
+        capabilities: Option<Vec<auths_keri::Capability>>,
 
         /// Alias of the signing key in keychain
         #[arg(long)]
@@ -348,6 +348,8 @@ fn verify_attestation_via_resolver(
         Err(_) => return "❌ invalid".to_string(),
     };
     #[allow(clippy::expect_used)]
+    // INVARIANT: current-thread runtime creation only fails on resource
+    // exhaustion, which is unrecoverable at the CLI boundary.
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -745,12 +747,7 @@ pub fn handle_org(
             let org_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| org_slug_alias(&org)));
             let member_alias = KeyAlias::new_unchecked(member_label.clone());
 
-            let capability_strings = capabilities.unwrap_or_else(|| {
-                role.default_capabilities()
-                    .iter()
-                    .map(|c| c.as_str().to_string())
-                    .collect()
-            });
+            let capability_strings = capabilities.unwrap_or_else(|| role.default_capabilities());
 
             let sdk_ctx = build_auths_context(
                 &repo_path,
@@ -772,7 +769,14 @@ pub fn handle_org(
             println!("\n✅ Member added as a KERI delegated identifier!");
             println!("   Member DID:   {}", result.member_did);
             println!("   Role:         {}", role);
-            println!("   Capabilities: {}", capability_strings.join(", "));
+            println!(
+                "   Capabilities: {}",
+                capability_strings
+                    .iter()
+                    .map(|c| c.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             println!("\nThe org anchored this member's delegation in its KEL.");
 
             Ok(())
@@ -824,7 +828,16 @@ pub fn handle_org(
                     let role = signed.record.prior_role.as_deref().unwrap_or("unknown");
                     println!("   Lost role:     {role}");
                     if !signed.record.prior_caps.is_empty() {
-                        println!("   Lost caps:     {}", signed.record.prior_caps.join(", "));
+                        println!(
+                            "   Lost caps:     {}",
+                            signed
+                                .record
+                                .prior_caps
+                                .iter()
+                                .map(|c| c.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
                     }
                     println!("   Off-boarding record stored (signed, retrievable by org/member).");
                 }
@@ -882,7 +895,14 @@ pub fn handle_org(
                 let caps_str = if m.capabilities.is_empty() {
                     String::new()
                 } else {
-                    format!(" [{}]", m.capabilities.join(", "))
+                    format!(
+                        " [{}]",
+                        m.capabilities
+                            .iter()
+                            .map(|c| c.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 };
 
                 println!("├─ {} [{}]{}{}", m.member_did, role_str, status, caps_str);
@@ -1002,7 +1022,15 @@ pub fn handle_org(
                 let role = r.record.prior_role.as_deref().unwrap_or("unknown");
                 println!("  Lost role:  {role}");
                 if !r.record.prior_caps.is_empty() {
-                    println!("  Lost caps:  {}", r.record.prior_caps.join(", "));
+                    println!(
+                        "  Lost caps:  {}",
+                        r.record
+                            .prior_caps
+                            .iter()
+                            .map(|c| c.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
                 }
                 println!("  Recorded:   {}", r.record.recorded_at);
             }
@@ -1177,7 +1205,14 @@ pub fn handle_org(
                 let caps = if hop.capabilities.is_empty() {
                     String::new()
                 } else {
-                    format!(" caps=[{}]", hop.capabilities.join(", "))
+                    format!(
+                        " caps=[{}]",
+                        hop.capabilities
+                            .iter()
+                            .map(|c| c.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 };
                 println!(
                     "    {} ← {} [{}]{}  authority={:?}",

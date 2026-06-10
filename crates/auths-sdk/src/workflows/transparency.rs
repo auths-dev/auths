@@ -587,7 +587,8 @@ mod tests {
             .with_timezone(&Utc);
 
         let report =
-            update_checkpoint_cache(&FsStore, &cache_path, &new_cp, &proof, &trust_root, now).unwrap();
+            update_checkpoint_cache(&FsStore, &cache_path, &new_cp, &proof, &trust_root, now)
+                .unwrap();
 
         assert_eq!(report.old_size, 0);
         assert_eq!(report.new_size, 10);
@@ -623,7 +624,8 @@ mod tests {
             .with_timezone(&Utc);
 
         let report =
-            update_checkpoint_cache(&FsStore, &cache_path, &new_cp, &proof, &trust_root, now).unwrap();
+            update_checkpoint_cache(&FsStore, &cache_path, &new_cp, &proof, &trust_root, now)
+                .unwrap();
 
         assert!(report.consistent);
         assert!(cache_path.exists());

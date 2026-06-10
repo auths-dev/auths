@@ -148,10 +148,9 @@ fn initialize_agent(
 ) -> Result<AgentIdentityResult, SetupError> {
     use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
 
-    let cap_strings: Vec<String> = config.capabilities.iter().map(|c| c.to_string()).collect();
     let provisioning_config = AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
-        capabilities: cap_strings,
+        capabilities: config.capabilities.clone(),
         expires_in: config.expires_in,
         delegated_by: config.parent_identity_did.clone().map(|did| {
             #[allow(clippy::disallowed_methods)]

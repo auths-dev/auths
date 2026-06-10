@@ -107,23 +107,63 @@ pub async fn verify(
     let issuer_prefix = Prefix::new_unchecked(stored.acdc.i.as_str().to_string());
 
     let issuer_kel = resolve_kel(ctx, &issuer_prefix)?;
+    verify_with_issuer_kel(
+        ctx,
+        stored,
+        &issuer_prefix,
+        &issuer_kel,
+        witness_policy,
+        now,
+    )
+    .await
+}
+
+/// [`verify`] with a caller-resolved issuer KEL — no per-call KEL replay.
+///
+/// Batch consumers verifying many credentials from the same issuer should resolve
+/// the issuer KEL once and call this per credential; [`verify`] re-resolves it on
+/// every call.
+///
+/// Args:
+/// * `ctx`: Auths context (registry + repo path for receipt lookup).
+/// * `stored`: The credential body + the issuer's detached signature.
+/// * `issuer_prefix`: The issuer's bare KERI prefix (must match `stored.acdc.i`).
+/// * `issuer_kel`: The issuer's full KEL, oldest first.
+/// * `witness_policy`: `Warn` (TOFS) or `RequireWitnesses` (fail-closed).
+/// * `now`: Verification time, injected at the boundary.
+///
+/// Usage:
+/// ```ignore
+/// let kel = resolve_kel(&ctx, &issuer_prefix)?;
+/// for stored in &credentials {
+///     verify_with_issuer_kel(&ctx, stored, &issuer_prefix, &kel, policy, now).await?;
+/// }
+/// ```
+pub async fn verify_with_issuer_kel(
+    ctx: &AuthsContext,
+    stored: &StoredCredential,
+    issuer_prefix: &Prefix,
+    issuer_kel: &[Event],
+    witness_policy: VerifierWitnessPolicy,
+    now: DateTime<Utc>,
+) -> Result<CredentialVerdict, CredentialError> {
     if issuer_kel.is_empty() {
         return Err(CredentialError::StaleOrUnresolvable {
             reason: format!("issuer KEL not found: {issuer_prefix}"),
         });
     }
 
-    let tel = resolve_tel(ctx, &issuer_prefix, &stored.acdc.ri, &stored.acdc.d)?;
+    let tel = resolve_tel(ctx, issuer_prefix, &stored.acdc.ri, &stored.acdc.d)?;
 
-    let receipts = collect_lifecycle_receipts(ctx, &issuer_prefix, &issuer_kel, &tel);
+    let receipts = collect_lifecycle_receipts(ctx, issuer_prefix, issuer_kel, &tel);
 
-    let as_of = tip_as_of(&issuer_kel);
+    let as_of = tip_as_of(issuer_kel);
 
     // Freshness (F.4): under RequireWitnesses, if the issuer declares backers but the
     // witnessed tip is unreachable (no receipts at all for the lifecycle anchors),
     // there is no fresh witnessed tip — fail closed without asking the pure verifier.
     if let VerifierWitnessPolicy::RequireWitnesses = witness_policy
-        && declares_backers(ctx, &issuer_prefix)
+        && declares_backers(ctx, issuer_prefix)
         && receipts.is_empty()
     {
         return Ok(CredentialVerdict::StaleOrUnresolvable {
@@ -141,7 +181,7 @@ pub async fn verify(
     let provider = RingCryptoProvider;
     let verdict = auths_verifier::verify_credential(
         &signed,
-        &issuer_kel,
+        issuer_kel,
         &tel,
         &receipts,
         witness_policy,

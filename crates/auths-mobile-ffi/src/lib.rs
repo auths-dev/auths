@@ -346,7 +346,7 @@ pub(crate) struct TokenFields {
     pub(crate) session_id: String,
     pub(crate) ephemeral_pubkey: String,
     pub(crate) expires_at_unix: i64,
-    pub(crate) capabilities: Vec<String>,
+    pub(crate) capabilities: Vec<auths_keri::Capability>,
 }
 
 /// Parse the query parameters from an `auths://pair?...` URI.
@@ -398,7 +398,13 @@ pub(crate) fn parse_token_fields(uri: &str) -> Result<TokenFields, MobileError> 
 
     let capabilities = caps_str
         .filter(|s| !s.is_empty())
-        .map(|s| s.split(',').map(|c| c.to_string()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(auths_keri::Capability::parse)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()
+        .map_err(|e| MobileError::PairingFailed(format!("Invalid capability (c): {}", e)))?
         .unwrap_or_default();
 
     Ok(TokenFields {
@@ -420,7 +426,11 @@ pub fn parse_pairing_uri(uri: String) -> Result<PairingInfo, MobileError> {
         controller_did: fields.controller_did,
         endpoint: fields.endpoint,
         short_code: fields.short_code,
-        capabilities: fields.capabilities,
+        capabilities: fields
+            .capabilities
+            .iter()
+            .map(|c| c.as_str().to_string())
+            .collect(),
         expires_at_unix: fields.expires_at_unix,
     })
 }

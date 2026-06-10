@@ -71,7 +71,7 @@ fn fleet_metrics_count_live_revoked_and_traceable() {
             &org_alias,
             &KeyAlias::new_unchecked(label.to_string()),
             CurveType::Ed25519,
-            &["sign_commit".to_string()],
+            &[auths_keri::Capability::sign_commit()],
             None,
         )
         .expect("add agent");

@@ -695,6 +695,7 @@ dependencies = [
 name = "auths-jwt"
 version = "0.1.2"
 dependencies = [
+ "auths-keri",
  "serde",
  "serde_json",
 ]

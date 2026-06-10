@@ -1,3 +1,4 @@
+use auths_keri::Capability;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 
@@ -65,7 +66,7 @@ pub struct CreateSessionRequest {
     pub ephemeral_pubkey: Base64UrlEncoded,
     pub short_code: String,
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     pub expires_at: i64,
     /// Recovery target — populated only by `auths pair --recover`. The DID
     /// of the old device being replaced. The surviving controller's

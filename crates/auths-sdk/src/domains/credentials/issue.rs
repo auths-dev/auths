@@ -12,7 +12,7 @@ use auths_id::keri::credential_registry::{
 };
 use auths_id::keri::parse_did_keri;
 use auths_id::keri::types::Prefix;
-use auths_keri::{Acdc, Said, TelEvent, compute_capability_schema_said, validate_tel};
+use auths_keri::{Acdc, Capability, Said, TelEvent, compute_capability_schema_said, validate_tel};
 use chrono::{DateTime, Utc};
 
 use crate::context::AuthsContext;
@@ -100,12 +100,16 @@ fn guard_issuee_exists(ctx: &AuthsContext, issuee_did: &str) -> Result<Prefix, C
 
 /// Build the capability ACDC attributes map (`capability`, optional `role`/`expiry`).
 fn build_attributes(
-    capabilities: &[String],
+    capabilities: &[Capability],
     role: Option<&str>,
     expires_at: Option<DateTime<Utc>>,
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut data = serde_json::Map::new();
-    let capability = capabilities.join(",");
+    let capability = capabilities
+        .iter()
+        .map(Capability::as_str)
+        .collect::<Vec<_>>()
+        .join(",");
     data.insert(
         CAPABILITY_FIELD.to_string(),
         serde_json::Value::String(capability),
@@ -143,14 +147,14 @@ fn build_attributes(
 ///
 /// Usage:
 /// ```ignore
-/// let issued = issue(&ctx, &issuer, "did:keri:E…", &["sign".into()], Some("deployer"), None)?;
+/// let issued = issue(&ctx, &issuer, "did:keri:E…", &[Capability::parse("sign")?], Some("deployer"), None)?;
 /// println!("{}", issued.credential_said);
 /// ```
 pub fn issue(
     ctx: &AuthsContext,
     issuer_alias: &KeyAlias,
     issuee_did: &str,
-    capabilities: &[String],
+    capabilities: &[Capability],
     role: Option<&str>,
     expires_at: Option<DateTime<Utc>>,
 ) -> Result<CredentialIssuance, CredentialError> {
@@ -294,7 +298,7 @@ pub struct CredentialSummary {
     /// The subject/holder AID (`did:keri:`).
     pub subject_did: String,
     /// The capabilities granted (`a.capability`, comma-split).
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Whether a `rev` is anchored for this credential.
     pub revoked: bool,
 }
@@ -387,7 +391,7 @@ fn credential_claims(
     ctx: &AuthsContext,
     issuer_prefix: &Prefix,
     credential_said: &Said,
-) -> (String, Vec<String>) {
+) -> (String, Vec<Capability>) {
     let Ok(Some(blob)) = ctx.registry.load_credential(issuer_prefix, credential_said) else {
         return (String::new(), Vec::new());
     };
@@ -401,7 +405,12 @@ fn credential_claims(
         .data
         .get(CAPABILITY_FIELD)
         .and_then(|v| v.as_str())
-        .map(|c| c.split(',').map(|s| s.to_string()).collect())
+        .and_then(|c| {
+            c.split(',')
+                .map(Capability::parse)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()
+        })
         .unwrap_or_default();
     (subject, caps)
 }

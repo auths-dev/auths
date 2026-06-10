@@ -178,7 +178,7 @@ struct TestContext {
     #[serde(default)]
     revoked: bool,
     #[serde(default)]
-    capabilities: Vec<String>,
+    capabilities: Vec<auths_policy::CanonicalCapability>,
     #[serde(default)]
     role: Option<String>,
     #[serde(default)]
@@ -633,9 +633,7 @@ fn build_eval_context(test: &TestContext, now: DateTime<Utc>) -> Result<EvalCont
     ctx = ctx.chain_depth(test.chain_depth);
 
     for cap in &test.capabilities {
-        let canonical = auths_policy::CanonicalCapability::parse(cap)
-            .map_err(|e| anyhow!("invalid capability '{}': {}", cap, e))?;
-        ctx = ctx.capability(canonical);
+        ctx = ctx.capability(cap.clone());
     }
 
     if let Some(role) = &test.role {

@@ -17,7 +17,7 @@ use auths_id::keri::delegation::{
     revoke_delegated_devices_batch, rotate_delegated_device,
 };
 use auths_id::keri::parse_did_keri;
-use auths_keri::AgentScope;
+use auths_keri::{AgentScope, Capability};
 
 use crate::context::AuthsContext;
 use crate::domains::agents::error::AgentError;
@@ -83,14 +83,14 @@ pub fn add(
 ///
 /// Usage:
 /// ```ignore
-/// let agent = add_scoped(&ctx, &root_alias, &agent_alias, curve, &["sign_commit".into()], Some(now + 3600))?;
+/// let agent = add_scoped(&ctx, &root_alias, &agent_alias, curve, &[Capability::sign_commit()], Some(now + 3600))?;
 /// ```
 pub fn add_scoped(
     ctx: &AuthsContext,
     root_alias: &KeyAlias,
     agent_alias: &KeyAlias,
     agent_curve: auths_crypto::CurveType,
-    scope: &[String],
+    scope: &[Capability],
     expires_at: Option<i64>,
 ) -> Result<AgentDelegationResult, AgentError> {
     // Dedup: never re-delegate over an alias that already holds a key.
@@ -187,7 +187,7 @@ fn collect_kel(ctx: &AuthsContext, prefix: &auths_id::keri::types::Prefix) -> Ve
 fn enforce_scope_subset(
     ctx: &AuthsContext,
     root_prefix: &auths_id::keri::types::Prefix,
-    requested: &[String],
+    requested: &[Capability],
 ) -> Result<(), AgentError> {
     if requested.is_empty() {
         return Ok(());

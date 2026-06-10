@@ -87,7 +87,7 @@ fn issue_to_subject(h: &Harness, label: &str, curve: CurveType) -> (KeyAlias, Pr
         &h.ctx,
         &h.issuer_alias,
         &device.device_did,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
         None,
     )

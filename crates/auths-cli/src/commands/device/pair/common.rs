@@ -140,7 +140,7 @@ pub(crate) fn handle_pairing_response(
     session: &mut PairingSession,
     response: SubmitResponseRequest,
     auths_dir: &Path,
-    capabilities: &[String],
+    capabilities: &[auths_keri::Capability],
     passphrase_provider: Arc<dyn PassphraseProvider + Send + Sync>,
     env_config: &EnvironmentConfig,
     verify_sas: bool,

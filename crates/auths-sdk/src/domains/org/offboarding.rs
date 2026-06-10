@@ -65,7 +65,7 @@ pub struct OffboardingRecord {
     /// The role the member held at the revocation position (what they lost).
     pub prior_role: Option<String>,
     /// The capabilities the member held at the revocation position (what they lost).
-    pub prior_caps: Vec<String>,
+    pub prior_caps: Vec<auths_keri::Capability>,
     /// When the record was recorded (RFC 3339, injected clock). Provenance only —
     /// authority ordering is by `revoked_at_seq`, never this timestamp.
     pub recorded_at: String,

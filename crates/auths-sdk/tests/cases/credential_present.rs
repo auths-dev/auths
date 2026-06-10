@@ -135,7 +135,7 @@ fn issue_to_subject(h: &Harness, label: &str, curve: CurveType) -> (KeyAlias, Pr
         &h.ctx,
         &h.issuer_alias,
         &device.device_did,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         None,
         None,
     )

@@ -9,6 +9,7 @@
 use std::future::Future;
 
 use auths_scim::ScimError;
+use auths_verifier::Capability;
 use axum::extract::FromRequestParts;
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
@@ -30,7 +31,7 @@ pub struct AuthenticatedTenant {
     /// Keychain alias of the org signing key that anchors delegations.
     pub org_key_alias: String,
     /// Capabilities this tenant may grant (empty = permit all).
-    pub allowed_capabilities: Vec<String>,
+    pub allowed_capabilities: Vec<Capability>,
     /// Base URL used for SCIM `meta.location`.
     pub base_url: String,
 }

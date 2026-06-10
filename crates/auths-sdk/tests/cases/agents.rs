@@ -13,7 +13,7 @@ use auths_id::keri::delegation::mark_agent_scope;
 use auths_id::keri::types::Prefix;
 use auths_id::keri::validate_delegation;
 use auths_id::storage::registry::backend::RegistryBackend;
-use auths_keri::AgentScope;
+use auths_keri::{AgentScope, Capability};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::agents::{AgentError, add, add_scoped, list, revoke, rotate};
 use auths_sdk::domains::device::{add_device, list_delegated_devices, remove_device};
@@ -313,7 +313,10 @@ fn scope_cannot_exceed_delegator() {
         root_curve,
         &root_prefix,
         &AgentScope {
-            capabilities: vec!["read".to_string(), "write".to_string()],
+            capabilities: vec![
+                Capability::parse("read").unwrap(),
+                Capability::parse("write").unwrap(),
+            ],
             expires_at: None,
         },
         ctx.passphrase_provider.as_ref(),
@@ -328,7 +331,10 @@ fn scope_cannot_exceed_delegator() {
         &root_alias,
         &KeyAlias::new_unchecked("scoped-bot"),
         CurveType::Ed25519,
-        &["read".to_string(), "admin".to_string()],
+        &[
+            auths_keri::Capability::parse("read").unwrap(),
+            auths_keri::Capability::parse("admin").unwrap(),
+        ],
         None,
     )
     .expect_err("scope exceeding the delegator must be rejected");

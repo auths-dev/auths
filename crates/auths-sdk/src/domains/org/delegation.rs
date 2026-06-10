@@ -28,7 +28,7 @@ use auths_id::keri::delegation::{
 use auths_id::keri::parse_did_keri;
 use auths_id::keri::types::Prefix;
 use auths_id::policy::{EvalContext, context_from_delegated_member};
-use auths_keri::{AgentScope, DipEvent};
+use auths_keri::{AgentScope, Capability, DipEvent};
 use auths_verifier::core::Role;
 use chrono::{DateTime, Utc};
 
@@ -44,8 +44,11 @@ use crate::domains::org::offboarding::{
 const ROLE_MARKER_PREFIX: &str = "role:";
 
 /// Encode a role as its scope-seal marker capability (`role:{role}`).
-fn role_marker(role: Role) -> String {
-    format!("{ROLE_MARKER_PREFIX}{}", role.as_str())
+fn role_marker(role: Role) -> Capability {
+    #[allow(clippy::expect_used)]
+    // INVARIANT: "role:" + {admin|member|readonly} is lowercase alphanumeric + ':' and far below 64 chars
+    Capability::parse(&format!("{ROLE_MARKER_PREFIX}{}", role.as_str()))
+        .expect("role marker is a valid capability")
 }
 
 /// Parse a role string (`admin` / `member` / `readonly`) back into a [`Role`].
@@ -59,14 +62,14 @@ fn parse_role(s: &str) -> Option<Role> {
 }
 
 /// Split a scope seal into its role marker and the real capability set.
-fn split_role_and_caps(scope: Option<&AgentScope>) -> (Option<Role>, Vec<String>) {
+fn split_role_and_caps(scope: Option<&AgentScope>) -> (Option<Role>, Vec<Capability>) {
     let Some(scope) = scope else {
         return (None, Vec::new());
     };
     let mut role = None;
     let mut caps = Vec::new();
     for cap in &scope.capabilities {
-        match cap.strip_prefix(ROLE_MARKER_PREFIX) {
+        match cap.as_str().strip_prefix(ROLE_MARKER_PREFIX) {
             Some(r) => role = parse_role(r),
             None => caps.push(cap.clone()),
         }
@@ -130,13 +133,13 @@ pub struct OrgMemberResult {
 /// * `member_alias`: Keychain alias to store the new member key under.
 /// * `member_curve`: Curve for the new member key.
 /// * `role`: The member's org role (asserted by the org admin).
-/// * `capabilities`: Capability strings to grant the member.
+/// * `capabilities`: Capabilities to grant the member.
 /// * `expires_at`: Optional delegator-anchored expiry (Unix epoch seconds).
 ///
 /// Usage:
 /// ```ignore
 /// let member = add_member(&ctx, &org_prefix, &org_alias, &member_alias,
-///     CurveType::Ed25519, Role::Member, &["sign_commit".into()], None)?;
+///     CurveType::Ed25519, Role::Member, &[Capability::sign_commit()], None)?;
 /// ```
 #[allow(clippy::too_many_arguments)]
 pub fn add_member(
@@ -146,7 +149,7 @@ pub fn add_member(
     member_alias: &KeyAlias,
     member_curve: auths_crypto::CurveType,
     role: Role,
-    capabilities: &[String],
+    capabilities: &[Capability],
     expires_at: Option<i64>,
 ) -> Result<OrgMemberResult, OrgError> {
     ensure_single_sig_org(ctx, org_prefix)?;
@@ -224,14 +227,14 @@ pub fn add_member(
 /// * `member_dip`: The member-signed delegated inception (its `di` must equal `org_prefix`).
 /// * `member_attachment`: The member's CESR signature attachment over `member_dip`.
 /// * `role`: The member's org role (asserted by the org admin).
-/// * `capabilities`: Capability strings to grant the member.
+/// * `capabilities`: Capabilities to grant the member.
 /// * `expires_at`: Optional delegator-anchored expiry (Unix epoch seconds).
 ///
 /// Usage:
 /// ```ignore
 /// // member side (their own key): let bundle = build_device_dip(&org_prefix, curve)?;
 /// let member = add_existing_member(&ctx, &org_prefix, &org_alias,
-///     &bundle.dip, &bundle.attachment, Role::Member, &["sign_commit".into()], None)?;
+///     &bundle.dip, &bundle.attachment, Role::Member, &[Capability::sign_commit()], None)?;
 /// ```
 #[allow(clippy::too_many_arguments)]
 pub fn add_existing_member(
@@ -241,7 +244,7 @@ pub fn add_existing_member(
     member_dip: &DipEvent,
     member_attachment: &[u8],
     role: Role,
-    capabilities: &[String],
+    capabilities: &[Capability],
     expires_at: Option<i64>,
 ) -> Result<OrgMemberResult, OrgError> {
     ensure_single_sig_org(ctx, org_prefix)?;
@@ -423,7 +426,7 @@ pub struct OrgMemberAuthority {
     /// The member's role (from the delegator-anchored scope seal), if set.
     pub role: Option<Role>,
     /// Capabilities granted by the scope seal.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Delegator-anchored expiry (Unix epoch seconds), if set.
     pub expires_at: Option<i64>,
 }
@@ -449,28 +452,132 @@ pub fn resolve_member_authority(
     org_prefix: &Prefix,
     member_prefix: &Prefix,
 ) -> Result<Option<OrgMemberAuthority>, OrgError> {
-    let delegated =
-        list_delegated_devices(ctx.registry.as_ref(), org_prefix).map_err(OrgError::Delegation)?;
-    let Some(info) = delegated
-        .into_iter()
-        .find(|d| d.device_prefix.as_str() == member_prefix.as_str())
-    else {
-        return Ok(None);
-    };
+    Ok(OrgKelSnapshot::load(ctx, org_prefix)?.member_authority(member_prefix))
+}
 
-    let org_kel = collect_kel(ctx, org_prefix);
-    let scope = read_agent_scope(&org_kel, member_prefix);
-    let (role, capabilities) = split_role_and_caps(scope.as_ref());
+/// One-replay snapshot of an org's KEL-derived delegation state.
+///
+/// Loading an org KEL is O(events). Endpoints that resolve many members (fleet
+/// and agent listings, chain walks) were replaying the full KEL once per member;
+/// load the snapshot once per request instead and answer every member query from
+/// it — `member_authority` takes `&self` and performs no registry I/O.
+pub struct OrgKelSnapshot {
+    org_prefix: Prefix,
+    delegated: Vec<auths_id::keri::delegation::DelegatedDeviceInfo>,
+    org_kel: Vec<Event>,
+}
 
-    Ok(Some(OrgMemberAuthority {
-        member_did: format!("did:keri:{}", member_prefix.as_str()),
-        member_prefix: member_prefix.as_str().to_string(),
-        delegated_by_org: format!("did:keri:{}", org_prefix.as_str()),
-        revoked: info.revoked,
-        role,
-        capabilities,
-        expires_at: scope.and_then(|s| s.expires_at),
-    }))
+impl OrgKelSnapshot {
+    /// Replay the org KEL once and capture the delegation roster + events.
+    ///
+    /// Args:
+    /// * `ctx`: Auths context.
+    /// * `org_prefix`: The org's KEL prefix.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let snapshot = OrgKelSnapshot::load(&ctx, &org_prefix)?;
+    /// for member in &members { snapshot.member_authority(member); }
+    /// ```
+    pub fn load(ctx: &AuthsContext, org_prefix: &Prefix) -> Result<Self, OrgError> {
+        let delegated = list_delegated_devices(ctx.registry.as_ref(), org_prefix)
+            .map_err(OrgError::Delegation)?;
+        let org_kel = collect_kel(ctx, org_prefix);
+        Ok(Self {
+            org_prefix: org_prefix.clone(),
+            delegated,
+            org_kel,
+        })
+    }
+
+    /// The org prefix this snapshot was loaded for.
+    pub fn org_prefix(&self) -> &Prefix {
+        &self.org_prefix
+    }
+
+    /// The captured org KEL (oldest first).
+    pub fn org_kel(&self) -> &[Event] {
+        &self.org_kel
+    }
+
+    /// Resolve a member's authority from the snapshot, fail-closed.
+    ///
+    /// Same semantics as [`resolve_member_authority`]: `None` means the org never
+    /// delegated this member; a revoked member resolves with `revoked = true`.
+    ///
+    /// Args:
+    /// * `member_prefix`: The member's KEL prefix to resolve.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let authorized = snapshot
+    ///     .member_authority(&member_prefix)
+    ///     .is_some_and(|a| !a.revoked);
+    /// ```
+    pub fn member_authority(&self, member_prefix: &Prefix) -> Option<OrgMemberAuthority> {
+        let info = self
+            .delegated
+            .iter()
+            .find(|d| d.device_prefix.as_str() == member_prefix.as_str())?;
+        let scope = read_agent_scope(&self.org_kel, member_prefix);
+        let (role, capabilities) = split_role_and_caps(scope.as_ref());
+
+        Some(OrgMemberAuthority {
+            member_did: format!("did:keri:{}", member_prefix.as_str()),
+            member_prefix: member_prefix.as_str().to_string(),
+            delegated_by_org: format!("did:keri:{}", self.org_prefix.as_str()),
+            revoked: info.revoked,
+            role,
+            capabilities,
+            expires_at: scope.and_then(|s| s.expires_at),
+        })
+    }
+}
+
+/// Per-request memo of [`OrgKelSnapshot`]s keyed by delegator prefix.
+///
+/// Chain walks and fleet listings touch the same delegator KELs repeatedly;
+/// the cache loads each prefix at most once for the lifetime of the request.
+#[derive(Default)]
+pub struct OrgSnapshotCache {
+    snapshots: std::collections::HashMap<String, OrgKelSnapshot>,
+}
+
+impl OrgSnapshotCache {
+    /// Create an empty cache (typically one per request).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Seed the cache with an already-loaded snapshot.
+    pub fn insert(&mut self, snapshot: OrgKelSnapshot) {
+        self.snapshots
+            .insert(snapshot.org_prefix.as_str().to_string(), snapshot);
+    }
+
+    /// Return the snapshot for `prefix`, loading (and memoizing) it on first use.
+    ///
+    /// Args:
+    /// * `ctx`: Auths context.
+    /// * `prefix`: The delegator prefix to snapshot.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let snapshot = cache.get_or_load(&ctx, &org_prefix)?;
+    /// ```
+    pub fn get_or_load(
+        &mut self,
+        ctx: &AuthsContext,
+        prefix: &Prefix,
+    ) -> Result<&OrgKelSnapshot, OrgError> {
+        if !self.snapshots.contains_key(prefix.as_str()) {
+            let snapshot = OrgKelSnapshot::load(ctx, prefix)?;
+            self.snapshots.insert(prefix.as_str().to_string(), snapshot);
+        }
+        self.snapshots
+            .get(prefix.as_str())
+            .ok_or_else(|| OrgError::Signing("snapshot cache lookup after insert".to_string()))
+    }
 }
 
 /// List every member the org has delegated, each with its KEL-authoritative
@@ -489,26 +596,11 @@ pub fn list_members(
     ctx: &AuthsContext,
     org_prefix: &Prefix,
 ) -> Result<Vec<OrgMemberAuthority>, OrgError> {
-    let delegated =
-        list_delegated_devices(ctx.registry.as_ref(), org_prefix).map_err(OrgError::Delegation)?;
-    let org_kel = collect_kel(ctx, org_prefix);
-    let org_did = format!("did:keri:{}", org_prefix.as_str());
-
-    Ok(delegated
-        .into_iter()
-        .map(|info| {
-            let scope = read_agent_scope(&org_kel, &info.device_prefix);
-            let (role, capabilities) = split_role_and_caps(scope.as_ref());
-            OrgMemberAuthority {
-                member_did: format!("did:keri:{}", info.device_prefix.as_str()),
-                member_prefix: info.device_prefix.as_str().to_string(),
-                delegated_by_org: org_did.clone(),
-                revoked: info.revoked,
-                role,
-                capabilities,
-                expires_at: scope.and_then(|s| s.expires_at),
-            }
-        })
+    let snapshot = OrgKelSnapshot::load(ctx, org_prefix)?;
+    Ok(snapshot
+        .delegated
+        .iter()
+        .filter_map(|info| snapshot.member_authority(&info.device_prefix))
         .collect())
 }
 

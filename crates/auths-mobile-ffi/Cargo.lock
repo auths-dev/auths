@@ -121,11 +121,12 @@ dependencies = [
 
 [[package]]
 name = "auths-crypto"
-version = "0.0.1-rc.12"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "base64",
  "bs58",
+ "cesride",
  "chacha20poly1305",
  "hex",
  "hkdf",
@@ -143,7 +144,7 @@ dependencies = [
 
 [[package]]
 name = "auths-keri"
-version = "0.0.1-rc.12"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -162,8 +163,9 @@ dependencies = [
 
 [[package]]
 name = "auths-mobile-ffi"
-version = "0.0.1-rc.12"
+version = "0.1.2"
 dependencies = [
+ "auths-keri",
  "auths-pairing-protocol",
  "base64",
  "blake3",
@@ -183,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-protocol"
-version = "0.0.1-rc.12"
+version = "0.1.2"
 dependencies = [
  "auths-crypto",
  "auths-keri",
@@ -252,16 +254,16 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "1.8.3"
+version = "1.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2468ef7d57b3fb7e16b576e8377cdbde2320c60e1491e961d11da40fc4f02a2d"
+checksum = "4d2d5991425dfd0785aed03aedcf0b321d61975c9b5b3689c774a2610ae0b51e"
 dependencies = [
  "arrayref",
  "arrayvec",
  "cc",
  "cfg-if",
  "constant_time_eq",
- "cpufeatures 0.2.17",
+ "cpufeatures 0.3.0",
 ]
 
 [[package]]

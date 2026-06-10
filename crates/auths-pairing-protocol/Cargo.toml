@@ -34,7 +34,7 @@ ml-kem = { version = "0.2", default-features = false, features = ["zeroize"], op
 
 [features]
 default = ["subkey-chain-v1"]
-schema = ["dep:schemars"]
+schema = ["dep:schemars", "auths-keri/schema"]
 # Pass-through to auths-crypto's FIPS / CNSA builds.
 fips = ["auths-crypto/fips"]
 cnsa = ["auths-crypto/cnsa"]

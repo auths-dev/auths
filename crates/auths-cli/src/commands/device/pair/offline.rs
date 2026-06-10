@@ -14,7 +14,7 @@ pub(crate) fn handle_initiate_offline(
     now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
     expiry_secs: u64,
-    capabilities: &[String],
+    capabilities: &[auths_keri::Capability],
 ) -> Result<()> {
     // Try to load controller DID, fall back to placeholder
     let auths_dir = auths_sdk::paths::auths_home()
@@ -58,7 +58,11 @@ pub(crate) fn handle_initiate_offline(
         println!(
             "  {} {}",
             style("Capabilities:").dim(),
-            capabilities.join(", ")
+            capabilities
+                .iter()
+                .map(|c| c.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     println!(

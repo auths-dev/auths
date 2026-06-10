@@ -26,6 +26,7 @@ use auths_core::pairing::SessionStatus;
 use auths_core::ports::pairing::PairingRelayClient;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::storage::identity::IdentityStorage;
+use auths_keri::Capability;
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 
@@ -84,7 +85,7 @@ pub enum PairingError {
 /// Args:
 /// * `controller_did`: DID of the identity initiating the pairing.
 /// * `registry`: Registry endpoint URL.
-/// * `capabilities`: Capability strings to grant to the paired device.
+/// * `capabilities`: Capabilities to grant to the paired device.
 /// * `expiry_secs`: Session lifetime in seconds.
 ///
 /// Usage:
@@ -92,7 +93,7 @@ pub enum PairingError {
 /// let params = PairingSessionParams {
 ///     controller_did: "did:keri:abc123".into(),
 ///     registry: "https://registry.auths.dev".into(),
-///     capabilities: vec!["sign_commit".into()],
+///     capabilities: vec![Capability::sign_commit()],
 ///     expiry_secs: 300,
 /// };
 /// ```
@@ -101,8 +102,8 @@ pub struct PairingSessionParams {
     pub controller_did: String,
     /// Registry endpoint URL.
     pub registry: String,
-    /// Capability strings to grant to the paired device.
-    pub capabilities: Vec<String>,
+    /// Capabilities to grant to the paired device.
+    pub capabilities: Vec<Capability>,
     /// Session lifetime in seconds.
     pub expiry_secs: u64,
 }
@@ -243,7 +244,7 @@ pub fn verify_device_did(
 /// let req = build_pairing_session_request(PairingSessionParams {
 ///     controller_did: "did:keri:abc123".into(),
 ///     registry: "https://registry.auths.dev".into(),
-///     capabilities: vec!["sign_commit".into()],
+///     capabilities: vec![Capability::sign_commit()],
 ///     expiry_secs: 300,
 /// })?;
 /// client.post(&url).json(&req.create_request).send().await?;

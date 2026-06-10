@@ -518,7 +518,7 @@ async fn agent_out_of_scope_signing_rejected() {
     let f = build_scoped(
         &fixture_device_key(),
         AgentScope {
-            capabilities: vec!["sign_commit".to_string()],
+            capabilities: vec![auths_verifier::Capability::sign_commit()],
             expires_at: None,
         },
     );
@@ -577,7 +577,7 @@ async fn in_scope_unexpired_agent_verifies() {
     let f = build_scoped(
         &fixture_device_key(),
         AgentScope {
-            capabilities: vec!["sign_commit".to_string()],
+            capabilities: vec![auths_verifier::Capability::sign_commit()],
             expires_at: Some(10_000),
         },
     );
@@ -614,7 +614,7 @@ async fn scope_is_delegator_anchored_not_self() {
     let f = build_scoped(
         &fixture_device_key(),
         AgentScope {
-            capabilities: vec!["sign_commit".to_string()],
+            capabilities: vec![auths_verifier::Capability::sign_commit()],
             expires_at: None,
         },
     );

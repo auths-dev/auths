@@ -27,7 +27,7 @@ fn typestate_chain_completes_with_explicit_sas_confirmation() {
         now,
         "did:keri:test".to_string(),
         "http://localhost:3000".to_string(),
-        vec!["sign_commit".to_string()],
+        vec![auths_keri::Capability::sign_commit()],
     )
     .unwrap();
 

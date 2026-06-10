@@ -106,11 +106,19 @@ impl AuthsToolAuth {
             .get(tool_name)
             .ok_or_else(|| McpServerError::UnknownTool(tool_name.to_string()))?;
 
-        if !claims.capabilities.contains(&required_cap.to_string()) {
+        if !claims
+            .capabilities
+            .iter()
+            .any(|cap| cap.as_str() == required_cap)
+        {
             return Err(McpServerError::InsufficientCapabilities {
                 tool: tool_name.to_string(),
                 required: required_cap.to_string(),
-                granted: claims.capabilities.clone(),
+                granted: claims
+                    .capabilities
+                    .iter()
+                    .map(|cap| cap.as_str().to_string())
+                    .collect(),
             });
         }
 

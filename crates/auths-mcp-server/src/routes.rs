@@ -72,12 +72,20 @@ async fn handle_tool_call(
         .get(&tool_name)
         .ok_or_else(|| McpServerError::UnknownTool(tool_name.clone()))?;
 
-    if !agent.capabilities.contains(&required_cap.to_string()) {
+    if !agent
+        .capabilities
+        .iter()
+        .any(|cap| cap.as_str() == required_cap)
+    {
         emit_mcp_audit(&agent.did, &format!("mcp:{tool_name}"), "Denied");
         return Err(McpServerError::InsufficientCapabilities {
             tool: tool_name,
             required: required_cap.to_string(),
-            granted: agent.capabilities,
+            granted: agent
+                .capabilities
+                .iter()
+                .map(|cap| cap.as_str().to_string())
+                .collect(),
         });
     }
 

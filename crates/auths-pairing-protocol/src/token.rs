@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
 use auths_crypto::CurveType;
-use auths_keri::KeriPublicKey;
+use auths_keri::{Capability, KeriPublicKey};
 
 use crate::error::ProtocolError;
 
@@ -47,7 +47,7 @@ pub struct PairingToken {
     pub session_id: String,
     pub ephemeral_pubkey: String,
     pub expires_at: DateTime<Utc>,
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Optional hybrid-KEM slot. `None` on classical builds and
     /// classical sessions; `Some(KemSlot::MlKem768 { .. })` when the
     /// initiator is running a `pq-hybrid`-enabled build. Parsers on
@@ -81,7 +81,7 @@ impl PairingToken {
         now: DateTime<Utc>,
         controller_did: String,
         endpoint: String,
-        capabilities: Vec<String>,
+        capabilities: Vec<Capability>,
     ) -> Result<PairingSession, ProtocolError> {
         Self::generate_with_expiry(
             now,
@@ -97,7 +97,7 @@ impl PairingToken {
         now: DateTime<Utc>,
         controller_did: String,
         endpoint: String,
-        capabilities: Vec<String>,
+        capabilities: Vec<Capability>,
         expiry: Duration,
     ) -> Result<PairingSession, ProtocolError> {
         let ephemeral_secret = p256::ecdh::EphemeralSecret::random(&mut OsRng);
@@ -139,7 +139,12 @@ impl PairingToken {
     pub fn to_uri(&self) -> String {
         let expires_unix = self.expires_at.timestamp();
         let endpoint_b64 = URL_SAFE_NO_PAD.encode(self.endpoint.as_bytes());
-        let caps = self.capabilities.join(",");
+        let caps = self
+            .capabilities
+            .iter()
+            .map(Capability::as_str)
+            .collect::<Vec<_>>()
+            .join(",");
         format!(
             "auths://pair?d={}&e={}&k={}&sc={}&sid={}&x={}&c={}",
             self.controller_did,
@@ -205,7 +210,13 @@ impl PairingToken {
 
         let capabilities = caps_str
             .filter(|s| !s.is_empty())
-            .map(|s| s.split(',').map(|c| c.to_string()).collect())
+            .map(|s| {
+                s.split(',')
+                    .map(Capability::parse)
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .transpose()
+            .map_err(|e| ProtocolError::InvalidUri(format!("Invalid capability: {}", e)))?
             .unwrap_or_default();
 
         Ok(PairingToken {
@@ -349,7 +360,7 @@ mod tests {
             Utc::now(),
             "did:keri:test123".to_string(),
             "http://localhost:3000".to_string(),
-            vec!["sign_commit".to_string()],
+            vec![Capability::sign_commit()],
         )
         .unwrap()
     }
@@ -362,7 +373,7 @@ mod tests {
         assert!(!session.token.ephemeral_pubkey.is_empty());
         assert!(!session.token.is_expired(Utc::now()));
         assert_eq!(session.token.short_code.len(), 6);
-        assert_eq!(session.token.capabilities, vec!["sign_commit"]);
+        assert_eq!(session.token.capabilities, vec![Capability::sign_commit()]);
     }
 
     #[test]

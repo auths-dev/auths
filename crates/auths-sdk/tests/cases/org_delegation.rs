@@ -133,7 +133,7 @@ fn create_org_round_trips_through_add_and_list_members() {
         &KeyAlias::new_unchecked("alice"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add a member to the extracted org");
@@ -146,7 +146,10 @@ fn create_org_round_trips_through_add_and_list_members() {
     assert_eq!(live.len(), 1, "the single added member is live");
     assert_eq!(live[0].member_did, member.member_did);
     assert_eq!(live[0].role, Some(Role::Member));
-    assert_eq!(live[0].capabilities, vec!["sign_commit".to_string()]);
+    assert_eq!(
+        live[0].capabilities,
+        vec![auths_keri::Capability::sign_commit()]
+    );
 }
 
 #[test]
@@ -165,7 +168,7 @@ fn add_existing_member_delegates_to_members_own_aid() {
         &bundle.dip,
         &bundle.attachment,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("delegate to the member's existing AID");
@@ -185,7 +188,10 @@ fn add_existing_member_delegates_to_members_own_aid() {
         .expect("member is delegated");
     assert!(!authority.revoked);
     assert_eq!(authority.role, Some(Role::Member));
-    assert_eq!(authority.capabilities, vec!["sign_commit".to_string()]);
+    assert_eq!(
+        authority.capabilities,
+        vec![auths_keri::Capability::sign_commit()]
+    );
 
     // Idempotent: re-delegating a live member is a no-op Ok (no duplicate dip append).
     add_existing_member(
@@ -195,7 +201,7 @@ fn add_existing_member_delegates_to_members_own_aid() {
         &bundle.dip,
         &bundle.attachment,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("idempotent re-add is Ok");
@@ -205,6 +211,49 @@ fn add_existing_member_delegates_to_members_own_aid() {
         .filter(|m| !m.revoked)
         .count();
     assert_eq!(live, 1, "idempotent re-add must not duplicate the member");
+}
+
+#[test]
+fn snapshot_member_authority_matches_single_shot_resolution() {
+    use auths_sdk::domains::org::OrgKelSnapshot;
+
+    let (ctx, org_alias, org_prefix, _tmp) = setup();
+    let bundle = build_device_dip(&org_prefix, CurveType::Ed25519).expect("member dip");
+    let member_prefix = bundle.device_prefix.clone();
+    add_existing_member(
+        &ctx,
+        &org_prefix,
+        &org_alias,
+        &bundle.dip,
+        &bundle.attachment,
+        Role::Member,
+        &[auths_keri::Capability::sign_commit()],
+        None,
+    )
+    .expect("delegate member");
+
+    // The snapshot is loaded once; member_authority takes &self (no registry
+    // access), so a page of N members costs one KEL replay by construction.
+    let snapshot = OrgKelSnapshot::load(&ctx, &org_prefix).expect("load snapshot");
+    let from_snapshot = snapshot
+        .member_authority(&member_prefix)
+        .expect("member resolvable from snapshot");
+    let single_shot = resolve_member_authority(&ctx, &org_prefix, &member_prefix)
+        .expect("resolve")
+        .expect("member is delegated");
+
+    assert_eq!(from_snapshot.member_did, single_shot.member_did);
+    assert_eq!(from_snapshot.revoked, single_shot.revoked);
+    assert_eq!(from_snapshot.role, single_shot.role);
+    assert_eq!(from_snapshot.capabilities, single_shot.capabilities);
+    assert_eq!(from_snapshot.expires_at, single_shot.expires_at);
+
+    // Unknown member: None from both paths.
+    let (_, unknown_prefix, ..) = {
+        let other = build_device_dip(&org_prefix, CurveType::Ed25519).expect("unanchored dip");
+        ((), other.device_prefix.clone())
+    };
+    assert!(snapshot.member_authority(&unknown_prefix).is_none());
 }
 
 #[test]
@@ -274,7 +323,7 @@ fn revoke_member_emits_verifiable_offboarding_record() {
         &KeyAlias::new_unchecked("frank"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add member");
@@ -298,7 +347,10 @@ fn revoke_member_emits_verifiable_offboarding_record() {
     );
     assert_eq!(signed.record.reason.as_deref(), Some("left the company"));
     assert_eq!(signed.record.prior_role, Some("member".to_string()));
-    assert_eq!(signed.record.prior_caps, vec!["sign_commit".to_string()]);
+    assert_eq!(
+        signed.record.prior_caps,
+        vec![auths_keri::Capability::sign_commit()]
+    );
     assert!(!signed.record.revocation_seal_said.is_empty());
 
     // Persisted and retrievable by (org, member).
@@ -336,7 +388,7 @@ fn classify_authority_orders_by_kel_position_not_wall_clock() {
         &KeyAlias::new_unchecked("grace"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add member");
@@ -404,7 +456,7 @@ fn air_gapped_org_bundle_is_self_contained_and_url_free() {
         &KeyAlias::new_unchecked("heidi"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add member");
@@ -479,7 +531,7 @@ fn offline_verify_reproduces_live_verdict_and_fails_closed() {
         &KeyAlias::new_unchecked("ivan"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add member");
@@ -565,7 +617,7 @@ fn org_member_is_dip_delegated_by_org() {
         &member_alias,
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("delegate org member");
@@ -590,7 +642,10 @@ fn org_member_is_dip_delegated_by_org() {
         .expect("member is delegated by the org");
     assert!(!authority.revoked);
     assert_eq!(authority.role, Some(Role::Member));
-    assert_eq!(authority.capabilities, vec!["sign_commit".to_string()]);
+    assert_eq!(
+        authority.capabilities,
+        vec![auths_keri::Capability::sign_commit()]
+    );
     assert_eq!(
         authority.delegated_by_org,
         format!("did:keri:{}", org_prefix.as_str())
@@ -609,7 +664,7 @@ fn revoked_org_member_unauthorized_despite_stale_attestation() {
         &member_alias,
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("delegate org member");
@@ -734,7 +789,7 @@ fn policy_reads_org_authority_from_kel() {
         &member_alias,
         CurveType::Ed25519,
         Role::Admin,
-        &["manage_members".to_string()],
+        &[auths_keri::Capability::manage_members()],
         None,
     )
     .expect("delegate org admin member");

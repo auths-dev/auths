@@ -26,7 +26,7 @@ fn build_initiator_and_response(
         now,
         "did:keri:test".to_string(),
         "http://localhost:3000".to_string(),
-        vec!["sign_commit".to_string()],
+        vec![auths_keri::Capability::sign_commit()],
     )
     .unwrap();
     let (seed, pubkey) = gen_p256_test_pair();

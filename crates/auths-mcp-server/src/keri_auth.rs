@@ -134,7 +134,7 @@ fn verified_agent(principal: &VerifiedPrincipal) -> VerifiedAgent {
     VerifiedAgent {
         did,
         keri_prefix,
-        capabilities: granted_caps(principal),
+        capabilities: principal.capabilities().iter().cloned().collect(),
     }
 }
 
@@ -178,7 +178,11 @@ mod tests {
         let agent = gate(&tools(), &principal, "open_pr").expect("authorized");
         assert_eq!(agent.did, "did:keri:Eagent");
         assert_eq!(agent.keri_prefix, "Eagent");
-        assert!(agent.capabilities.contains(&"acme:pr".to_string()));
+        assert!(
+            agent
+                .capabilities
+                .contains(&Capability::parse("acme:pr").unwrap())
+        );
     }
 
     #[test]

@@ -93,7 +93,12 @@ pub fn format_pairing_qr(token: &PairingToken) -> Result<String, PairingError> {
     if !token.capabilities.is_empty() {
         output.push_str(&format!(
             "Capabilities: {}\n",
-            token.capabilities.join(", ")
+            token
+                .capabilities
+                .iter()
+                .map(|c| c.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
     }
     output.push_str(&format!(
@@ -115,7 +120,7 @@ mod tests {
             chrono::Utc::now(),
             "did:keri:test123".to_string(),
             "http://localhost:3000".to_string(),
-            vec!["sign_commit".to_string()],
+            vec![auths_keri::Capability::sign_commit()],
         )
         .unwrap()
         .token

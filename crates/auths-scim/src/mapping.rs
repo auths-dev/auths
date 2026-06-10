@@ -3,7 +3,7 @@
 //! Produces intermediate DTOs that the server layer translates to SDK config types.
 //! This keeps `auths-scim` decoupled from `auths-sdk`.
 
-use auths_verifier::IdentityDID;
+use auths_verifier::{Capability, IdentityDID};
 use chrono::{DateTime, Utc};
 
 use crate::error::ScimError;
@@ -19,7 +19,7 @@ pub struct ProvisionAgentRequest {
     /// Human-readable display name.
     pub display_name: Option<String>,
     /// Requested capabilities.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
 }
 
 /// Result of provisioning an agent identity (Auths → SCIM).
@@ -56,7 +56,7 @@ pub struct RevokeAgentRequest {
 pub struct UpdateAgentFields {
     pub display_name: Option<String>,
     pub external_id: Option<String>,
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     pub active: bool,
 }
 
@@ -72,7 +72,7 @@ pub struct UpdateAgentFields {
 /// ```
 pub fn scim_user_to_provision_request(
     user: &ScimUser,
-    allowed_capabilities: &[String],
+    allowed_capabilities: &[Capability],
 ) -> Result<ProvisionAgentRequest, ScimError> {
     if user.user_name.is_empty() {
         return Err(ScimError::MissingAttribute {
@@ -154,14 +154,17 @@ pub fn scim_user_to_update_fields(user: &ScimUser) -> UpdateAgentFields {
     }
 }
 
-fn validate_capabilities(capabilities: &[String], allowed: &[String]) -> Result<(), ScimError> {
+fn validate_capabilities(
+    capabilities: &[Capability],
+    allowed: &[Capability],
+) -> Result<(), ScimError> {
     if allowed.is_empty() {
         return Ok(());
     }
     for cap in capabilities {
         if !allowed.contains(cap) {
             return Err(ScimError::CapabilityNotAllowed {
-                capability: cap.clone(),
+                capability: cap.as_str().to_string(),
             });
         }
     }
@@ -202,7 +205,7 @@ mod tests {
             auths_extension: Some(AuthsAgentExtension {
                 // Read-only/server-assigned: an inbound IdP create omits the DID.
                 identity_did: None,
-                capabilities: vec!["sign:commit".into()],
+                capabilities: vec![Capability::parse("sign:commit").unwrap()],
                 revoked: false,
             }),
         }
@@ -211,10 +214,16 @@ mod tests {
     #[test]
     fn provision_request_from_scim() {
         let user = sample_scim_user();
-        let allowed = vec!["sign:commit".into(), "deploy:staging".into()];
+        let allowed = vec![
+            Capability::parse("sign:commit").unwrap(),
+            Capability::parse("deploy:staging").unwrap(),
+        ];
         let req = scim_user_to_provision_request(&user, &allowed).unwrap();
         assert_eq!(req.user_name, "deploy-bot");
-        assert_eq!(req.capabilities, vec!["sign:commit"]);
+        assert_eq!(
+            req.capabilities,
+            vec![Capability::parse("sign:commit").unwrap()]
+        );
     }
 
     #[test]
@@ -228,7 +237,7 @@ mod tests {
     #[test]
     fn disallowed_capability_rejected() {
         let user = sample_scim_user();
-        let allowed = vec!["deploy:staging".into()]; // sign:commit not allowed
+        let allowed = vec![Capability::parse("deploy:staging").unwrap()]; // sign:commit not allowed
         let result = scim_user_to_provision_request(&user, &allowed);
         assert!(result.is_err());
     }
@@ -251,7 +260,7 @@ mod tests {
             external_id: Some("okta-456".into()),
             user_name: "bot".into(),
             display_name: None,
-            capabilities: vec!["sign:commit".into()],
+            capabilities: vec![Capability::parse("sign:commit").unwrap()],
         };
         let now = Utc::now();
         let user =
@@ -272,6 +281,9 @@ mod tests {
         let fields = scim_user_to_update_fields(&user);
         assert_eq!(fields.display_name, Some("Deploy Bot".into()));
         assert!(fields.active);
-        assert_eq!(fields.capabilities, vec!["sign:commit"]);
+        assert_eq!(
+            fields.capabilities,
+            vec![Capability::parse("sign:commit").unwrap()]
+        );
     }
 }

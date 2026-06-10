@@ -76,7 +76,7 @@ pub struct PairCommand {
         default_value = "sign_commit",
         hide_short_help = true
     )]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<auths_keri::Capability>,
 
     /// Disable mDNS advertisement/discovery in LAN mode
     #[cfg(feature = "lan-pairing")]

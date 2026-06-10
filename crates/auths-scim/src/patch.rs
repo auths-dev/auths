@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use auths_verifier::Capability;
+
 use crate::error::ScimError;
 use crate::resource::{AuthsAgentExtension, ScimUser};
 
@@ -184,14 +186,15 @@ fn apply_extension_patch(
                     message: "capabilities must be an array of strings.".into(),
                 }
             })?;
-            let caps: Result<Vec<String>, _> = caps
+            let caps: Result<Vec<Capability>, _> = caps
                 .iter()
                 .map(|v| {
-                    v.as_str()
-                        .map(|s| s.to_string())
-                        .ok_or_else(|| ScimError::InvalidValue {
-                            message: "Each capability must be a string.".into(),
-                        })
+                    let raw = v.as_str().ok_or_else(|| ScimError::InvalidValue {
+                        message: "Each capability must be a string.".into(),
+                    })?;
+                    Capability::parse(raw).map_err(|e| ScimError::InvalidValue {
+                        message: format!("Invalid capability '{raw}': {e}"),
+                    })
                 })
                 .collect();
             ext.capabilities = caps?;
@@ -248,7 +251,7 @@ mod tests {
             },
             auths_extension: Some(AuthsAgentExtension {
                 identity_did: Some(auths_verifier::IdentityDID::parse("did:keri:Etest").unwrap()),
-                capabilities: vec!["sign:commit".into()],
+                capabilities: vec![Capability::parse("sign:commit").unwrap()],
                 revoked: false,
             }),
         }
@@ -326,7 +329,13 @@ mod tests {
         }];
         let patched = apply_patch_operations(user, &ops).unwrap();
         let ext = patched.auths_extension.unwrap();
-        assert_eq!(ext.capabilities, vec!["deploy:prod", "sign:commit"]);
+        assert_eq!(
+            ext.capabilities,
+            vec![
+                Capability::parse("deploy:prod").unwrap(),
+                Capability::parse("sign:commit").unwrap(),
+            ]
+        );
     }
 
     #[test]

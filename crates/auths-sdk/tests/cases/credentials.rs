@@ -148,7 +148,7 @@ fn issue_creates_anchored_acdc() {
         &h.ctx,
         &h.issuer_alias,
         &issuee,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         Some("deployer"),
         None,
     )
@@ -191,7 +191,7 @@ fn issue_to_nonexistent_issuee_rejected() {
         &h.ctx,
         &h.issuer_alias,
         phantom,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         None,
         None,
     )
@@ -212,7 +212,7 @@ fn revoke_marks_credential_revoked_in_tel() {
         &h.ctx,
         &h.issuer_alias,
         &issuee,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         None,
         None,
     )
@@ -237,7 +237,7 @@ fn revoke_already_revoked_idempotent() {
         &h.ctx,
         &h.issuer_alias,
         &issuee,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         None,
         None,
     )
@@ -281,7 +281,7 @@ fn credential_list_shows_live() {
         &h.ctx,
         &h.issuer_alias,
         &issuee_a,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         None,
         None,
     )
@@ -290,7 +290,7 @@ fn credential_list_shows_live() {
         &h.ctx,
         &h.issuer_alias,
         &issuee_b,
-        &["read".to_string()],
+        &[auths_keri::Capability::parse("read").unwrap()],
         None,
         None,
     )
@@ -325,7 +325,7 @@ async fn verify_collects_lifecycle_anchor_receipts() {
         &h.ctx,
         &h.issuer_alias,
         &issuee,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         None,
         None,
     )
@@ -361,7 +361,7 @@ async fn verify_stale_tip_is_unresolvable() {
         &h.ctx,
         &h.issuer_alias,
         &issuee,
-        &["sign".to_string()],
+        &[auths_keri::Capability::parse("sign").unwrap()],
         None,
         None,
     )

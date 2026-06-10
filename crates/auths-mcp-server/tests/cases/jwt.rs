@@ -18,7 +18,11 @@ async fn valid_token_authorizes_tool_call() {
 
     let agent = auth.authorize_tool_call(&token, "read_file").await.unwrap();
     assert_eq!(agent.did, "did:keri:ETestAgent123");
-    assert!(agent.capabilities.contains(&"fs:read".to_string()));
+    assert!(
+        agent
+            .capabilities
+            .contains(&auths_verifier::Capability::parse("fs:read").unwrap())
+    );
 }
 
 #[tokio::test]
@@ -148,8 +152,14 @@ async fn validate_jwt_returns_full_claims() {
     let oidc = auth.validate_jwt(&token).await.unwrap();
     assert_eq!(oidc.sub, "did:keri:ETestAgent123");
     assert_eq!(oidc.keri_prefix, "ETestAgent123");
-    assert!(oidc.capabilities.contains(&"fs:read".to_string()));
-    assert!(oidc.capabilities.contains(&"fs:write".to_string()));
+    assert!(
+        oidc.capabilities
+            .contains(&auths_verifier::Capability::parse("fs:read").unwrap())
+    );
+    assert!(
+        oidc.capabilities
+            .contains(&auths_verifier::Capability::parse("fs:write").unwrap())
+    );
 }
 
 #[tokio::test]

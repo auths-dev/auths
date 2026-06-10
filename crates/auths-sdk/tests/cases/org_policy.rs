@@ -167,7 +167,7 @@ fn policy_seal_does_not_collide_with_member_or_revocation_seals() {
         &KeyAlias::new_unchecked("member-1"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add member");
@@ -178,7 +178,10 @@ fn policy_seal_does_not_collide_with_member_or_revocation_seals() {
     assert_eq!(members[0].member_did, member.member_did);
     assert!(!members[0].revoked);
     // The member's scope is intact (the policy seal didn't shadow the scope read).
-    assert_eq!(members[0].capabilities, vec!["sign_commit".to_string()]);
+    assert_eq!(
+        members[0].capabilities,
+        vec![auths_keri::Capability::sign_commit()]
+    );
 
     // Re-anchoring a policy after a revocation must not be read as a revocation.
     let member_prefix = Prefix::new_unchecked(
@@ -232,7 +235,7 @@ fn gate_allows_live_member_and_denies_revoked_with_hash_pinned() {
         &KeyAlias::new_unchecked("member-1"),
         CurveType::Ed25519,
         Role::Member,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("add member");

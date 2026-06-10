@@ -18,7 +18,7 @@ fn sample_token_no_slot() -> PairingToken {
         session_id: "00000000000000000000000000000000".to_string(),
         ephemeral_pubkey: "AAAA".to_string(),
         expires_at: Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
-        capabilities: vec!["sign_commit".to_string()],
+        capabilities: vec![auths_keri::Capability::sign_commit()],
         kem_slot: None,
         daemon_spki_sha256: None,
     }

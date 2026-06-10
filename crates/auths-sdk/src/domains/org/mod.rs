@@ -27,8 +27,8 @@ pub use bundle::{
     AIR_GAPPED_ORG_BUNDLE_SCHEMA_VERSION, AirGappedOrgBundle, BundledKel, build_org_bundle,
 };
 pub use delegation::{
-    OrgMemberAuthority, OrgMemberResult, add_existing_member, add_member, list_members,
-    member_policy_context, resolve_member_authority, revoke_member,
+    OrgKelSnapshot, OrgMemberAuthority, OrgMemberResult, OrgSnapshotCache, add_existing_member,
+    add_member, list_members, member_policy_context, resolve_member_authority, revoke_member,
 };
 pub use metrics::{FleetMetrics, fleet_metrics};
 pub use offboarding::{

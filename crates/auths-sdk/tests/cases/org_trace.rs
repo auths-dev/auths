@@ -84,7 +84,7 @@ fn delegate(
         &alias,
         CurveType::Ed25519,
         role,
-        &["sign_commit".to_string()],
+        &[auths_keri::Capability::sign_commit()],
         None,
     )
     .expect("delegate member");

@@ -37,6 +37,8 @@
 /// ACDC (Authentic Chained Data Container) credential type, SAID-ification, and
 /// the pinned v1 capability schema.
 pub mod acdc;
+/// Validated capability identifiers — the atomic unit of authorization in Auths.
+pub mod capability;
 mod crypto;
 mod error;
 mod events;
@@ -73,6 +75,9 @@ mod version;
 pub use acdc::{
     ACDC_KERIPY_REVISION, ACDC_VERSION_PREFIX, Acdc, AcdcError, Attributes, CAPABILITY_SCHEMA,
     compute_capability_schema_said, compute_schema_said,
+};
+pub use capability::{
+    Capability, CapabilityError, MANAGE_MEMBERS, ROTATE_KEYS, SIGN_COMMIT, SIGN_RELEASE,
 };
 pub use crypto::{compute_next_commitment, verify_commitment};
 pub use error::{KeriTranslationError, TelError};

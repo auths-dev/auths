@@ -1,5 +1,6 @@
 //! OIDC claim types embedded in Auths-issued JWTs.
 
+use auths_keri::Capability;
 use serde::{Deserialize, Serialize};
 
 /// RFC 8693 actor claim — identifies the acting party in a delegation chain.
@@ -41,7 +42,7 @@ pub struct OidcClaims {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_provider: Option<String>,
     /// Capabilities granted by the attestation chain.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Witness quorum info (if witnesses were used).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub witness_quorum: Option<WitnessQuorumClaim>,
@@ -104,7 +105,7 @@ mod tests {
             jti: "test-jti".into(),
             keri_prefix: "ETest".into(),
             target_provider: None,
-            capabilities: vec!["sign-commit".into()],
+            capabilities: vec![Capability::parse("sign-commit").unwrap()],
             witness_quorum: None,
             github_actor: None,
             github_repository: None,

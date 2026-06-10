@@ -7,14 +7,11 @@
 //! `auths_verifier::commit_kel::CommitVerdict::SignedAfterRevocation` ordering for the
 //! org-membership case, reading the revocation position from the org KEL.
 
-use std::ops::ControlFlow;
-
-use auths_id::keri::Event;
 use auths_id::keri::types::Prefix;
 use serde::{Deserialize, Serialize};
 
 use crate::context::AuthsContext;
-use crate::domains::org::delegation::{list_members, resolve_member_authority};
+use crate::domains::org::delegation::{OrgKelSnapshot, list_members};
 use crate::domains::org::error::OrgError;
 use crate::domains::org::offboarding::{
     SignedOffboardingRecord, find_revocation_event, load_offboarding_record,
@@ -65,16 +62,6 @@ mod u128_str {
     }
 }
 
-/// Collect an org's KEL into a `Vec<Event>` (oldest first).
-fn collect_org_kel(ctx: &AuthsContext, org_prefix: &Prefix) -> Vec<Event> {
-    let mut events = Vec::new();
-    let _ = ctx.registry.visit_events(org_prefix, 0, &mut |e| {
-        events.push(e.clone());
-        ControlFlow::Continue(())
-    });
-    events
-}
-
 /// Classify a member's authority at an artifact's signing position, ordered by KEL
 /// position relative to the org's revocation.
 ///
@@ -99,15 +86,37 @@ pub fn classify_authority_at_signing(
     member_prefix: &Prefix,
     signed_at: Option<u128>,
 ) -> Result<AuthorityAtSigning, OrgError> {
-    let Some(authority) = resolve_member_authority(ctx, org_prefix, member_prefix)? else {
+    let snapshot = OrgKelSnapshot::load(ctx, org_prefix)?;
+    classify_authority_at_signing_with(&snapshot, member_prefix, signed_at)
+}
+
+/// Snapshot-based [`classify_authority_at_signing`] — no registry I/O.
+///
+/// Use this form when classifying many members of the same org (fleet listings,
+/// chain walks): load the [`OrgKelSnapshot`] once and classify every member from it.
+///
+/// Args:
+/// * `snapshot`: The org's KEL snapshot.
+/// * `member_prefix`: The member's KEL prefix to classify.
+/// * `signed_at`: The artifact's in-band signing position, if any.
+///
+/// Usage:
+/// ```ignore
+/// let verdict = classify_authority_at_signing_with(&snapshot, &member, Some(41))?;
+/// ```
+pub fn classify_authority_at_signing_with(
+    snapshot: &OrgKelSnapshot,
+    member_prefix: &Prefix,
+    signed_at: Option<u128>,
+) -> Result<AuthorityAtSigning, OrgError> {
+    let Some(authority) = snapshot.member_authority(member_prefix) else {
         return Ok(AuthorityAtSigning::NeverDelegated);
     };
     if !authority.revoked {
         return Ok(AuthorityAtSigning::AuthorizedBeforeRevocation);
     }
 
-    let org_kel = collect_org_kel(ctx, org_prefix);
-    let revoked_at = find_revocation_event(&org_kel, member_prefix)
+    let revoked_at = find_revocation_event(snapshot.org_kel(), member_prefix)
         .map(|(_, seq)| seq)
         .ok_or_else(|| {
             OrgError::Signing("revoked member has no revocation event on the org KEL".to_string())

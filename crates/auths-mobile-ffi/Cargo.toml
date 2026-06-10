@@ -53,6 +53,7 @@ bs58 = "0.5.1"
 # Protocol crate: reused for SAS derivation (`derive_sas_bytes` on
 # PairingBindingContext). Path dep because this crate sits outside
 # the main workspace.
+auths-keri = { path = "../auths-keri" }
 auths-pairing-protocol = { path = "../auths-pairing-protocol" }
 
 [[bin]]

@@ -30,8 +30,8 @@ pub enum AgentStorageMode {
 pub struct AgentProvisioningConfig {
     /// Human-readable agent name (e.g., "ci-bot", "release-agent").
     pub agent_name: String,
-    /// Capabilities to grant (e.g., `["sign_commit", "pr:create"]`).
-    pub capabilities: Vec<String>,
+    /// Capabilities to grant (e.g., `sign_commit`, `pr:create`).
+    pub capabilities: Vec<auths_keri::Capability>,
     /// Duration in seconds until expiration (per RFC 6749).
     pub expires_in: Option<u64>,
     /// DID of the root/org that delegates this agent.
@@ -92,7 +92,10 @@ mod tests {
     fn format_agent_toml_with_all_fields() {
         let config = AgentProvisioningConfig {
             agent_name: "ci-bot".to_string(),
-            capabilities: vec!["sign_commit".to_string(), "pr:create".to_string()],
+            capabilities: vec![
+                auths_keri::Capability::sign_commit(),
+                auths_keri::Capability::parse("pr:create").unwrap(),
+            ],
             expires_in: Some(86400),
             delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eabc123")),
             storage_mode: AgentStorageMode::Persistent { repo_path: None },
@@ -126,7 +129,7 @@ mod tests {
         // delegating root when one is supplied.
         let config = AgentProvisioningConfig {
             agent_name: "deploy-bot".to_string(),
-            capabilities: vec!["sign_commit".to_string()],
+            capabilities: vec![auths_keri::Capability::sign_commit()],
             expires_in: None,
             delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eroot")),
             storage_mode: AgentStorageMode::Persistent { repo_path: None },

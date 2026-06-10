@@ -37,4 +37,7 @@ pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
 pub use present::{ChallengeSession, PresentationChallenge, present_credential};
 pub use present_inputs::{PresentationInputs, load_presentation_inputs};
 pub use stored::StoredCredential;
-pub use verify::{CredentialVerdict, ResolvedAsOf, VerifierWitnessPolicy, verify, verify_by_said};
+pub use verify::{
+    CredentialVerdict, ResolvedAsOf, VerifierWitnessPolicy, verify, verify_by_said,
+    verify_with_issuer_kel,
+};

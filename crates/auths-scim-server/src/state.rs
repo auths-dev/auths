@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use auths_scim::ScimError;
 use auths_scim::resource::ScimUser;
+use auths_verifier::Capability;
 use sha2::{Digest, Sha256};
 
 use crate::provisioner::Provisioner;
@@ -30,7 +31,7 @@ pub struct TenantConfig {
     /// Keychain alias of the org signing key that anchors delegations.
     pub org_key_alias: String,
     /// Capabilities this tenant may grant (empty = permit all).
-    pub allowed_capabilities: Vec<String>,
+    pub allowed_capabilities: Vec<Capability>,
     /// Base URL used for SCIM `meta.location` (e.g. `https://scim.acme.com/scim/v2`).
     pub base_url: String,
     token_hash: [u8; 32],
@@ -86,7 +87,7 @@ impl TenantConfig {
     }
 
     /// Restrict the capabilities this tenant may grant (empty = permit all).
-    pub fn with_allowed_capabilities(mut self, capabilities: Vec<String>) -> Self {
+    pub fn with_allowed_capabilities(mut self, capabilities: Vec<Capability>) -> Self {
         self.allowed_capabilities = capabilities;
         self
     }

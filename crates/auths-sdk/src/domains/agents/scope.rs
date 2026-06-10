@@ -5,6 +5,7 @@
 //! by E.7's delegator-anchored scope seal. Pure: no session types, no I/O, no clock —
 //! the caller resolves the delegator's remaining TTL and passes it in.
 
+use auths_keri::Capability;
 use thiserror::Error;
 
 /// A scope-constraint violation between a delegator and a would-be delegate.
@@ -29,7 +30,7 @@ pub enum DelegationError {
 /// The delegator's scope envelope that a delegate must stay within.
 pub struct DelegatorScope<'a> {
     /// Capabilities the delegator itself holds.
-    pub capabilities: &'a [String],
+    pub capabilities: &'a [Capability],
     /// The delegator's remaining time-to-live, in seconds.
     pub remaining_ttl_secs: u64,
     /// The delegator's current delegation depth.
@@ -41,7 +42,7 @@ pub struct DelegatorScope<'a> {
 /// A delegate's requested scope.
 pub struct RequestedScope<'a> {
     /// Capabilities the delegate requests (must be a subset of the delegator's).
-    pub capabilities: &'a [String],
+    pub capabilities: &'a [Capability],
     /// The delegate's requested time-to-live, in seconds.
     pub ttl_secs: u64,
 }
@@ -55,11 +56,12 @@ pub struct RequestedScope<'a> {
 ///
 /// Usage:
 /// ```
+/// use auths_keri::Capability;
 /// use auths_sdk::domains::agents::scope::{
 ///     DelegatorScope, RequestedScope, validate_delegation_constraints,
 /// };
-/// let parent = vec!["read".to_string(), "write".to_string()];
-/// let child = vec!["read".to_string()];
+/// let parent = vec![Capability::parse("read").unwrap(), Capability::parse("write").unwrap()];
+/// let child = vec![Capability::parse("read").unwrap()];
 /// let delegator = DelegatorScope { capabilities: &parent, remaining_ttl_secs: 3600, depth: 0, max_depth: 2 };
 /// let requested = RequestedScope { capabilities: &child, ttl_secs: 1800 };
 /// assert!(validate_delegation_constraints(&delegator, &requested).is_ok());
@@ -69,8 +71,10 @@ pub fn validate_delegation_constraints(
     requested: &RequestedScope<'_>,
 ) -> Result<(), DelegationError> {
     for cap in requested.capabilities {
-        if !delegator.capabilities.iter().any(|held| held == cap) {
-            return Err(DelegationError::CapabilityNotGranted(cap.clone()));
+        if !delegator.capabilities.contains(cap) {
+            return Err(DelegationError::CapabilityNotGranted(
+                cap.as_str().to_string(),
+            ));
         }
     }
     if requested.ttl_secs > delegator.remaining_ttl_secs {
@@ -89,10 +93,14 @@ pub fn validate_delegation_constraints(
 mod tests {
     use super::*;
 
+    fn cap(s: &str) -> Capability {
+        Capability::parse(s).unwrap()
+    }
+
     #[test]
     fn capability_subset_valid() {
-        let parent = vec!["read".to_string(), "write".to_string()];
-        let child = vec!["read".to_string()];
+        let parent = vec![cap("read"), cap("write")];
+        let child = vec![cap("read")];
         let d = DelegatorScope {
             capabilities: &parent,
             remaining_ttl_secs: 3600,
@@ -108,8 +116,8 @@ mod tests {
 
     #[test]
     fn capability_subset_invalid() {
-        let parent = vec!["read".to_string()];
-        let child = vec!["admin".to_string()];
+        let parent = vec![cap("read")];
+        let child = vec![cap("admin")];
         let d = DelegatorScope {
             capabilities: &parent,
             remaining_ttl_secs: 3600,
@@ -128,8 +136,8 @@ mod tests {
 
     #[test]
     fn ttl_exceeding_parent_is_rejected() {
-        let parent = vec!["read".to_string()];
-        let child = vec!["read".to_string()];
+        let parent = vec![cap("read")];
+        let child = vec![cap("read")];
         let d = DelegatorScope {
             capabilities: &parent,
             remaining_ttl_secs: 3600,
@@ -148,8 +156,8 @@ mod tests {
 
     #[test]
     fn depth_limit_is_rejected() {
-        let parent = vec!["read".to_string()];
-        let child = vec!["read".to_string()];
+        let parent = vec![cap("read")];
+        let child = vec![cap("read")];
         let d = DelegatorScope {
             capabilities: &parent,
             remaining_ttl_secs: 3600,

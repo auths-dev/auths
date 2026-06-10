@@ -8,6 +8,7 @@ use git2::{ErrorCode, Repository};
 use serde::{Deserialize, Serialize};
 
 use auths_id::error::StorageError;
+use auths_keri::Capability;
 
 /// A pending approval request stored in the registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +18,7 @@ pub struct ApprovalRequest {
     /// Human-readable description of what's being approved.
     pub context_summary: String,
     /// Capabilities that require approval.
-    pub required_capabilities: Vec<String>,
+    pub required_capabilities: Vec<Capability>,
     /// DIDs authorized to grant this approval.
     pub allowed_approvers: Vec<String>,
     /// Approval scope used to compute the request hash.

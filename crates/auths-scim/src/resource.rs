@@ -1,6 +1,6 @@
 //! SCIM 2.0 User resource type and custom Auths extension.
 
-use auths_verifier::IdentityDID;
+use auths_verifier::{Capability, IdentityDID};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -79,7 +79,7 @@ pub struct AuthsAgentExtension {
     pub identity_did: Option<IdentityDID>,
     /// Capabilities granted to this agent.
     #[serde(default)]
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<Capability>,
     /// Whether the underlying KERI identity has been cryptographically revoked
     /// (irreversible hard-revoke). `false` for a merely soft-disabled member.
     /// Server-authoritative; read-only for the IdP.
@@ -113,7 +113,10 @@ mod tests {
             },
             auths_extension: Some(AuthsAgentExtension {
                 identity_did: Some(IdentityDID::parse("did:keri:Eabc123").unwrap()),
-                capabilities: vec!["sign:commit".into(), "deploy:staging".into()],
+                capabilities: vec![
+                    Capability::parse("sign:commit").unwrap(),
+                    Capability::parse("deploy:staging").unwrap(),
+                ],
                 revoked: false,
             }),
         }

@@ -143,7 +143,7 @@ pub fn context_from_delegated_member(
     member_did: &str,
     revoked: bool,
     role: Option<&str>,
-    capabilities: &[String],
+    capabilities: &[auths_keri::Capability],
     expires_at: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
 ) -> Result<EvalContext, DidParseError> {
@@ -152,7 +152,7 @@ pub fn context_from_delegated_member(
 
     let caps: Vec<CanonicalCapability> = capabilities
         .iter()
-        .filter_map(|c| CanonicalCapability::parse(c).ok())
+        .filter_map(|c| CanonicalCapability::parse(c.as_str()).ok())
         .collect();
     ctx = ctx.capabilities(caps);
 
@@ -774,16 +774,21 @@ mod tests {
 
         // 1. Legacy agentscope: CSV seal → decode back → unchanged.
         let scope = AgentScope {
-            capabilities: vec![raw.to_string()],
+            capabilities: vec![Capability::parse(raw).unwrap()],
             expires_at: Some(99),
         };
         let encoded = encode_agent_scope("Eagent", &scope);
         let (prefix, decoded) = decode_agent_scope(&encoded).unwrap();
         assert_eq!(prefix, "Eagent");
-        assert_eq!(decoded.capabilities, vec![raw.to_string()]);
+        assert_eq!(decoded.capabilities, vec![Capability::parse(raw).unwrap()]);
 
         // 2. agentscope CSV → ACDC `a.capability` JSON (the F.4 `,`-join encoding).
-        let acdc_capability_json = decoded.capabilities.join(",");
+        let acdc_capability_json = decoded
+            .capabilities
+            .iter()
+            .map(|c| c.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
         assert!(
             !acdc_capability_json.contains(','),
             "single cap stays comma-free; the join separator must not appear inside a cap"

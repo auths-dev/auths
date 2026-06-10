@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use zeroize::Zeroizing;
 
 use auths_crypto::TypedSeed;
+use auths_keri::Capability;
 
 use crate::error::ProtocolError;
 use crate::response::PairingResponse;
@@ -92,7 +93,7 @@ impl PairingProtocol {
         now: DateTime<Utc>,
         controller_did: String,
         endpoint: String,
-        capabilities: Vec<String>,
+        capabilities: Vec<Capability>,
     ) -> Result<(Self, PairingToken), ProtocolError> {
         let session = PairingToken::generate(now, controller_did, endpoint, capabilities)?;
         let token = session.token.clone();
@@ -275,7 +276,7 @@ impl PairingFlow<Init> {
         now: DateTime<Utc>,
         controller_did: String,
         endpoint: String,
-        capabilities: Vec<String>,
+        capabilities: Vec<Capability>,
     ) -> Result<(Self, PairingToken), ProtocolError> {
         let session = PairingToken::generate(now, controller_did, endpoint, capabilities)?;
         let token = session.token.clone();
@@ -481,7 +482,7 @@ mod tests {
             now,
             "did:keri:test".to_string(),
             "http://localhost:3000".to_string(),
-            vec!["sign_commit".to_string()],
+            vec![Capability::sign_commit()],
         )
         .unwrap();
 

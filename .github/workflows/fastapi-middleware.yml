@@ -1,0 +1,33 @@
+name: FastAPI middleware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/auths-fastapi/**'
+      - '.github/workflows/fastapi-middleware.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/auths-fastapi/**'
+      - '.github/workflows/fastapi-middleware.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        working-directory: packages/auths-fastapi
+        run: uv sync --locked
+
+      - name: Test
+        working-directory: packages/auths-fastapi
+        run: uv run pytest

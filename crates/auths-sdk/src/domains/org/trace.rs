@@ -20,8 +20,8 @@ use auths_id::keri::types::Prefix;
 use serde::Serialize;
 
 use crate::context::AuthsContext;
-use crate::domains::org::audit::{AuthorityAtSigning, classify_authority_at_signing};
-use crate::domains::org::delegation::resolve_member_authority;
+use crate::domains::org::audit::{AuthorityAtSigning, classify_authority_at_signing_with};
+use crate::domains::org::delegation::OrgSnapshotCache;
 use crate::domains::org::error::OrgError;
 
 /// Maximum delegation hops the walker follows before failing closed. Matches the
@@ -40,7 +40,7 @@ pub struct ChainHop {
     /// The child's role under the delegator (from the scope seal), if any.
     pub role: Option<String>,
     /// Capabilities the delegator granted the child.
-    pub capabilities: Vec<String>,
+    pub capabilities: Vec<auths_keri::Capability>,
     /// Whether the child's authority was live at the signing position — ordered by
     /// KEL position, never wall-clock.
     pub authority_at_signing: AuthorityAtSigning,
@@ -113,6 +113,32 @@ pub fn walk_delegation_chain(
     leaf_prefix: &Prefix,
     signed_at: Option<u128>,
 ) -> Result<DelegationChain, OrgError> {
+    walk_delegation_chain_cached(ctx, &mut OrgSnapshotCache::new(), leaf_prefix, signed_at)
+}
+
+/// [`walk_delegation_chain`] with a caller-provided snapshot cache.
+///
+/// Use this form when walking many chains in one request (fleet listings):
+/// each delegator KEL is replayed at most once per cache lifetime instead of
+/// once per hop per agent.
+///
+/// Args:
+/// * `ctx`: Auths context (registry).
+/// * `cache`: Per-request delegator snapshot memo.
+/// * `leaf_prefix`: The signer's KEL prefix (the leaf of the chain).
+/// * `signed_at`: The artifact's in-band signing position, if any.
+///
+/// Usage:
+/// ```ignore
+/// let mut cache = OrgSnapshotCache::new();
+/// for agent in &agents { walk_delegation_chain_cached(&ctx, &mut cache, agent, None)?; }
+/// ```
+pub fn walk_delegation_chain_cached(
+    ctx: &AuthsContext,
+    cache: &mut OrgSnapshotCache,
+    leaf_prefix: &Prefix,
+    signed_at: Option<u128>,
+) -> Result<DelegationChain, OrgError> {
     let leaf_did = did(leaf_prefix);
     let mut hops: Vec<ChainHop> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -134,8 +160,10 @@ pub fn walk_delegation_chain(
         // Only the leaf→immediate-delegator hop has an in-band signing position;
         // upstream hops are position-unknown (any upstream revocation fails closed).
         let position = if hops.is_empty() { signed_at } else { None };
-        let authority_at_signing = classify_authority_at_signing(ctx, &parent, &current, position)?;
-        let (role, capabilities) = match resolve_member_authority(ctx, &parent, &current)? {
+        let snapshot = cache.get_or_load(ctx, &parent)?;
+        let authority_at_signing =
+            classify_authority_at_signing_with(snapshot, &current, position)?;
+        let (role, capabilities) = match snapshot.member_authority(&current) {
             Some(authority) => (
                 authority.role.map(|r| r.as_str().to_string()),
                 authority.capabilities,

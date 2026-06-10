@@ -54,7 +54,7 @@ pub enum AgentSubcommand {
 
         /// Capability to grant the agent (repeatable). Empty = unrestricted.
         #[arg(long = "scope", help = "Capability to grant the agent (repeatable).")]
-        scope: Vec<String>,
+        scope: Vec<auths_keri::Capability>,
 
         /// Expire the agent this many seconds from now (delegator-anchored).
         #[arg(long = "expires-in", help = "Expire the agent after N seconds.")]
