@@ -255,6 +255,7 @@ AUTHS-E5002 = auths-sdk::SetupError::KeychainUnavailable
 AUTHS-E5004 = auths-sdk::SetupError::GitConfigError
 AUTHS-E5006 = auths-sdk::SetupError::PlatformVerificationFailed
 AUTHS-E5007 = auths-sdk::SetupError::InvalidSetupConfig
+AUTHS-E5008 = auths-sdk::SetupError::WeakPassphrase
 AUTHS-E5101 = auths-sdk::DeviceError::IdentityNotFound
 AUTHS-E5102 = auths-sdk::DeviceError::DeviceNotFound
 AUTHS-E5103 = auths-sdk::DeviceError::AttestationError
