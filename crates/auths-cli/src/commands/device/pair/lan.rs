@@ -33,6 +33,7 @@ use super::lan_server::{LanPairingServer, detect_lan_ip};
 pub async fn handle_initiate_lan(
     now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
+    print_uri: bool,
     no_mdns: bool,
     verify: bool,
     recover: Option<String>,
@@ -190,6 +191,12 @@ pub async fn handle_initiate_lan(
         session.token.expires_at.format("%H:%M:%S"),
         expiry_secs
     );
+    if print_uri {
+        // The token's endpoint is final here (set right after server start),
+        // so this is the same URI the QR above encodes.
+        println!();
+        print_token_uri(&session.token);
+    }
     println!();
     println!("  {}", style("(Press Ctrl+C to cancel)").dim());
     println!();

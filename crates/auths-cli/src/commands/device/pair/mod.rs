@@ -56,6 +56,11 @@ pub struct PairCommand {
     #[clap(long, hide_short_help = true)]
     pub no_qr: bool,
 
+    /// Print the pairing token URI (the same auths://pair?... string the QR
+    /// encodes) so scripts can deliver it out of band
+    #[clap(long, hide_short_help = true)]
+    pub print_uri: bool,
+
     /// Custom timeout in seconds for the pairing session (default: 300 = 5 minutes)
     #[clap(
         long,
@@ -129,9 +134,13 @@ pub fn handle_pair(
 
     match (&cmd.join, &cmd.registry, cmd.offline) {
         // Offline mode takes priority
-        (None, _, true) => {
-            offline::handle_initiate_offline(now, cmd.no_qr, cmd.timeout, &cmd.capabilities)
-        }
+        (None, _, true) => offline::handle_initiate_offline(
+            now,
+            cmd.no_qr,
+            cmd.print_uri,
+            cmd.timeout,
+            &cmd.capabilities,
+        ),
 
         // Join with explicit registry -> online join
         (Some(code), Some(registry), _) => {
@@ -160,6 +169,7 @@ pub fn handle_pair(
                 now,
                 registry,
                 cmd.no_qr,
+                cmd.print_uri,
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
@@ -174,6 +184,7 @@ pub fn handle_pair(
             rt.block_on(lan::handle_initiate_lan(
                 now,
                 cmd.no_qr,
+                cmd.print_uri,
                 cmd.no_mdns,
                 cmd.verify,
                 cmd.recover.clone(),
@@ -192,6 +203,7 @@ pub fn handle_pair(
                 now,
                 DEFAULT_REGISTRY,
                 cmd.no_qr,
+                cmd.print_uri,
                 cmd.timeout,
                 &cmd.capabilities,
                 env_config,
@@ -204,6 +216,26 @@ pub fn handle_pair(
 #[cfg(test)]
 mod tests {
     use auths_sdk::pairing::normalize_short_code;
+
+    #[test]
+    fn test_print_uri_flag_parses_and_composes_with_no_qr() {
+        use clap::Parser;
+        let cmd = super::PairCommand::parse_from(["pair", "--print-uri", "--no-qr"]);
+        assert!(cmd.print_uri);
+        assert!(cmd.no_qr);
+        let cmd = super::PairCommand::parse_from(["pair"]);
+        assert!(!cmd.print_uri);
+    }
+
+    #[test]
+    fn test_print_uri_visible_in_long_help() {
+        use clap::CommandFactory;
+        let help = super::PairCommand::command().render_long_help().to_string();
+        assert!(
+            help.contains("--print-uri"),
+            "pair --help must advertise --print-uri"
+        );
+    }
 
     #[test]
     fn test_code_normalization() {

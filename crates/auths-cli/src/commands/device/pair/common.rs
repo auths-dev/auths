@@ -10,6 +10,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::pairing::PairingSession;
+use auths_sdk::pairing::PairingToken;
 use auths_sdk::pairing::SubmitResponseRequest;
 use auths_sdk::signing::PassphraseProvider;
 
@@ -56,6 +57,13 @@ pub(crate) fn print_pairing_header(mode: &str, registry: &str, controller_did: &
         style(controller_did).cyan()
     );
     println!();
+}
+
+/// Print the pairing token URI (`--print-uri`) — the exact string the QR
+/// encodes (`PairingToken::to_uri`). The URI itself is unstyled so scripts
+/// can capture it from the output and deliver it out of band.
+pub(crate) fn print_token_uri(token: &PairingToken) {
+    println!("  {} {}", style("URI:").dim(), token.to_uri());
 }
 
 /// Print a styled completion footer with device info.
