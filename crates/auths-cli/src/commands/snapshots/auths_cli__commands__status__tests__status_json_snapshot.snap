@@ -1,5 +1,6 @@
 ---
 source: crates/auths-cli/src/commands/status.rs
+assertion_line: 683
 expression: report
 ---
 {
@@ -16,6 +17,7 @@ expression: report
     "socket_path": "/tmp/agent.sock"
   },
   "devices": {
+    "this_device": "did:keri:EThisDevice",
     "linked": 2,
     "revoked": 1,
     "unanchored": 0,

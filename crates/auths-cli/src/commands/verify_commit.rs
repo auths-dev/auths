@@ -231,10 +231,6 @@ pub async fn handle_verify_commit(
     output_results(&results)
 }
 
-/// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
-/// (freshness-checked via the SDK trust resolver) plus the KEL events it carries for
-/// stateless resolution. Fails closed: any read, parse, or staleness error is returned
-/// so the caller can abort rather than verify unconstrained.
 /// A bundle's authenticated KEL: the identity DID it self-certifies to plus the
 /// KEL events it carries. Built once by the `--identity-bundle` path and threaded
 /// into [`resolve_signer_kel`] so a stateless run (no identity store) can satisfy a
@@ -247,6 +243,10 @@ struct BundleKel {
     events: Vec<Event>,
 }
 
+/// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
+/// (freshness-checked via the SDK trust resolver) plus the KEL events it carries for
+/// stateless resolution. Fails closed: any read, parse, or staleness error is returned
+/// so the caller can abort rather than verify unconstrained.
 fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
