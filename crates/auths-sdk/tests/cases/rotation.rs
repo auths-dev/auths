@@ -326,6 +326,7 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
     let result = apply_rotation(
         &rot,
         &prefix,
+        &[],
         key_material,
         registry.as_ref(),
         &failing_keychain,
