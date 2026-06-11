@@ -669,6 +669,45 @@ fn offline_verify_reproduces_live_verdict_and_fails_closed() {
 }
 
 #[test]
+fn offline_verify_rejects_forged_kel_signature() {
+    // RT-002: an air-gapped org bundle whose KEL event signature is tampered must
+    // fail closed — even though every SAID still self-addresses. A SAID-only
+    // integrity check (the prior behavior) would (wrongly) accept it.
+    use auths_sdk::domains::org::{build_org_bundle, verify_org_bundle};
+
+    let (ctx, org_alias, org_prefix, _tmp) = setup();
+    add_member(
+        &ctx,
+        &org_prefix,
+        &org_alias,
+        &KeyAlias::new_unchecked("mallory"),
+        CurveType::Ed25519,
+        Role::Member,
+        &[auths_keri::Capability::sign_commit()],
+        None,
+    )
+    .expect("add member");
+
+    let mut bundle = build_org_bundle(&ctx, &org_prefix).expect("bundle");
+    let roots = vec![bundle.org_did.clone()];
+    // Sanity: the untampered bundle authenticates.
+    verify_org_bundle(&bundle, &roots, None).expect("good bundle authenticates");
+
+    // Forge the org inception's signature attachment (flip its last hex nibble).
+    let att = &mut bundle.org_kel.attachments[0];
+    if let Some(last) = att.pop() {
+        att.push(if last == '0' { '1' } else { '0' });
+    }
+
+    let err = verify_org_bundle(&bundle, &roots, None)
+        .expect_err("a bundle with a forged KEL signature must fail closed (RT-002)");
+    assert!(
+        matches!(err, OrgError::BundleIntegrity { .. }),
+        "expected BundleIntegrity, got {err:?}"
+    );
+}
+
+#[test]
 fn empty_org_returns_empty_member_list() {
     let (ctx, _org_alias, org_prefix, _tmp) = setup();
     let members = list_members(&ctx, &org_prefix).expect("list members on an org with none");

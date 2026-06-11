@@ -39,6 +39,23 @@ async fn main() -> anyhow::Result<()> {
                 bearer_token,
                 org_key_alias: std::env::var("SCIM_ORG_KEY").ok(),
                 base_url: std::env::var("SCIM_BASE_URL").ok(),
+                // Deny-by-default capability allowlist (RT-006): empty grants
+                // nothing. Set SCIM_ALLOWED_CAPABILITIES=cap1,cap2 to permit
+                // specific grants, or SCIM_ALLOW_ALL_CAPABILITIES=1 to opt into
+                // permit-all for a single-tenant pilot.
+                allowed_capabilities: std::env::var("SCIM_ALLOWED_CAPABILITIES")
+                    .ok()
+                    .map(|s| {
+                        s.split(',')
+                            .map(str::trim)
+                            .filter(|c| !c.is_empty())
+                            .filter_map(|c| c.parse::<auths_verifier::Capability>().ok())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                allow_all: std::env::var("SCIM_ALLOW_ALL_CAPABILITIES")
+                    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                    .unwrap_or(false),
             })
         }
         _ => {

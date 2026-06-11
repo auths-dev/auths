@@ -292,7 +292,7 @@ impl TypedSignerKey {
                 let mut pk = [0u8; 32];
                 pk.copy_from_slice(&self.public_key);
                 let bytes = crate::key_material::build_ed25519_pkcs8_v2(seed_bytes, &pk);
-                Ok(crate::pkcs8::Pkcs8Der::new(bytes))
+                Ok(crate::pkcs8::Pkcs8Der::new(bytes.to_vec()))
             }
             TypedSeed::P256(scalar) => {
                 use p256::ecdsa::SigningKey;

@@ -458,11 +458,15 @@ async fn commit_after_revocation_rejected() {
 }
 
 #[tokio::test]
-async fn commit_before_revocation_passes_revocation_check() {
-    // Same revoked delegate, but the commit's in-band position (1) precedes the
-    // revocation (2): the revocation gate does NOT reject it — it proceeds to the
-    // signature check (this hand-built commit is unsigned, so `Unsigned`), proving
-    // legitimate prior history is not retroactively invalidated.
+async fn revoked_delegate_with_self_reported_prior_position_fails_closed() {
+    // RT-003 interim: the in-band `Auths-Anchor-Seq` is signer-chosen, so a
+    // "signed before revocation" claim (position 1 < revocation 2) is NOT a
+    // trustworthy ordering source — a revoked-but-unrotated key would simply
+    // claim a low position. Until an independent ordering signal exists
+    // (witness-receipted KSN / transparency log / signed git-history
+    // reachability), a currently-revoked delegate fails closed regardless of the
+    // self-reported position. (This over-rejects genuinely-prior history in the
+    // stateless verifier — the accepted interim cost.)
     let f = build(&fixture_device_key(), true, true, None);
     let commit = format!(
         "feat: earlier commit\n\nAuths-Id: {}\n{}\n",
@@ -477,14 +481,7 @@ async fn commit_before_revocation_passes_revocation_check() {
         &RingCryptoProvider,
     )
     .await;
-    assert!(
-        !matches!(
-            verdict,
-            CommitVerdict::SignedAfterRevocation { .. } | CommitVerdict::DeviceRevoked
-        ),
-        "a before-revocation commit must pass the revocation gate, got {verdict:?}"
-    );
-    assert_eq!(verdict, CommitVerdict::Unsigned);
+    assert_eq!(verdict, CommitVerdict::DeviceRevoked, "got {verdict:?}");
 }
 
 /// Build a delegated-agent fixture whose delegator anchors a scope/expiry seal for

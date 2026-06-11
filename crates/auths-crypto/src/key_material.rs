@@ -8,6 +8,8 @@
 // allow during curve-agnostic refactor
 #![allow(clippy::disallowed_methods)]
 
+use zeroize::Zeroizing;
+
 use crate::provider::{CryptoError, SecureSeed};
 
 /// PKCS#8 v2 Ed25519 total length — explicit [1] tag (85 bytes).
@@ -129,7 +131,7 @@ pub fn parse_ed25519_key_material(
 /// let pkcs8 = build_ed25519_pkcs8_v2(seed.as_bytes(), &pk);
 /// assert_eq!(pkcs8.len(), 85);
 /// ```
-pub fn build_ed25519_pkcs8_v2(seed: &[u8; 32], pubkey: &[u8; 32]) -> Vec<u8> {
+pub fn build_ed25519_pkcs8_v2(seed: &[u8; 32], pubkey: &[u8; 32]) -> Zeroizing<Vec<u8>> {
     let mut buf = Vec::with_capacity(PKCS8_V2_EXPLICIT_LEN);
     // SEQUENCE (83 bytes payload)
     buf.extend_from_slice(&[0x30, 0x53]);
@@ -143,7 +145,9 @@ pub fn build_ed25519_pkcs8_v2(seed: &[u8; 32], pubkey: &[u8; 32]) -> Vec<u8> {
     // [1] EXPLICIT BIT STRING (33 bytes: 0x00 pad + 32 bytes pubkey)
     buf.extend_from_slice(&[0xa1, 0x23, 0x03, 0x21, 0x00]);
     buf.extend_from_slice(pubkey);
-    buf
+    // The PKCS#8 buffer embeds the raw Ed25519 seed; wipe it on drop so the
+    // transient does not linger in freed heap after the caller is done (RT-016).
+    Zeroizing::new(buf)
 }
 
 fn extract_seed_at(bytes: &[u8], offset: usize) -> Result<SecureSeed, CryptoError> {

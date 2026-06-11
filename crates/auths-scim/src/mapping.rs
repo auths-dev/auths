@@ -64,15 +64,17 @@ pub struct UpdateAgentFields {
 ///
 /// Args:
 /// * `user`: The incoming SCIM User resource.
-/// * `allowed_capabilities`: Tenant-scoped capability allowlist.
+/// * `allowed_capabilities`: Tenant-scoped capability allowlist (deny by default).
+/// * `allow_all`: Opt-in permit-all that bypasses the allowlist.
 ///
 /// Usage:
 /// ```ignore
-/// let request = scim_user_to_provision_request(&scim_user, &allowed)?;
+/// let request = scim_user_to_provision_request(&scim_user, &allowed, false)?;
 /// ```
 pub fn scim_user_to_provision_request(
     user: &ScimUser,
     allowed_capabilities: &[Capability],
+    allow_all: bool,
 ) -> Result<ProvisionAgentRequest, ScimError> {
     if user.user_name.is_empty() {
         return Err(ScimError::MissingAttribute {
@@ -86,7 +88,9 @@ pub fn scim_user_to_provision_request(
         .map(|ext| ext.capabilities.clone())
         .unwrap_or_default();
 
-    validate_capabilities(&capabilities, allowed_capabilities)?;
+    if !allow_all {
+        validate_capabilities(&capabilities, allowed_capabilities)?;
+    }
 
     Ok(ProvisionAgentRequest {
         external_id: user.external_id.clone(),
@@ -154,13 +158,18 @@ pub fn scim_user_to_update_fields(user: &ScimUser) -> UpdateAgentFields {
     }
 }
 
-fn validate_capabilities(
+/// Reject any requested capability outside the tenant's allowlist.
+///
+/// **Deny by default (RT-006):** an empty allowlist permits NO capabilities, so
+/// a tenant must explicitly enumerate what it may grant — or opt into permit-all
+/// at the call site (`allow_all`). A request carrying no capabilities always
+/// passes. Previously an empty allowlist meant "permit all", which — combined
+/// with the setter never being wired — let every tenant anchor arbitrary
+/// authority into the org KEL.
+pub fn validate_capabilities(
     capabilities: &[Capability],
     allowed: &[Capability],
 ) -> Result<(), ScimError> {
-    if allowed.is_empty() {
-        return Ok(());
-    }
     for cap in capabilities {
         if !allowed.contains(cap) {
             return Err(ScimError::CapabilityNotAllowed {
@@ -218,7 +227,7 @@ mod tests {
             Capability::parse("sign:commit").unwrap(),
             Capability::parse("deploy:staging").unwrap(),
         ];
-        let req = scim_user_to_provision_request(&user, &allowed).unwrap();
+        let req = scim_user_to_provision_request(&user, &allowed, false).unwrap();
         assert_eq!(req.user_name, "deploy-bot");
         assert_eq!(
             req.capabilities,
@@ -230,7 +239,7 @@ mod tests {
     fn missing_username_rejected() {
         let mut user = sample_scim_user();
         user.user_name = String::new();
-        let result = scim_user_to_provision_request(&user, &[]);
+        let result = scim_user_to_provision_request(&user, &[], false);
         assert!(result.is_err());
     }
 
@@ -238,14 +247,24 @@ mod tests {
     fn disallowed_capability_rejected() {
         let user = sample_scim_user();
         let allowed = vec![Capability::parse("deploy:staging").unwrap()]; // sign:commit not allowed
-        let result = scim_user_to_provision_request(&user, &allowed);
+        let result = scim_user_to_provision_request(&user, &allowed, false);
         assert!(result.is_err());
     }
 
     #[test]
-    fn empty_allowlist_permits_all() {
+    fn empty_allowlist_denies_capabilities() {
+        // RT-006: an unconfigured (empty) allowlist must DENY, not permit-all —
+        // otherwise any SCIM tenant could anchor arbitrary authority into the KEL.
+        let user = sample_scim_user(); // requests `sign:commit`
+        let result = scim_user_to_provision_request(&user, &[], false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn allow_all_bypasses_the_allowlist() {
+        // The explicit permit-all opt-in still works for single-tenant pilots.
         let user = sample_scim_user();
-        let result = scim_user_to_provision_request(&user, &[]);
+        let result = scim_user_to_provision_request(&user, &[], true);
         assert!(result.is_ok());
     }
 

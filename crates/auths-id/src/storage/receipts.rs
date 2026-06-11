@@ -214,7 +214,7 @@ impl GitWitnessReceiptLookup {
     /// Usage:
     /// ```ignore
     /// let lookup = GitWitnessReceiptLookup::new(repo_path);
-    /// let replay = validate_kel_with_receipts(&kel, None, &lookup)?;
+    /// let replay = TrustedKel::from_trusted_source(&kel).replay_with_receipts(None, &lookup)?;
     /// ```
     pub fn new(repo_path: impl Into<PathBuf>) -> Self {
         Self {

@@ -22,7 +22,10 @@ native = [
     "dep:sha2",
     "dep:subtle",
 ]
-wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys"]
+# `dep:p256` is pulled into wasm too so the WebCrypto verifier can verify P-256
+# through the pure-Rust crate (compressed-key support + low-S parity with native,
+# RT-007/RT-008) rather than WebCrypto's compressed-rejecting, high-S-accepting path.
+wasm = ["dep:js-sys", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:web-sys", "dep:p256", "getrandom_02/js"]
 test-utils = ["dep:ring"]
 
 # FIPS 140-3 build: swaps every crypto primitive to aws-lc-rs (AWS-LC-FIPS).
@@ -55,6 +58,11 @@ zeroize.workspace = true
 # Pinned to 0.13: RustCrypto ecosystem, pure Rust (WASM-safe), matches cesride reference.
 # ring cannot export SEC1 compressed public keys (33 bytes) which CESR requires.
 p256 = { version = "=0.13.2", features = ["ecdsa"], optional = true }
+# getrandom 0.2 is pulled transitively by p256/elliptic-curve; on wasm32 it needs
+# the "js" backend or it fails to compile. We declare it here (alias to avoid a
+# clash with any future direct getrandom) so the `wasm` feature can turn on `js`,
+# matching how auths-verifier wires its own wasm entropy.
+getrandom_02 = { package = "getrandom", version = "0.2", optional = true }
 # P-384 (secp384r1) for CNSA-mode ECDSA keygen and signing. Same shape as
 # p256. Pulled only with `--features cnsa`.
 p384 = { version = "0.13", features = ["ecdsa", "pkcs8"], optional = true }

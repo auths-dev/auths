@@ -495,12 +495,25 @@ pub trait CryptoProvider: Send + Sync {
 // CNSA-specific provider is excluded. Consumers who want CNSA MUST NOT
 // enable `fips` in their dependency edge.
 //
-// We intentionally do NOT emit `compile_error!` here: `--all-features` is
-// a first-class developer ergonomic (CI hooks, `cargo hack`, etc.) and
-// failing that build surface-level cost exceeds the safety benefit — the
-// cfg gates below already produce a deterministic, single-provider
-// binary. A lint scanner in `xtask` (see `check-feature-sanity`) enforces
-// "never enable both in a deployed profile" at the supply-chain layer.
+// Enabling both is a silent crypto-policy downgrade, so we fail the build
+// closed. The `cfg(all(feature = "cnsa", not(feature = "fips"), …))` gate
+// below loses to FIPS, so a build that asked for CNSA would instead link the
+// FIPS provider — which accepts P-256 and ChaCha20-Poly1305, the exact
+// primitives CNSA-2.0 forbids — with no error. No in-tree lint catches this
+// (there is no `check-feature-sanity` xtask), so the only honest guard is a
+// hard compile error.
+//
+// Consequence: `--all-features` (which turns on both) no longer compiles for
+// this crate. That is intentional — a profile must select at most one of
+// `fips`/`cnsa`. Any build/CI invocation that relied on `--all-features` for
+// auths-crypto must choose an explicit feature set instead.
+#[cfg(all(feature = "fips", feature = "cnsa"))]
+compile_error!(
+    "auths-crypto features `fips` and `cnsa` are mutually exclusive: enabling \
+     both silently links the FIPS provider (which accepts P-256 and \
+     ChaCha20-Poly1305) in place of the CNSA provider — a silent crypto-policy \
+     downgrade. Enable at most one of `fips`/`cnsa`."
+);
 
 /// `fips` requires CMake + Go + C toolchain and targets native platforms only.
 /// aws-lc-rs has no supported WASM target.

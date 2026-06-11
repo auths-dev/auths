@@ -30,8 +30,13 @@ pub struct TenantConfig {
     pub org_prefix: String,
     /// Keychain alias of the org signing key that anchors delegations.
     pub org_key_alias: String,
-    /// Capabilities this tenant may grant (empty = permit all).
+    /// Capabilities this tenant may grant. Empty = deny all (RT-006) unless
+    /// `allow_all` is set.
     pub allowed_capabilities: Vec<Capability>,
+    /// Opt-in permit-all: grant ANY requested capability, bypassing the
+    /// allowlist. Off by default; for single-tenant pilots that consciously
+    /// accept it.
+    pub allow_all: bool,
     /// Base URL used for SCIM `meta.location` (e.g. `https://scim.acme.com/scim/v2`).
     pub base_url: String,
     token_hash: [u8; 32],
@@ -75,6 +80,7 @@ impl TenantConfig {
             tenant_id: tenant_id.into(),
             org_prefix,
             allowed_capabilities: Vec::new(),
+            allow_all: false,
             base_url: String::new(),
             token_hash: Sha256::digest(bearer_token.as_bytes()).into(),
         }
@@ -86,9 +92,17 @@ impl TenantConfig {
         self
     }
 
-    /// Restrict the capabilities this tenant may grant (empty = permit all).
+    /// Restrict the capabilities this tenant may grant. Empty denies all (the
+    /// secure default) unless [`with_allow_all`](Self::with_allow_all) is set.
     pub fn with_allowed_capabilities(mut self, capabilities: Vec<Capability>) -> Self {
         self.allowed_capabilities = capabilities;
+        self
+    }
+
+    /// Opt into permit-all: grant any requested capability, bypassing the
+    /// allowlist. For single-tenant pilots that consciously accept it.
+    pub fn with_allow_all(mut self, allow_all: bool) -> Self {
+        self.allow_all = allow_all;
         self
     }
 

@@ -32,6 +32,8 @@ pub async fn patch_user(
     Json(patch): Json<ScimPatchOp>,
 ) -> Result<Json<ScimUser>, ScimServerError> {
     let ops = patch.operations;
+    let allowed = tenant.allowed_capabilities.clone();
+    let allow_all = tenant.allow_all;
     let updated = state.update_user(&tenant.tenant_id, &id, move |user| {
         let was_revoked = user
             .auths_extension
@@ -39,6 +41,16 @@ pub async fn patch_user(
             .map(|e| e.revoked)
             .unwrap_or(false);
         let patched = apply_patch_operations(user, &ops)?;
+        // Re-enforce the capability allowlist on PATCH so a lifecycle update
+        // cannot widen capabilities past the tenant's grant (RT-006/RT-026).
+        if !allow_all {
+            let patched_caps = patched
+                .auths_extension
+                .as_ref()
+                .map(|e| e.capabilities.clone())
+                .unwrap_or_default();
+            auths_scim::mapping::validate_capabilities(&patched_caps, &allowed)?;
+        }
         if was_revoked && patched.active {
             return Err(ScimError::InvalidValue {
                 message: "cannot reactivate a hard-revoked member; the identity is \

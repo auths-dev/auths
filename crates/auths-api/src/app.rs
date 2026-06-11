@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn_with_state;
 use axum::routing::{get, post};
 use axum::Router;
@@ -192,6 +193,10 @@ pub fn build_router(state: AppState) -> Router {
                 .with_state(mint),
         )
         .merge(protected)
+        // Explicit request-body cap (RT-013): bound every endpoint well below
+        // Axum's 2 MB default so an oversized batch-revoke array cannot drive
+        // quadratic KEL replay. Batch size is additionally capped per-handler.
+        .layer(DefaultBodyLimit::max(1024 * 1024))
 }
 
 /// Liveness probe.

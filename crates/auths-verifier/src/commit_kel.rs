@@ -10,8 +10,8 @@
 use auths_crypto::CryptoProvider;
 use auths_keri::witness::{NoWitnessReceipts, WitnessReceiptLookup};
 use auths_keri::{
-    CesrKey, DelegatorKelLookup, Event, KeriPublicKey, Prefix, Said, Seal, SourceSeal,
-    WitnessedReplay, validate_delegation, validate_kel_with_lookup, validate_kel_with_receipts,
+    CesrKey, Event, KelSealIndex, KeriPublicKey, Prefix, Seal, TrustedKel, WitnessedReplay,
+    validate_delegation,
 };
 
 use crate::commit::{extract_ssh_signature, verify_commit_signature};
@@ -156,30 +156,6 @@ impl CommitVerdict {
     }
 }
 
-/// `DelegatorKelLookup` over an in-memory root KEL slice — answers "did the root
-/// anchor a seal for this delegated event?" by scanning the root KEL's seals.
-struct RootKelLookup<'a> {
-    root_kel: &'a [Event],
-}
-
-impl DelegatorKelLookup for RootKelLookup<'_> {
-    fn find_seal(&self, _delegator_aid: &Prefix, seal_said: &Said) -> Option<SourceSeal> {
-        for event in self.root_kel {
-            for seal in event.anchors() {
-                if let Seal::KeyEvent { d, .. } = seal
-                    && d == seal_said
-                {
-                    return Some(SourceSeal {
-                        s: event.sequence(),
-                        d: event.said().clone(),
-                    });
-                }
-            }
-        }
-        None
-    }
-}
-
 /// The KEL position (root sequence) at which the delegator anchored a revocation
 /// (`Seal::Digest{d == device_prefix}`) for the device/agent, or `None` if not
 /// revoked. KERI carries no wall-clock, so revocation is ordered by this position.
@@ -312,9 +288,13 @@ enum RevocationOrdering {
 
 /// Order a commit's in-band signing position against the revocation position.
 ///
-/// A commit signed *before* the revocation stays valid (legitimate prior history is
-/// not retroactively invalidated); one signed *at or after* it is rejected. Without
-/// an in-band position, the result is conservative ([`RevocationOrdering::RevokedUnknownPosition`]).
+/// NOTE (RT-003): the in-band position is a signer-chosen trailer, so the *caller*
+/// no longer treats [`RevocationOrdering::SignedBefore`] as acceptance — a
+/// currently-revoked delegate fails closed regardless of the claimed position
+/// until an independent ordering source (witness receipt / transparency log /
+/// signed git-history reachability) exists. This function still computes the
+/// ordering so that stronger fix can later accept a `SignedBefore` commit when it
+/// is independently corroborated.
 fn classify_revocation(
     signing_anchor: Option<u128>,
     revocation: Option<u128>,
@@ -424,7 +404,10 @@ pub async fn verify_commit_against_kel_witnessed(
 ) -> WitnessedVerdict {
     // 1. Replay + witness-gate the root KEL (validates SAIDs incl. the
     //    self-addressing icp prefix, then checks M-of-N witness agreement).
-    let replay = match validate_kel_with_receipts(root_kel, None, receipt_lookup) {
+    // rt-002-allow: root_kel is authenticated at the ingestion boundary before it reaches here (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store), and this replay additionally enforces the M-of-N witness gate. Residual: the opt-in --remote/--oobi stranger feed, whose signature-carrying transport is tracked (RT-002 follow-up).
+    let replay = match TrustedKel::from_trusted_source(root_kel)
+        .replay_with_receipts(None, receipt_lookup)
+    {
         Ok(r) => r,
         Err(e) => {
             return WitnessedVerdict {
@@ -515,7 +498,8 @@ pub async fn verify_commit_against_kel_scoped(
     provider: &dyn CryptoProvider,
     now: i64,
 ) -> CommitVerdict {
-    let root_state = match auths_keri::validate_kel(root_kel) {
+    // rt-002-allow: root_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store). Residual: opt-in --remote/--oobi stranger feed — signature-carrying transport tracked (RT-002 follow-up).
+    let root_state = match TrustedKel::from_trusted_source(root_kel).replay() {
         Ok(state) => state,
         Err(e) => return CommitVerdict::RootKelInvalid(e.to_string()),
     };
@@ -556,21 +540,23 @@ async fn authorize_commit(
     }
 
     // 3. Replay the device KEL (a dip needs the delegator lookup against the root).
-    let lookup = RootKelLookup { root_kel };
-    let device_state = match validate_kel_with_lookup(device_kel, Some(&lookup)) {
-        Ok(s) => s,
-        Err(e) => {
-            // A device dip the root never anchored fails replay here (the lookup
-            // can't resolve its delegation seal) — surface that distinctly from a
-            // structurally-broken device KEL.
-            if let Some(first @ Event::Dip(_)) = device_kel.first()
-                && validate_delegation(first, root_kel).is_err()
-            {
-                return CommitVerdict::DelegationSealNotFound;
+    let lookup = KelSealIndex::from_events(root_kel);
+    // rt-002-allow: device_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store); the dip's delegation is additionally bound to the already-replayed root via the root KelSealIndex. Residual: opt-in --remote/--oobi stranger feed — tracked (RT-002 follow-up).
+    let device_state =
+        match TrustedKel::from_trusted_source(device_kel).replay_with_lookup(Some(&lookup)) {
+            Ok(s) => s,
+            Err(e) => {
+                // A device dip the root never anchored fails replay here (the lookup
+                // can't resolve its delegation seal) — surface that distinctly from a
+                // structurally-broken device KEL.
+                if let Some(first @ Event::Dip(_)) = device_kel.first()
+                    && validate_delegation(first, root_kel).is_err()
+                {
+                    return CommitVerdict::DelegationSealNotFound;
+                }
+                return CommitVerdict::DeviceKelInvalid(e.to_string());
             }
-            return CommitVerdict::DeviceKelInvalid(e.to_string());
-        }
-    };
+        };
     let device_prefix = device_state.prefix.clone();
     let device_did = format!("did:keri:{device_prefix}");
 
@@ -674,8 +660,20 @@ fn reject_unauthorized_delegate(
 
     let revocation = revocation_position(root_kel, &device_prefix);
     match classify_revocation(parse_anchor_seq(commit_bytes), revocation) {
-        RevocationOrdering::NotRevoked | RevocationOrdering::SignedBefore => {}
-        RevocationOrdering::RevokedUnknownPosition => return Some(CommitVerdict::DeviceRevoked),
+        RevocationOrdering::NotRevoked => {}
+        // RT-003: revocation is terminal for NEW signatures. The in-band
+        // `Auths-Anchor-Seq` is signer-chosen, so a "signed before revocation"
+        // claim is not a trustworthy ordering source — a revoked-but-unrotated
+        // key would simply claim position 0. Until an INDEPENDENT signal exists
+        // (witness-receipted KSN / transparency log / signed git-history
+        // reachability), a currently-revoked delegate fails closed regardless of
+        // the self-reported position. This over-rejects genuinely-prior commits
+        // in the stateless verifier — the accepted interim cost (open question 2).
+        // `SignedBefore` is still computed so the witness-ordered fix can later
+        // accept it when independently corroborated.
+        RevocationOrdering::SignedBefore | RevocationOrdering::RevokedUnknownPosition => {
+            return Some(CommitVerdict::DeviceRevoked);
+        }
         RevocationOrdering::SignedAfter {
             signed_at,
             revoked_at,

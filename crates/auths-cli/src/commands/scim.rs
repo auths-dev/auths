@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 use auths_scim_server::{ServeConfig, TenantBootstrap, run};
+use auths_verifier::Capability;
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
@@ -64,6 +65,13 @@ pub struct ScimServeCommand {
     /// Base URL used for SCIM `meta.location`.
     #[arg(long)]
     pub base_url: Option<String>,
+    /// Capability this tenant may grant (repeatable). Empty = deny all (RT-006);
+    /// pass --allow-all-capabilities to opt into permit-all.
+    #[arg(long = "allowed-capability")]
+    pub allowed_capability: Vec<Capability>,
+    /// Let this tenant grant ANY capability, bypassing the allowlist (opt-in).
+    #[arg(long)]
+    pub allow_all_capabilities: bool,
     /// Passphrase for the org signing key (single-host custody).
     #[arg(long)]
     pub passphrase: Option<String>,
@@ -167,6 +175,8 @@ fn handle_serve(cmd: ScimServeCommand, ctx: &CliConfig) -> Result<()> {
             bearer_token,
             org_key_alias: cmd.org_key,
             base_url: cmd.base_url,
+            allowed_capabilities: cmd.allowed_capability,
+            allow_all: cmd.allow_all_capabilities,
         }),
         (None, None, None) => {
             println!("No tenant configured — running discovery-only; /Users rejects all callers.");
@@ -222,6 +232,10 @@ fn handle_quickstart(cmd: ScimQuickstartCommand, ctx: &CliConfig) -> Result<()> 
             bearer_token: token,
             org_key_alias: None,
             base_url: Some(format!("http://{}/scim/v2", cmd.bind)),
+            // Quickstart stays deny-by-default; its demo provisions a bot with no
+            // capabilities, which passes. Grant caps via `scim serve`.
+            allowed_capabilities: Vec::new(),
+            allow_all: false,
         }),
         home: resolve_home(cmd.registry_path, ctx),
         passphrase: cmd.passphrase.unwrap_or_default(),

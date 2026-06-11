@@ -34,11 +34,9 @@
 //!   once `now` passes `not_after`.
 
 use auths_crypto::CryptoProvider;
-use auths_keri::{
-    CesrKey, DelegatorKelLookup, Event, KeriPublicKey, KeyState, Prefix, Said, Seal, SourceSeal,
-    validate_kel_with_lookup,
-};
+use auths_keri::{CesrKey, Event, KelSealIndex, KeriPublicKey, KeyState, TrustedKel};
 use chrono::{DateTime, Utc};
+use subtle::ConstantTimeEq;
 
 use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential_sync};
 use crate::software_verify::verify_with_key_sync;
@@ -52,35 +50,6 @@ const ROLE_FIELD: &str = "role";
 /// the F.4 issuance path. Surfaced on a `Valid` verdict for the F.6 bridge.
 const EXPIRY_FIELD: &str = "expiry";
 
-/// `DelegatorKelLookup` over an in-memory delegator KEL slice — answers "did the
-/// delegator anchor a seal for this delegated subject event?" by scanning its seals.
-///
-/// A credential subject (`a.i`) is typically a delegated device/agent whose `dip`/`drt`
-/// events are anchored in its delegator's KEL. Replaying the subject KEL to recover its
-/// *current* signing key therefore needs the delegator's anchoring seals; this provides
-/// them purely (no git/network), keeping the verify path WASM-safe.
-struct DelegatorSeals<'a> {
-    delegator_kel: &'a [Event],
-}
-
-impl DelegatorKelLookup for DelegatorSeals<'_> {
-    fn find_seal(&self, _delegator_aid: &Prefix, seal_said: &Said) -> Option<SourceSeal> {
-        for event in self.delegator_kel {
-            for seal in event.anchors() {
-                if let Seal::KeyEvent { d, .. } = seal
-                    && d == seal_said
-                {
-                    return Some(SourceSeal {
-                        s: event.sequence(),
-                        d: event.said().clone(),
-                    });
-                }
-            }
-        }
-        None
-    }
-}
-
 /// Replay the subject KEL to its current key-state, supplying delegator seals if needed.
 ///
 /// A non-delegated subject KEL (only `icp`/`rot`/`ixn`) replays with no lookup; a
@@ -88,10 +57,11 @@ impl DelegatorKelLookup for DelegatorSeals<'_> {
 /// `subject_delegator_kel`. An empty delegator KEL with a delegated subject yields a
 /// replay error (`SubjectKelInvalid`), which is the correct fail-closed outcome.
 fn replay_subject(subject_kel: &[Event], subject_delegator_kel: &[Event]) -> Option<KeyState> {
-    let lookup = DelegatorSeals {
-        delegator_kel: subject_delegator_kel,
-    };
-    validate_kel_with_lookup(subject_kel, Some(&lookup)).ok()
+    let lookup = KelSealIndex::from_events(subject_delegator_kel);
+    // rt-002-allow: subject_kel/delegator_kel are supplied by the caller from the local trusted registry / an authenticated bundle, and the presentation signature is bound to the resulting subject key-state. Residual: untrusted WASM presentation input — signature-carrying transport is the tracked RT-002 follow-up.
+    TrustedKel::from_trusted_source(subject_kel)
+        .replay_with_lookup(Some(&lookup))
+        .ok()
 }
 
 /// The presentation binding mode carried in a [`PresentationEnvelope`].
@@ -396,7 +366,12 @@ fn check_binding(
 ) -> Option<PresentationVerdict> {
     match (binding, expected_challenge) {
         (PresentationBinding::Challenge { nonce }, Some(expected)) => {
-            (nonce.as_slice() != expected).then_some(PresentationVerdict::NonceMismatchOrConsumed)
+            // Constant-time comparison: a short-circuiting `!=` leaks how many
+            // leading bytes matched via response timing, which can recover the
+            // nonce byte-by-byte across attempts (RT-015). `ct_eq` short-circuits
+            // only on length (not secret) and compares contents in constant time.
+            (!bool::from(nonce.as_slice().ct_eq(expected)))
+                .then_some(PresentationVerdict::NonceMismatchOrConsumed)
         }
         (PresentationBinding::Ttl { not_after, .. }, None) => {
             (now >= *not_after).then_some(PresentationVerdict::Expired)

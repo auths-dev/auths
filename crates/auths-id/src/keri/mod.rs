@@ -35,7 +35,7 @@
 //!
 //! | Function | Module | Description |
 //! |----------|--------|-------------|
-//! | [`validate_kel`] / [`replay_kel`] | `keri::validate` | Replays events to compute `KeyState` (`apply_event_chain`) |
+//! | [`validate_kel`] | `keri::validate` | Replays a trusted-local KEL to compute `KeyState` (`apply_event_chain`) |
 //! | [`compute_status`](crate::storage::registry::org_member::compute_status) | `storage::registry::org_member` | Computes member status from attestation |
 //! | `evaluate_policy` | `policy` | Evaluates authorization decision |
 //!
@@ -166,6 +166,6 @@ pub use state::KeyState;
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{
     ValidationError, compute_event_said, finalize_dip_event, finalize_drt_event,
-    finalize_icp_event, replay_kel, serialize_for_signing, validate_delegation,
-    validate_for_append, validate_kel, verify_event_crypto, verify_event_said,
+    finalize_icp_event, serialize_for_signing, validate_delegation, validate_for_append,
+    validate_kel, verify_event_crypto, verify_event_said,
 };

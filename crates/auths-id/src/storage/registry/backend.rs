@@ -526,27 +526,27 @@ pub trait RegistryBackend: Send + Sync {
     fn append_event(&self, prefix: &Prefix, event: &Event) -> Result<(), RegistryError>;
 
     /// Append an event together with its CESR-attachment bytes (externalized
-    /// signatures and other CESR groups). Default impl delegates to
-    /// `append_event`, dropping the attachment for backends that don't yet
-    /// persist it. Backends supporting attachments override this.
+    /// signatures and other CESR groups).
+    ///
+    /// REQUIRED — no default (RT-002). A default that delegated to `append_event`
+    /// silently DROPPED the attachment, so backends lost event signatures and the
+    /// verify path could only replay KELs structurally — the exact gap RT-002
+    /// exploits. Every backend MUST persist the attachment so a KEL can be
+    /// AUTHENTICATED, not merely structurally replayed. (This tightens two
+    /// existing methods; it does not expand the frozen surface.)
     fn append_signed_event(
         &self,
         prefix: &Prefix,
         event: &Event,
-        _attachment: &[u8],
-    ) -> Result<(), RegistryError> {
-        self.append_event(prefix, event)
-    }
+        attachment: &[u8],
+    ) -> Result<(), RegistryError>;
 
-    /// Read the CESR-attachment bytes for an event at the given sequence,
-    /// or `None` if no attachment was written. Default impl returns `None`.
-    fn get_attachment(
-        &self,
-        _prefix: &Prefix,
-        _seq: u128,
-    ) -> Result<Option<Vec<u8>>, RegistryError> {
-        Ok(None)
-    }
+    /// Read the CESR-attachment bytes for an event at the given sequence, or
+    /// `None` if the event genuinely carries no attachment.
+    ///
+    /// REQUIRED — no default (RT-002). A default returning `None` made stored
+    /// signatures unreadable — the read-side half of the same gap.
+    fn get_attachment(&self, prefix: &Prefix, seq: u128) -> Result<Option<Vec<u8>>, RegistryError>;
 
     /// Get a single event by sequence number (random access).
     ///
@@ -1015,6 +1015,24 @@ pub trait RegistryBackend: Send + Sync {
 impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
     fn append_event(&self, prefix: &Prefix, event: &Event) -> Result<(), RegistryError> {
         (**self).append_event(prefix, event)
+    }
+
+    // RT-002 root cause: this blanket impl forwards every method EXCEPT these two,
+    // so before the trait defaults were removed, `Arc<dyn RegistryBackend>` (how
+    // the SDK holds `ctx.registry`) silently dropped attachments on write and
+    // returned None on read — the inception's signature was lost, and the bundle
+    // producer saw `get_attachment(prefix, 0) == None`. Forward both.
+    fn append_signed_event(
+        &self,
+        prefix: &Prefix,
+        event: &Event,
+        attachment: &[u8],
+    ) -> Result<(), RegistryError> {
+        (**self).append_signed_event(prefix, event, attachment)
+    }
+
+    fn get_attachment(&self, prefix: &Prefix, seq: u128) -> Result<Option<Vec<u8>>, RegistryError> {
+        (**self).get_attachment(prefix, seq)
     }
 
     fn get_event(&self, prefix: &Prefix, seq: u128) -> Result<Event, RegistryError> {

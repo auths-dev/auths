@@ -20,6 +20,8 @@ use auths_sdk::storage::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 
+use auths_verifier::Capability;
+
 use crate::provisioner::{Provisioner, SdkProvisioner};
 use crate::state::{ScimServerState, TenantConfig};
 
@@ -36,6 +38,11 @@ pub struct TenantBootstrap {
     pub org_key_alias: Option<String>,
     /// Base URL for SCIM `meta.location`.
     pub base_url: Option<String>,
+    /// Capabilities this tenant may grant. Empty = deny all (RT-006) unless
+    /// `allow_all` is set.
+    pub allowed_capabilities: Vec<Capability>,
+    /// Opt-in permit-all that bypasses the allowlist.
+    pub allow_all: bool,
 }
 
 impl TenantBootstrap {
@@ -48,6 +55,8 @@ impl TenantBootstrap {
             config = config.with_base_url(url);
         }
         config
+            .with_allowed_capabilities(self.allowed_capabilities)
+            .with_allow_all(self.allow_all)
     }
 }
 

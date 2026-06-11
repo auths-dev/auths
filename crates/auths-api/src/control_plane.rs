@@ -366,6 +366,12 @@ pub async fn revoke_agent(
     }))
 }
 
+/// Upper bound on a single batch-revoke request. Caps the per-request KEL-replay
+/// cost (RT-013): each agent triggers a membership check, so an unbounded array
+/// drives quadratic work on the single-host control plane. Split larger
+/// off-boardings across requests.
+const MAX_BATCH_REVOKE: usize = 256;
+
 /// `POST /v1/org/{org}/agents/revoke-batch` — the kill switch: revoke an enumerated
 /// set of agents in one atomic KEL event. Idempotent; rejects an empty set (`400`).
 pub async fn batch_revoke_agents(
@@ -376,6 +382,12 @@ pub async fn batch_revoke_agents(
     state.ensure_org(&org)?;
     if req.agents.is_empty() {
         return Err(ApiError::BadRequest("agents must not be empty".to_string()));
+    }
+    if req.agents.len() > MAX_BATCH_REVOKE {
+        return Err(ApiError::BadRequest(format!(
+            "batch revoke is capped at {MAX_BATCH_REVOKE} agents (got {}); split into smaller batches",
+            req.agents.len()
+        )));
     }
     let receipt = revoke_batch(&state.ctx, &state.org_alias, &req.agents)?;
     Ok(Json(BatchRevocationResponse {

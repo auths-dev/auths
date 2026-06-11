@@ -31,7 +31,8 @@ pub async fn create_user(
     tenant: AuthenticatedTenant,
     Json(input): Json<ScimUser>,
 ) -> Result<(StatusCode, Json<ScimUser>), ScimServerError> {
-    let request = scim_user_to_provision_request(&input, &tenant.allowed_capabilities)?;
+    let request =
+        scim_user_to_provision_request(&input, &tenant.allowed_capabilities, tenant.allow_all)?;
 
     if let Some(external_id) = request.external_id.as_deref()
         && let Some(existing) = state.find_by_external(&tenant.tenant_id, external_id)

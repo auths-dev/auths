@@ -46,7 +46,7 @@ jobs:
         shell: bash
         run: rm -f rust-toolchain.toml
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
           toolchain: "1.93"
 
@@ -58,7 +58,7 @@ jobs:
       # resolver = "3" rejects --features from the workspace root; run inside the crate.
       - name: Build cdylib (--features ffi)
         working-directory: crates/auths-verifier
-        run: cargo build --release --features ffi
+        run: cargo build --release --locked --features ffi
 
       - name: go test against the prebuilt lib (CGO_ENABLED=1)
         working-directory: packages/auths-verifier-go

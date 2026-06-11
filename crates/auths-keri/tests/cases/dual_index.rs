@@ -6,9 +6,9 @@
 
 use auths_keri::{
     CesrKey, Event, IcpEvent, IndexedSignature, KeriPublicKey, KeriSequence, Prefix, RotEvent,
-    Said, SignedEvent, Threshold, ValidationError, VersionString, compute_next_commitment,
-    finalize_icp_event, finalize_rot_event, parse_attachment, replay_kel, serialize_attachment,
-    serialize_for_signing, validate_signed_event,
+    Said, SignedEvent, Threshold, TrustedKel, ValidationError, VersionString,
+    compute_next_commitment, finalize_icp_event, finalize_rot_event, parse_attachment,
+    serialize_attachment, serialize_for_signing, validate_signed_event,
 };
 use ring::rand::SystemRandom;
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -118,7 +118,9 @@ fn reemits_keripy_rot_remove_attachment_byte_for_byte() {
 #[test]
 fn asymmetric_rotation_kt2_now_accepted() {
     let icp = load_event("rot_remove.icp.json");
-    let prior = replay_kel(std::slice::from_ref(&icp)).expect("icp replays to a key state");
+    let prior = TrustedKel::from_trusted_source(std::slice::from_ref(&icp))
+        .replay()
+        .expect("icp replays to a key state");
     let rot = load_event("rot_remove.rot.json");
     let sigs = parse_attachment(&fixture("rot_remove.rot.att")).unwrap();
     validate_signed_event(&SignedEvent::new(rot, sigs), Some(&prior))
@@ -129,7 +131,9 @@ fn asymmetric_rotation_kt2_now_accepted() {
 #[test]
 fn dual_index_rotation_binds_prior_commitment() {
     let icp = load_event("rot_remove.icp.json");
-    let prior = replay_kel(std::slice::from_ref(&icp)).unwrap();
+    let prior = TrustedKel::from_trusted_source(std::slice::from_ref(&icp))
+        .replay()
+        .unwrap();
     let rot = load_event("rot_remove.rot.json");
     let good = parse_attachment(&fixture("rot_remove.rot.att")).unwrap();
 
@@ -182,7 +186,9 @@ fn single_signer_removal_validates() {
         a: vec![],
     })
     .unwrap();
-    let prior = replay_kel(std::slice::from_ref(&Event::Icp(icp.clone()))).unwrap();
+    let prior = TrustedKel::from_trusted_source(std::slice::from_ref(&Event::Icp(icp.clone())))
+        .replay()
+        .unwrap();
 
     // Reveal slots 0 and 1; drop slot 2. New k = [nxt0, nxt1].
     let fresh = ed25519();

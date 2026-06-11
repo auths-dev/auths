@@ -797,23 +797,36 @@ pub fn handle_id(
             );
             let prefix = auths_sdk::keri::parse_did_keri(identity.controller_did.as_str())
                 .context("identity DID is not did:keri")?;
-            let mut kel: Vec<serde_json::Value> = Vec::new();
-            let mut kel_err: Option<String> = None;
+            // Collect the KEL events, then their stored CESR signature
+            // attachments (seq-indexed), so the exported bundle can be
+            // AUTHENTICATED by a stateless verifier — not just replayed
+            // structurally (RT-002).
+            let mut events = Vec::new();
             let _ = registry.visit_events(&prefix, 0, &mut |e| {
-                match serde_json::to_value(e) {
-                    Ok(v) => kel.push(v),
-                    Err(err) => kel_err = Some(err.to_string()),
-                }
+                events.push(e.clone());
                 std::ops::ControlFlow::Continue(())
             });
-            if let Some(err) = kel_err {
-                return Err(anyhow::anyhow!("failed to serialize KEL event: {err}"));
-            }
-            if kel.is_empty() {
+            if events.is_empty() {
                 return Err(anyhow::anyhow!(
                     "no KEL events found for {} — cannot export a verifiable bundle",
                     identity.controller_did
                 ));
+            }
+            let mut kel: Vec<auths_keri::Event> = Vec::with_capacity(events.len());
+            let mut kel_attachments: Vec<String> = Vec::with_capacity(events.len());
+            for e in &events {
+                let seq = e.sequence().value();
+                let att = registry
+                    .get_attachment(&prefix, seq)
+                    .map_err(|err| anyhow::anyhow!("failed to read KEL signature: {err}"))?
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "KEL event at seq {seq} has no stored signature attachment; \
+                             cannot export a verifiable bundle (re-initialize this identity)"
+                        )
+                    })?;
+                kel.push(e.clone());
+                kel_attachments.push(hex::encode(att));
             }
 
             // Create the bundle. Curve flows in-band from the typed keychain
@@ -825,6 +838,7 @@ pub fn handle_id(
                 curve,
                 attestation_chain: attestations,
                 kel,
+                kel_attachments,
                 bundle_timestamp: now,
                 max_valid_for_secs: max_age_secs,
             };

@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: rm -f rust-toolchain.toml
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
           toolchain: "1.93"
           targets: ${{ matrix.target }}
@@ -62,7 +62,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/auths-node
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build native module
         working-directory: packages/auths-node
@@ -103,7 +103,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/auths-node
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - uses: actions/download-artifact@v4
         with:
@@ -139,7 +139,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/auths-node
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - uses: actions/download-artifact@v4
         with:

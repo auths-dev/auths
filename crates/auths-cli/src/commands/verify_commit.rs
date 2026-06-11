@@ -159,26 +159,45 @@ pub async fn handle_verify_commit(
     // tree) — the source we replay to decide trust.
     let registry =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
-    // Trust roots = the committed `.auths/roots` pin, plus the verifier's own
-    // identity (self-trust — you can always verify what you signed), plus the
-    // root of any `--identity-bundle` the caller supplied (stateless CI). An
-    // unusable bundle fails closed — it must never silently leave trust
-    // unconstrained.
+    // Trust roots = the committed `.auths/roots` pin plus the verifier's own
+    // identity (self-trust — you can always verify what you signed). A
+    // `--identity-bundle` does NOT contribute a root: it supplies KEL *evidence*
+    // for a root that must already be pinned here (RT-005). An unusable or
+    // un-pinned bundle fails closed — trust is never left unconstrained.
     let mut pinned_roots = super::verify_helpers::load_project_pinned_roots();
     if let Some(own_root) = auths_sdk::workflows::commit_trust::local_self_root(&sdk_ctx)
         && !pinned_roots.contains(&own_root)
     {
         pinned_roots.push(own_root);
     }
-    let mut bundle_kel: Option<(String, Vec<Event>)> = None;
+    let mut bundle_kel: Option<BundleKel> = None;
     if let Some(bundle_path) = &cmd.identity_bundle {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
             Ok((root, kel)) => {
-                if !kel.is_empty() {
-                    bundle_kel = Some((root.clone(), kel));
-                }
+                // Evidence-only (RT-005): the bundle is *evidence for* a root that
+                // must be pinned independently (`.auths/roots` or self-trust). It
+                // never becomes its own trust anchor — otherwise the anchor and the
+                // evidence both come from the same attacker-supplied file. (The
+                // self-certified root is additionally re-derived by replay and
+                // checked against the pins, so a coherent-but-unpinned bundle is
+                // still rejected.)
                 if !pinned_roots.contains(&root) {
-                    pinned_roots.push(root);
+                    return handle_error(
+                        &cmd,
+                        2,
+                        &format!(
+                            "identity bundle root {root} is not independently trusted: \
+                             add it to .auths/roots (or verify from the identity that \
+                             controls it). A bundle is evidence for a pinned root, never \
+                             the source of the pin."
+                        ),
+                    );
+                }
+                if !kel.is_empty() {
+                    bundle_kel = Some(BundleKel {
+                        did: root,
+                        events: kel,
+                    });
                 }
             }
             Err(e) => return handle_error(&cmd, 2, &e),
@@ -216,6 +235,18 @@ pub async fn handle_verify_commit(
 /// (freshness-checked via the SDK trust resolver) plus the KEL events it carries for
 /// stateless resolution. Fails closed: any read, parse, or staleness error is returned
 /// so the caller can abort rather than verify unconstrained.
+/// A bundle's authenticated KEL: the identity DID it self-certifies to plus the
+/// KEL events it carries. Built once by the `--identity-bundle` path and threaded
+/// into [`resolve_signer_kel`] so a stateless run (no identity store) can satisfy a
+/// signer lookup from the bundle. Replaces an anonymous `(String, Vec<Event>)`.
+struct BundleKel {
+    /// The bundle's identity DID (`did:keri:…`).
+    did: String,
+    /// The bundle's KEL events, oldest first — already signature-authenticated by
+    /// [`load_bundle_trust`] (RT-002).
+    events: Vec<Event>,
+}
+
 fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
@@ -226,12 +257,45 @@ fn load_bundle_trust(
         .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
     let root = auths_sdk::workflows::commit_trust::trusted_root_from_bundle(&bundle, now)
         .map_err(|e| e.to_string())?;
-    let kel: Vec<Event> = bundle
-        .kel
-        .iter()
-        .map(|v| serde_json::from_value(v.clone()))
-        .collect::<std::result::Result<_, _>>()
-        .map_err(|e| format!("identity bundle {path:?} carries an unparseable KEL: {e}"))?;
+    // `bundle.kel` is already `Vec<Event>` — parsed at the deserialize boundary,
+    // so a structurally-broken event fails the bundle parse above rather than
+    // slipping through as loose JSON.
+    let kel = bundle.kel;
+
+    // Authenticate the bundle's KEL (RT-002): a bundle is attacker-controlled
+    // input, so we do NOT merely replay it structurally — we verify every event
+    // is signed by the controlling key-state via `validate_signed_kel`. The
+    // producer ships each event's CESR signature attachment (hex); a bundle
+    // missing them (length mismatch), or whose signatures don't verify, fails
+    // closed HERE, before its KEL is ever used to resolve a signer.
+    if !kel.is_empty() {
+        if bundle.kel_attachments.len() != kel.len() {
+            return Err(format!(
+                "identity bundle {path:?} carries {} KEL events but {} signature \
+                 attachments — cannot authenticate it; re-export with a current \
+                 `auths id export-bundle`",
+                kel.len(),
+                bundle.kel_attachments.len()
+            ));
+        }
+        let signed: Vec<auths_keri::SignedEvent> = kel
+            .iter()
+            .zip(bundle.kel_attachments.iter())
+            .map(|(event, att_hex)| {
+                let att = hex::decode(att_hex).map_err(|e| {
+                    format!("identity bundle {path:?} has a non-hex KEL signature: {e}")
+                })?;
+                let sigs = auths_keri::parse_attachment(&att).map_err(|e| {
+                    format!("identity bundle {path:?} has an unparseable KEL signature: {e}")
+                })?;
+                Ok(auths_keri::SignedEvent::new(event.clone(), sigs))
+            })
+            .collect::<std::result::Result<_, String>>()?;
+        auths_keri::validate_signed_kel(&signed, None).map_err(|e| {
+            format!("identity bundle {path:?} KEL failed signature authentication (RT-002): {e}")
+        })?;
+    }
+
     Ok((root, kel))
 }
 
@@ -340,18 +404,19 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
 async fn resolve_signer_kel(
     registry: &dyn RegistryBackend,
     cmd: &VerifyCommitCommand,
-    bundle_kel: Option<&(String, Vec<Event>)>,
+    bundle_kel: Option<&BundleKel>,
     did: &str,
 ) -> Result<Vec<Event>, String> {
     // Stateless first: a bundle that carries the signer's KEL satisfies
     // resolution without any identity store (CI runners). Prefix binding is
     // still enforced, so a tampered bundle cannot smuggle a foreign KEL.
-    if let Some((bundle_did, events)) = bundle_kel
-        && bundle_did == did
+    if let Some(bundle) = bundle_kel
+        && bundle.did == did
     {
         let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
-        auths_sdk::keri::verify_prefix_binding(&prefix, events).map_err(|e| e.to_string())?;
-        return Ok(events.clone());
+        auths_sdk::keri::verify_prefix_binding(&prefix, &bundle.events)
+            .map_err(|e| e.to_string())?;
+        return Ok(bundle.events.clone());
     }
     if let Some(oobi_base) = &cmd.oobi {
         let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
@@ -385,7 +450,7 @@ async fn verify_one_commit(
     receipt_lookup: &dyn WitnessReceiptLookup,
     sdk_ctx: &auths_sdk::context::AuthsContext,
     cmd: &VerifyCommitCommand,
-    bundle_kel: Option<&(String, Vec<Event>)>,
+    bundle_kel: Option<&BundleKel>,
     commit_ref: &str,
 ) -> VerifyCommitResult {
     let sha = match resolve_commit_sha(commit_ref) {

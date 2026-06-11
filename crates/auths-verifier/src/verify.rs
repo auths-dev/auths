@@ -212,7 +212,8 @@ pub async fn verify_device_link(
     now: DateTime<Utc>,
     provider: &dyn CryptoProvider,
 ) -> DeviceLinkVerification {
-    let key_state = match auths_keri::validate_kel(events) {
+    // rt-002-allow: `events` is the device-link KEL supplied by the caller from the local trusted registry / an authenticated bundle, and the attestation signature is bound to the resulting key-state. Residual: the untrusted WASM verifyDeviceLink boundary — its authenticated counterpart is validateKelJson (which now routes through validate_signed_kel); a signature-carrying verifyDeviceLink input is the tracked RT-002 follow-up.
+    let key_state = match auths_keri::TrustedKel::from_trusted_source(events).replay() {
         Ok(ks) => ks,
         Err(e) => return DeviceLinkVerification::failure(format!("KEL verification failed: {e}")),
     };

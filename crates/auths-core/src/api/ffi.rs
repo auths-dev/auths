@@ -464,6 +464,14 @@ pub unsafe extern "C" fn ffi_import_key(
             Ok(s) => s,
             Err(code) => return code,
         };
+        // Reject a null key pointer before constructing a slice from it:
+        // `slice::from_raw_parts(NULL, len)` is immediate undefined behavior
+        // that `catch_unwind` cannot intercept (RT-009). Sibling FFI entry
+        // points guard their pointers the same way.
+        if key_ptr.is_null() {
+            error!("FFI import failed: key_ptr is null.");
+            return 1;
+        }
         let key_data = unsafe { slice::from_raw_parts(key_ptr, key_len) };
 
         // Argument validation

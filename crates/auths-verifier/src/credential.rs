@@ -28,8 +28,8 @@ use auths_keri::witness::agreement::WitnessAgreement;
 use crate::software_verify::verify_with_key_sync;
 use crate::{CanonicalDid, Capability, IdentityDID};
 use auths_keri::{
-    Acdc, CesrKey, Event, KeriPublicKey, KeyState, Prefix, Said, TelEvent, Threshold,
-    compute_capability_schema_said, validate_kel,
+    Acdc, CesrKey, Event, KeriPublicKey, KeyState, Prefix, Said, TelEvent, Threshold, TrustedKel,
+    compute_capability_schema_said,
 };
 use chrono::{DateTime, Utc};
 
@@ -240,7 +240,8 @@ pub fn verify_credential_sync(
         return CredentialVerdict::IssuerKelDuplicitous;
     }
 
-    let issuer_state = match validate_kel(issuer_kel) {
+    // rt-002-allow: issuer_kel is supplied by the caller from the local trusted registry / an already-authenticated bundle, and the ACDC + TEL lifecycle anchors below are bound to this issuer key-state. Residual: untrusted WASM credential input — a signature-carrying presentation format is the tracked RT-002 follow-up.
+    let issuer_state = match TrustedKel::from_trusted_source(issuer_kel).replay() {
         Ok(state) => state,
         Err(_) => return CredentialVerdict::RegistryNotEstablished,
     };
@@ -626,7 +627,8 @@ fn replay_to_seq(issuer_kel: &[Event], seq: u128) -> Option<KeyState> {
         .take_while(|e| e.sequence().value() <= seq)
         .cloned()
         .collect();
-    validate_kel(&subset).ok()
+    // rt-002-allow: re-replays a prefix of issuer_kel that the verify_credential entrypoint already authenticated (same trust basis), to recover a historical key-state at `seq`; introduces no new untrusted input.
+    TrustedKel::from_trusted_source(&subset).replay().ok()
 }
 
 /// Decode a CESR verkey into a curve-tagged key, or `None` if it is undecodable.

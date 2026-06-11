@@ -184,10 +184,12 @@ pub fn resolve_current_public_key(
             did: did.to_string(),
             source,
         })?;
-    let state = auths_keri::validate_kel(&kel).map_err(|e| CurrentKeyError::InvalidKel {
-        did: did.to_string(),
-        reason: e.to_string(),
-    })?;
+    let state = auths_keri::TrustedKel::from_trusted_source(&kel)
+        .replay()
+        .map_err(|e| CurrentKeyError::InvalidKel {
+            did: did.to_string(),
+            reason: e.to_string(),
+        })?;
     let key = state
         .current_key()
         .ok_or_else(|| CurrentKeyError::NoCurrentKey {

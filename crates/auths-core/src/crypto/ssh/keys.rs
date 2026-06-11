@@ -37,7 +37,9 @@ pub fn build_ed25519_pkcs8_v2_from_seed(seed: &SecureSeed) -> Result<Pkcs8Der, C
     let ssh_kp = SshEd25519Keypair::from_seed(seed.as_bytes());
     let pubkey: [u8; 32] = ssh_kp.public.0;
     let pkcs8 = build_ed25519_pkcs8_v2(seed.as_bytes(), &pubkey);
-    Ok(Pkcs8Der::new(pkcs8))
+    // `Pkcs8Der` is itself zeroize-on-drop; `pkcs8` (a `Zeroizing<Vec<u8>>`) is
+    // wiped when it falls out of scope, so neither copy lingers.
+    Ok(Pkcs8Der::new(pkcs8.to_vec()))
 }
 
 /// Extract the 32-byte Ed25519 public key from key bytes.

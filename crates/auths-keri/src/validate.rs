@@ -379,15 +379,131 @@ pub trait DelegatorKelLookup {
     fn find_seal(&self, delegator_aid: &Prefix, seal_said: &Said) -> Option<SourceSeal>;
 }
 
+/// A precomputed index of a delegator KEL's anchoring seals.
+///
+/// Build it once from a KEL slice with [`KelSealIndex::from_events`]; `find_seal`
+/// is then an O(1) map lookup. This is the shared [`DelegatorKelLookup`] every
+/// verify path uses to resolve the [`SourceSeal`] that authorizes a delegated
+/// (`dip`/`drt`) event — replacing the per-call-site linear scans the commit,
+/// presentation, and offline-org verifiers each used to carry (so the lookup is
+/// defined once, with one performance profile, instead of three times).
+pub struct KelSealIndex {
+    /// `sealed-event SAID → SourceSeal of the anchoring event`.
+    seals: std::collections::HashMap<Said, SourceSeal>,
+}
+
+impl KelSealIndex {
+    /// Index every `Seal::KeyEvent` anchored in `events`, mapping the sealed event
+    /// SAID to the [`SourceSeal`] (sequence + SAID) of the event that anchored it.
+    /// On a duplicate sealed SAID the first (lowest-sequence) anchor wins —
+    /// identical to a forward linear scan over an ordered KEL.
+    ///
+    /// Args:
+    /// * `events`: The delegator's KEL.
+    pub fn from_events(events: &[Event]) -> Self {
+        let mut seals = std::collections::HashMap::new();
+        for event in events {
+            for seal in event.anchors() {
+                if let Seal::KeyEvent { d, .. } = seal {
+                    seals.entry(d.clone()).or_insert_with(|| SourceSeal {
+                        s: event.sequence(),
+                        d: event.said().clone(),
+                    });
+                }
+            }
+        }
+        Self { seals }
+    }
+}
+
+impl DelegatorKelLookup for KelSealIndex {
+    fn find_seal(&self, _delegator_aid: &Prefix, seal_said: &Said) -> Option<SourceSeal> {
+        self.seals.get(seal_said).cloned()
+    }
+}
+
+/// A KEL the caller asserts comes from a **trusted source** — the local identity
+/// registry / a self-owned store, or a chain already authenticated via
+/// [`validate_signed_kel`].
+///
+/// Structural replay (SAID + sequence + chain-linkage + pre-rotation commitment,
+/// *without* re-verifying each event's signature) is exposed to other crates
+/// **only** through this type. Bare-`&[Event]` structural replay
+/// ([`validate_kel`] and friends) is `pub(crate)`, so untrusted input — a CI
+/// `--identity-bundle`, a `--remote`/`--oobi` fetch, a WASM/FFI buffer — cannot be
+/// structurally replayed from outside auths-keri without either an explicit,
+/// greppable trust assertion ([`TrustedKel::from_trusted_source`]) or prior
+/// authentication via [`validate_signed_kel`] (RT-002 / #263). The assertion is a
+/// reviewable, lint-gated decision rather than an invisible `validate_kel(bytes)`
+/// call.
+///
+/// Borrowing and `Copy` — zero-cost over a `&[Event]`.
+#[derive(Clone, Copy)]
+pub struct TrustedKel<'a>(&'a [Event]);
+
+impl<'a> TrustedKel<'a> {
+    /// Assert that `events` come from a trusted source. Every call site is a
+    /// reviewable trust assertion — **never** call this on attacker-influenced
+    /// bytes (bundle / `--remote` / `--oobi` / WASM / FFI); authenticate those
+    /// through [`validate_signed_kel`] instead.
+    ///
+    /// Args:
+    /// * `events`: A KEL whose provenance the caller vouches for (local registry
+    ///   read, or an already-authenticated chain).
+    pub fn from_trusted_source(events: &'a [Event]) -> Self {
+        Self(events)
+    }
+
+    /// The underlying events.
+    pub fn events(&self) -> &'a [Event] {
+        self.0
+    }
+
+    /// Structural replay to the current [`KeyState`].
+    pub fn replay(self) -> Result<KeyState, ValidationError> {
+        validate_kel(self.0)
+    }
+
+    /// Structural replay with a delegator-seal lookup for delegated (`dip`/`drt`)
+    /// events.
+    pub fn replay_with_lookup(
+        self,
+        lookup: Option<&dyn DelegatorKelLookup>,
+    ) -> Result<KeyState, ValidationError> {
+        validate_kel_with_lookup(self.0, lookup)
+    }
+
+    /// Structural replay with the M-of-N witness-receipt gate.
+    pub fn replay_with_receipts(
+        self,
+        lookup: Option<&dyn DelegatorKelLookup>,
+        receipt_lookup: &dyn WitnessReceiptLookup,
+    ) -> Result<WitnessedReplay, ValidationError> {
+        validate_kel_with_receipts(self.0, lookup, receipt_lookup)
+    }
+
+    /// Structural replay with the time / rotation-cadence policy checks
+    /// ([`KelPolicy`]). `timestamps[i]` is the optional signing time of `events[i]`.
+    pub fn replay_with_policy(
+        self,
+        timestamps: &[Option<chrono::DateTime<chrono::Utc>>],
+        policy: &KelPolicy,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<KeyState, ValidationError> {
+        validate_kel_with_policy(self.0, timestamps, policy, now)
+    }
+}
+
 /// Validate a KEL with no delegator lookup.
 ///
-/// Convenience wrapper over [`validate_kel_with_lookup`] for ordinary KELs
-/// that contain only `icp`/`rot`/`ixn` events. Use the lookup variant for KELs
-/// containing delegated events (`dip`/`drt`).
+/// Crate-private (RT-002 / #263): other crates reach structural replay only via
+/// [`TrustedKel`], so untrusted input cannot be replayed without an explicit trust
+/// assertion. Convenience wrapper over [`validate_kel_with_lookup`] for ordinary
+/// KELs that contain only `icp`/`rot`/`ixn` events.
 ///
 /// Args:
 /// * `events` - The ordered list of KERI events to replay and validate.
-pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
+pub(crate) fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
     validate_kel_with_lookup(events, None::<&dyn DelegatorKelLookup>)
 }
 
@@ -395,7 +511,7 @@ pub fn validate_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
 ///
 /// Required when the KEL contains `dip` or `drt` events; ordinary KELs
 /// (only `icp`/`rot`/`ixn`) can pass `None`.
-pub fn validate_kel_with_lookup(
+pub(crate) fn validate_kel_with_lookup(
     events: &[Event],
     lookup: Option<&dyn DelegatorKelLookup>,
 ) -> Result<KeyState, ValidationError> {
@@ -469,7 +585,7 @@ impl WitnessedReplay {
 ///     WitnessedReplay::Pending { sequence, .. } => warn_or_refuse(sequence),
 /// }
 /// ```
-pub fn validate_kel_with_receipts(
+pub(crate) fn validate_kel_with_receipts(
     events: &[Event],
     delegator_lookup: Option<&dyn DelegatorKelLookup>,
     receipt_lookup: &dyn WitnessReceiptLookup,
@@ -564,6 +680,93 @@ fn replay_kel_gated(
     Ok(WitnessedReplay::Accepted(state))
 }
 
+/// Replay a KEL of **signed** events, verifying each event's signature against the
+/// key-state that authorizes it — the authenticated counterpart to the
+/// structural-only [`validate_kel`] (RT-002).
+///
+/// Where [`validate_kel`] authorizes by log *structure* alone (SAID + sequence +
+/// chain-linkage + pre-rotation commitment), this folds [`validate_signed_event`]
+/// into the replay so every event must also carry a valid signature from the
+/// in-force key-state: inception/`dip` against their own committed keys under
+/// `kt`; `rot`/`drt` against the new keys plus the prior pre-rotation commitment;
+/// `ixn` against the current key-state. An event with no — or an invalid —
+/// signature fails closed with [`ValidationError::SignatureFailed`].
+///
+/// This is the function the stateless verify entrypoints (CI `--identity-bundle`,
+/// WASM, FFI) must call once their wire formats carry CESR signature attachments;
+/// until that wiring lands they still replay structurally (see the RT-002 note in
+/// the test module). Structural checks are applied here too, so a forged SAID or
+/// broken chain is still rejected.
+///
+/// Args:
+/// * `events`: The ordered KEL of signed events to replay.
+/// * `lookup`: Cross-KEL seal lookup for delegated events (`dip`/`drt`).
+pub fn validate_signed_kel(
+    events: &[crate::events::SignedEvent],
+    lookup: Option<&dyn DelegatorKelLookup>,
+) -> Result<KeyState, ValidationError> {
+    if events.is_empty() {
+        return Err(ValidationError::EmptyKel);
+    }
+
+    // Inception: structural (SAID + self-certification) AND a signature from the
+    // event's own committed keys.
+    let first = &events[0];
+    verify_event_said(&first.event)?;
+    validate_signed_event(first, None)?;
+    let (mut state, inception_n_is_empty, establishment_only) = match &first.event {
+        Event::Icp(icp) => (
+            validate_inception(icp)?,
+            icp.n.is_empty(),
+            icp.c.contains(&ConfigTrait::EstablishmentOnly),
+        ),
+        Event::Dip(dip) => (
+            validate_delegated_inception(dip, lookup)?,
+            dip.n.is_empty(),
+            dip.c.contains(&ConfigTrait::EstablishmentOnly),
+        ),
+        _ => return Err(ValidationError::NotInception),
+    };
+
+    if inception_n_is_empty && events.len() > 1 {
+        return Err(ValidationError::NonTransferable);
+    }
+
+    for (idx, signed) in events.iter().enumerate().skip(1) {
+        let event = &signed.event;
+        let expected_seq = idx as u128;
+
+        if state.is_abandoned {
+            return Err(ValidationError::AbandonedIdentity {
+                sequence: expected_seq,
+            });
+        }
+        if establishment_only && matches!(event, Event::Ixn(_)) {
+            return Err(ValidationError::EstablishmentOnly {
+                sequence: expected_seq,
+            });
+        }
+
+        verify_event_said(event)?;
+        verify_sequence(event, expected_seq)?;
+        verify_chain_linkage(event, &state)?;
+        // Authenticate against the in-force key-state BEFORE applying the event
+        // (rot/drt verify the prior next-threshold against the pre-rotation state).
+        validate_signed_event(signed, Some(&state))?;
+
+        match event {
+            Event::Rot(rot) => validate_rotation(rot, expected_seq, &mut state)?,
+            Event::Ixn(ixn) => validate_interaction(ixn, expected_seq, &mut state)?,
+            Event::Icp(_) | Event::Dip(_) => return Err(ValidationError::MultipleInceptions),
+            Event::Drt(drt) => {
+                validate_delegated_rotation(drt, expected_seq, &mut state, lookup)?;
+            }
+        }
+    }
+
+    Ok(state)
+}
+
 /// Gate one establishment event on M-of-N witness agreement.
 ///
 /// Returns `Some(WitnessedReplay::Pending)` when the in-force backer threshold
@@ -638,7 +841,56 @@ fn validate_thresholds(
     Ok(())
 }
 
+/// Enforce inception self-certification — bind the controller prefix `i` to the
+/// event so a forged inception cannot claim an arbitrary prefix with
+/// attacker-controlled keys (RT-001).
+///
+/// `compute_said` blanks `i` before hashing (an inception's prefix derives FROM
+/// its SAID, not the reverse), so verifying `d == compute_said(body)` does NOT
+/// bind `i`. This supplies that binding:
+/// - self-addressing (`E`-prefixed) AIDs: `i` MUST equal the SAID `d`;
+/// - basic-derivation AIDs (`D`/`1AAI`/…): `i` MUST equal the lone key `k[0]`.
+///
+/// This is the same rule [`verify_event_crypto`] enforces on the append path;
+/// both now route through here so the two paths cannot drift.
+fn verify_inception_self_cert(i: &Prefix, d: &Said, k: &[CesrKey]) -> Result<(), ValidationError> {
+    // Presence: an inception must commit at least one key.
+    if k.is_empty() {
+        return Err(ValidationError::SignatureFailed { sequence: 0 });
+    }
+
+    if i.as_str().starts_with('E') {
+        if i.as_str() != d.as_str() {
+            return Err(ValidationError::InvalidSaid {
+                expected: d.clone(),
+                actual: Said::new_unchecked(i.as_str().to_string()),
+            });
+        }
+    } else {
+        // Basic-derivation: the prefix IS the single inception key. Without this
+        // a `D…`/`1AAI…` prefix could point at an arbitrary key list.
+        let i_key = KeriPublicKey::parse(i.as_str())
+            .map_err(|_| ValidationError::SignatureFailed { sequence: 0 })?;
+        let k0 = k[0]
+            .parse()
+            .map_err(|_| ValidationError::SignatureFailed { sequence: 0 })?;
+        if i_key.as_bytes() != k0.as_bytes() {
+            return Err(ValidationError::InvalidSaid {
+                expected: Said::new_unchecked(k[0].as_str().to_string()),
+                actual: Said::new_unchecked(i.as_str().to_string()),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 fn validate_inception(icp: &IcpEvent) -> Result<KeyState, ValidationError> {
+    // Self-certification: bind `i` to the event before adopting it as the
+    // controller prefix (RT-001). Runs after `verify_event_said` has confirmed
+    // `d` is the true SAID, so `i == d` means `i` is the true SAID too.
+    verify_inception_self_cert(&icp.i, &icp.d, &icp.k)?;
+
     // Validate backer uniqueness
     validate_backer_uniqueness(&icp.b)?;
 
@@ -894,6 +1146,10 @@ fn validate_delegated_inception(
     })?;
     enforce_source_seal(dip.source_seal.as_ref(), &anchor, sequence)?;
 
+    // Self-certification (RT-001): a delegated AID's prefix is the SAID of its
+    // own inception, so `i == d` must hold here as well.
+    verify_inception_self_cert(&dip.i, &dip.d, &dip.k)?;
+
     // Structural checks mirrored from `validate_inception` — backers, threshold.
     validate_backer_uniqueness(&dip.b)?;
     let bt_val = dip.bt.simple_value().unwrap_or(0);
@@ -978,16 +1234,6 @@ fn validate_delegated_rotation(
     Ok(())
 }
 
-/// Replay a KEL to get the current KeyState.
-///
-/// Alias for [`validate_kel`] — use whichever name fits your context better.
-///
-/// Args:
-/// * `events` - The ordered list of KERI events to replay.
-pub fn replay_kel(events: &[Event]) -> Result<KeyState, ValidationError> {
-    validate_kel(events)
-}
-
 /// Validate the cryptographic integrity of a single event against the current key state.
 ///
 /// Args:
@@ -998,40 +1244,9 @@ pub fn verify_event_crypto(
     current_state: Option<&KeyState>,
 ) -> Result<(), ValidationError> {
     match event {
-        Event::Icp(icp) => {
-            // Presence check only: icp must commit at least one key.
-            if icp.k.is_empty() {
-                return Err(ValidationError::SignatureFailed { sequence: 0 });
-            }
-
-            // Self-addressing AIDs (E-prefixed): `i` MUST equal the SAID `d`.
-            let is_self_addressing = icp.i.as_str().starts_with('E');
-            if is_self_addressing {
-                if icp.i.as_str() != icp.d.as_str() {
-                    return Err(ValidationError::InvalidSaid {
-                        expected: icp.d.clone(),
-                        actual: Said::new_unchecked(icp.i.as_str().to_string()),
-                    });
-                }
-            } else {
-                // Basic-derivation AIDs (D / 1AAI / 1AAJ ...): the prefix IS the
-                // single inception key, so `i` MUST equal `k[0]`. Without this a
-                // basic-derivation prefix could point at an arbitrary key list.
-                let i_key = KeriPublicKey::parse(icp.i.as_str())
-                    .map_err(|_| ValidationError::SignatureFailed { sequence: 0 })?;
-                let k0 = icp.k[0]
-                    .parse()
-                    .map_err(|_| ValidationError::SignatureFailed { sequence: 0 })?;
-                if i_key.as_bytes() != k0.as_bytes() {
-                    return Err(ValidationError::InvalidSaid {
-                        expected: Said::new_unchecked(icp.k[0].as_str().to_string()),
-                        actual: Said::new_unchecked(icp.i.as_str().to_string()),
-                    });
-                }
-            }
-
-            Ok(())
-        }
+        // Self-certification (`i==d` / `i==k[0]`) is enforced by the shared
+        // helper so the append and replay paths cannot drift (RT-001).
+        Event::Icp(icp) => verify_inception_self_cert(&icp.i, &icp.d, &icp.k),
         Event::Rot(rot) => {
             let sequence = event.sequence().value();
             let state = current_state.ok_or(ValidationError::SignatureFailed { sequence })?;
@@ -1067,13 +1282,9 @@ pub fn verify_event_crypto(
 
             Ok(())
         }
-        // Delegated events use same crypto verification as their non-delegated counterparts
-        Event::Dip(dip) => {
-            if dip.k.is_empty() {
-                return Err(ValidationError::SignatureFailed { sequence: 0 });
-            }
-            Ok(())
-        }
+        // Delegated inception is self-addressing too: enforce `i==d` via the
+        // shared helper rather than only a presence check (RT-001).
+        Event::Dip(dip) => verify_inception_self_cert(&dip.i, &dip.d, &dip.k),
         Event::Drt(drt) => {
             let sequence = event.sequence().value();
             let state = current_state.ok_or(ValidationError::SignatureFailed { sequence })?;
@@ -1585,6 +1796,130 @@ mod tests {
         let events = vec![Event::Icp(tampered)];
         let result = validate_kel(&events);
         assert!(matches!(result, Err(ValidationError::InvalidSaid { .. })));
+    }
+
+    // RT-001 (A.2): forged-inception self-certification on the replay path.
+    // `compute_said` blanks `i` before hashing, so a valid SAID `d` does NOT
+    // bind the controller prefix `i`. Without the `i==d` / `i==k[0]` check a KEL
+    // handed to a stateless verifier could claim an arbitrary prefix with
+    // attacker keys. These two tests are red before A.2 and green after.
+
+    #[test]
+    fn rejects_forged_inception_prefix_mismatch() {
+        // Self-addressing arm: replace a finalized inception's prefix `i` with a
+        // DIFFERENT well-formed `E…` prefix. The SAID `d` still verifies
+        // (compute_said blanks `i`); only the `i == d` self-cert check catches it.
+        let (icp, _kp) = make_signed_icp();
+        assert_eq!(
+            icp.i.as_str(),
+            icp.d.as_str(),
+            "a finalized inception is self-addressing"
+        );
+
+        let (other, _kp2) = make_signed_icp();
+        assert_ne!(other.i.as_str(), icp.d.as_str());
+
+        let mut forged = icp;
+        forged.i = other.i;
+        let result = validate_kel(&[Event::Icp(forged)]);
+        assert!(
+            matches!(result, Err(ValidationError::InvalidSaid { .. })),
+            "forged inception (i != d) must be rejected, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_forged_inception_basic_derivation() {
+        // Basic-derivation arm: a non-`E` prefix IS the inception key, so `i`
+        // must equal `k[0]`. Forge an inception whose prefix names a DIFFERENT
+        // key than the one it commits.
+        let prefix_key = encode_pubkey(&gen_keypair());
+        let committed_key = encode_pubkey(&gen_keypair());
+        assert_ne!(prefix_key, committed_key);
+        assert!(!prefix_key.starts_with('E'));
+
+        let mut icp = make_raw_icp(&committed_key, "ENext1");
+        icp.i = Prefix::new_unchecked(prefix_key);
+        // Valid SAID (compute_said blanks `i` for icp), so verify_event_said
+        // passes and only the `i == k[0]` self-cert check should reject.
+        let value = serde_json::to_value(Event::Icp(icp.clone())).unwrap();
+        icp.d = compute_said(&value).unwrap();
+
+        let result = validate_kel(&[Event::Icp(icp)]);
+        assert!(
+            matches!(result, Err(ValidationError::InvalidSaid { .. })),
+            "basic-derivation inception with i != k[0] must be rejected, got {result:?}"
+        );
+    }
+
+    // RT-002 / A.1: `validate_signed_kel` is the AUTHENTICATED replay — it
+    // verifies each event's signature against the controlling key-state, so a
+    // forged unsigned / wrong-signer `ixn`/`rot`/`icp` is rejected (tests below).
+    // The structural `validate_kel`/`replay_kel_gated` remain (they authorize by
+    // log structure only). REMAINING WORK (not in this change): wire the stateless
+    // verify entrypoints (IdentityBundle.kel, WASM, FFI) to carry CESR signature
+    // attachments and call `validate_signed_kel` instead of `validate_kel`. Until
+    // that wiring lands those entrypoints still replay structurally; do not
+    // mistake the structural path for authentication.
+
+    fn sign_event(event: &Event, kp: &Ed25519KeyPair) -> SignedEvent {
+        let sig = kp
+            .sign(&serialize_for_signing(event).unwrap())
+            .as_ref()
+            .to_vec();
+        SignedEvent::new(
+            event.clone(),
+            vec![IndexedSignature {
+                index: 0,
+                prior_index: None,
+                sig,
+            }],
+        )
+    }
+
+    #[test]
+    fn validate_signed_kel_accepts_correctly_signed_kel() {
+        let (icp, kp) = make_signed_icp();
+        let signed_icp = sign_event(&Event::Icp(icp.clone()), &kp);
+        let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &kp);
+        let signed_ixn = sign_event(&Event::Ixn(ixn), &kp);
+
+        let state = validate_signed_kel(&[signed_icp, signed_ixn], None)
+            .expect("a correctly-signed KEL must validate");
+        assert_eq!(state.sequence, 1);
+    }
+
+    #[test]
+    fn validate_signed_kel_rejects_unsigned_ixn() {
+        // RT-002: a structurally-valid but UNSIGNED ixn (e.g. anchoring a forged
+        // delegation/scope seal) must be rejected by the authenticated replay.
+        let (icp, kp) = make_signed_icp();
+        let signed_icp = sign_event(&Event::Icp(icp.clone()), &kp);
+        let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &kp);
+        let unsigned_ixn = SignedEvent::new(Event::Ixn(ixn), vec![]);
+
+        let result = validate_signed_kel(&[signed_icp, unsigned_ixn], None);
+        assert!(
+            matches!(result, Err(ValidationError::SignatureFailed { .. })),
+            "unsigned ixn must be rejected, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn validate_signed_kel_rejects_wrong_signer_ixn() {
+        // RT-002: an ixn signed by a key OTHER than the controlling key-state
+        // must be rejected — a forged interaction cannot be smuggled in.
+        let (icp, kp) = make_signed_icp();
+        let signed_icp = sign_event(&Event::Icp(icp.clone()), &kp);
+        let ixn = make_signed_ixn(&icp.i, &icp.d, 1, &kp);
+        let attacker = gen_keypair();
+        let forged_ixn = sign_event(&Event::Ixn(ixn), &attacker);
+
+        let result = validate_signed_kel(&[signed_icp, forged_ixn], None);
+        assert!(
+            matches!(result, Err(ValidationError::SignatureFailed { .. })),
+            "wrong-signer ixn must be rejected, got {result:?}"
+        );
     }
 
     #[test]
@@ -2292,7 +2627,7 @@ impl Default for KelPolicy {
 /// * `now`: The daemon's wall clock at validation time. Inject via
 ///   [`chrono::Utc::now`] at the presentation boundary; domain layers
 ///   pass a clock.
-pub fn validate_kel_with_policy(
+pub(crate) fn validate_kel_with_policy(
     events: &[Event],
     timestamps: &[Option<chrono::DateTime<chrono::Utc>>],
     policy: &KelPolicy,

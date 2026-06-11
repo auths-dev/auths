@@ -8,6 +8,7 @@
 //! itself lives in `auths_verifier::verify_commit_against_kel`; this workflow owns the
 //! orchestration (trailer parse → KEL resolution → verdict).
 
+use auths_keri::compute_event_said;
 use auths_verifier::IdentityBundle;
 use chrono::{DateTime, Utc};
 
@@ -107,6 +108,43 @@ pub fn trusted_root_from_bundle(
     bundle
         .check_freshness(now)
         .map_err(|e| CommitTrustError::BundleInvalid(e.to_string()))?;
+
+    // Self-certification of the bundle root (RT-005): the DID the caller is about
+    // to treat as a root MUST actually name the inception the bundle carries, so
+    // a bundle cannot pair a victim's DID with an attacker-authored KEL. For a
+    // self-addressing (`E`) root the DID MUST equal the inception SAID; for a
+    // basic-derivation root it MUST equal the inception's controller field (and
+    // replay independently enforces `i == k[0]`). The bundle is *evidence for*
+    // the pinned root, never a self-asserted anchor — the CLI additionally
+    // requires the returned root to already be pinned independently.
+    if let Some(inception) = bundle.kel.first() {
+        let claimed = bundle.identity_did.to_string();
+        let prefix = claimed
+            .strip_prefix("did:keri:")
+            .unwrap_or(claimed.as_str());
+        if prefix.starts_with('E') {
+            let said = compute_event_said(inception).map_err(|e| {
+                CommitTrustError::BundleInvalid(format!(
+                    "bundle KEL inception has no computable SAID: {e}"
+                ))
+            })?;
+            if prefix != said.as_str() {
+                return Err(CommitTrustError::BundleInvalid(format!(
+                    "bundle identity_did {claimed} does not self-certify to its \
+                     inception SAID did:keri:{said}"
+                )));
+            }
+        } else {
+            let inception_i = inception.prefix().as_str();
+            if prefix != inception_i {
+                return Err(CommitTrustError::BundleInvalid(format!(
+                    "bundle identity_did {claimed} does not match its inception \
+                     controller {inception_i}"
+                )));
+            }
+        }
+    }
+
     Ok(bundle.identity_did.to_string())
 }
 
@@ -427,6 +465,7 @@ mod tests {
             curve: auths_crypto::CurveType::P256,
             attestation_chain: Vec::new(),
             kel: Vec::new(),
+            kel_attachments: Vec::new(),
             bundle_timestamp: ts,
             max_valid_for_secs: ttl,
         }
@@ -449,6 +488,44 @@ mod tests {
         let t = fixed_time();
         let bundle = test_bundle(ROOT, t, 3600);
         let now = t + chrono::Duration::seconds(7200);
+        assert!(matches!(
+            trusted_root_from_bundle(&bundle, now),
+            Err(CommitTrustError::BundleInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn bundle_rejects_did_not_matching_its_kel_inception() {
+        // RT-005 self-certification: a bundle that pairs a DID with a KEL whose
+        // inception names a DIFFERENT controller must fail closed, so a bundle
+        // can never become the trust anchor for an attacker-authored KEL.
+        use auths_keri::{
+            CesrKey, Event, IcpEvent, KeriPublicKey, KeriSequence, Prefix, Said, Threshold,
+            VersionString, compute_next_commitment, finalize_icp_event,
+        };
+        // A real, self-certifying inception — its prefix is its own `E…` SAID.
+        let key = KeriPublicKey::ed25519(&[7u8; 32]).unwrap();
+        let next = KeriPublicKey::ed25519(&[8u8; 32]).unwrap();
+        let inception = finalize_icp_event(IcpEvent {
+            v: VersionString::placeholder(),
+            d: Said::default(),
+            i: Prefix::default(),
+            s: KeriSequence::new(0),
+            kt: Threshold::Simple(1),
+            k: vec![CesrKey::new_unchecked(key.to_qb64().unwrap())],
+            nt: Threshold::Simple(1),
+            n: vec![compute_next_commitment(&next)],
+            bt: Threshold::Simple(0),
+            b: vec![],
+            c: vec![],
+            a: vec![],
+        })
+        .unwrap();
+        let t = fixed_time();
+        // Pair that inception with an unrelated `D…` DID it does not certify.
+        let mut bundle = test_bundle("did:keri:DAttackerKey", t, 3600);
+        bundle.kel = vec![Event::Icp(inception)];
+        let now = t + chrono::Duration::seconds(100);
         assert!(matches!(
             trusted_root_from_bundle(&bundle, now),
             Err(CommitTrustError::BundleInvalid(_))

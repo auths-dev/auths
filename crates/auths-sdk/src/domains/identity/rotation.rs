@@ -219,15 +219,38 @@ pub fn apply_rotation(
             )
             .map_err(|e| e.to_string())?;
 
-        let _ = key_storage.delete_key(&key_material.old_next_alias);
+        // Key cleanup is no longer best-effort (RT-014): a swallowed delete
+        // failure can leave a rotated-away key in storage, re-introducing the
+        // nondeterministic current-key enumeration class (#252/#253) where a
+        // stale key signs again. Collect failures and fail the rotation so the
+        // caller retries cleanup rather than silently trusting it succeeded.
+        let mut cleanup_errors: Vec<String> = Vec::new();
+
+        if let Err(e) = key_storage.delete_key(&key_material.old_next_alias) {
+            cleanup_errors.push(format!(
+                "old next-rotation key '{}': {e}",
+                key_material.old_next_alias.as_str()
+            ));
+        }
 
         // Delete the rotated-away primary keys. Leaving them as Primary made
         // current-key resolution and delegation signing pick a stale key when
-        // keychain enumeration returned multiple primaries. A rotated-away
-        // key must never sign again — verification replays public keys from
-        // the KEL, so the old private key serves no further purpose.
+        // keychain enumeration returned multiple primaries. A rotated-away key
+        // must never sign again — verification replays public keys from the KEL,
+        // so the old private key serves no further purpose.
         for stale in stale_primaries {
-            let _ = key_storage.delete_key(&stale);
+            if let Err(e) = key_storage.delete_key(&stale) {
+                cleanup_errors.push(format!("rotated-away primary '{}': {e}", stale.as_str()));
+            }
+        }
+
+        if !cleanup_errors.is_empty() {
+            return Err(format!(
+                "rotation advanced the KEL but key cleanup failed for {} key(s) — a \
+                 rotated-away key may persist and must be removed: {}",
+                cleanup_errors.len(),
+                cleanup_errors.join("; ")
+            ));
         }
 
         Ok::<(), String>(())

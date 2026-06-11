@@ -35,7 +35,7 @@ fn ed25519_keypair(seed_byte: u8) -> ([u8; 32], [u8; 32], Vec<u8>) {
     let kp = Ed25519KeyPair::from_seed_unchecked(&seed).expect("ring accepts any 32-byte seed");
     let mut pubkey = [0u8; 32];
     pubkey.copy_from_slice(kp.public_key().as_ref());
-    let pkcs8 = build_ed25519_pkcs8_v2(&seed, &pubkey);
+    let pkcs8 = build_ed25519_pkcs8_v2(&seed, &pubkey).to_vec();
     (seed, pubkey, pkcs8)
 }
 

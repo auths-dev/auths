@@ -25,7 +25,7 @@ fn parse_kel_json_returns_empty_vec_for_empty_array() {
 
 #[test]
 fn validate_kel_rejects_empty_events() {
-    let result = auths_keri::validate_kel(&[]);
+    let result = auths_keri::TrustedKel::from_trusted_source(&[]).replay();
     assert!(result.is_err());
     match result.unwrap_err() {
         ValidationError::EmptyKel => {}

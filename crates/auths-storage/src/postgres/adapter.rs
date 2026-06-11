@@ -48,6 +48,27 @@ impl RegistryBackend for PostgresAdapter {
         })
     }
 
+    fn append_signed_event(
+        &self,
+        _prefix: &Prefix,
+        _event: &Event,
+        _attachment: &[u8],
+    ) -> Result<(), RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "append_signed_event",
+        })
+    }
+
+    fn get_attachment(
+        &self,
+        _prefix: &Prefix,
+        _seq: u128,
+    ) -> Result<Option<Vec<u8>>, RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "get_attachment",
+        })
+    }
+
     fn get_event(&self, _prefix: &Prefix, _seq: u128) -> Result<Event, RegistryError> {
         Err(RegistryError::NotImplemented {
             method: "get_event",

@@ -164,7 +164,7 @@ impl Session for AgentSession {
     async fn add_identity(&mut self, identity: AddIdentity) -> Result<(), SSHAgentError> {
         debug!("Handling add_identity request");
 
-        let pkcs8_bytes: Vec<u8> = match &identity.credential {
+        let pkcs8_bytes: Zeroizing<Vec<u8>> = match &identity.credential {
             Credential::Key { privkey, .. } => match privkey {
                 KeypairData::Ed25519(kp) => {
                     let seed = kp.private.to_bytes();
@@ -201,7 +201,7 @@ impl Session for AgentSession {
                         error!("{}", err_msg);
                         SSHAgentError::other(io::Error::other(err_msg))
                     })?;
-                    pkcs8.as_ref().to_vec()
+                    Zeroizing::new(pkcs8.as_ref().to_vec())
                 }
                 other => {
                     let err_msg = format!(
@@ -224,13 +224,11 @@ impl Session for AgentSession {
             }
         };
 
-        self.handle
-            .register_key(Zeroizing::new(pkcs8_bytes))
-            .map_err(|e| {
-                let err_msg = format!("Failed to register key in agent: {}", e);
-                error!("{}", err_msg);
-                SSHAgentError::other(io::Error::other(err_msg))
-            })?;
+        self.handle.register_key(pkcs8_bytes).map_err(|e| {
+            let err_msg = format!("Failed to register key in agent: {}", e);
+            error!("{}", err_msg);
+            SSHAgentError::other(io::Error::other(err_msg))
+        })?;
 
         debug!("Successfully added identity to agent");
         Ok(())

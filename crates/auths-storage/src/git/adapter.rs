@@ -2693,6 +2693,71 @@ mod tests {
     }
 
     #[test]
+    fn git_backend_round_trips_event_attachment() {
+        // RT-002 Phase 0: the Git backend must PERSIST and RETURN an event's CESR
+        // signature attachment, including for a self-rooted inception (seq 0).
+        // This locks the contract the bundle producer relies on to ship
+        // authenticatable KELs.
+        let (_dir, backend) = setup_test_repo();
+        let (event, prefix, keypair, _next) = create_signed_icp();
+
+        let canonical = auths_keri::serialize_for_signing(&event).unwrap();
+        let sig = keypair.sign(&canonical).as_ref().to_vec();
+        let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+            index: 0,
+            prior_index: None,
+            sig,
+        }])
+        .unwrap();
+        assert!(
+            !attachment.is_empty(),
+            "inception attachment must be non-empty"
+        );
+
+        backend
+            .append_signed_event(&prefix, &event, &attachment)
+            .unwrap();
+
+        let got = backend.get_attachment(&prefix, 0).unwrap();
+        assert_eq!(
+            got,
+            Some(attachment),
+            "Git backend must round-trip the inception's signature attachment"
+        );
+    }
+
+    #[test]
+    fn arc_dyn_backend_forwards_attachment() {
+        // RT-002 root-cause regression: `Arc<dyn RegistryBackend>` (how the SDK
+        // holds `ctx.registry`) must FORWARD append_signed_event/get_attachment,
+        // not silently drop the attachment via a trait default. Before the fix,
+        // the inception's signature was lost here and the bundle producer saw
+        // `get_attachment(prefix, 0) == None`.
+        use std::sync::Arc;
+        let (_dir, backend) = setup_test_repo();
+        let registry: Arc<dyn RegistryBackend> = Arc::new(backend);
+        let (event, prefix, keypair, _next) = create_signed_icp();
+
+        let canonical = auths_keri::serialize_for_signing(&event).unwrap();
+        let sig = keypair.sign(&canonical).as_ref().to_vec();
+        let attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+            index: 0,
+            prior_index: None,
+            sig,
+        }])
+        .unwrap();
+
+        registry
+            .append_signed_event(&prefix, &event, &attachment)
+            .unwrap();
+        assert_eq!(
+            registry.get_attachment(&prefix, 0).unwrap(),
+            Some(attachment),
+            "Arc<dyn RegistryBackend> must forward the attachment, not drop it"
+        );
+    }
+
+    #[test]
     fn append_multiple_events() {
         let (_dir, backend) = setup_test_repo();
         let (icp, prefix, _keypair, next_keypair) = create_signed_icp();

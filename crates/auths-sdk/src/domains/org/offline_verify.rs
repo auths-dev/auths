@@ -55,6 +55,64 @@ fn check_kel_integrity(kel: &BundledKel) -> Result<(), OrgError> {
     Ok(())
 }
 
+/// Authenticate a bundled KEL (RT-002): verify every event is SIGNED by the
+/// controlling key-state, not just SAID-correct. Reconstructs `SignedEvent`s from
+/// the parallel `events` × hex `attachments` and replays them through
+/// `validate_signed_kel`. Fails closed on a length mismatch, an unparseable
+/// attachment, or a signature that doesn't verify.
+fn authenticate_bundled_kel(
+    kel: &BundledKel,
+    lookup: Option<&dyn auths_keri::DelegatorKelLookup>,
+) -> Result<(), OrgError> {
+    let integrity_err = |reason: String| OrgError::BundleIntegrity {
+        id: kel.prefix.as_str().to_string(),
+        reason,
+    };
+    if kel.attachments.len() != kel.events.len() {
+        return Err(integrity_err(format!(
+            "{} events but {} signature attachments — cannot authenticate",
+            kel.events.len(),
+            kel.attachments.len()
+        )));
+    }
+    let mut signed = Vec::with_capacity(kel.events.len());
+    for (event, att_hex) in kel.events.iter().zip(kel.attachments.iter()) {
+        let bytes =
+            hex::decode(att_hex).map_err(|e| integrity_err(format!("non-hex attachment: {e}")))?;
+        // A delegated (dip/drt) event's attachment is `-A <sig> ++ -G <source seal>`;
+        // a plain event's is just `-A <sig>`. `parse_delegated_attachment` handles both.
+        let (sigs, seals) = auths_keri::parse_delegated_attachment(&bytes)
+            .map_err(|e| integrity_err(format!("unparseable attachment: {e}")))?;
+        // A dip/drt JSON body carries no source seal (it lives in the attachment);
+        // restore it so the delegation binding can be authenticated.
+        let event = rehydrate_event_source_seal(event.clone(), seals.into_iter().next());
+        signed.push(auths_keri::SignedEvent::new(event, sigs));
+    }
+    auths_keri::validate_signed_kel(&signed, lookup)
+        .map_err(|e| integrity_err(format!("KEL signature authentication failed (RT-002): {e}")))?;
+    Ok(())
+}
+
+/// Re-attach a delegated event's source seal from its parsed attachment — the JSON
+/// body of a `dip`/`drt` carries none (it lives in the `-G` group). Mirrors the
+/// storage layer's `rehydrate_source_seal`.
+fn rehydrate_event_source_seal(event: Event, seal: Option<auths_keri::SourceSeal>) -> Event {
+    let Some(seal) = seal else {
+        return event;
+    };
+    match event {
+        Event::Dip(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Dip(e)
+        }
+        Event::Drt(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Drt(e)
+        }
+        other => other,
+    }
+}
+
 /// Does the org KEL anchor a delegation `KeyEvent` seal for `member_prefix`?
 fn is_delegated(org_kel: &[Event], member_prefix: &Prefix) -> bool {
     org_kel.iter().any(|event| {
@@ -130,10 +188,16 @@ pub fn verify_org_bundle(
     pinned_roots: &[IdentityDID],
     query: Option<(&Prefix, Option<u128>)>,
 ) -> Result<OfflineVerifyReport, OrgError> {
-    // 1. Integrity: every bundled event must self-address correctly (tamper check).
+    // 1. Integrity + AUTHENTICATION (RT-002): every bundled event must self-address
+    //    (SAID) AND be signed by the controlling key-state — not just structurally
+    //    valid. The org KEL is the root of trust (no delegator); member KELs are
+    //    authenticated against the org as delegator.
     check_kel_integrity(&bundle.org_kel)?;
+    authenticate_bundled_kel(&bundle.org_kel, None)?;
+    let org_lookup = auths_keri::KelSealIndex::from_events(&bundle.org_kel.events);
     for member_kel in &bundle.member_kels {
         check_kel_integrity(member_kel)?;
+        authenticate_bundled_kel(member_kel, Some(&org_lookup))?;
     }
 
     // 2. Completeness: every member the org delegated must ship its own KEL.

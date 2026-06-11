@@ -928,11 +928,21 @@ pub struct IdentityBundle {
     pub curve: auths_crypto::CurveType,
     /// Chain of attestations linking the signing key to the identity
     pub attestation_chain: Vec<Attestation>,
-    /// The identity's raw KEL events (JSON, oldest first). Carried so
-    /// KEL-native commit verification stays stateless on CI runners with no
-    /// identity store. Empty in bundles exported before this field existed.
+    /// The identity's KEL events, oldest first (parsed at the deserialize
+    /// boundary, not held as loose JSON). Carried so KEL-native commit
+    /// verification stays stateless on CI runners with no identity store. Empty
+    /// in bundles exported before this field existed. Wire form is unchanged — a
+    /// JSON array of event objects.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub kel: Vec<serde_json::Value>,
+    pub kel: Vec<auths_keri::Event>,
+    /// The CESR signature attachment (hex) for each `kel` event, in the same
+    /// order. Lets a stateless verifier AUTHENTICATE the bundle's KEL — verify
+    /// each event is signed by the controlling key-state — not just replay it
+    /// structurally (RT-002). A bundle whose `kel_attachments` length differs
+    /// from `kel`, or whose signatures don't verify, fails closed. Empty in
+    /// pre-RT-002 bundles.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kel_attachments: Vec<String>,
     /// UTC timestamp when this bundle was created
     pub bundle_timestamp: DateTime<Utc>,
     /// Maximum age in seconds before this bundle is considered stale
@@ -1840,6 +1850,7 @@ mod tests {
             curve: Default::default(),
             attestation_chain: vec![],
             kel: vec![],
+            kel_attachments: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc),
@@ -1890,6 +1901,7 @@ mod tests {
             curve: Default::default(),
             attestation_chain: vec![attestation],
             kel: vec![],
+            kel_attachments: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc),

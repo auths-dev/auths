@@ -30,8 +30,11 @@ pub struct AuthenticatedTenant {
     pub org_prefix: String,
     /// Keychain alias of the org signing key that anchors delegations.
     pub org_key_alias: String,
-    /// Capabilities this tenant may grant (empty = permit all).
+    /// Capabilities this tenant may grant. Empty = deny all (RT-006) unless
+    /// `allow_all` is set.
     pub allowed_capabilities: Vec<Capability>,
+    /// Opt-in permit-all that bypasses the allowlist.
+    pub allow_all: bool,
     /// Base URL used for SCIM `meta.location`.
     pub base_url: String,
 }
@@ -66,6 +69,7 @@ impl FromRequestParts<ScimServerState> for AuthenticatedTenant {
                         org_prefix: t.org_prefix,
                         org_key_alias: t.org_key_alias,
                         allowed_capabilities: t.allowed_capabilities,
+                        allow_all: t.allow_all,
                         base_url: t.base_url,
                     })
                     .ok_or_else(|| unauthorized("invalid bearer token"))

@@ -58,7 +58,13 @@ jobs:
             target
           key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-clippy-
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      # `fips`/`cnsa` are mutually exclusive (RT-012 compile_error! in
+      # auths-crypto/src/provider.rs), so --all-features can't compile. Lint the
+      # bulk workspace minus the five dual-provider crypto crates, then lint those
+      # five under each provider separately.
+      - run: cargo clippy --all-targets --all-features --workspace --exclude auths-crypto --exclude auths-core --exclude auths-keri --exclude auths-pairing-protocol --exclude auths-pairing-daemon -- -D warnings
+      - run: cargo clippy --all-targets -p auths-crypto -p auths-core -p auths-keri -p auths-pairing-protocol -p auths-pairing-daemon --features fips -- -D warnings
+      - run: cargo clippy --all-targets -p auths-crypto -p auths-core -p auths-keri -p auths-pairing-protocol -p auths-pairing-daemon --features cnsa -- -D warnings
       - run: cargo run -p xtask -- check-clippy-sync
 
   xtask-checks:
@@ -75,6 +81,7 @@ jobs:
           cargo run -p xtask -- check-rfc6979
           cargo run -p xtask -- check-admission-policy
           cargo run -p xtask -- check-command-drift
+          cargo run -p xtask -- check-verify-path-completeness
           cargo run -p xtask -- gen-error-docs --check
       - name: Architecture boundary checks
         run: |
@@ -184,9 +191,17 @@ jobs:
         with:
           go-version: 'stable'
 
-      - name: Run tests (Ubuntu — all features incl. FIPS)
+      # `fips`/`cnsa` are mutually exclusive (RT-012), so --all-features can't
+      # compile. Run the bulk workspace with --all-features minus the five
+      # dual-provider crypto crates, then run those five under FIPS (the provider
+      # this job has always exercised — aws-lc-rs needs the Go/CMake toolchain
+      # installed above).
+      - name: Run tests (Ubuntu — all features, crypto crates excluded)
         if: matrix.os == 'ubuntu-latest'
-        run: cargo nextest run --workspace --all-features --no-fail-fast
+        run: cargo nextest run --workspace --all-features --no-fail-fast --exclude auths-crypto --exclude auths-core --exclude auths-keri --exclude auths-pairing-protocol --exclude auths-pairing-daemon
+      - name: Run tests (Ubuntu — crypto crates under FIPS)
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo nextest run -p auths-crypto -p auths-core -p auths-keri -p auths-pairing-protocol -p auths-pairing-daemon --features fips --no-fail-fast
 
       - name: Run tests (macOS — exclude FIPS, requires Go + Linux)
         if: matrix.os == 'macos-latest'

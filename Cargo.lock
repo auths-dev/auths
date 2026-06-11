@@ -507,6 +507,7 @@ dependencies = [
  "bs58",
  "cesride",
  "chacha20poly1305",
+ "getrandom 0.2.17",
  "hex",
  "hkdf",
  "hmac",
@@ -1036,6 +1037,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "subtle",
  "thiserror 2.0.18",
  "tokio",
  "wasm-bindgen",
@@ -8450,11 +8452,3 @@ dependencies = [
  "syn",
  "winnow 0.7.15",
 ]
-
-[[patch.unused]]
-name = "radicle-core"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "radicle-crypto"
-version = "0.14.0"

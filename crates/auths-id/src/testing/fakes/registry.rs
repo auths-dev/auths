@@ -21,6 +21,9 @@ type TelEntry = (u128, Vec<u8>);
 
 struct FakeState {
     events: HashMap<String, Vec<Event>>,
+    /// CESR signature attachments per `(prefix, seq)` — parallel to `events`, so
+    /// the fake round-trips signed events like the real backend (RT-002).
+    attachments: HashMap<(String, u128), Vec<u8>>,
     key_states: HashMap<String, KeyState>,
     attestations: HashMap<CanonicalDid, Attestation>,
     attestation_history: HashMap<CanonicalDid, Vec<Attestation>>,
@@ -46,6 +49,7 @@ impl FakeRegistryBackend {
         Self {
             state: Mutex::new(FakeState {
                 events: HashMap::new(),
+                attachments: HashMap::new(),
                 key_states: HashMap::new(),
                 attestations: HashMap::new(),
                 attestation_history: HashMap::new(),
@@ -159,6 +163,31 @@ impl RegistryBackend for FakeRegistryBackend {
         }
 
         Ok(())
+    }
+
+    fn append_signed_event(
+        &self,
+        prefix: &Prefix,
+        event: &Event,
+        attachment: &[u8],
+    ) -> Result<(), RegistryError> {
+        self.append_event(prefix, event)?;
+        if !attachment.is_empty() {
+            let mut state = self.state.lock().unwrap();
+            state.attachments.insert(
+                (prefix.as_str().to_string(), event.sequence().value()),
+                attachment.to_vec(),
+            );
+        }
+        Ok(())
+    }
+
+    fn get_attachment(&self, prefix: &Prefix, seq: u128) -> Result<Option<Vec<u8>>, RegistryError> {
+        let state = self.state.lock().unwrap();
+        Ok(state
+            .attachments
+            .get(&(prefix.as_str().to_string(), seq))
+            .cloned())
     }
 
     fn get_event(&self, prefix: &Prefix, seq: u128) -> Result<Event, RegistryError> {

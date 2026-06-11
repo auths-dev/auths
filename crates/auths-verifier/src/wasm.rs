@@ -351,37 +351,71 @@ async fn verify_chain_with_witnesses_internal(
     Ok(report)
 }
 
-/// Verifies a KERI Key Event Log and returns the resulting key state as JSON.
+/// Authenticates a KERI Key Event Log and returns the resulting key state as JSON.
+///
+/// Every event must carry a valid CESR signature from its controlling key-state:
+/// `kel_json` is the JSON array of events and `attachments_json` a parallel JSON
+/// array of hex-encoded CESR signature attachments (one per event). The KEL is
+/// replayed through [`validate_signed_kel`](auths_keri::validate_signed_kel), so a
+/// forged or unsigned KEL fails closed (RT-002) — the structural-only
+/// `validate_kel` is deliberately NOT exposed across this untrusted boundary. A
+/// delegated (`dip`/`drt`) KEL also fails closed here, because a single-KEL
+/// entrypoint cannot supply the delegator's anchoring seals; resolve those through
+/// the bundle/org path that carries the delegator KEL alongside it.
 ///
 /// Args:
 /// * `kel_json`: JSON array of KEL events (inception, rotation, interaction).
+/// * `attachments_json`: JSON array of hex CESR signature attachments, one per event.
 ///
 /// Usage:
 /// ```ignore
-/// let key_state_json = validateKelJson("[{\"v\":\"KERI10JSON\",\"t\":\"icp\",...}]").await?;
+/// let key_state_json = validateKelJson(kelJson, attachmentsJson).await?;
 /// ```
 #[wasm_bindgen(js_name = validateKelJson)]
-pub async fn wasm_validate_kel_json(kel_json: &str) -> Result<String, JsValue> {
-    console_log!("WASM: Verifying KEL...");
+pub async fn wasm_validate_kel_json(
+    kel_json: &str,
+    attachments_json: &str,
+) -> Result<String, JsValue> {
+    console_log!("WASM: Authenticating KEL...");
 
-    if kel_json.len() > MAX_JSON_BATCH_SIZE {
+    if kel_json.len() > MAX_JSON_BATCH_SIZE || attachments_json.len() > MAX_JSON_BATCH_SIZE {
         return Err(JsValue::from_str(&format!(
-            "KEL JSON too large: {} bytes, max {}",
-            kel_json.len(),
-            MAX_JSON_BATCH_SIZE
+            "KEL input too large: max {MAX_JSON_BATCH_SIZE} bytes per field"
         )));
     }
 
     let events = auths_keri::parse_kel_json(kel_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse KEL JSON: {}", e)))?;
+    let attachments: Vec<String> = serde_json::from_str(attachments_json)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse attachments JSON: {}", e)))?;
 
-    let key_state = auths_keri::validate_kel(&events)
-        .map_err(|e| JsValue::from_str(&format!("KEL verification failed: {}", e)))?;
+    // An absent/short attachment list is an UNAUTHENTICATED KEL — refuse it rather
+    // than fall back to a structural-only replay (that fallback is exactly RT-002).
+    if attachments.len() != events.len() {
+        return Err(JsValue::from_str(&format!(
+            "KEL/attachment length mismatch ({} events vs {} attachments): the KEL is \
+             unauthenticated, refusing (RT-002)",
+            events.len(),
+            attachments.len()
+        )));
+    }
 
-    console_log!(
-        "WASM: KEL verification successful, sequence: {}",
-        key_state.sequence
-    );
+    let signed: Vec<auths_keri::SignedEvent> = events
+        .into_iter()
+        .zip(attachments.iter())
+        .map(|(event, att_hex)| {
+            let bytes = hex::decode(att_hex)
+                .map_err(|e| JsValue::from_str(&format!("Invalid attachment hex: {}", e)))?;
+            let sigs = auths_keri::parse_attachment(&bytes)
+                .map_err(|e| JsValue::from_str(&format!("Invalid CESR attachment: {}", e)))?;
+            Ok(auths_keri::SignedEvent::new(event, sigs))
+        })
+        .collect::<Result<_, JsValue>>()?;
+
+    let key_state = auths_keri::validate_signed_kel(&signed, None)
+        .map_err(|e| JsValue::from_str(&format!("KEL authentication failed: {}", e)))?;
+
+    console_log!("WASM: KEL authenticated, sequence: {}", key_state.sequence);
 
     serde_json::to_string(&key_state)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize key state: {}", e)))

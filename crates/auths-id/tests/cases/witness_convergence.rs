@@ -20,8 +20,8 @@ use auths_id::keri::event::EventReceipts;
 use auths_id::storage::{GitReceiptStorage, GitWitnessReceiptLookup, ReceiptStorage};
 use auths_keri::{
     CesrKey, Event, IcpEvent, IxnEvent, KeriPublicKey, KeriSequence, Prefix, Said, Seal, Threshold,
-    VersionString, WitnessedReplay, compute_next_commitment, finalize_icp_event,
-    finalize_ixn_event, validate_kel_with_receipts,
+    TrustedKel, VersionString, WitnessedReplay, compute_next_commitment, finalize_icp_event,
+    finalize_ixn_event,
 };
 use auths_verifier::duplicity::{DuplicityReport, KelEventRef, detect_duplicity};
 
@@ -148,7 +148,9 @@ fn anchoring_ixn_is_not_witness_quorum_gated() {
     );
 
     let ixn = anchoring_ixn(&controller, &said);
-    let outcome = validate_kel_with_receipts(&[icp, Event::Ixn(ixn)], None, &lookup).unwrap();
+    let outcome = TrustedKel::from_trusted_source(&[icp, Event::Ixn(ixn)])
+        .replay_with_receipts(None, &lookup)
+        .unwrap();
     assert!(
         matches!(outcome, WitnessedReplay::Accepted(_)),
         "ixn is NOT witness-quorum-gated: an anchoring ixn with no receipts of its own \
@@ -174,7 +176,10 @@ fn under_quorum_establishment_still_fails_closed_with_anchoring_ixn() {
     );
 
     let ixn = anchoring_ixn(&controller, &said);
-    match validate_kel_with_receipts(&[icp, Event::Ixn(ixn)], None, &lookup).unwrap() {
+    match TrustedKel::from_trusted_source(&[icp, Event::Ixn(ixn)])
+        .replay_with_receipts(None, &lookup)
+        .unwrap()
+    {
         WitnessedReplay::Pending {
             sequence,
             collected,
@@ -207,7 +212,9 @@ fn witness_quorum_end_to_end_verifies() {
         ],
     );
 
-    let outcome = validate_kel_with_receipts(&[icp], None, &lookup).unwrap();
+    let outcome = TrustedKel::from_trusted_source(&[icp])
+        .replay_with_receipts(None, &lookup)
+        .unwrap();
     assert!(
         matches!(outcome, WitnessedReplay::Accepted(_)),
         "quorum-met key-state must verify, got {outcome:?}"
@@ -231,7 +238,10 @@ fn under_quorum_end_to_end_refused_when_required() {
 
     // The replay gate reports Pending; a verifier under --require-witnesses
     // (D.7) maps this to a fail-closed verdict.
-    match validate_kel_with_receipts(&[icp], None, &lookup).unwrap() {
+    match TrustedKel::from_trusted_source(&[icp])
+        .replay_with_receipts(None, &lookup)
+        .unwrap()
+    {
         WitnessedReplay::Pending {
             sequence,
             collected,
@@ -266,7 +276,9 @@ fn forged_receipt_does_not_satisfy_quorum_e2e() {
 
     assert!(
         matches!(
-            validate_kel_with_receipts(&[icp], None, &lookup).unwrap(),
+            TrustedKel::from_trusted_source(&[icp])
+                .replay_with_receipts(None, &lookup)
+                .unwrap(),
             WitnessedReplay::Pending { .. }
         ),
         "a non-designated witness receipt must not count toward quorum"
@@ -290,7 +302,9 @@ fn two_diverging_views_converge_with_witness() {
         vec![stored_receipt(&w1, controller.as_str(), &said)],
     );
     assert!(matches!(
-        validate_kel_with_receipts(std::slice::from_ref(&icp), None, &lookup).unwrap(),
+        TrustedKel::from_trusted_source(std::slice::from_ref(&icp))
+            .replay_with_receipts(None, &lookup)
+            .unwrap(),
         WitnessedReplay::Accepted(_)
     ));
 

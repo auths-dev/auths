@@ -55,7 +55,12 @@ repos:
 
       - id: cargo-clippy
         name: cargo clippy
-        entry: cargo clippy --all-targets --all-features --keep-going -- -D warnings
+        # `fips` and `cnsa` are mutually exclusive (compile_error! in
+        # auths-crypto/src/provider.rs, RT-012), so `--all-features` no longer
+        # compiles. Lint the bulk workspace with --all-features excluding the five
+        # crates that carry both providers, then lint those five under each
+        # provider separately.
+        entry: bash -c 'cargo clippy --all-targets --all-features --keep-going --workspace --exclude auths-crypto --exclude auths-core --exclude auths-keri --exclude auths-pairing-protocol --exclude auths-pairing-daemon -- -D warnings && cargo clippy --all-targets --keep-going -p auths-crypto -p auths-core -p auths-keri -p auths-pairing-protocol -p auths-pairing-daemon --features fips -- -D warnings && cargo clippy --all-targets --keep-going -p auths-crypto -p auths-core -p auths-keri -p auths-pairing-protocol -p auths-pairing-daemon --features cnsa -- -D warnings'
         language: system
         types: [rust]
         pass_filenames: false

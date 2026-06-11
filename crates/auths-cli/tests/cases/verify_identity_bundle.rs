@@ -132,3 +132,75 @@ fn malformed_identity_bundle_fails_closed_exit_2() {
         "an unparseable bundle must fail closed with exit 2, never verify"
     );
 }
+
+#[test]
+fn identity_bundle_with_stripped_signatures_fails_closed() {
+    // RT-002: a bundle whose KEL event signatures are removed cannot be
+    // AUTHENTICATED and MUST fail closed — even though it pins the correct root
+    // and is structurally valid. A purely structural verifier would (wrongly)
+    // accept it; this is the regression proving event signatures are checked.
+    let (env, good) = setup_signed_commit_and_bundle();
+
+    let stripped = env.home.path().join("stripped-bundle.json");
+    let mut bundle: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&good).unwrap()).unwrap();
+    // Blank the per-event signature attachments; the KEL is now unauthenticatable.
+    bundle["kel_attachments"] = serde_json::json!([]);
+    std::fs::write(&stripped, serde_json::to_string(&bundle).unwrap()).unwrap();
+
+    let out = env
+        .cmd("auths")
+        .args([
+            "verify",
+            "HEAD",
+            "--identity-bundle",
+            stripped.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "a bundle with stripped KEL signatures must NOT verify (RT-002): {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+#[test]
+fn identity_bundle_with_forged_signature_fails_closed() {
+    // RT-002: tampering an event's signature attachment (bundle otherwise valid)
+    // must fail closed — the signature no longer verifies against the committed
+    // key-state.
+    let (env, good) = setup_signed_commit_and_bundle();
+
+    let forged = env.home.path().join("forged-bundle.json");
+    let mut bundle: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&good).unwrap()).unwrap();
+    if let Some(first) = bundle["kel_attachments"]
+        .as_array_mut()
+        .and_then(|a| a.first_mut())
+    {
+        // Flip the last hex nibble of the inception's signature attachment.
+        let mut s = first.as_str().unwrap().to_string();
+        if let Some(last) = s.pop() {
+            s.push(if last == '0' { '1' } else { '0' });
+        }
+        *first = serde_json::json!(s);
+    }
+    std::fs::write(&forged, serde_json::to_string(&bundle).unwrap()).unwrap();
+
+    let out = env
+        .cmd("auths")
+        .args([
+            "verify",
+            "HEAD",
+            "--identity-bundle",
+            forged.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        !out.status.success(),
+        "a bundle with a forged KEL signature must NOT verify (RT-002): {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}

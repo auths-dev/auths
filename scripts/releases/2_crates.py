@@ -107,7 +107,7 @@ def cargo_login_configured() -> bool:
         return False
     # Try a dry-run publish to check token — just verify cargo config exists
     result = subprocess.run(
-        ["cargo", "publish", "-p", "auths", "--dry-run"],
+        ["cargo", "publish", "-p", "auths", "--dry-run", "--locked"],
         capture_output=True,
         text=True,
         cwd=CARGO_TOML.parent,
@@ -120,7 +120,7 @@ def cargo_login_configured() -> bool:
 def publish_crate(crate_name: str) -> bool:
     print(f"  Publishing {crate_name}...", flush=True)
     result = subprocess.run(
-        ["cargo", "publish", "-p", crate_name],
+        ["cargo", "publish", "-p", crate_name, "--locked"],
         capture_output=True,
         text=True,
         cwd=CARGO_TOML.parent,
