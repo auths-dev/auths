@@ -96,8 +96,14 @@ mod tests {
     /// handle too, so tests can assert how many delegations actually happened.
     fn state_with_fake(known_org: &str) -> (ScimServerState, Arc<FakeProvisioner>) {
         let provisioner = Arc::new(FakeProvisioner::new(&[known_org]));
+        // Capability allowlisting is deny-by-default (B.1 / RT-006). These CRUD
+        // tests exercise provisioning behavior, not the allowlist (which is unit-
+        // tested in `auths-scim`), and they use arbitrary capabilities, so the
+        // harness opts into allow-all. A restrictive-allowlist deny is covered by
+        // `joiner_with_disallowed_capability_is_denied` below.
         let tenant = TenantConfig::new("acme", ORG, "scim_secret")
-            .with_base_url("https://scim.test/scim/v2");
+            .with_base_url("https://scim.test/scim/v2")
+            .with_allow_all(true);
         let state = ScimServerState::new(
             vec![tenant],
             Arc::clone(&provisioner) as Arc<dyn Provisioner>,
@@ -273,6 +279,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn joiner_with_disallowed_capability_is_denied() {
+        // B.1 / RT-006: a tenant with a restrictive allowlist denies a capability
+        // outside it (deny-by-default at the server boundary, not just the mapper).
+        let provisioner = Arc::new(FakeProvisioner::new(&[ORG]));
+        let tenant = TenantConfig::new("acme", ORG, "scim_secret")
+            .with_base_url("https://scim.test/scim/v2")
+            .with_allowed_capabilities(vec![
+                auths_verifier::Capability::parse("deploy:staging").unwrap(),
+            ]);
+        let state = ScimServerState::new(
+            vec![tenant],
+            Arc::clone(&provisioner) as Arc<dyn Provisioner>,
+        );
+        // `user_body` requests "sign:commit", which is NOT in the allowlist.
+        let resp = router(state)
+            .oneshot(post_users(user_body("deploy-bot", "okta-1")))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
     async fn joiner_is_idempotent_on_external_id() {
         let (state, provisioner) = state_with_fake(ORG);
         let app = router(state);
@@ -308,7 +336,9 @@ mod tests {
     async fn unknown_org_tenant_returns_4xx_not_500() {
         // Tenant points at an org the provisioner does not know about.
         let provisioner = Arc::new(FakeProvisioner::new(&["ESomeOtherOrg"]));
-        let tenant = TenantConfig::new("acme", "EMissingOrg", "scim_secret");
+        // allow-all so the capability check passes and we reach the org-resolution
+        // path this test targets (see `state_with_fake`).
+        let tenant = TenantConfig::new("acme", "EMissingOrg", "scim_secret").with_allow_all(true);
         let state = ScimServerState::new(vec![tenant], provisioner);
         let resp = router(state)
             .oneshot(post_users(user_body("deploy-bot", "okta-1")))

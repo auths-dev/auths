@@ -170,23 +170,27 @@ pub struct RotationKeyMaterial {
 /// Args:
 /// * `rot`: The pre-computed rotation event to append to the KEL.
 /// * `prefix`: KERI identifier prefix (the `did:keri:` suffix).
+/// * `rot_attachment`: The `rot` event's CESR signature attachment, so a later
+///   `export-bundle` can authenticate the rotation (RT-002) rather than fail with
+///   "no stored signature attachment".
 /// * `key_material`: Encrypted key material and aliases for keychain operations.
 /// * `registry`: Registry backend for KEL append.
 /// * `key_storage`: Keychain for storing rotated key material.
 ///
 /// Usage:
 /// ```ignore
-/// apply_rotation(&rot, prefix, key_material, registry.as_ref(), key_storage.as_ref())?;
+/// apply_rotation(&rot, prefix, &attachment, key_material, registry.as_ref(), key_storage.as_ref())?;
 /// ```
 pub fn apply_rotation(
     rot: &RotEvent,
     prefix: &Prefix,
+    rot_attachment: &[u8],
     key_material: RotationKeyMaterial,
     registry: &(dyn RegistryBackend + Send + Sync),
     key_storage: &(dyn KeyStorage + Send + Sync),
 ) -> Result<(), RotationError> {
     registry
-        .append_event(prefix, &Event::Rot(rot.clone()))
+        .append_signed_event(prefix, &Event::Rot(rot.clone()), rot_attachment)
         .map_err(|e| RotationError::RotationFailed(format!("KEL append failed: {e}")))?;
 
     // NOTE: non-atomic — KEL and keychain writes are not transactional.
@@ -537,9 +541,27 @@ fn finalize_rotation_storage(
         new_next_encrypted: encrypted_new_next.to_vec(),
     };
 
+    // Sign the rot with the new current key and store its CESR attachment, so a
+    // later `export-bundle` can AUTHENTICATE the rotation event (RT-002). Without
+    // this the rot has no stored attachment and `id export-bundle` aborts with
+    // "KEL event at seq N has no stored signature attachment".
+    let parsed = auths_crypto::parse_key_material(params.current_pkcs8)
+        .map_err(|e| RotationError::RotationFailed(format!("parse new current key: {e}")))?;
+    let canonical = serialize_for_signing(&Event::Rot(params.rot.clone()))
+        .map_err(|e| RotationError::RotationFailed(format!("serialize rot for signing: {e}")))?;
+    let sig = auths_crypto::typed_sign(&parsed.seed, &canonical)
+        .map_err(|e| RotationError::RotationFailed(format!("sign rot: {e}")))?;
+    let rot_attachment = auths_keri::serialize_attachment(&[auths_keri::IndexedSignature {
+        index: 0,
+        prior_index: None,
+        sig,
+    }])
+    .map_err(|e| RotationError::RotationFailed(format!("serialize rot attachment: {e}")))?;
+
     apply_rotation(
         params.rot,
         params.prefix,
+        &rot_attachment,
         key_material,
         ctx.registry.as_ref(),
         ctx.key_storage.as_ref(),

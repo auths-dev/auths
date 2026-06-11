@@ -37,9 +37,18 @@
       ]
     },
     "kel": {
-      "description": "The identity's raw KEL events (JSON, oldest first). Carried so KEL-native commit verification stays stateless on CI runners with no identity store. Empty in bundles exported before this field existed.",
+      "description": "The identity's KEL events, oldest first (parsed at the deserialize boundary, not held as loose JSON). Carried so KEL-native commit verification stays stateless on CI runners with no identity store. Empty in bundles exported before this field existed. Wire form is unchanged — a JSON array of event objects.",
       "type": "array",
-      "items": true
+      "items": {
+        "$ref": "#/definitions/Event"
+      }
+    },
+    "kel_attachments": {
+      "description": "The CESR signature attachment (hex) for each `kel` event, in the same order. Lets a stateless verifier AUTHENTICATE the bundle's KEL — verify each event is signed by the controlling key-state — not just replay it structurally (RT-002). A bundle whose `kel_attachments` length differs from `kel`, or whose signatures don't verify, fails closed. Empty in pre-RT-002 bundles.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
     "max_valid_for_secs": {
       "description": "Maximum age in seconds before this bundle is considered stale",
@@ -200,6 +209,43 @@
         }
       }
     },
+    "CesrKey": {
+      "description": "A CESR-encoded public key (e.g., `D` + base64url Ed25519, `1AAI` + base64url P-256).\n\nWraps the qualified string form. Use `parse()` to extract the curve-tagged `KeriPublicKey` for cryptographic operations.\n\nUsage: ``` use auths_keri::CesrKey; let key = CesrKey::new_unchecked(\"DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\".into()); assert!(key.parse().is_ok()); ```",
+      "type": "string"
+    },
+    "ConfigTrait": {
+      "description": "KERI configuration trait codes.\n\nThese control identity behavior at inception and may be updated at rotation (for `RB`/`NRB` only). If two conflicting traits appear, the latter supersedes.\n\nUsage: ``` use auths_keri::ConfigTrait; let traits: Vec<ConfigTrait> = serde_json::from_str(r#\"[\"EO\",\"DND\"]\"#).unwrap(); assert!(traits.contains(&ConfigTrait::EstablishmentOnly)); ```",
+      "oneOf": [
+        {
+          "description": "Establishment-Only: only establishment events in KEL.",
+          "type": "string",
+          "enum": [
+            "EO"
+          ]
+        },
+        {
+          "description": "Do-Not-Delegate: cannot act as delegator.",
+          "type": "string",
+          "enum": [
+            "DND"
+          ]
+        },
+        {
+          "description": "Registrar Backers: backer list provides registrar backer AIDs.",
+          "type": "string",
+          "enum": [
+            "RB"
+          ]
+        },
+        {
+          "description": "No Registrar Backers: switch back to witnesses.",
+          "type": "string",
+          "enum": [
+            "NRB"
+          ]
+        }
+      ]
+    },
     "DevicePublicKey": {
       "description": "A device public key carrying its curve type explicitly.\n\nCurve is stored alongside the raw key bytes so dispatch never relies on key length — adding a new curve that shares a byte length (e.g. secp256k1, also 33 bytes compressed) won't break existing match arms.\n\nAccepted byte lengths per curve: - Ed25519: 32 - P-256: 33 (compressed SEC1) or 65 (uncompressed SEC1)",
       "type": "object",
@@ -212,8 +258,608 @@
         }
       }
     },
+    "Event": {
+      "description": "Unified event enum for processing any KERI event type.",
+      "oneOf": [
+        {
+          "description": "Inception event",
+          "type": "object",
+          "required": [
+            "bt",
+            "d",
+            "i",
+            "k",
+            "kt",
+            "n",
+            "nt",
+            "s",
+            "t",
+            "v"
+          ],
+          "properties": {
+            "a": {
+              "description": "Anchored seals",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Seal"
+              }
+            },
+            "b": {
+              "description": "Witness/backer list (ordered AIDs)",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Prefix"
+              }
+            },
+            "bt": {
+              "description": "Witness/backer threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "c": {
+              "description": "Configuration traits (e.g., EstablishmentOnly, DoNotDelegate)",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ConfigTrait"
+              }
+            },
+            "d": {
+              "description": "SAID (Self-Addressing Identifier) — Blake3 hash of event",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "i": {
+              "description": "Identifier prefix (same as `d` for self-addressing inception)",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Prefix"
+                }
+              ]
+            },
+            "k": {
+              "description": "Current public key(s), CESR-encoded",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CesrKey"
+              }
+            },
+            "kt": {
+              "description": "Key signing threshold (hex integer or fractional weight list)",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "n": {
+              "description": "Next key commitment(s) — Blake3 digests of next public key(s)",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Said"
+              }
+            },
+            "nt": {
+              "description": "Next key signing threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "s": {
+              "description": "Sequence number (always 0 for inception)",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/KeriSequence"
+                }
+              ]
+            },
+            "t": {
+              "type": "string",
+              "enum": [
+                "icp"
+              ]
+            },
+            "v": {
+              "description": "Version string",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/VersionString"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Rotation event",
+          "type": "object",
+          "required": [
+            "bt",
+            "d",
+            "i",
+            "k",
+            "kt",
+            "n",
+            "nt",
+            "p",
+            "s",
+            "t",
+            "v"
+          ],
+          "properties": {
+            "a": {
+              "description": "Anchored seals",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Seal"
+              }
+            },
+            "ba": {
+              "description": "List of backers to add (processed after removals)",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Prefix"
+              }
+            },
+            "br": {
+              "description": "List of backers to remove (processed first)",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Prefix"
+              }
+            },
+            "bt": {
+              "description": "Witness/backer threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "c": {
+              "description": "Configuration traits",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ConfigTrait"
+              }
+            },
+            "d": {
+              "description": "SAID of this event",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "i": {
+              "description": "Identifier prefix",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Prefix"
+                }
+              ]
+            },
+            "k": {
+              "description": "New current key(s), CESR-encoded",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CesrKey"
+              }
+            },
+            "kt": {
+              "description": "Key signing threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "n": {
+              "description": "New next key commitment(s) — Blake3 digests",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Said"
+              }
+            },
+            "nt": {
+              "description": "Next key signing threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "p": {
+              "description": "Previous event SAID (creates the hash chain)",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "s": {
+              "description": "Sequence number (increments with each event)",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/KeriSequence"
+                }
+              ]
+            },
+            "t": {
+              "type": "string",
+              "enum": [
+                "rot"
+              ]
+            },
+            "v": {
+              "description": "Version string",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/VersionString"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Interaction event",
+          "type": "object",
+          "required": [
+            "a",
+            "d",
+            "i",
+            "p",
+            "s",
+            "t",
+            "v"
+          ],
+          "properties": {
+            "a": {
+              "description": "Anchored seals (the main purpose of IXN events)",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Seal"
+              }
+            },
+            "d": {
+              "description": "SAID of this event",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "i": {
+              "description": "Identifier prefix",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Prefix"
+                }
+              ]
+            },
+            "p": {
+              "description": "Previous event SAID",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "s": {
+              "description": "Sequence number",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/KeriSequence"
+                }
+              ]
+            },
+            "t": {
+              "type": "string",
+              "enum": [
+                "ixn"
+              ]
+            },
+            "v": {
+              "description": "Version string",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/VersionString"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Delegated inception event",
+          "type": "object",
+          "required": [
+            "bt",
+            "d",
+            "di",
+            "i",
+            "k",
+            "kt",
+            "n",
+            "nt",
+            "s",
+            "t",
+            "v"
+          ],
+          "properties": {
+            "a": {
+              "description": "Anchored seals",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Seal"
+              }
+            },
+            "b": {
+              "description": "Witness/backer list",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Prefix"
+              }
+            },
+            "bt": {
+              "description": "Witness/backer threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "c": {
+              "description": "Configuration traits",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ConfigTrait"
+              }
+            },
+            "d": {
+              "description": "SAID",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "di": {
+              "description": "Delegator identifier prefix",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Prefix"
+                }
+              ]
+            },
+            "i": {
+              "description": "Identifier prefix (same as `d` for self-addressing)",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Prefix"
+                }
+              ]
+            },
+            "k": {
+              "description": "Current public key(s)",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CesrKey"
+              }
+            },
+            "kt": {
+              "description": "Key signing threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "n": {
+              "description": "Next key commitment(s)",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Said"
+              }
+            },
+            "nt": {
+              "description": "Next key signing threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "s": {
+              "description": "Sequence number (always 0)",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/KeriSequence"
+                }
+              ]
+            },
+            "t": {
+              "type": "string",
+              "enum": [
+                "dip"
+              ]
+            },
+            "v": {
+              "description": "Version string",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/VersionString"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "description": "Delegated rotation event",
+          "type": "object",
+          "required": [
+            "bt",
+            "d",
+            "di",
+            "i",
+            "k",
+            "kt",
+            "n",
+            "nt",
+            "p",
+            "s",
+            "t",
+            "v"
+          ],
+          "properties": {
+            "a": {
+              "description": "Anchored seals",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Seal"
+              }
+            },
+            "ba": {
+              "description": "Backers to add",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Prefix"
+              }
+            },
+            "br": {
+              "description": "Backers to remove",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Prefix"
+              }
+            },
+            "bt": {
+              "description": "Witness/backer threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "c": {
+              "description": "Configuration traits",
+              "default": [],
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ConfigTrait"
+              }
+            },
+            "d": {
+              "description": "SAID",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "di": {
+              "description": "Delegator identifier prefix (KERI §11).",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Prefix"
+                }
+              ]
+            },
+            "i": {
+              "description": "Identifier prefix",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Prefix"
+                }
+              ]
+            },
+            "k": {
+              "description": "New current key(s)",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/CesrKey"
+              }
+            },
+            "kt": {
+              "description": "Key signing threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "n": {
+              "description": "New next key commitment(s)",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Said"
+              }
+            },
+            "nt": {
+              "description": "Next key signing threshold",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Threshold"
+                }
+              ]
+            },
+            "p": {
+              "description": "Previous event SAID",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Said"
+                }
+              ]
+            },
+            "s": {
+              "description": "Sequence number",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/KeriSequence"
+                }
+              ]
+            },
+            "t": {
+              "type": "string",
+              "enum": [
+                "drt"
+              ]
+            },
+            "v": {
+              "description": "Version string",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/VersionString"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
     "IdentityDID": {
       "description": "Strongly-typed wrapper for identity DIDs (e.g., `\"did:keri:E...\"`).\n\nUsage: ```rust # use auths_verifier::IdentityDID; let did = IdentityDID::parse(\"did:keri:Eabc123\").unwrap(); assert_eq!(did.as_str(), \"did:keri:Eabc123\");\n\nlet s: String = did.into_inner(); ```",
+      "type": "string"
+    },
+    "KeriSequence": {
       "type": "string"
     },
     "OidcBinding": {
@@ -267,10 +913,19 @@
         }
       }
     },
+    "Prefix": {
+      "description": "Strongly-typed KERI identifier prefix (e.g., `\"ETest123...\"`, `\"DKey456...\"`).\n\nA prefix is the autonomous identifier (AID) for a KERI identity. For self-addressing AIDs it starts with `E` (Blake3-256 digest of the inception event); for key-based AIDs it starts with `D` (Ed25519 public key) or another CESR derivation code.\n\nArgs: * Inner `String` must start with a valid CESR derivation code (uppercase letter or digit). Enforced by `new()`, not by serde.\n\nUsage: ```ignore let prefix = Prefix::new(\"ETest123abc\".to_string())?; assert_eq!(prefix.as_str(), \"ETest123abc\"); ```",
+      "type": "string"
+    },
     "PublicKeyHex": {
       "description": "A validated hex-encoded public key (64 hex chars for Ed25519, 66 for P-256 compressed).",
       "type": "string"
     },
+    "Said": {
+      "description": "KERI Self-Addressing Identifier (SAID).\n\nA Blake3 hash that uniquely identifies a KERI event. Creates the hash chain: each event's `p` (previous) field is the prior event's SAID.\n\nStructurally identical to `Prefix` (both start with 'E') but semantically distinct — a prefix identifies an *identity*, a SAID identifies an *event*.\n\nArgs: * Inner `String` must be non-empty (rejected on deserialize) and should start with `'E'` (the Blake3 digest derivation code, enforced by `new()`).\n\nUsage: ```ignore let said = Said::new(\"ESAID123\".to_string())?; assert_eq!(said.as_str(), \"ESAID123\"); ```",
+      "type": "string"
+    },
+    "Seal": true,
     "SignerType": {
       "description": "The type of entity that produced a signature.\n\nDuplicated here (also in `auths-policy`) because `auths-verifier` is a standalone minimal-dependency crate that cannot depend on `auths-policy`.",
       "oneOf": [
@@ -297,10 +952,14 @@
         }
       ]
     },
+    "Threshold": true,
     "TypedSignature": {
       "description": "Curve-agnostic 64-byte signature (Ed25519 or P-256 r||s, hex-encoded). Curve is determined by the companion DevicePublicKey.",
       "type": "string",
       "format": "hex"
+    },
+    "VersionString": {
+      "type": "string"
     }
   }
 }
