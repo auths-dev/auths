@@ -282,11 +282,7 @@ pub fn verify_credential_sync(
     ) else {
         return CredentialVerdict::SchemaInvalid;
     };
-    let Ok(caps) = capability_claims(acdc)
-        .iter()
-        .map(|c| Capability::parse(c))
-        .collect::<Result<Vec<_>, _>>()
-    else {
+    let Ok(caps) = capability_claims(acdc) else {
         return CredentialVerdict::SchemaInvalid;
     };
 
@@ -317,14 +313,20 @@ fn validate_against_schema(acdc: &Acdc) -> Result<(), ()> {
     }
 }
 
-/// The capability claims granted by the credential (`a.capability`).
-fn capability_claims(acdc: &Acdc) -> Vec<String> {
-    acdc.a
+/// The capability claims granted by the credential, decoded from `a.capability`.
+///
+/// Decodes the single claim string through [`Capability::parse_claim`] — the same
+/// grammar the issuer encodes with — so a multi-capability credential yields each
+/// capability. A malformed claim is an `Err` (the caller fails closed as
+/// `SchemaInvalid`) rather than a silently-wrong single capability.
+fn capability_claims(acdc: &Acdc) -> Result<Vec<Capability>, ()> {
+    let claim = acdc
+        .a
         .data
         .get(CAPABILITY_FIELD)
         .and_then(|v| v.as_str())
-        .map(|c| vec![c.to_string()])
-        .unwrap_or_default()
+        .unwrap_or_default();
+    Capability::parse_claim(claim).map_err(|_| ())
 }
 
 /// Reject an expired credential by comparing the optional `a.expiry` to `now`.
