@@ -85,9 +85,9 @@ pub use events::{
     AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
     IndexedSignature, IxnEvent, KERI_VERSION_PREFIX, KeriSequence, RotEvent, RotEventInit, Seal,
     SignedEvent, SourceSeal, WireSignedDip, WireSignedRot, decode_agent_scope, decode_signed_dip,
-    decode_signed_rot, encode_agent_scope, encode_signed_dip, encode_signed_rot, parse_attachment,
-    parse_delegated_attachment, parse_source_seal_couples, serialize_attachment,
-    serialize_source_seal_couples,
+    decode_signed_rot, encode_agent_scope, encode_signed_dip, encode_signed_rot,
+    pair_kel_attachments, parse_attachment, parse_delegated_attachment, parse_source_seal_couples,
+    serialize_attachment, serialize_source_seal_couples,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use ksn::{KSN_TYPE, KSN_VERSION, KeyStateNotice, KsnError, SignedKsn};

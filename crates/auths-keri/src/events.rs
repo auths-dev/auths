@@ -1570,6 +1570,45 @@ fn parse_sig_group(s: &str) -> Result<(Vec<IndexedSignature>, &str), AttachmentE
     Ok((out, cursor))
 }
 
+/// Pair an ordered KEL with its per-event CESR signature attachments,
+/// producing the [`SignedEvent`]s an authenticated replay
+/// ([`validate_signed_kel`](crate::validate_signed_kel)) consumes.
+///
+/// FAIL-CLOSED on count mismatch: a KEL whose attachment list is absent or
+/// short is an *unauthenticated* KEL — it is refused here rather than letting
+/// any caller fall back to a structural-only replay (the RT-002 forge). Every
+/// stateless verify entrypoint (WASM, mobile FFI) routes through this one
+/// definition so the refusal rule cannot drift between transports.
+///
+/// Args:
+/// * `events`: The ordered KEL events, e.g. from [`parse_kel_json`](crate::parse_kel_json).
+/// * `attachments`: One CESR `-A##` indexed-signature group per event, as raw
+///   bytes (the text-domain `.cesr` form; transport encodings like hex are the
+///   caller's adapter concern).
+///
+/// Usage:
+/// ```ignore
+/// let events = auths_keri::parse_kel_json(kel_json)?;
+/// let signed = auths_keri::pair_kel_attachments(events, &attachment_bytes)?;
+/// let state = auths_keri::validate_signed_kel(&signed, None)?;
+/// ```
+pub fn pair_kel_attachments(
+    events: Vec<Event>,
+    attachments: &[impl AsRef<[u8]>],
+) -> Result<Vec<SignedEvent>, AttachmentError> {
+    if attachments.len() != events.len() {
+        return Err(AttachmentError::CountMismatch {
+            events: events.len(),
+            attachments: attachments.len(),
+        });
+    }
+    events
+        .into_iter()
+        .zip(attachments)
+        .map(|(event, att)| Ok(SignedEvent::new(event, parse_attachment(att.as_ref())?)))
+        .collect()
+}
+
 /// Error shape for attachment encode/decode.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -1580,6 +1619,18 @@ pub enum AttachmentError {
     /// Decoding a CESR attachment stream failed (bad counter, malformed Siger, etc.).
     #[error("attachment decode: {0}")]
     Decode(String),
+    /// The KEL and its attachment list disagree in length: at least one event
+    /// has no signature group, so the KEL is unauthenticated. Refused outright
+    /// instead of degrading to a structural-only replay.
+    #[error(
+        "KEL/attachment count mismatch ({events} events vs {attachments} attachments): the KEL is unauthenticated, refusing"
+    )]
+    CountMismatch {
+        /// Number of events in the KEL.
+        events: usize,
+        /// Number of signature attachments supplied.
+        attachments: usize,
+    },
 }
 
 /// CESR base64url alphabet, ordered so `B64_ALPHA[n]` is the char for n.

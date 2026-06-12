@@ -23,6 +23,7 @@ pub mod auth_challenge_context;
 pub mod delegated_inception_context;
 pub mod device_kel_rotation;
 pub mod identity_context;
+pub mod kel_verification;
 pub mod pairing_context;
 pub mod shared_kel_context;
 pub(crate) mod signature;
@@ -40,12 +41,13 @@ pub use auth_challenge_context::{
     AuthChallengeContext, assemble_auth_challenge_response, build_auth_challenge_signing_payload,
 };
 pub use delegated_inception_context::{
-    P256DelegatedInceptionContext, SignedDelegatedInception,
-    assemble_p256_delegated_inception, build_p256_delegated_inception_payload,
+    P256DelegatedInceptionContext, SignedDelegatedInception, assemble_p256_delegated_inception,
+    build_p256_delegated_inception_payload,
 };
 pub use identity_context::{
     P256IdentityInceptionContext, assemble_p256_identity, build_p256_identity_inception_payload,
 };
+pub use kel_verification::{VerifiedKeyState, validate_kel_json};
 pub use pairing_context::{
     PairingBindingContext, assemble_pairing_response_body, build_pairing_binding_message,
 };
@@ -85,6 +87,9 @@ pub enum MobileError {
 
     #[error("Pre-committed next key does not match the prior KEL commitment: {0}")]
     CommitmentMismatch(String),
+
+    #[error("KEL verification failed: {0}")]
+    KelVerificationFailed(String),
 }
 
 // ============================================================================
@@ -231,7 +236,8 @@ pub(crate) fn compute_next_commitment(public_key: &[u8]) -> String {
 
 /// Finalize an ICP event by computing and setting the SAID.
 pub(crate) fn finalize_icp_event(mut icp: IcpEvent) -> Result<IcpEvent, MobileError> {
-    let value = serde_json::to_value(&icp).map_err(|e| MobileError::Serialization(e.to_string()))?;
+    let value =
+        serde_json::to_value(&icp).map_err(|e| MobileError::Serialization(e.to_string()))?;
     let said = compute_said(&value)
         .ok_or_else(|| MobileError::Serialization("SAID computation failed".to_string()))?;
     icp.d = said.clone();
@@ -317,8 +323,8 @@ pub fn parse_auth_challenge_uri(uri: String) -> Result<AuthChallengeInfo, Mobile
 
     let session_id = session_id
         .ok_or_else(|| MobileError::PairingFailed("Missing session ID (id)".to_string()))?;
-    let challenge = challenge
-        .ok_or_else(|| MobileError::PairingFailed("Missing challenge (c)".to_string()))?;
+    let challenge =
+        challenge.ok_or_else(|| MobileError::PairingFailed("Missing challenge (c)".to_string()))?;
     let domain =
         domain.ok_or_else(|| MobileError::PairingFailed("Missing domain (d)".to_string()))?;
     let endpoint_b64 = endpoint_b64

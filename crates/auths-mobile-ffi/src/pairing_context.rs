@@ -246,7 +246,7 @@ pub fn build_pairing_binding_message(
     let shared_bytes = {
         let raw = shared.raw_secret_bytes();
         let mut out = [0u8; 32];
-        out.copy_from_slice(raw.as_slice());
+        out.copy_from_slice(&raw[..]);
         Zeroizing::new(out)
     };
     let shared_secret_hex = hex::encode(*shared_bytes);

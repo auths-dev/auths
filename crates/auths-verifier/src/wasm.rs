@@ -389,28 +389,21 @@ pub async fn wasm_validate_kel_json(
     let attachments: Vec<String> = serde_json::from_str(attachments_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse attachments JSON: {}", e)))?;
 
-    // An absent/short attachment list is an UNAUTHENTICATED KEL — refuse it rather
-    // than fall back to a structural-only replay (that fallback is exactly RT-002).
-    if attachments.len() != events.len() {
-        return Err(JsValue::from_str(&format!(
-            "KEL/attachment length mismatch ({} events vs {} attachments): the KEL is \
-             unauthenticated, refusing (RT-002)",
-            events.len(),
-            attachments.len()
-        )));
-    }
-
-    let signed: Vec<auths_keri::SignedEvent> = events
-        .into_iter()
-        .zip(attachments.iter())
-        .map(|(event, att_hex)| {
-            let bytes = hex::decode(att_hex)
-                .map_err(|e| JsValue::from_str(&format!("Invalid attachment hex: {}", e)))?;
-            let sigs = auths_keri::parse_attachment(&bytes)
-                .map_err(|e| JsValue::from_str(&format!("Invalid CESR attachment: {}", e)))?;
-            Ok(auths_keri::SignedEvent::new(event, sigs))
+    // This entrypoint's wire carries hex; decode to the raw CESR attachment
+    // bytes the shared pairing step consumes.
+    let attachment_bytes: Vec<Vec<u8>> = attachments
+        .iter()
+        .map(|att_hex| {
+            hex::decode(att_hex)
+                .map_err(|e| JsValue::from_str(&format!("Invalid attachment hex: {}", e)))
         })
         .collect::<Result<_, JsValue>>()?;
+
+    // Pairing fails closed on an absent/short attachment list (an
+    // unauthenticated KEL must never degrade to a structural-only replay —
+    // that fallback is exactly RT-002). The rule lives once, in auths-keri.
+    let signed = auths_keri::pair_kel_attachments(events, &attachment_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Invalid CESR attachment: {}", e)))?;
 
     let key_state = auths_keri::validate_signed_kel(&signed, None)
         .map_err(|e| JsValue::from_str(&format!("KEL authentication failed: {}", e)))?;
