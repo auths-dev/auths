@@ -25,6 +25,7 @@ use auths_sdk::domains::identity::types::{
     CreateDeveloperIdentityConfig, IdentityConfig, InitializeResult,
 };
 use auths_sdk::domains::org::error::OrgError;
+use auths_sdk::domains::org::offline_verify::OrgBundleError;
 use auths_sdk::domains::org::{
     AuthorityAtSigning, add_existing_member, add_member, classify_authority_at_signing, create_org,
     list_members, list_offboarding_records, load_offboarding_record, member_policy_context,
@@ -663,8 +664,8 @@ fn offline_verify_reproduces_live_verdict_and_fails_closed() {
     let err = verify_org_bundle(&partial, &roots, None)
         .expect_err("an incomplete bundle must fail closed, never 'valid'");
     assert!(
-        matches!(err, OrgError::BundleMissingMemberKel { .. }),
-        "expected BundleMissingMemberKel, got {err:?}"
+        matches!(err, OrgBundleError::MissingMemberKel { .. }),
+        "expected MissingMemberKel, got {err:?}"
     );
 }
 
@@ -702,8 +703,8 @@ fn offline_verify_rejects_forged_kel_signature() {
     let err = verify_org_bundle(&bundle, &roots, None)
         .expect_err("a bundle with a forged KEL signature must fail closed (RT-002)");
     assert!(
-        matches!(err, OrgError::BundleIntegrity { .. }),
-        "expected BundleIntegrity, got {err:?}"
+        matches!(err, OrgBundleError::Integrity { .. }),
+        "expected Integrity, got {err:?}"
     );
 }
 
@@ -738,8 +739,8 @@ fn authenticated_org_state_resolves_org_verkey_from_evidence_alone() {
         .authenticated_org_state()
         .expect_err("a forged org KEL signature must fail closed");
     assert!(
-        matches!(err, OrgError::BundleIntegrity { .. }),
-        "expected BundleIntegrity, got {err:?}"
+        matches!(err, OrgBundleError::Integrity { .. }),
+        "expected Integrity, got {err:?}"
     );
 }
 

@@ -58,14 +58,20 @@ pub mod core;
 pub mod credential;
 pub mod duplicity;
 pub mod error;
+/// Offline verification of compliance evidence packs.
+pub mod evidence_pack;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
 /// OIDC-subject policy and the verify-time join for keyless CI signing.
 pub mod oidc_policy;
+/// Offline verification of air-gapped org provenance bundles.
+pub mod org_bundle;
 pub mod presentation;
 mod software_verify;
 pub mod ssh_sig;
+/// Transparency-log verification primitives (Merkle proofs, checkpoints).
+pub mod tlog;
 pub mod types;
 pub mod verifier;
 pub mod verify;

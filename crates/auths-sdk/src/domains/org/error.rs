@@ -129,31 +129,11 @@ pub enum OrgError {
     #[error("failed to create admin attestation: {0}")]
     Attestation(#[source] auths_verifier::error::AttestationError),
 
-    /// An air-gapped bundle event failed its self-addressing integrity check —
-    /// recomputing the SAID did not match the stored `d` (the bundle was tampered).
-    #[error("bundle integrity failure for '{id}': {reason}")]
-    BundleIntegrity {
-        /// The identifier whose KEL failed integrity.
-        id: String,
-        /// Why integrity failed.
-        reason: String,
-    },
-
-    /// The bundle delegates a member on the org KEL but omits that member's own KEL —
-    /// the bundle is incomplete and cannot be verified. Fail closed.
-    #[error("bundle is missing the KEL for delegated member '{member}'")]
-    BundleMissingMemberKel {
-        /// The member's `did:keri:`.
-        member: String,
-    },
-
-    /// The queried member has no delegation seal in the org KEL — the org never
-    /// delegated it, so there is no authority to verify. Fail closed.
-    #[error("member '{member}' has no delegation seal in the org KEL")]
-    BundleMissingDelegatorSeal {
-        /// The member's `did:keri:`.
-        member: String,
-    },
+    /// An air-gapped bundle failed offline verification (tampered event, missing
+    /// member KEL, missing delegation seal, or an invalid off-boarding record).
+    /// The fail-closed detail is the typed [`auths_verifier::org_bundle::OrgBundleError`].
+    #[error(transparent)]
+    Bundle(#[from] auths_verifier::org_bundle::OrgBundleError),
 
     /// The supplied org policy did not parse or compile (invalid JSON, an invalid
     /// DID/capability/glob, or it exceeds the policy size/complexity bounds). A
@@ -230,9 +210,7 @@ impl AuthsErrorInfo for OrgError {
             Self::IdentityExists { .. } => "AUTHS-E5615",
             Self::IdentityInit(_) => "AUTHS-E5616",
             Self::Attestation(_) => "AUTHS-E5617",
-            Self::BundleIntegrity { .. } => "AUTHS-E5619",
-            Self::BundleMissingMemberKel { .. } => "AUTHS-E5620",
-            Self::BundleMissingDelegatorSeal { .. } => "AUTHS-E5621",
+            Self::Bundle(e) => e.error_code(),
             Self::PolicyCompile { .. } => "AUTHS-E5622",
             Self::PolicyBlobMissing { .. } => "AUTHS-E5623",
             Self::PolicyIntegrity { .. } => "AUTHS-E5624",
@@ -293,12 +271,7 @@ impl AuthsErrorInfo for OrgError {
             Self::Attestation(_) => Some(
                 "Failed to sign the admin attestation; check your key access with `auths key list`",
             ),
-            Self::BundleIntegrity { .. } => Some(
-                "The bundle was modified after it was produced; obtain a fresh, untampered bundle",
-            ),
-            Self::BundleMissingMemberKel { .. } | Self::BundleMissingDelegatorSeal { .. } => {
-                Some("The bundle is incomplete; re-produce it with `auths org bundle`")
-            }
+            Self::Bundle(e) => e.suggestion(),
             Self::PolicyCompile { .. } => Some(
                 "Fix the policy JSON (a serialized `Expr`); see `auths org policy show` for the current policy",
             ),

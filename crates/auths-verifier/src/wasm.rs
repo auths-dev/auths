@@ -519,3 +519,52 @@ pub fn wasm_verify_presentation_json(bundle_json: &str) -> String {
 pub fn wasm_verify_credential_json(bundle_json: &str) -> String {
     crate::contract::verify_credential_json(bundle_json)
 }
+
+/// Verify an **air-gapped org bundle** offline, returning the tagged verdict
+/// envelope (`kind`: `"report"` | `"error"`) as a JSON string.
+///
+/// Synchronous, executor-free, and panic-free: the verify core
+/// ([`crate::org_bundle::verify_org_bundle`]) is a pure function of the
+/// bundle's bytes — every event's SAID recomputed, every signature
+/// authenticated against the controlling key-state (RT-002), duplicity
+/// flagged, and authority classified by KEL position — so the browser
+/// computes the same verdict the native CLI does, with zero network.
+///
+/// Args:
+/// * `bundle_json`: The `AirGappedOrgBundle` JSON (the `.auths-offline` file).
+/// * `pinned_roots_json`: JSON array of pinned `did:keri:` roots.
+/// * `member_did`: Optional member to classify (`did:keri:` or bare prefix).
+/// * `signed_at`: Optional in-band signing KEL position, as a decimal string.
+#[wasm_bindgen(js_name = verifyOrgBundle)]
+pub fn wasm_verify_org_bundle(
+    bundle_json: &str,
+    pinned_roots_json: &str,
+    member_did: Option<String>,
+    signed_at: Option<String>,
+) -> String {
+    crate::org_bundle::verify_org_bundle_json(
+        bundle_json,
+        pinned_roots_json,
+        member_did.as_deref(),
+        signed_at.as_deref(),
+    )
+}
+
+/// Verify an **offline compliance evidence pack** with zero network, returning
+/// the tagged verdict envelope (`kind`: `"verdicts"` | `"error"`) as a JSON
+/// string — one verdict per evidence row.
+///
+/// Synchronous, executor-free, and panic-free: the verify core
+/// ([`crate::evidence_pack::verify_evidence_pack_offline`]) authenticates the
+/// embedded org bundle, re-derives each row's authority-at-release from the
+/// embedded KEL (tamper check), and checks each row's transparency-log
+/// inclusion/consistency proof — so the dashboard computes the verdict live
+/// instead of replaying a recorded native run.
+///
+/// Args:
+/// * `pack_json`: The `EvidencePack` JSON (the `.evidence` file).
+/// * `pinned_roots_json`: JSON array of pinned `did:keri:` roots.
+#[wasm_bindgen(js_name = verifyEvidencePackOffline)]
+pub fn wasm_verify_evidence_pack_offline(pack_json: &str, pinned_roots_json: &str) -> String {
+    crate::evidence_pack::verify_evidence_pack_offline_json(pack_json, pinned_roots_json)
+}

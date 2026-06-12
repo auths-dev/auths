@@ -8,7 +8,8 @@
 //! org-membership case, reading the revocation position from the org KEL.
 
 use auths_id::keri::types::Prefix;
-use serde::{Deserialize, Serialize};
+
+pub use auths_verifier::org_bundle::AuthorityAtSigning;
 
 use crate::context::AuthsContext;
 use crate::domains::org::delegation::{OrgKelSnapshot, list_members};
@@ -16,51 +17,6 @@ use crate::domains::org::error::OrgError;
 use crate::domains::org::offboarding::{
     SignedOffboardingRecord, find_revocation_event, load_offboarding_record,
 };
-
-/// A member's authority at the moment an artifact was signed — a closed sum ordered
-/// strictly by **KEL position** (never wall-clock).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "authority_at_signing", rename_all = "snake_case")]
-pub enum AuthorityAtSigning {
-    /// The member's authority was live at the signing position — the artifact was
-    /// signed strictly before the revocation, or the member was never revoked.
-    AuthorizedBeforeRevocation,
-    /// The artifact was signed at or after the org revoked the member, by KEL
-    /// position. Carries the exact revocation position.
-    RejectedAfterRevocation {
-        /// The KEL position at which the org anchored the revocation.
-        #[serde(with = "u128_str")]
-        revoked_at: u128,
-    },
-    /// The org revoked the member but the artifact carries no in-band signing
-    /// position, so it cannot be ordered — conservatively rejected (mirrors the
-    /// verifier's no-position default).
-    RejectedRevokedPositionUnknown {
-        /// The KEL position at which the org anchored the revocation.
-        #[serde(with = "u128_str")]
-        revoked_at: u128,
-    },
-    /// The org never delegated this member — there is no authority to classify.
-    NeverDelegated,
-}
-
-/// (De)serialize a `u128` KEL position as a decimal string.
-///
-/// JSON numbers lose precision above 2^53, and serde's internally-tagged-enum
-/// buffer cannot round-trip 128-bit integers — so KEL positions travel as strings
-/// (the same convention [`auths_keri::KeriSequence`] uses for its hex form).
-mod u128_str {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(value: &u128, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&value.to_string())
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
-        let s = String::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
-    }
-}
 
 /// Classify a member's authority at an artifact's signing position, ordered by KEL
 /// position relative to the org's revocation.
