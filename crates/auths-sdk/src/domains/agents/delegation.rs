@@ -9,15 +9,19 @@
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
+use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, extract_public_key_bytes};
-use auths_id::keri::Event;
+use auths_id::attestation::create::{AttestationInput, create_signed_attestation};
 use auths_id::keri::delegation::{
     DelegatedRole, incept_delegated_device, list_delegated_devices, mark_agent_scope,
     mark_delegated_agent, read_agent_scope, revoke_delegated_device,
     revoke_delegated_devices_batch, rotate_delegated_device,
 };
-use auths_id::keri::parse_did_keri;
+use auths_id::keri::{Event, anchor_and_persist_via_backend, parse_did_keri};
+use auths_id::storage::git_refs::AttestationMetadata;
 use auths_keri::{AgentScope, Capability};
+use auths_verifier::core::SignerType;
+use auths_verifier::types::CanonicalDid;
 
 use crate::context::AuthsContext;
 use crate::domains::agents::error::AgentError;
@@ -165,10 +169,95 @@ pub fn add_scoped(
         .map_err(AgentError::DelegationError)?;
     }
 
+    // Record the delegation as a signed attestation (issuer = root, subject =
+    // agent), persisted and KEL-anchored through the same path device links
+    // use. Exported identity bundles then carry a walkable delegation chain —
+    // a provenance leg independent of the KEL events themselves.
+    record_delegation_attestation(
+        ctx,
+        &managed.controller_did,
+        &managed.storage_id,
+        root_alias,
+        &root_prefix,
+        agent_alias,
+        &agent.device_did,
+        expires_at,
+    )?;
+
     Ok(AgentDelegationResult {
         agent_did: agent.device_did.as_str().to_string(),
         agent_prefix: agent.device_prefix.as_str().to_string(),
     })
+}
+
+/// Sign and anchor the attestation for a freshly delegated agent.
+///
+/// The delegating root issues (and the agent's key co-signs) an attestation over
+/// the agent's public key, then persists and KEL-anchors it through
+/// [`anchor_and_persist_via_backend`] — the same single path device links use.
+/// This is what puts a programmatically delegated agent into the identity's
+/// attestation chain.
+#[allow(clippy::too_many_arguments)]
+fn record_delegation_attestation(
+    ctx: &AuthsContext,
+    identity_did: &IdentityDID,
+    rid: &str,
+    root_alias: &KeyAlias,
+    root_prefix: &auths_id::keri::types::Prefix,
+    agent_alias: &KeyAlias,
+    agent_did: &IdentityDID,
+    expires_at: Option<i64>,
+) -> Result<(), AgentError> {
+    let (agent_pk, agent_pk_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        agent_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .map_err(AgentError::CryptoError)?;
+    let now = ctx.clock.now();
+    let meta = AttestationMetadata {
+        timestamp: Some(now),
+        expires_at: expires_at.and_then(|secs| chrono::DateTime::from_timestamp(secs, 0)),
+        note: None,
+    };
+    let subject = CanonicalDid::from(agent_did.clone());
+    let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
+    let attestation = create_signed_attestation(
+        now,
+        AttestationInput {
+            rid,
+            identity_did,
+            subject: &subject,
+            device_public_key: &agent_pk,
+            device_curve: agent_pk_curve,
+            payload: None,
+            meta: &meta,
+            identity_alias: Some(root_alias),
+            device_alias: Some(agent_alias),
+            delegated_by: None,
+            commit_sha: None,
+            signer_type: Some(SignerType::Agent),
+            oidc_binding: None,
+        },
+        &signer,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .map_err(AgentError::AttestationError)?;
+    let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
+    batch.stage_attestation(attestation.clone());
+    anchor_and_persist_via_backend(
+        ctx.registry.as_ref(),
+        &signer,
+        root_alias,
+        ctx.passphrase_provider.as_ref(),
+        root_prefix,
+        &attestation,
+        &mut batch,
+        &ctx.witness_params(),
+        now,
+    )
+    .map_err(AgentError::AnchorError)?;
+    Ok(())
 }
 
 /// Collect a KEL into a `Vec<Event>` (oldest first) via the registry.

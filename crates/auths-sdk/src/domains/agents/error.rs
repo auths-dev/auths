@@ -62,6 +62,15 @@ pub enum AgentError {
     /// Authoring or anchoring the delegated agent identifier failed.
     #[error("agent delegation failed: {0}")]
     DelegationError(#[source] auths_id::error::InitError),
+
+    /// Creating the signed delegation attestation (the chain link issued by the
+    /// delegator over the agent's key) failed.
+    #[error("agent delegation attestation failed: {0}")]
+    AttestationError(#[source] auths_verifier::error::AttestationError),
+
+    /// Persisting or KEL-anchoring the delegation attestation failed.
+    #[error("agent delegation attestation anchoring failed: {0}")]
+    AnchorError(#[source] auths_id::keri::AnchorError),
 }
 
 impl From<auths_core::AgentError> for AgentError {
@@ -80,6 +89,8 @@ impl AuthsErrorInfo for AgentError {
             Self::AgentNotFound { .. } => "AUTHS-E5314",
             Self::Revoked { .. } => "AUTHS-E5315",
             Self::OutsideDelegatorScope { .. } => "AUTHS-E5316",
+            Self::AttestationError(_) => "AUTHS-E5317",
+            Self::AnchorError(_) => "AUTHS-E5318",
         }
     }
 
@@ -104,6 +115,12 @@ impl AuthsErrorInfo for AgentError {
             Self::OutsideDelegatorScope { .. } => {
                 Some("Narrow the agent's --scope to a subset of the delegator's own capabilities")
             }
+            Self::AttestationError(_) => {
+                Some("The delegation attestation could not be signed; check the keychain aliases")
+            }
+            Self::AnchorError(_) => Some(
+                "The delegation attestation could not be anchored; check the root identity's KEL",
+            ),
         }
     }
 }
