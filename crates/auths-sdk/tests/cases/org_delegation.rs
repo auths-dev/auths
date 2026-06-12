@@ -708,6 +708,42 @@ fn offline_verify_rejects_forged_kel_signature() {
 }
 
 #[test]
+fn authenticated_org_state_resolves_org_verkey_from_evidence_alone() {
+    // The ecosystem primitive: a downstream verifier holding only the bundle
+    // gets the org's authenticated key state in one public call, with no network
+    // and no re-implementation of the authenticate-then-resolve path.
+    use auths_sdk::domains::org::build_org_bundle;
+
+    let (ctx, _org_alias, org_prefix, _tmp) = setup();
+    let mut bundle = build_org_bundle(&ctx, &org_prefix).expect("bundle");
+
+    let state = bundle
+        .authenticated_org_state()
+        .expect("the org KEL is the root of trust and authenticates against itself");
+    let verkey = state
+        .current_key()
+        .expect("an authenticated org KEL resolves to a current verkey");
+    assert!(
+        !verkey.as_str().is_empty(),
+        "current org verkey is a non-empty CESR-encoded key, got {verkey:?}"
+    );
+
+    // Fail-closed: a forged org-inception signature must not yield a key state
+    // (RT-002 — authentication, not just SAID integrity).
+    let att = &mut bundle.org_kel.attachments[0];
+    if let Some(last) = att.pop() {
+        att.push(if last == '0' { '1' } else { '0' });
+    }
+    let err = bundle
+        .authenticated_org_state()
+        .expect_err("a forged org KEL signature must fail closed");
+    assert!(
+        matches!(err, OrgError::BundleIntegrity { .. }),
+        "expected BundleIntegrity, got {err:?}"
+    );
+}
+
+#[test]
 fn empty_org_returns_empty_member_list() {
     let (ctx, _org_alias, org_prefix, _tmp) = setup();
     let members = list_members(&ctx, &org_prefix).expect("list members on an org with none");

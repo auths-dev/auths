@@ -26,7 +26,6 @@ use crate::domains::compliance::frameworks::{FrameworkReport, INTOTO_STATEMENT_T
 use crate::domains::compliance::query::{
     ComplianceQueryError, EvidencePack, RowVerdict, verify_evidence_pack_offline,
 };
-use crate::domains::org::offline_verify::authenticate_bundled_kel;
 use auths_verifier::IdentityDID;
 
 /// The in-toto Statement payload type carried in the DSSE envelope.
@@ -226,7 +225,8 @@ pub fn verify_signed_evidence_pack_offline(
     })?;
 
     // The org verkey, from the authenticated embedded KEL alone.
-    let state = authenticate_bundled_kel(&bundle.org_kel, None)
+    let state = bundle
+        .authenticated_org_state()
         .map_err(|e| ComplianceQueryError::OfflineVerification(e.to_string()))?;
     let cesr = state.current_key().ok_or_else(|| {
         ComplianceQueryError::Verification("org KEL resolves to no current key".into())

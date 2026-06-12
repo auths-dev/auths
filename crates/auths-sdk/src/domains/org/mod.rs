@@ -34,7 +34,7 @@ pub use metrics::{FleetMetrics, fleet_metrics};
 pub use offboarding::{
     OffboardingRecord, SignedOffboardingRecord, load_offboarding_record, verify_offboarding_record,
 };
-pub use offline_verify::{OfflineVerifyReport, verify_org_bundle};
+pub use offline_verify::{OfflineVerifyReport, authenticate_bundled_kel, verify_org_bundle};
 pub use policy::{
     Expr, LoadedOrgPolicy, OrgPolicySet, evaluate_with_org_policy, load_org_policy, set_org_policy,
 };

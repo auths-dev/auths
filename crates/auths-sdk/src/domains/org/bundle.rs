@@ -35,6 +35,7 @@ use crate::domains::org::audit::list_offboarding_records;
 use crate::domains::org::delegation::list_members;
 use crate::domains::org::error::OrgError;
 use crate::domains::org::offboarding::SignedOffboardingRecord;
+use crate::domains::org::offline_verify::authenticate_bundled_kel;
 
 /// Schema version of the air-gapped org bundle wire format. Bump on any
 /// breaking change to [`AirGappedOrgBundle`].
@@ -104,6 +105,32 @@ impl AirGappedOrgBundle {
     /// ```
     pub fn from_json(json: &str) -> Result<Self, OrgError> {
         serde_json::from_str(json).map_err(|e| OrgError::Signing(format!("parse org bundle: {e}")))
+    }
+
+    /// The org's authenticated key state, derived from the bundled org KEL alone.
+    ///
+    /// Authenticates the embedded org KEL (RT-002 — every event SAID-correct AND
+    /// signed by the controlling key-state, not merely structurally valid) and
+    /// returns the resolved [`auths_keri::KeyState`]. The org KEL is the root of
+    /// trust, so it authenticates with no delegator lookup.
+    ///
+    /// This is the one public call for "give me the org's authenticated key state
+    /// from evidence alone" — the only trust-rooted source of the org's *current*
+    /// verkey available offline (e.g. to verify a DSSE envelope the org signed).
+    /// Every downstream verifier (CI gate, browser widget, third-party audit tool)
+    /// shares it instead of re-implementing the authenticate-then-resolve path.
+    ///
+    /// Fails closed ([`OrgError::BundleIntegrity`]) on a tampered event, a length
+    /// mismatch between events and attachments, an unparseable attachment, or a
+    /// signature that does not verify.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let state = bundle.authenticated_org_state()?;
+    /// let org_verkey = state.current_key();
+    /// ```
+    pub fn authenticated_org_state(&self) -> Result<auths_keri::KeyState, OrgError> {
+        authenticate_bundled_kel(&self.org_kel, None)
     }
 }
 

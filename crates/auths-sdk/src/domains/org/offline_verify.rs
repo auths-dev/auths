@@ -64,7 +64,14 @@ fn check_kel_integrity(kel: &BundledKel) -> Result<(), OrgError> {
 /// Returns the authenticated [`auths_keri::KeyState`] — the only trust-rooted
 /// source of the controller's *current* verkey available offline (e.g. to verify
 /// a DSSE envelope signed by the org whose KEL the evidence embeds).
-pub(crate) fn authenticate_bundled_kel(
+///
+/// This is the shared ecosystem primitive: a downstream verifier (CI gate,
+/// browser widget, third-party audit tool) holding a [`BundledKel`] gets the
+/// controller's authenticated key state from evidence alone in one call, rather
+/// than reconstructing `SignedEvent`s and replaying `validate_signed_kel` itself.
+/// For an [`AirGappedOrgBundle`], prefer
+/// [`AirGappedOrgBundle::authenticated_org_state`].
+pub fn authenticate_bundled_kel(
     kel: &BundledKel,
     lookup: Option<&dyn auths_keri::DelegatorKelLookup>,
 ) -> Result<auths_keri::KeyState, OrgError> {
