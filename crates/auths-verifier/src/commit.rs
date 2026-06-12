@@ -84,21 +84,17 @@ pub async fn verify_commit_signature(
                 .map_err(|_| CommitVerificationError::SignatureInvalid)?;
         }
         auths_crypto::CurveType::P256 => {
-            #[cfg(feature = "native")]
-            {
-                auths_crypto::RingCryptoProvider::p256_verify(
+            // Through the provider port like Ed25519 above — never a direct
+            // backend call, so the same verdict computes on native (ring) and
+            // WASM (WebCrypto/pure-Rust p256) alike.
+            provider
+                .verify_p256(
                     envelope.public_key.as_bytes(),
                     &signed_data,
                     &envelope.signature,
                 )
+                .await
                 .map_err(|_| CommitVerificationError::SignatureInvalid)?;
-            }
-            #[cfg(not(feature = "native"))]
-            {
-                return Err(CommitVerificationError::SshSigParseFailed(
-                    "P-256 verification not available on this platform".into(),
-                ));
-            }
         }
     }
 

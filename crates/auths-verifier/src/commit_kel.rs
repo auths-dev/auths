@@ -209,6 +209,46 @@ fn parse_anchor_seq(commit_bytes: &[u8]) -> Option<u128> {
     })
 }
 
+/// The commit trailer key naming the root identity (`Auths-Id: did:keri:…`).
+pub const ID_TRAILER: &str = "Auths-Id";
+
+/// The commit trailer key naming the signing device/agent (`Auths-Device: …`).
+pub const DEVICE_TRAILER: &str = "Auths-Device";
+
+/// Extract `(root_did, device_did)` from a commit's `Auths-Id` / `Auths-Device`
+/// trailers. Returns `None` when either trailer is absent (a commit not signed
+/// by `auths`). Keys match case-insensitively; the last occurrence wins (git
+/// trailer semantics). These are in-band *claims* that select which KELs to
+/// replay — the proof is always the signature + the pinned-root check.
+///
+/// Args:
+/// * `raw_commit`: The raw git commit object (headers + message).
+///
+/// Usage:
+/// ```
+/// use auths_verifier::commit_signer_trailers;
+/// let commit = "tree abc\n\nfix\n\nAuths-Id: did:keri:Er\nAuths-Device: did:keri:Ed\n";
+/// assert_eq!(
+///     commit_signer_trailers(commit),
+///     Some(("did:keri:Er".into(), "did:keri:Ed".into()))
+/// );
+/// ```
+pub fn commit_signer_trailers(raw_commit: &str) -> Option<(String, String)> {
+    let message = raw_commit
+        .split_once("\n\n")
+        .map(|(_, m)| m)
+        .unwrap_or(raw_commit);
+    let find = |key: &str| {
+        message.lines().rev().find_map(|line| {
+            let (k, v) = line.split_once(':')?;
+            k.trim()
+                .eq_ignore_ascii_case(key)
+                .then(|| v.trim().to_string())
+        })
+    };
+    Some((find(ID_TRAILER)?, find(DEVICE_TRAILER)?))
+}
+
 /// The CESR commit trailer key carrying the capability the commit exercises, checked
 /// against the agent's delegator-anchored scope.
 pub const SCOPE_TRAILER: &str = "Auths-Scope";

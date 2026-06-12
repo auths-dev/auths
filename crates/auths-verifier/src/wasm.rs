@@ -543,6 +543,43 @@ pub fn wasm_verify_org_bundle(
     )
 }
 
+/// Verify a raw git commit object against an identity bundle, fully stateless,
+/// returning the tagged JSON envelope (`kind`: `"verdict"` | `"error"`).
+///
+/// This is the "commit ← maintainer" leg in the browser: the bundle's KEL is
+/// freshness-checked, self-certification-checked (RT-005), and
+/// signature-authenticated (RT-002), the bundle root must already be in
+/// `pinned_roots_json` (evidence-only), and the commit's SSH signature is
+/// verified in-process against the replayed KEL — the same
+/// [`verify_commit_against_kel`](crate::verify_commit_against_kel) verdict the
+/// native CLI computes, with no git and no identity store.
+///
+/// Args:
+/// * `commit_text`: The raw commit object (`git cat-file commit <sha>` bytes).
+/// * `bundle_json`: The identity bundle JSON (`auths id export-bundle`).
+/// * `pinned_roots_json`: JSON array of independently pinned `did:keri:` roots.
+///
+/// Usage (TypeScript):
+/// ```ignore
+/// const verdict = JSON.parse(await verifyCommitJson(commit, bundle, '["did:keri:E…"]'));
+/// const commitLegHolds = verdict.kind === "verdict" && verdict.valid;
+/// ```
+#[wasm_bindgen(js_name = verifyCommitJson)]
+pub async fn wasm_verify_commit_json(
+    commit_text: &str,
+    bundle_json: &str,
+    pinned_roots_json: &str,
+) -> String {
+    crate::commit_bundle::verify_commit_with_bundle_json(
+        commit_text,
+        bundle_json,
+        pinned_roots_json,
+        SystemClock.now(),
+        &provider(),
+    )
+    .await
+}
+
 /// Verify an **offline compliance evidence pack** with zero network, returning
 /// the tagged verdict envelope (`kind`: `"verdicts"` | `"error"`) as a JSON
 /// string — one verdict per evidence row.

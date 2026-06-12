@@ -8,8 +8,9 @@ use auths_sdk::ports::RegistryBackend;
 use auths_sdk::storage::{GitRegistryBackend, GitWitnessReceiptLookup, RegistryConfig};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
-    Attestation, CommitVerdict, IdentityBundle, VerificationReport, VerifierWitnessPolicy,
-    WitnessGateStatus, verify_chain_with_witnesses, verify_commit_against_kel_witnessed,
+    Attestation, BundleTrust, CommitVerdict, IdentityBundle, VerificationReport,
+    VerifierWitnessPolicy, WitnessGateStatus, verify_chain_with_witnesses,
+    verify_commit_against_kel_witnessed,
 };
 use clap::Parser;
 use serde::Serialize;
@@ -244,9 +245,11 @@ struct BundleKel {
 }
 
 /// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
-/// (freshness-checked via the SDK trust resolver) plus the KEL events it carries for
-/// stateless resolution. Fails closed: any read, parse, or staleness error is returned
-/// so the caller can abort rather than verify unconstrained.
+/// plus the KEL events it carries for stateless resolution. The trust checks —
+/// freshness, RT-005 self-certification, RT-002 KEL signature authentication —
+/// live once, in [`BundleTrust::parse`]; this only adds the file I/O and path
+/// context. Fails closed: any read, parse, or trust error is returned so the
+/// caller can abort rather than verify unconstrained.
 fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
@@ -255,48 +258,9 @@ fn load_bundle_trust(
         .map_err(|e| format!("could not read identity bundle {path:?}: {e}"))?;
     let bundle: IdentityBundle = serde_json::from_str(&content)
         .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
-    let root = auths_sdk::workflows::commit_trust::trusted_root_from_bundle(&bundle, now)
-        .map_err(|e| e.to_string())?;
-    // `bundle.kel` is already `Vec<Event>` — parsed at the deserialize boundary,
-    // so a structurally-broken event fails the bundle parse above rather than
-    // slipping through as loose JSON.
-    let kel = bundle.kel;
-
-    // Authenticate the bundle's KEL (RT-002): a bundle is attacker-controlled
-    // input, so we do NOT merely replay it structurally — we verify every event
-    // is signed by the controlling key-state via `validate_signed_kel`. The
-    // producer ships each event's CESR signature attachment (hex); a bundle
-    // missing them (length mismatch), or whose signatures don't verify, fails
-    // closed HERE, before its KEL is ever used to resolve a signer.
-    if !kel.is_empty() {
-        if bundle.kel_attachments.len() != kel.len() {
-            return Err(format!(
-                "identity bundle {path:?} carries {} KEL events but {} signature \
-                 attachments — cannot authenticate it; re-export with a current \
-                 `auths id export-bundle`",
-                kel.len(),
-                bundle.kel_attachments.len()
-            ));
-        }
-        let signed: Vec<auths_keri::SignedEvent> = kel
-            .iter()
-            .zip(bundle.kel_attachments.iter())
-            .map(|(event, att_hex)| {
-                let att = hex::decode(att_hex).map_err(|e| {
-                    format!("identity bundle {path:?} has a non-hex KEL signature: {e}")
-                })?;
-                let sigs = auths_keri::parse_attachment(&att).map_err(|e| {
-                    format!("identity bundle {path:?} has an unparseable KEL signature: {e}")
-                })?;
-                Ok(auths_keri::SignedEvent::new(event.clone(), sigs))
-            })
-            .collect::<std::result::Result<_, String>>()?;
-        auths_keri::validate_signed_kel(&signed, None).map_err(|e| {
-            format!("identity bundle {path:?} KEL failed signature authentication (RT-002): {e}")
-        })?;
-    }
-
-    Ok((root, kel))
+    let trust = BundleTrust::parse(&bundle, now)
+        .map_err(|e| format!("identity bundle {path:?} is not a usable trust anchor: {e}"))?;
+    Ok(trust.into_parts())
 }
 
 /// Resolve the commit spec to a list of commit SHAs.

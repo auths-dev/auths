@@ -50,6 +50,8 @@
 pub mod action;
 pub mod clock;
 pub mod commit;
+/// Stateless commit verification against an identity bundle (CLI + WASM).
+pub mod commit_bundle;
 pub mod commit_error;
 pub mod commit_kel;
 /// The single cross-boundary verify contract (JSON request → tagged verdict).
@@ -142,9 +144,11 @@ pub use auths_keri::{
 
 // Re-export commit verification types
 pub use commit::VerifiedCommit;
+pub use commit_bundle::{BundleTrust, BundleTrustError, verify_commit_with_bundle_json};
 pub use commit_kel::{
-    ANCHOR_SEQ_TRAILER, CommitVerdict, SCOPE_TRAILER, VerifierWitnessPolicy, WitnessGateStatus,
-    WitnessedVerdict, anchor_seq_trailer, scope_trailer, verify_commit_against_kel,
+    ANCHOR_SEQ_TRAILER, CommitVerdict, DEVICE_TRAILER, ID_TRAILER, SCOPE_TRAILER,
+    VerifierWitnessPolicy, WitnessGateStatus, WitnessedVerdict, anchor_seq_trailer,
+    commit_signer_trailers, scope_trailer, verify_commit_against_kel,
     verify_commit_against_kel_scoped, verify_commit_against_kel_witnessed,
 };
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
