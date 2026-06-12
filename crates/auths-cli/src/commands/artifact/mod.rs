@@ -418,14 +418,18 @@ pub fn handle_artifact(
                 let ci_env = match ci_platform.as_deref() {
                     Some("local") => CiEnvironment {
                         platform: CiPlatform::Local,
+                        repository: None,
                         workflow_ref: None,
+                        sha: None,
                         run_id: None,
                         actor: None,
                         runner_os: None,
                     },
                     Some(name) => CiEnvironment {
                         platform: CiPlatform::Generic,
+                        repository: None,
                         workflow_ref: None,
+                        sha: None,
                         run_id: None,
                         actor: None,
                         runner_os: Some(name.to_string()),
