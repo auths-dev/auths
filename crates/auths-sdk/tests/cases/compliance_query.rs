@@ -10,7 +10,9 @@ use auths_core::testing::IsolatedKeychainHandle;
 use auths_crypto::CurveType;
 use auths_id::keri::types::Prefix;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::domains::compliance::dsse::{sign_evidence_pack, sign_framework_report};
+use auths_sdk::domains::compliance::dsse::{
+    sign_evidence_pack, sign_framework_report, verify_signed_evidence_pack_offline,
+};
 use auths_sdk::domains::compliance::frameworks::{
     SPDX_VERSION, SignerVerifierAllowList, VsaParams, build_framework_report, sbom_document_sha256,
 };
@@ -328,6 +330,104 @@ fn dsse_sign_and_verify_round_trips() {
     assert!(
         tampered.verify(&org_pk, org_curve).is_err(),
         "a tampered DSSE payload must fail verification"
+    );
+}
+
+#[test]
+fn signed_offline_pack_verifies_end_to_end_from_envelope_and_roots_alone() {
+    let (ctx, org_alias, org_prefix, org_did, _tmp) = setup();
+    let member = add_test_member(&ctx, &org_prefix, &org_alias, "judy");
+
+    // Revoke the member so the pack carries an honestly-damned row: the pack
+    // must still verify as AUTHENTIC (the log telling the truth is the system
+    // working), with the row's authority re-derivation consistent.
+    let signed = revoke_member(
+        &ctx,
+        &org_prefix,
+        &org_alias,
+        &format!("did:keri:{}", member.as_str()),
+        None,
+    )
+    .expect("revoke")
+    .expect("record");
+    let revoked_at = signed.record.revoked_at_seq;
+
+    let releases = vec![
+        ReleaseRecord {
+            artifact_digest: "sha256:gg".into(),
+            signer_prefix: member.clone(),
+            signed_at: Some(revoked_at - 1),
+            transparency: None,
+        },
+        ReleaseRecord {
+            artifact_digest: "sha256:hh".into(),
+            signer_prefix: member,
+            signed_at: Some(revoked_at),
+            transparency: None,
+        },
+    ];
+    let policy = load_witness_policy(None);
+    let pack = build_offline_evidence_pack(
+        &ctx,
+        org_did.clone(),
+        &org_prefix,
+        "2026-Q3",
+        ComplianceFramework::Slsa,
+        &releases,
+        &policy,
+        now(),
+    )
+    .expect("build offline pack");
+
+    let (_org_pk, org_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        &org_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .expect("org pubkey");
+    let envelope = sign_evidence_pack(&ctx, org_did.as_str(), &org_alias, org_curve, &pack)
+        .expect("org-sign the pack");
+    let raw = envelope.to_canonical_json().expect("canonical envelope");
+
+    // The auditor's whole input: the envelope bytes + a pinned root. No
+    // keychain, no registry, no context.
+    let verified = verify_signed_evidence_pack_offline(&raw, std::slice::from_ref(&org_did))
+        .expect("signed pack verifies offline");
+    assert_eq!(verified.verdicts.len(), 2);
+    assert!(
+        verified.verdicts.iter().all(|v| v.authority_consistent),
+        "honest rows re-derive consistently — including the damned one"
+    );
+    assert_eq!(
+        verified.verdicts[1].authority_at_release,
+        AuthorityAtSigning::RejectedAfterRevocation { revoked_at },
+        "the post-revocation row is damned by the evidence itself"
+    );
+    assert!(
+        verified.authentic(),
+        "a pack honestly reporting a damned row is still authentic"
+    );
+
+    // Cook the books: mutate one row inside the payload (valid JSON, changed
+    // bytes) — the DSSE signature over the PAE must refuse.
+    use base64::Engine;
+    let engine = base64::engine::general_purpose::STANDARD;
+    let mut statement: serde_json::Value =
+        serde_json::from_slice(&engine.decode(envelope.payload.as_bytes()).unwrap()).unwrap();
+    statement["predicate"]["rows"][0]["artifact_digest"] = serde_json::json!("sha256:00");
+    let mut tampered = envelope.clone();
+    tampered.payload = engine.encode(statement.to_string().as_bytes());
+    let raw_tampered = tampered.to_canonical_json().unwrap();
+    assert!(
+        verify_signed_evidence_pack_offline(&raw_tampered, std::slice::from_ref(&org_did)).is_err(),
+        "a tampered payload must fail the DSSE signature check"
+    );
+
+    // An auditor who pinned a different root rejects the whole pack.
+    let stranger = IdentityDID::new_unchecked("did:keri:EStranger".to_string());
+    assert!(
+        verify_signed_evidence_pack_offline(&raw, &[stranger]).is_err(),
+        "an unpinned org must fail closed"
     );
 }
 
@@ -683,4 +783,127 @@ fn cra_report_maps_obligations_and_ssdf_practices() {
     let canonical = report.to_intoto_statement().unwrap();
     assert!(canonical.contains("\"policy_met\":false"));
     assert!(!canonical.contains("non_equivocation"));
+}
+
+// ── Anchored releases: attest at signing time, discover at report time ──────
+
+use auths_sdk::domains::compliance::releases::{ArtifactDigest, attest_release, discover_releases};
+
+/// A parsed `sha256:` digest of one repeated hex character (test fixture).
+fn digest_of(c: char) -> ArtifactDigest {
+    ArtifactDigest::parse(&format!("sha256:{}", c.to_string().repeat(64))).expect("valid digest")
+}
+
+#[test]
+fn attest_then_discover_derives_signed_at_from_the_org_kel() {
+    let (ctx, org_alias, org_prefix, org_did, _tmp) = setup();
+    let member = add_test_member(&ctx, &org_prefix, &org_alias, "judy");
+
+    let d1 = digest_of('a');
+    let d2 = digest_of('b');
+    let a1 = attest_release(&ctx, &org_prefix, &org_alias, d1.clone(), member.clone())
+        .expect("attest release 1");
+    let a2 = attest_release(&ctx, &org_prefix, &org_alias, d2.clone(), member.clone())
+        .expect("attest release 2");
+    assert!(
+        a2.signed_at > a1.signed_at,
+        "each attestation anchors at a strictly later KEL position"
+    );
+
+    // add_test_member anchored a membership attestation in the same KEL — only
+    // the release attestations may be discovered.
+    let records = discover_releases(ctx.registry.as_ref(), &org_prefix).expect("discover");
+    assert_eq!(records.len(), 2, "exactly the attested releases discovered");
+    assert_eq!(records[0].artifact_digest, d1.as_str());
+    assert_eq!(records[0].signer_prefix, member);
+    assert_eq!(
+        records[0].signed_at,
+        Some(a1.signed_at),
+        "signed_at IS the anchoring position, never caller input"
+    );
+    assert_eq!(records[1].artifact_digest, d2.as_str());
+    assert_eq!(records[1].signed_at, Some(a2.signed_at));
+
+    // The discovered rows classify as authorized — the member was live at both
+    // anchored positions.
+    let policy = load_witness_policy(None);
+    let pack = build_evidence_pack(
+        &ctx,
+        org_did,
+        &org_prefix,
+        "2026-Q3",
+        ComplianceFramework::Slsa,
+        &records,
+        &policy,
+        now(),
+    )
+    .expect("build pack from discovered releases");
+    assert!(
+        pack.rows
+            .iter()
+            .all(|r| r.authority_at_release == AuthorityAtSigning::AuthorizedBeforeRevocation)
+    );
+}
+
+#[test]
+fn release_attested_after_revocation_is_damned_by_discovery() {
+    let (ctx, org_alias, org_prefix, org_did, _tmp) = setup();
+    let member = add_test_member(&ctx, &org_prefix, &org_alias, "kevin");
+
+    let before = attest_release(
+        &ctx,
+        &org_prefix,
+        &org_alias,
+        digest_of('c'),
+        member.clone(),
+    )
+    .expect("attest before revocation");
+
+    let signed = revoke_member(
+        &ctx,
+        &org_prefix,
+        &org_alias,
+        &format!("did:keri:{}", member.as_str()),
+        None,
+    )
+    .expect("revoke")
+    .expect("fresh revoke writes a record");
+    let revoked_at = signed.record.revoked_at_seq;
+    assert!(before.signed_at < revoked_at);
+
+    let after = attest_release(
+        &ctx,
+        &org_prefix,
+        &org_alias,
+        digest_of('d'),
+        member.clone(),
+    )
+    .expect("attest after revocation");
+    assert!(after.signed_at >= revoked_at);
+
+    let records = discover_releases(ctx.registry.as_ref(), &org_prefix).expect("discover");
+    assert_eq!(records.len(), 2);
+
+    let policy = load_witness_policy(None);
+    let pack = build_evidence_pack(
+        &ctx,
+        org_did,
+        &org_prefix,
+        "2026-Q3",
+        ComplianceFramework::Slsa,
+        &records,
+        &policy,
+        now(),
+    )
+    .expect("build pack");
+    assert_eq!(
+        pack.rows[0].authority_at_release,
+        AuthorityAtSigning::AuthorizedBeforeRevocation,
+        "the pre-revocation release stays authorized at its anchored position"
+    );
+    assert_eq!(
+        pack.rows[1].authority_at_release,
+        AuthorityAtSigning::RejectedAfterRevocation { revoked_at },
+        "a release anchored after revocation is damned by the log itself"
+    );
 }

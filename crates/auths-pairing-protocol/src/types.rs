@@ -209,3 +209,47 @@ pub struct GetConfirmationResponse {
     #[serde(default)]
     pub aborted: bool,
 }
+
+/// Maximum size in bytes for [`SubmitSharedKelRotRequest::rot_envelope`].
+///
+/// A single-sig P-256 rotation over a handful of controllers is well under
+/// 2 KB in its base64url wire form; the cap leaves headroom for multi-sig
+/// attachments while refusing payloads that could only be junk.
+pub const SHARED_KEL_ROT_ENVELOPE_MAX_BYTES: usize = 8192;
+
+/// Request submitting a co-authored shared-KEL rotation to the daemon.
+///
+/// The envelope is the single-string wire form produced by
+/// `auths_keri::encode_signed_rot` — the rotation event plus its CESR
+/// indexed-signature attachment. The daemon decodes it, verifies the
+/// indexed signatures against the event's own key list, and holds it for
+/// the embedding host to replay against the registry's prior state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct SubmitSharedKelRotRequest {
+    /// base64url-no-pad wire envelope of the signed rotation
+    /// (`auths_keri::encode_signed_rot`).
+    pub rot_envelope: String,
+}
+
+impl SubmitSharedKelRotRequest {
+    /// Validate payload-size invariants that must hold before transmission.
+    ///
+    /// Returns `Err` with a diagnostic string when `rot_envelope` exceeds
+    /// [`SHARED_KEL_ROT_ENVELOPE_MAX_BYTES`].
+    ///
+    /// Usage:
+    /// ```ignore
+    /// req.validate()?;
+    /// ```
+    pub fn validate(&self) -> Result<(), String> {
+        if self.rot_envelope.len() > SHARED_KEL_ROT_ENVELOPE_MAX_BYTES {
+            return Err(format!(
+                "rot_envelope is {} bytes, exceeds cap of {}",
+                self.rot_envelope.len(),
+                SHARED_KEL_ROT_ENVELOPE_MAX_BYTES,
+            ));
+        }
+        Ok(())
+    }
+}

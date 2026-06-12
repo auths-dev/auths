@@ -22,8 +22,12 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 
 use crate::context::AuthsContext;
-use crate::domains::compliance::frameworks::FrameworkReport;
-use crate::domains::compliance::query::{ComplianceQueryError, EvidencePack};
+use crate::domains::compliance::frameworks::{FrameworkReport, INTOTO_STATEMENT_TYPE};
+use crate::domains::compliance::query::{
+    ComplianceQueryError, EvidencePack, RowVerdict, verify_evidence_pack_offline,
+};
+use crate::domains::org::offline_verify::authenticate_bundled_kel;
+use auths_verifier::IdentityDID;
 
 /// The in-toto Statement payload type carried in the DSSE envelope.
 pub const DSSE_INTOTO_PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
@@ -139,6 +143,109 @@ impl DsseEnvelope {
             "no DSSE signature verified against the org key".into(),
         ))
     }
+}
+
+/// A DSSE-signed evidence pack that has passed full offline verification —
+/// this value cannot exist unless the embedded org KEL authenticated (RT-002),
+/// the envelope signature verified over its PAE bytes against the KEL-resolved
+/// org verkey, the org was pinned, and no duplicity was detected.
+///
+/// Per-row tamper/transparency findings are verdicts, not errors: a pack that
+/// honestly reports a rejected-after-revocation release is still *verified* —
+/// the log telling the truth about a damned signature is the system working.
+/// [`Self::authentic`] folds the rows into the auditor's single verdict.
+#[derive(Debug, Clone, Serialize)]
+pub struct VerifiedEvidencePack {
+    /// The verified pack (safe to render — its bytes are what the org signed).
+    pub pack: EvidencePack,
+    /// The authenticated org KEL position the verdict is derived as-of.
+    pub org_kel_seq: u128,
+    /// One verdict per evidence row, re-derived from the embedded KEL.
+    pub verdicts: Vec<RowVerdict>,
+}
+
+impl VerifiedEvidencePack {
+    /// The auditor's single verdict: every row's authority re-derivation matched
+    /// the recorded row, and every transparency proof present verified.
+    pub fn authentic(&self) -> bool {
+        self.verdicts
+            .iter()
+            .all(|v| v.authority_consistent && v.transparency_verified.unwrap_or(true))
+    }
+}
+
+/// Verify a DSSE-signed offline evidence pack with **zero network**, trusting
+/// nothing but `pinned_roots` and mathematics.
+///
+/// The auditor-side chain, in trust order:
+/// 1. Parse the envelope and locate the embedded org KEL — the one
+///    self-certifying structure in the payload (its prefix commits to its
+///    inception keys; every later event is signature-chained). No other pack
+///    claim is trusted yet.
+/// 2. Authenticate that KEL (RT-002) and resolve the org's **current** verkey
+///    from it — never from a keychain, a server, or a config file.
+/// 3. Verify the DSSE signature over the PAE bytes against that verkey.
+/// 4. Run [`verify_evidence_pack_offline`]: org root pinned, KEL duplicity,
+///    per-row authority re-derivation, transparency proofs where present.
+///
+/// Fail-closed: a missing bundle, an unauthenticated KEL, a signature that does
+/// not verify, an unpinned org, or duplicity is an `Err` — never a verdict.
+///
+/// Args:
+/// * `envelope_json`: The DSSE envelope as produced by [`sign_evidence_pack`].
+/// * `pinned_roots`: The verifier's pinned trust roots (its only trust input).
+///
+/// Usage:
+/// ```ignore
+/// let verified = verify_signed_evidence_pack_offline(&raw, &roots)?;
+/// assert!(verified.authentic());
+/// ```
+pub fn verify_signed_evidence_pack_offline(
+    envelope_json: &str,
+    pinned_roots: &[IdentityDID],
+) -> Result<VerifiedEvidencePack, ComplianceQueryError> {
+    let envelope = DsseEnvelope::from_json(envelope_json)?;
+    let payload = envelope.decoded_payload()?;
+    let statement: serde_json::Value = serde_json::from_slice(&payload)
+        .map_err(|e| ComplianceQueryError::Decode(format!("dsse payload is not JSON: {e}")))?;
+    if statement["_type"] != INTOTO_STATEMENT_TYPE {
+        return Err(ComplianceQueryError::Decode(format!(
+            "dsse payload is not an in-toto Statement ({INTOTO_STATEMENT_TYPE})"
+        )));
+    }
+    let pack: EvidencePack =
+        serde_json::from_value(statement["predicate"].clone()).map_err(|e| {
+            ComplianceQueryError::Decode(format!(
+                "statement predicate is not an evidence pack: {e}"
+            ))
+        })?;
+    let bundle = pack.org_bundle.as_ref().ok_or_else(|| {
+        ComplianceQueryError::OfflineVerification(
+            "pack carries no embedded org bundle — not an offline-verifiable pack".into(),
+        )
+    })?;
+
+    // The org verkey, from the authenticated embedded KEL alone.
+    let state = authenticate_bundled_kel(&bundle.org_kel, None)
+        .map_err(|e| ComplianceQueryError::OfflineVerification(e.to_string()))?;
+    let cesr = state.current_key().ok_or_else(|| {
+        ComplianceQueryError::Verification("org KEL resolves to no current key".into())
+    })?;
+    let org_key = KeriPublicKey::parse(cesr.as_str())
+        .map_err(|e| ComplianceQueryError::Decode(format!("org verkey decode: {e}")))?;
+    let org_curve = match org_key {
+        KeriPublicKey::Ed25519(_) => CurveType::Ed25519,
+        KeriPublicKey::P256 { .. } => CurveType::P256,
+    };
+    envelope.verify(org_key.as_bytes(), org_curve)?;
+
+    // Only now is the payload trusted enough to re-derive every row from it.
+    let verdicts = verify_evidence_pack_offline(&pack, pinned_roots)?;
+    Ok(VerifiedEvidencePack {
+        org_kel_seq: state.sequence,
+        pack,
+        verdicts,
+    })
 }
 
 /// Sign a compliance evidence pack as a DSSE-wrapped in-toto Statement, org-signed.

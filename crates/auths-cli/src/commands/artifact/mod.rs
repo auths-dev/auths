@@ -1,5 +1,6 @@
 pub mod core;
 pub mod file;
+pub mod oidc;
 pub mod publish;
 pub mod sign;
 pub mod verify;
@@ -10,6 +11,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::domains::signing::service::EphemeralSignRequest;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::signing::validate_commit_sha;
@@ -90,6 +92,35 @@ pub enum ArtifactSubcommand {
         /// CI platform override when --ci is used outside a detected CI environment.
         #[arg(long, requires = "ci")]
         ci_platform: Option<String>,
+
+        /// Path to the runner's OIDC token (the keyless exchange: the token is
+        /// validated against the issuer's JWKS and the verified claims are
+        /// embedded in the signed attestation as an OIDC binding).
+        #[arg(
+            long,
+            value_name = "TOKEN-FILE",
+            requires = "ci",
+            requires = "oidc_audience"
+        )]
+        oidc_token: Option<PathBuf>,
+
+        /// Expected OIDC token audience (exact match). Required with --oidc-token.
+        #[arg(long, value_name = "AUD", requires = "oidc_token")]
+        oidc_audience: Option<String>,
+
+        /// Expected OIDC token issuer (exact match).
+        #[arg(
+            long,
+            value_name = "URL",
+            requires = "oidc_token",
+            default_value = oidc::DEFAULT_OIDC_ISSUER
+        )]
+        oidc_issuer: String,
+
+        /// Pinned JWKS file for offline/air-gapped token validation
+        /// (default: fetch the issuer's published JWKS over HTTPS).
+        #[arg(long, value_name = "JWKS-FILE", requires = "oidc_token")]
+        oidc_jwks: Option<PathBuf>,
 
         /// Transparency log to submit to (overrides default from trust config).
         #[arg(long, value_name = "LOG_ID")]
@@ -195,6 +226,12 @@ pub enum ArtifactSubcommand {
         /// (offline) Emit the typed verdict as JSON.
         #[arg(long)]
         json: bool,
+
+        /// OIDC-subject policy file to JOIN against the attestation's signed
+        /// OIDC binding (issuer + repository [+ workflow_ref] the org trusts).
+        /// Fail-closed: a missing binding or any mismatch fails verification.
+        #[arg(long, value_name = "POLICY-FILE")]
+        oidc_policy: Option<PathBuf>,
     },
 }
 
@@ -358,6 +395,10 @@ pub fn handle_artifact(
             no_commit,
             ci,
             ci_platform,
+            oidc_token,
+            oidc_audience,
+            oidc_issuer,
+            oidc_jwks,
             log,
             allow_unlogged,
         } => {
@@ -409,14 +450,44 @@ pub fn handle_artifact(
                 #[allow(clippy::disallowed_methods)]
                 let now = chrono::Utc::now();
 
+                // The keyless exchange, sign side: validate the runner's OIDC
+                // token and embed the verified claims in the signed envelope.
+                let oidc_binding = match &oidc_token {
+                    Some(token_path) => {
+                        let audience = oidc_audience.as_deref().ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "--oidc-token requires --oidc-audience <AUD> \
+                                 (the audience the token was minted for)"
+                            )
+                        })?;
+                        let binding = oidc::resolve_oidc_binding(
+                            token_path,
+                            &oidc_issuer,
+                            audience,
+                            oidc_jwks.as_deref(),
+                            &ci_env.platform,
+                            now,
+                        )?;
+                        eprintln!(
+                            "  OIDC identity verified: {} (issuer {})",
+                            binding.subject, binding.issuer
+                        );
+                        Some(binding)
+                    }
+                    None => None,
+                };
+
                 let result = auths_sdk::domains::signing::service::sign_artifact_ephemeral(
                     now,
-                    &data,
-                    artifact_name,
-                    commit_sha,
-                    expires_in,
-                    note,
-                    Some(ci_env_json),
+                    EphemeralSignRequest {
+                        data: &data,
+                        artifact_name,
+                        commit_sha,
+                        expires_in,
+                        note,
+                        ci_env: Some(ci_env_json),
+                        oidc_binding,
+                    },
                 )
                 .map_err(|e| anyhow::anyhow!("Ephemeral signing failed: {}", e))?;
 
@@ -545,6 +616,7 @@ pub fn handle_artifact(
             member,
             signed_at,
             json,
+            oidc_policy,
         } => {
             if offline {
                 return verify::handle_offline_verify(
@@ -558,12 +630,15 @@ pub fn handle_artifact(
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(verify::handle_verify(
                 &file,
-                signature,
-                identity_bundle,
-                witness_receipts,
-                &witness_keys,
-                witness_threshold,
-                verify_commit,
+                verify::VerifyArtifactArgs {
+                    signature,
+                    identity_bundle,
+                    witness_receipts,
+                    witness_keys,
+                    witness_threshold,
+                    verify_commit,
+                    oidc_policy,
+                },
             ))
         }
     }

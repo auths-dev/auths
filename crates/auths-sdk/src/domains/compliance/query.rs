@@ -59,6 +59,18 @@ pub enum ComplianceQueryError {
     /// transparency proof that did not check out).
     #[error("offline verification failed: {0}")]
     OfflineVerification(String),
+    /// Anchoring a release attestation in the org KEL failed.
+    #[error("release anchoring failed: {0}")]
+    Anchor(#[from] auths_id::keri::AnchorError),
+    /// A registry read/write failed while attesting or discovering releases.
+    #[error("registry access failed: {0}")]
+    Registry(String),
+    /// A malformed artifact digest or release-attestation blob.
+    #[error("invalid release attestation: {0}")]
+    InvalidRelease(String),
+    /// An anchored release blob does not hash back to its KEL seal digest.
+    #[error("anchored release attestation {0} does not match its KEL seal digest")]
+    TamperedRelease(String),
 }
 
 /// The compliance framework a report targets. Predicate rendering (SLSA

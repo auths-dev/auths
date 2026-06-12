@@ -60,10 +60,14 @@ fn check_kel_integrity(kel: &BundledKel) -> Result<(), OrgError> {
 /// the parallel `events` × hex `attachments` and replays them through
 /// `validate_signed_kel`. Fails closed on a length mismatch, an unparseable
 /// attachment, or a signature that doesn't verify.
-fn authenticate_bundled_kel(
+///
+/// Returns the authenticated [`auths_keri::KeyState`] — the only trust-rooted
+/// source of the controller's *current* verkey available offline (e.g. to verify
+/// a DSSE envelope signed by the org whose KEL the evidence embeds).
+pub(crate) fn authenticate_bundled_kel(
     kel: &BundledKel,
     lookup: Option<&dyn auths_keri::DelegatorKelLookup>,
-) -> Result<(), OrgError> {
+) -> Result<auths_keri::KeyState, OrgError> {
     let integrity_err = |reason: String| OrgError::BundleIntegrity {
         id: kel.prefix.as_str().to_string(),
         reason,
@@ -89,8 +93,7 @@ fn authenticate_bundled_kel(
         signed.push(auths_keri::SignedEvent::new(event, sigs));
     }
     auths_keri::validate_signed_kel(&signed, lookup)
-        .map_err(|e| integrity_err(format!("KEL signature authentication failed (RT-002): {e}")))?;
-    Ok(())
+        .map_err(|e| integrity_err(format!("KEL signature authentication failed (RT-002): {e}")))
 }
 
 /// Re-attach a delegated event's source seal from its parsed attachment — the JSON

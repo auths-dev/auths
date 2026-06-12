@@ -4,7 +4,7 @@ version.workspace = true
 edition = "2024"
 rust-version = "1.93"
 authors = ["Auths Contributors"]
-description = "Reference MCP tool server with Auths-backed JWT authorization"
+description = "Reference MCP tool server with Auths-backed JWT and KERI-presentation authorization"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -20,6 +20,7 @@ name = "auths_mcp_server"
 path = "src/lib.rs"
 
 [dependencies]
+auths-api = { path = "../auths-api", version = "0.1.3" }
 auths-jwt.workspace = true
 auths-telemetry.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }

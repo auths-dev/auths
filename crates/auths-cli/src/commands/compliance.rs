@@ -1,31 +1,37 @@
 //! `auths compliance` — compliance-as-a-query evidence packs.
 //!
 //! Thin presentation layer over [`auths_sdk::workflows::compliance`]: it reads the
-//! period's releases, calls the SDK query engine to classify each signer's authority
-//! **at release** (by KEL position), embeds the honest witness verdict, optionally
-//! embeds the org KEL bundle for offline verification, and optionally org-signs the
-//! pack as a DSSE-wrapped in-toto statement. No domain logic lives here.
+//! period's releases (from a caller file, or **discovered** from the release
+//! attestations anchored in the org KEL), calls the SDK query engine to classify
+//! each signer's authority **at release** (by KEL position), embeds the honest
+//! witness verdict, optionally embeds the org KEL bundle for offline verification,
+//! and optionally org-signs the pack as a DSSE-wrapped in-toto statement.
+//! `compliance attest` is the signing-time half: it anchors the release fact so the
+//! report can derive it. No domain logic lives here.
 
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand, ValueEnum};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use auths_crypto::CurveType;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::keychain::{KeyAlias, extract_public_key_bytes};
 use auths_sdk::storage_layout::layout;
 use auths_sdk::workflows::compliance::{
-    ComplianceFramework, ReleaseRecord, TransparencyInclusion, VsaParams, build_evidence_pack,
-    build_framework_report, build_offline_evidence_pack, load_witness_policy, sign_evidence_pack,
-    sign_framework_report,
+    ArtifactDigest, ComplianceFramework, ReleaseRecord, TransparencyInclusion,
+    VerifiedEvidencePack, VsaParams, attest_release, build_evidence_pack, build_framework_report,
+    build_offline_evidence_pack, discover_releases, load_witness_policy, sign_evidence_pack,
+    sign_framework_report, verify_signed_evidence_pack_offline,
 };
+use auths_sdk::workflows::roots::parse_roots_typed;
 use auths_verifier::{IdentityDID, Prefix};
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
+use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 /// Default keychain alias for an org's signing key (`org-{slug}`), matching the
 /// `auths org` convention.
@@ -54,6 +60,14 @@ fn resolve_org_signing(
     )
     .with_context(|| format!("Failed to resolve org signing key '{org_alias}'"))?;
     Ok((org_alias, curve))
+}
+
+/// Hash an artifact file with SHA-256 into a parsed `sha256:<hex>` digest.
+fn file_artifact_digest(path: &Path) -> Result<ArtifactDigest> {
+    use sha2::{Digest, Sha256};
+    let bytes = fs::read(path).with_context(|| format!("Failed to read artifact file {path:?}"))?;
+    let digest = format!("sha256:{}", hex::encode(Sha256::digest(&bytes)));
+    ArtifactDigest::parse(&digest).map_err(|e| anyhow!("computed digest rejected: {e}"))
 }
 
 /// One release entry in the `--releases` JSON file. `signer` accepts a `did:keri:`
@@ -111,11 +125,21 @@ impl From<CliFramework> for ComplianceFramework {
 #[command(
     about = "Compliance as a query — offline-verifiable evidence packs",
     after_help = "Examples:
-  auths compliance report --org did:keri:EOrg --period 2026-Q3 \\
-      --framework slsa --releases releases.json --offline --out acme-2026Q3.evidence
-                        # Build an offline-verifiable evidence pack
+  auths compliance attest --org did:keri:EOrg --artifact dist/cli-v2.4.0.tar.gz \\
+      --signer did:keri:EMember
+                        # At signing time: anchor the release (artifact digest +
+                        # signer) in the org KEL — the position becomes log fact
 
-Releases file (JSON array):
+  auths compliance report --org did:keri:EOrg --period 2026-Q3 \\
+      --framework slsa --discover --offline --out acme-2026Q3.evidence
+                        # Build an offline-verifiable evidence pack from the
+                        # releases anchored in the org KEL (signed_at derived)
+
+  auths compliance verify --pack acme-2026Q3.evidence --roots auths-roots
+                        # Auditor-side: verify a signed pack offline (exit 0
+                        # authentic / exit 1 rejected) — no account, no network
+
+Releases file (JSON array, caller-asserted alternative to --discover):
   [{\"artifact_digest\":\"sha256:…\",\"signer\":\"did:keri:EMember\",\"signed_at\":41}]"
 )]
 pub struct ComplianceCommand {
@@ -126,7 +150,33 @@ pub struct ComplianceCommand {
 /// Subcommands for compliance queries.
 #[derive(Subcommand, Debug, Clone)]
 pub enum ComplianceSubcommand {
+    /// Anchor a release attestation (artifact digest + signer) in the org KEL —
+    /// the signing position becomes part of the tamper-evident log
+    #[command(group(clap::ArgGroup::new("artifact_source").required(true)))]
+    Attest {
+        /// Organization identity ID (`did:keri:…`) or bare prefix
+        #[arg(long)]
+        org: String,
+
+        /// Artifact file to hash (sha256) and attest
+        #[arg(long, group = "artifact_source")]
+        artifact: Option<PathBuf>,
+
+        /// Pre-computed artifact digest (`sha256:<64 hex>`)
+        #[arg(long, group = "artifact_source")]
+        digest: Option<String>,
+
+        /// The signing member's identity (`did:keri:…`) or bare prefix
+        #[arg(long)]
+        signer: String,
+
+        /// Org signing key alias (defaults to the org slug alias)
+        #[arg(long)]
+        key: Option<String>,
+    },
+
     /// Produce a compliance evidence pack for a reporting period.
+    #[command(group(clap::ArgGroup::new("release_source").required(true)))]
     Report {
         /// Organization identity ID (`did:keri:…`) or bare prefix
         #[arg(long)]
@@ -150,8 +200,14 @@ pub enum ComplianceSubcommand {
         verifier_id: String,
 
         /// JSON file: array of `{ artifact_digest, signer, signed_at?, transparency? }`
-        #[arg(long)]
-        releases: PathBuf,
+        /// — caller-asserted positions (alternative to `--discover`)
+        #[arg(long, group = "release_source")]
+        releases: Option<PathBuf>,
+
+        /// Derive the rows from the release attestations anchored in the org KEL
+        /// (`compliance attest`); each row's `signed_at` IS its anchoring position
+        #[arg(long, group = "release_source")]
+        discover: bool,
 
         /// Embed the org KEL bundle so each row verifies offline (no network)
         #[arg(long)]
@@ -173,6 +229,17 @@ pub enum ComplianceSubcommand {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+
+    /// Verify a DSSE-signed evidence pack offline — no account, no network, no keychain
+    Verify {
+        /// The DSSE-signed pack file (from `compliance report --offline --sign`)
+        #[arg(long)]
+        pack: PathBuf,
+
+        /// Pinned trust-roots file (one `did:keri:…` per line) — the only trust input
+        #[arg(long)]
+        roots: PathBuf,
+    },
 }
 
 /// Handle `auths compliance` subcommands.
@@ -192,6 +259,74 @@ pub fn handle_compliance(
     now: DateTime<Utc>,
 ) -> Result<()> {
     match cmd.subcommand {
+        ComplianceSubcommand::Attest {
+            org,
+            artifact,
+            digest,
+            signer,
+            key,
+        } => {
+            let repo_path = layout::resolve_repo_path(ctx.repo_path.clone())?;
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let signer_prefix = Prefix::new_unchecked(
+                signer
+                    .strip_prefix("did:keri:")
+                    .unwrap_or(&signer)
+                    .to_string(),
+            );
+
+            let artifact_digest = match (&artifact, &digest) {
+                (Some(path), None) => file_artifact_digest(path)?,
+                (None, Some(d)) => {
+                    ArtifactDigest::parse(d).map_err(|e| anyhow!("invalid --digest value: {e}"))?
+                }
+                _ => unreachable!("clap requires exactly one of --artifact/--digest"),
+            };
+
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(ctx.passphrase_provider.clone()),
+            )?;
+            let (org_alias, _curve) = resolve_org_signing(&sdk_ctx, &org, key)?;
+            let anchored = attest_release(
+                &sdk_ctx,
+                &org_prefix,
+                &org_alias,
+                artifact_digest,
+                signer_prefix,
+            )
+            .context("Failed to anchor the release attestation in the org KEL")?;
+
+            if is_json_mode() {
+                JsonResponse {
+                    success: true,
+                    command: "compliance attest".to_string(),
+                    data: Some(serde_json::json!({
+                        "org": format!("did:keri:{}", org_prefix.as_str()),
+                        "artifact_digest": anchored.artifact_digest.as_str(),
+                        "signer": format!("did:keri:{}", anchored.signer.as_str()),
+                        "signed_at": anchored.signed_at.to_string(),
+                        "attestation_said": anchored.attestation_said.as_str(),
+                    })),
+                    error: None,
+                }
+                .print()?;
+            } else {
+                let out = Output::stdout();
+                println!(
+                    "{}",
+                    out.success("Release attestation anchored in the org KEL")
+                );
+                println!("  Artifact:  {}", anchored.artifact_digest);
+                println!("  Signer:    did:keri:{}", anchored.signer.as_str());
+                println!("  Signed at: org KEL seq {}", anchored.signed_at);
+                println!("  SAID:      {}", anchored.attestation_said.as_str());
+            }
+            Ok(())
+        }
+
         ComplianceSubcommand::Report {
             org,
             period,
@@ -199,6 +334,7 @@ pub fn handle_compliance(
             predicate,
             verifier_id,
             releases,
+            discover,
             offline,
             sign,
             key,
@@ -213,13 +349,6 @@ pub fn handle_compliance(
             let org_did = IdentityDID::from_prefix(org_prefix.as_str())
                 .map_err(|e| anyhow!("invalid org identifier '{org}': {e}"))?;
 
-            let raw = fs::read_to_string(&releases)
-                .with_context(|| format!("Failed to read releases file {releases:?}"))?;
-            let inputs: Vec<ReleaseInput> = serde_json::from_str(&raw)
-                .with_context(|| format!("Invalid JSON in releases file {releases:?}"))?;
-            let records: Vec<ReleaseRecord> =
-                inputs.into_iter().map(ReleaseInput::into_record).collect();
-
             let policy_path = witness_policy.or_else(|| {
                 std::env::var("AUTHS_WITNESS_POLICY_PATH")
                     .ok()
@@ -232,6 +361,21 @@ pub fn handle_compliance(
                 &ctx.env_config,
                 Some(passphrase_provider.clone()),
             )?;
+
+            let records: Vec<ReleaseRecord> = if discover {
+                discover_releases(sdk_ctx.registry.as_ref(), &org_prefix)
+                    .context("Failed to discover anchored releases from the org KEL")?
+            } else {
+                // clap's release_source group guarantees one of the two is set.
+                let Some(releases) = releases else {
+                    return Err(anyhow!("one of --releases or --discover is required"));
+                };
+                let raw = fs::read_to_string(&releases)
+                    .with_context(|| format!("Failed to read releases file {releases:?}"))?;
+                let inputs: Vec<ReleaseInput> = serde_json::from_str(&raw)
+                    .with_context(|| format!("Invalid JSON in releases file {releases:?}"))?;
+                inputs.into_iter().map(ReleaseInput::into_record).collect()
+            };
             let framework = ComplianceFramework::from(framework);
 
             let pack = if offline {
@@ -306,6 +450,150 @@ pub fn handle_compliance(
             }
             Ok(())
         }
+
+        ComplianceSubcommand::Verify { pack, roots } => {
+            let envelope_json = fs::read_to_string(&pack)
+                .with_context(|| format!("Failed to read evidence pack {pack:?}"))?;
+            let roots_raw = fs::read_to_string(&roots)
+                .with_context(|| format!("Failed to read pinned-roots file {roots:?}"))?;
+            let pinned = parse_roots_typed(&roots_raw)
+                .map_err(|e| anyhow!("pinned roots file rejected: {e}"))?;
+
+            // Hard rejections (no envelope, bad DSSE signature, unpinned org,
+            // KEL tamper, duplicity) surface here as errors → exit 1.
+            let verified = verify_signed_evidence_pack_offline(&envelope_json, &pinned)
+                .map_err(|e| anyhow!("evidence REJECTED: {e}"))?;
+            let authentic = verified.authentic();
+
+            if is_json_mode() {
+                JsonResponse {
+                    success: authentic,
+                    command: "compliance verify".to_string(),
+                    data: Some(verify_verdict_json(&pack, &verified, authentic)),
+                    error: (!authentic)
+                        .then(|| "a row is inconsistent with the embedded log".to_string()),
+                }
+                .print()?;
+            } else {
+                print_verify_report(&pack, &verified, authentic);
+            }
+
+            // A verified envelope whose rows diverge from the embedded log is
+            // still a rejection — the auditor's contract is the exit code.
+            if !authentic {
+                return Err(anyhow!(
+                    "evidence REJECTED — a row is inconsistent with the embedded log"
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+/// The wire label of a row's authority verdict, read from its serde tag (the
+/// single source of truth for the vocabulary the pack itself carries).
+fn authority_label(verdict: &auths_sdk::workflows::compliance::RowVerdict) -> String {
+    serde_json::to_value(&verdict.authority_at_release)
+        .ok()
+        .and_then(|v| v["authority_at_signing"].as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "?".to_string())
+}
+
+/// The machine-readable verdict for `compliance verify --json`.
+fn verify_verdict_json(
+    pack_path: &Path,
+    verified: &VerifiedEvidencePack,
+    authentic: bool,
+) -> serde_json::Value {
+    serde_json::json!({
+        "pack": pack_path,
+        "org": verified.pack.org.as_str(),
+        "period": verified.pack.period,
+        "framework": verified.pack.framework,
+        "dsse_signature": "verified",
+        "org_key_source": "authenticated embedded KEL",
+        "org_kel_seq": verified.org_kel_seq.to_string(),
+        "root_pinned": true,
+        "rows": verified.verdicts,
+        "authentic": authentic,
+    })
+}
+
+/// Render the auditor-facing verification report (green = proven, red = rejected).
+fn print_verify_report(pack_path: &Path, verified: &VerifiedEvidencePack, authentic: bool) {
+    let out = Output::stdout();
+    println!(
+        "Offline evidence-pack verification of {}",
+        pack_path.display()
+    );
+    println!("  Org:      {}", verified.pack.org.as_str());
+    println!(
+        "  Period:   {}   Framework: {:?}",
+        verified.pack.period, verified.pack.framework
+    );
+    println!(
+        "  {}",
+        out.success(
+            "DSSE signature verified — org key resolved from the authenticated KEL, not a keychain"
+        )
+    );
+    println!(
+        "  {}",
+        out.success(&format!(
+            "Root pinned · no duplicity · org KEL signature-authenticated (seq {})",
+            verified.org_kel_seq
+        ))
+    );
+    println!("  Rows:");
+    for v in &verified.verdicts {
+        let label = authority_label(v);
+        let row_ok = v.authority_consistent && label.starts_with("authorized");
+        let mark = if v.authority_consistent { "✓" } else { "✗" };
+        let transparency = match v.transparency_verified {
+            Some(true) => "logged",
+            Some(false) => "TRANSPARENCY-FAIL",
+            None => "unlogged",
+        };
+        let line = format!(
+            "{mark} {}  {}  {label}",
+            truncated(&v.artifact_digest, 19),
+            truncated(v.signer.as_str(), 21),
+        );
+        let line = if row_ok {
+            out.success(&line)
+        } else {
+            out.error(&line)
+        };
+        println!(
+            "    {line}  {}",
+            out.dim(&format!(
+                "consistent={} transparency={transparency}",
+                v.authority_consistent
+            ))
+        );
+    }
+    if authentic {
+        println!(
+            "  {}",
+            out.success(
+                "Verdict:  AUTHENTIC — evidence verified offline, trusting only the pinned roots"
+            )
+        );
+    } else {
+        println!(
+            "  {}",
+            out.error("Verdict:  REJECTED — evidence inconsistent with its own log")
+        );
+    }
+}
+
+/// First `n` characters with an ellipsis when truncated (row alignment helper).
+fn truncated(s: &str, n: usize) -> String {
+    let cut: String = s.chars().take(n).collect();
+    if cut.len() < s.len() {
+        format!("{cut}…")
+    } else {
+        cut
     }
 }
 

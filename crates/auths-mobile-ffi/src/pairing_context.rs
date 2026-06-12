@@ -287,14 +287,22 @@ pub fn build_pairing_binding_message(
 /// * `signature`: The P-256 ECDSA signature produced by the device (SE). Accepts
 ///   either X9.62 DER (what `SecKeyCreateSignature` emits) or raw r‖s (64 B).
 /// * `device_name`: Friendly name to embed in the response body.
+/// * `delegated_inception`: The device's signed `dip` (from
+///   [`crate::assemble_p256_delegated_inception`]). Embedded as
+///   `responder_inception_event` so the initiator can anchor the phone as a
+///   true delegated device. Required: a response without a dip cannot be
+///   anchored, only recorded — that path does not exist on mobile.
 ///
 /// The signature is verified locally against the stored binding message
 /// before the body is emitted — catches mobile-side SE misconfiguration
-/// at the FFI boundary rather than at the daemon.
+/// at the FFI boundary rather than at the daemon. The dip is cross-checked
+/// against this session: it must be signed by the SAME key that signed the
+/// binding message (so the SAS ceremony proves custody of exactly the key in
+/// the dip) and must delegate to the controller named in the pairing URI.
 ///
 /// Usage:
 /// ```ignore
-/// let body = assemble_pairing_response_body(ctx, sig_der, "iPhone".into())?;
+/// let body = assemble_pairing_response_body(ctx, sig_der, "iPhone".into(), dip)?;
 /// http_post(ctx.endpoint(), body).await?;
 /// ```
 #[uniffi::export]
@@ -302,8 +310,31 @@ pub fn assemble_pairing_response_body(
     context: Arc<PairingBindingContext>,
     signature: Vec<u8>,
     device_name: String,
+    delegated_inception: Arc<crate::SignedDelegatedInception>,
 ) -> Result<Vec<u8>, MobileError> {
     let sig_raw: [u8; 64] = normalize_p256_signature_to_raw(&signature)?;
+
+    // The dip must commit the same key that signs this pairing response —
+    // that identity of keys is what lets the SAS ceremony vouch for the dip.
+    if delegated_inception.device_signing_pubkey_compressed.as_slice()
+        != context.device_signing_pubkey_compressed.as_slice()
+    {
+        return Err(MobileError::PairingFailed(
+            "delegated inception commits a different key than this pairing session".to_string(),
+        ));
+    }
+    // And it must delegate to the controller this session pairs with.
+    let expected_delegator = context
+        .controller_did
+        .strip_prefix("did:keri:")
+        .unwrap_or(&context.controller_did);
+    if delegated_inception.delegator_prefix() != expected_delegator {
+        return Err(MobileError::PairingFailed(format!(
+            "delegated inception names delegator {} but this session pairs with {}",
+            delegated_inception.delegator_prefix(),
+            context.controller_did
+        )));
+    }
 
     // Local verification — cheap, catches SE misconfiguration before we
     // ship a bad body to the daemon.
@@ -332,7 +363,7 @@ pub fn assemble_pairing_response_body(
         device_did: derive_device_did(&context.device_signing_pubkey_compressed)?,
         signature: signature_b64,
         device_name,
-        responder_inception_event: String::new(),
+        responder_inception_event: delegated_inception.wire_envelope(),
     };
 
     serde_json::to_vec(&payload).map_err(|e| MobileError::Serialization(e.to_string()))
@@ -459,6 +490,34 @@ mod tests {
     use super::*;
     use p256::ecdsa::{SigningKey, signature::Signer};
 
+    /// Build a signed dip for `signing_key` delegating to `delegator_did` —
+    /// the companion object `assemble_pairing_response_body` now requires.
+    fn make_signed_dip(
+        signing_key: &SigningKey,
+        delegator_did: &str,
+    ) -> Arc<crate::SignedDelegatedInception> {
+        let current = signing_key
+            .verifying_key()
+            .to_encoded_point(true)
+            .as_bytes()
+            .to_vec();
+        let next_sk = SigningKey::random(&mut OsRng);
+        let next = next_sk
+            .verifying_key()
+            .to_encoded_point(true)
+            .as_bytes()
+            .to_vec();
+        let ctx = crate::build_p256_delegated_inception_payload(
+            delegator_did.to_string(),
+            current,
+            next,
+        )
+        .expect("dip build must succeed");
+        let sig: p256::ecdsa::Signature = signing_key.sign(&ctx.signing_payload());
+        crate::assemble_p256_delegated_inception(ctx, sig.to_der().as_bytes().to_vec())
+            .expect("dip assemble must succeed")
+    }
+
     /// Minimal valid pairing URI helper.
     fn make_uri(expires_in_secs: i64) -> String {
         let now = std::time::SystemTime::now()
@@ -544,12 +603,19 @@ mod tests {
         let sig: p256::ecdsa::Signature = signing_key.sign(&ctx.binding_message);
         let raw: [u8; 64] = sig.to_bytes().into();
 
+        let dip = make_signed_dip(&signing_key, "did:keri:EABC");
         let body =
-            assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone-15".into()).unwrap();
+            assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone-15".into(), dip.clone())
+                .unwrap();
         let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(parsed["curve"], "p256");
         assert_eq!(parsed["device_name"], "iPhone-15");
         assert!(parsed["device_did"].as_str().unwrap().starts_with("did:key:zDna"));
+        // The wire body carries the signed dip — the host can anchor this phone.
+        assert_eq!(
+            parsed["responder_inception_event"].as_str().unwrap(),
+            dip.wire_envelope()
+        );
     }
 
     #[test]
@@ -564,8 +630,9 @@ mod tests {
         let der_bytes = sig.to_der().as_bytes().to_vec();
         assert_ne!(der_bytes.len(), 64, "DER encoding must not be raw 64B");
 
+        let dip = make_signed_dip(&signing_key, "did:keri:EABC");
         let body =
-            assemble_pairing_response_body(ctx, der_bytes, "iPhone-15".into()).unwrap();
+            assemble_pairing_response_body(ctx, der_bytes, "iPhone-15".into(), dip).unwrap();
         let parsed: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(parsed["curve"], "p256");
     }
@@ -583,7 +650,8 @@ mod tests {
         let wrong_sig: p256::ecdsa::Signature = signing_key.sign(b"totally different bytes");
         let raw: [u8; 64] = wrong_sig.to_bytes().into();
 
-        let err = assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone".into())
+        let dip = make_signed_dip(&signing_key, "did:keri:EABC");
+        let err = assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone".into(), dip)
             .expect_err("wrong-message signature must be rejected");
         assert!(matches!(err, MobileError::PairingFailed(_)));
     }
@@ -600,8 +668,46 @@ mod tests {
         let sig: p256::ecdsa::Signature = key_b.sign(&ctx.binding_message);
         let raw: [u8; 64] = sig.to_bytes().into();
 
-        let err = assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone".into())
+        let dip = make_signed_dip(&key_a, "did:keri:EABC");
+        let err = assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone".into(), dip)
             .expect_err("signature under wrong key must be rejected");
+        assert!(matches!(err, MobileError::PairingFailed(_)));
+    }
+
+    #[test]
+    fn assembler_rejects_dip_under_different_key() {
+        let signing_key = SigningKey::random(&mut OsRng);
+        let other_key = SigningKey::random(&mut OsRng);
+        let compressed = signing_key.verifying_key().to_encoded_point(true);
+        let ctx = build_pairing_binding_message(make_uri(300), compressed.as_bytes().to_vec())
+            .unwrap();
+
+        let sig: p256::ecdsa::Signature = signing_key.sign(&ctx.binding_message);
+        let raw: [u8; 64] = sig.to_bytes().into();
+
+        // The dip commits a DIFFERENT key than the one signing this session —
+        // the SAS ceremony could not vouch for it.
+        let dip = make_signed_dip(&other_key, "did:keri:EABC");
+        let err = assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone".into(), dip)
+            .expect_err("dip under a different key must be rejected");
+        assert!(matches!(err, MobileError::PairingFailed(_)));
+    }
+
+    #[test]
+    fn assembler_rejects_dip_for_different_delegator() {
+        let signing_key = SigningKey::random(&mut OsRng);
+        let compressed = signing_key.verifying_key().to_encoded_point(true);
+        let ctx = build_pairing_binding_message(make_uri(300), compressed.as_bytes().to_vec())
+            .unwrap();
+
+        let sig: p256::ecdsa::Signature = signing_key.sign(&ctx.binding_message);
+        let raw: [u8; 64] = sig.to_bytes().into();
+
+        // Right key, wrong root: the dip delegates to someone other than the
+        // controller this session pairs with.
+        let dip = make_signed_dip(&signing_key, "did:keri:ESOMEONEELSE");
+        let err = assemble_pairing_response_body(ctx, raw.to_vec(), "iPhone".into(), dip)
+            .expect_err("dip naming a different delegator must be rejected");
         assert!(matches!(err, MobileError::PairingFailed(_)));
     }
 

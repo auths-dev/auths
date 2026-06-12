@@ -36,7 +36,7 @@ use tower_http::trace::TraceLayer;
 use crate::DaemonState;
 use crate::handlers::{
     handle_get_confirmation, handle_get_session, handle_health, handle_lookup_hmac,
-    handle_submit_confirmation, handle_submit_response,
+    handle_submit_confirmation, handle_submit_response, handle_submit_shared_kel_rot,
 };
 use crate::host_allowlist::{HostAllowlist, host_allowlist_middleware};
 use crate::rate_limiter::{TieredRateLimiter, middleware::tiered_rate_limit_middleware};
@@ -83,6 +83,10 @@ pub fn build_pairing_router(
         .route(
             "/v1/pairing/sessions/{id}/confirmation",
             get(handle_get_confirmation),
+        )
+        .route(
+            "/v1/pairing/sessions/{id}/shared-kel-rot",
+            post(handle_submit_shared_kel_rot),
         )
         // Per-request deadline — protects against slow-write clients
         // that hold a connection open indefinitely (a Slowloris

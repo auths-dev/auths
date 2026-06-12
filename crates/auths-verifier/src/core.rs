@@ -1159,6 +1159,12 @@ pub struct CanonicalAttestationData<'a> {
     /// Git commit SHA for provenance binding (included in signed envelope).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_sha: Option<&'a str>,
+    /// OIDC workload binding (included in signed envelope when present, so a
+    /// verifier can trust the claims it joins against an org policy).
+    /// `skip_serializing_if` keeps canonical bytes for binding-less
+    /// attestations byte-identical to the pre-binding shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oidc_binding: Option<&'a OidcBinding>,
 }
 
 /// Produce the canonical JSON bytes over which signatures are computed.
@@ -1224,6 +1230,7 @@ impl Attestation {
             delegated_by: self.delegated_by.as_ref(),
             signer_type: self.signer_type.as_ref(),
             commit_sha: self.commit_sha.as_deref(),
+            oidc_binding: self.oidc_binding.as_ref(),
         }
     }
 

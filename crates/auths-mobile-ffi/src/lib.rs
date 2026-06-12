@@ -20,6 +20,7 @@ uniffi::setup_scaffolding!();
 // the Secure Enclave / StrongBox / TEE; the FFI only ever sees pubkeys
 // + signatures.
 pub mod auth_challenge_context;
+pub mod delegated_inception_context;
 pub mod device_kel_rotation;
 pub mod identity_context;
 pub mod pairing_context;
@@ -31,12 +32,16 @@ pub use device_kel_rotation::{
     build_p256_device_kel_rot_payload,
 };
 pub use shared_kel_context::{
-    P256SharedKelRotationContext, SharedKelChangeRequest, assemble_shared_kel_rot,
-    build_shared_kel_rot_payload,
+    P256SharedKelRotationContext, SharedKelChangeRequest, SharedKelRotIndexedResult,
+    assemble_shared_kel_rot_indexed, build_shared_kel_rot_payload,
 };
 
 pub use auth_challenge_context::{
     AuthChallengeContext, assemble_auth_challenge_response, build_auth_challenge_signing_payload,
+};
+pub use delegated_inception_context::{
+    P256DelegatedInceptionContext, SignedDelegatedInception,
+    assemble_p256_delegated_inception, build_p256_delegated_inception_payload,
 };
 pub use identity_context::{
     P256IdentityInceptionContext, assemble_p256_identity, build_p256_identity_inception_payload,

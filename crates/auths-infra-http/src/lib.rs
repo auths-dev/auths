@@ -43,7 +43,7 @@ pub use oidc_platforms::{
     circleci_oidc_token, github_actions_oidc_token, gitlab_ci_oidc_token, normalize_workload_claims,
 };
 pub use oidc_tsa_client::HttpTimestampClient;
-pub use oidc_validator::{HttpJwksClient, HttpJwtValidator, OidcTokenClaims};
+pub use oidc_validator::{HttpJwksClient, HttpJwtValidator, OidcTokenClaims, PinnedJwksClient};
 pub use oobi_resolver::{HttpOobiError, HttpOobiResolver, MAX_OOBI_BYTES};
 pub use pairing_client::HttpPairingRelayClient;
 pub use platform_context::resolve_verified_platform_context;

@@ -540,6 +540,7 @@ pub fn handle_org(
                     delegated_by: None,
                     commit_sha: None,
                     signer_type: None,
+                    oidc_binding: None,
                 },
                 &signer,
                 passphrase_provider.as_ref(),

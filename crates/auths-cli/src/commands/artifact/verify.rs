@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use auths_keri::witness::SignedReceipt;
 use auths_verifier::core::Attestation;
+use auths_verifier::oidc_policy::{OidcPolicyJoin, OidcSubjectPolicy};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     CanonicalDid, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
@@ -35,22 +36,70 @@ struct VerifyArtifactResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     commit_verified: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    oidc_join: Option<OidcPolicyJoin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+}
+
+/// Inputs for [`handle_verify`] beyond the artifact path — named fields
+/// (the `AttestationInput` pattern) so call sites stay readable as the
+/// verify surface grows.
+pub struct VerifyArtifactArgs {
+    /// Path to the signature file (defaults to `<FILE>.auths.json`).
+    pub signature: Option<PathBuf>,
+    /// Identity bundle for stateless verification.
+    pub identity_bundle: Option<PathBuf>,
+    /// Witness receipts file.
+    pub witness_receipts: Option<PathBuf>,
+    /// Witness public keys as DID:hex pairs.
+    pub witness_keys: Vec<String>,
+    /// Number of witnesses required.
+    pub witness_threshold: usize,
+    /// Also verify the source commit's signing attestation.
+    pub verify_commit: bool,
+    /// OIDC-subject policy to JOIN against the signed OIDC binding.
+    pub oidc_policy: Option<PathBuf>,
 }
 
 /// Execute the `artifact verify` command.
 ///
 /// Exit codes: 0=valid, 1=invalid, 2=error.
-pub async fn handle_verify(
-    file: &Path,
-    signature: Option<PathBuf>,
-    identity_bundle: Option<PathBuf>,
-    witness_receipts: Option<PathBuf>,
-    witness_keys: &[String],
-    witness_threshold: usize,
-    verify_commit: bool,
-) -> Result<()> {
+pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> {
+    let VerifyArtifactArgs {
+        signature,
+        identity_bundle,
+        witness_receipts,
+        witness_keys,
+        witness_threshold,
+        verify_commit,
+        oidc_policy,
+    } = args;
+    let witness_keys = &witness_keys;
     let file_str = file.to_string_lossy().to_string();
+
+    // 0. Parse the OIDC-subject policy up front: an unreadable or malformed
+    //    policy is a "could not attempt" (exit 2), not a verdict.
+    let oidc_policy = match &oidc_policy {
+        None => None,
+        Some(path) => {
+            let raw = match fs::read_to_string(path) {
+                Ok(r) => r,
+                Err(e) => {
+                    return output_error(
+                        &file_str,
+                        2,
+                        &format!("Failed to read OIDC policy {path:?}: {e}"),
+                    );
+                }
+            };
+            match OidcSubjectPolicy::parse(&raw) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    return output_error(&file_str, 2, &format!("{e}"));
+                }
+            }
+        }
+    };
 
     // 1. Locate and load signature file
     let sig_path = signature.unwrap_or_else(|| {
@@ -129,6 +178,7 @@ pub async fn handle_verify(
                 issuer: Some(attestation.issuer.to_string()),
                 commit_sha: attestation.commit_sha.clone(),
                 commit_verified: None,
+                oidc_join: None,
                 error: Some(format!(
                     "Digest mismatch: file={}, attestation={}",
                     file_digest.hex, artifact_meta.digest.hex
@@ -247,6 +297,55 @@ pub async fn handle_verify(
         }
     }
 
+    // 8a2. The keyless exchange, verify side: JOIN the attestation's
+    //      signature-covered OIDC binding against the org's pinned policy.
+    //      Fail-closed: only a chain-valid attestation has a trustworthy
+    //      binding, and a missing binding or any claim mismatch is a
+    //      verification failure, never a pass.
+    let mut oidc_error: Option<String> = None;
+    let oidc_join = match &oidc_policy {
+        None => None,
+        Some(_) if !valid => {
+            // Already failing — the binding's claims can't be trusted, so the
+            // join is not attempted (and cannot rescue the verdict).
+            None
+        }
+        Some(policy) => match &attestation.oidc_binding {
+            None => {
+                valid = false;
+                oidc_error = Some(
+                    "OIDC policy join failed: attestation carries no OIDC binding \
+                     — signer presented no verified OIDC identity"
+                        .to_string(),
+                );
+                None
+            }
+            Some(binding) => match policy.join(binding) {
+                Ok(join) => {
+                    if !is_json_mode() {
+                        eprintln!(
+                            "  OIDC policy join: {} via {} (issuer {})",
+                            join.repository,
+                            join.workflow_ref.as_deref().unwrap_or("any workflow"),
+                            join.issuer
+                        );
+                    }
+                    Some(join)
+                }
+                Err(e) => {
+                    valid = false;
+                    oidc_error = Some(format!("OIDC policy join failed: {e}"));
+                    None
+                }
+            },
+        },
+    };
+    if let Some(ref msg) = oidc_error
+        && !is_json_mode()
+    {
+        eprintln!("  {msg}");
+    }
+
     // 8b. Display commit linkage info (always, when present)
     let commit_sha_val = attestation.commit_sha.clone();
     if let Some(ref sha) = commit_sha_val
@@ -313,7 +412,8 @@ pub async fn handle_verify(
             issuer: Some(identity_did.to_string()),
             commit_sha: commit_sha_val,
             commit_verified,
-            error: None,
+            oidc_join,
+            error: oidc_error,
         },
     )
 }
@@ -421,6 +521,7 @@ fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
             issuer: None,
             commit_sha: None,
             commit_verified: None,
+            oidc_join: None,
             error: Some(message.to_string()),
         };
         println!("{}", serde_json::to_string(&result)?);

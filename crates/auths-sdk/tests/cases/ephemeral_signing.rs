@@ -1,4 +1,4 @@
-use auths_sdk::domains::signing::service::sign_artifact_ephemeral;
+use auths_sdk::domains::signing::service::{EphemeralSignRequest, sign_artifact_ephemeral};
 use auths_verifier::core::{Attestation, SignerType};
 use chrono::Utc;
 
@@ -8,12 +8,15 @@ const VALID_SHA: &str = "abc123def456abc123def456abc123def456abc1";
 fn produces_valid_attestation_with_did_key_issuer() {
     let result = sign_artifact_ephemeral(
         Utc::now(),
-        b"test data",
-        None,
-        VALID_SHA.into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"test data",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     )
     .expect("signing should succeed");
 
@@ -36,12 +39,15 @@ fn produces_valid_attestation_with_did_key_issuer() {
 fn signer_type_is_workload() {
     let result = sign_artifact_ephemeral(
         Utc::now(),
-        b"test data",
-        None,
-        VALID_SHA.into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"test data",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     )
     .expect("signing should succeed");
 
@@ -53,12 +59,15 @@ fn signer_type_is_workload() {
 fn commit_sha_is_present() {
     let result = sign_artifact_ephemeral(
         Utc::now(),
-        b"test data",
-        None,
-        VALID_SHA.into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"test data",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     )
     .expect("signing should succeed");
 
@@ -70,22 +79,28 @@ fn commit_sha_is_present() {
 fn each_call_uses_different_ephemeral_key() {
     let r1 = sign_artifact_ephemeral(
         Utc::now(),
-        b"data1",
-        None,
-        VALID_SHA.into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"data1",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     )
     .unwrap();
     let r2 = sign_artifact_ephemeral(
         Utc::now(),
-        b"data2",
-        None,
-        VALID_SHA.into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"data2",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     )
     .unwrap();
 
@@ -108,12 +123,15 @@ fn ci_environment_in_payload() {
 
     let result = sign_artifact_ephemeral(
         Utc::now(),
-        b"test data",
-        Some("test.tar.gz".into()),
-        VALID_SHA.into(),
-        None,
-        None,
-        Some(ci_env),
+        EphemeralSignRequest {
+            data: b"test data",
+            artifact_name: Some("test.tar.gz".into()),
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: Some(ci_env),
+            oidc_binding: None,
+        },
     )
     .expect("signing should succeed");
 
@@ -128,8 +146,19 @@ fn ci_environment_in_payload() {
 
 #[test]
 fn empty_data_produces_valid_attestation() {
-    let result = sign_artifact_ephemeral(Utc::now(), b"", None, VALID_SHA.into(), None, None, None)
-        .expect("empty data should still produce valid attestation");
+    let result = sign_artifact_ephemeral(
+        Utc::now(),
+        EphemeralSignRequest {
+            data: b"",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
+    )
+    .expect("empty data should still produce valid attestation");
 
     let att: Attestation = serde_json::from_str(&result.attestation_json).unwrap();
     assert!(att.issuer.as_str().starts_with("did:key:z"));
@@ -139,12 +168,15 @@ fn empty_data_produces_valid_attestation() {
 fn invalid_commit_sha_rejected() {
     let result = sign_artifact_ephemeral(
         Utc::now(),
-        b"test data",
-        None,
-        "not-a-valid-sha".into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"test data",
+            artifact_name: None,
+            commit_sha: "not-a-valid-sha".into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     );
 
     assert!(result.is_err(), "invalid commit SHA should be rejected");
@@ -160,12 +192,15 @@ fn invalid_commit_sha_rejected() {
 fn tamper_commit_sha_breaks_signature() {
     let result = sign_artifact_ephemeral(
         Utc::now(),
-        b"test data",
-        None,
-        VALID_SHA.into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"test data",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     )
     .unwrap();
 
@@ -203,12 +238,15 @@ fn tamper_commit_sha_breaks_signature() {
 fn tamper_artifact_fails_digest_check() {
     let result = sign_artifact_ephemeral(
         Utc::now(),
-        b"original artifact data",
-        None,
-        VALID_SHA.into(),
-        None,
-        None,
-        None,
+        EphemeralSignRequest {
+            data: b"original artifact data",
+            artifact_name: None,
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: None,
+        },
     )
     .unwrap();
 
@@ -229,12 +267,15 @@ fn ephemeral_key_collision_check() {
     for _ in 0..100 {
         let r = sign_artifact_ephemeral(
             Utc::now(),
-            b"data",
-            None,
-            VALID_SHA.into(),
-            None,
-            None,
-            None,
+            EphemeralSignRequest {
+                data: b"data",
+                artifact_name: None,
+                commit_sha: VALID_SHA.into(),
+                expires_in: None,
+                note: None,
+                ci_env: None,
+                oidc_binding: None,
+            },
         )
         .unwrap();
         let att: Attestation = serde_json::from_str(&r.attestation_json).unwrap();
@@ -249,3 +290,86 @@ fn ephemeral_key_collision_check() {
 }
 
 use sha2::Digest;
+
+/// A verified OIDC binding rides in the SIGNED envelope: the attestation
+/// verifies as-signed, and any tampering with the binding's claims breaks
+/// the signature. This is what makes the verify-time policy join (org
+/// policy ⋈ binding) trustworthy.
+#[test]
+fn oidc_binding_is_signature_covered() {
+    use auths_verifier::core::OidcBinding;
+
+    let mut claims = serde_json::Map::new();
+    claims.insert("repository".to_string(), "acme/widget".into());
+    claims.insert(
+        "workflow_ref".to_string(),
+        "acme/widget/.github/workflows/release.yml@refs/tags/v1.0".into(),
+    );
+    let binding = OidcBinding {
+        issuer: "https://token.actions.githubusercontent.com".to_string(),
+        subject: "repo:acme/widget:ref:refs/tags/v1.0".to_string(),
+        audience: "https://github.com/acme".to_string(),
+        token_exp: 4_102_444_800,
+        platform: Some("github".to_string()),
+        jti: Some("jti-1".to_string()),
+        normalized_claims: Some(claims),
+    };
+
+    let result = sign_artifact_ephemeral(
+        Utc::now(),
+        EphemeralSignRequest {
+            data: b"release bytes",
+            artifact_name: Some("release.tar.gz".into()),
+            commit_sha: VALID_SHA.into(),
+            expires_in: None,
+            note: None,
+            ci_env: None,
+            oidc_binding: Some(binding),
+        },
+    )
+    .expect("signing with binding should succeed");
+
+    let att: Attestation = serde_json::from_str(&result.attestation_json).unwrap();
+    let bound = att
+        .oidc_binding
+        .clone()
+        .expect("binding should be embedded");
+    assert_eq!(bound.subject, "repo:acme/widget:ref:refs/tags/v1.0");
+
+    let (pk_bytes, curve): (Vec<u8>, auths_crypto::CurveType) =
+        match auths_crypto::did_key_decode(att.issuer.as_str()).expect("did:key resolves") {
+            auths_crypto::DecodedDidKey::Ed25519(k) => {
+                (k.to_vec(), auths_crypto::CurveType::Ed25519)
+            }
+            auths_crypto::DecodedDidKey::P256(k) => (k, auths_crypto::CurveType::P256),
+        };
+    let pk =
+        auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes).expect("valid device pubkey");
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    // As-signed: the chain verifies.
+    let report = rt
+        .block_on(auths_verifier::verify_chain(
+            std::slice::from_ref(&att),
+            &pk,
+        ))
+        .expect("verification should run");
+    assert!(
+        report.is_valid(),
+        "binding-carrying attestation must verify"
+    );
+
+    // Tampered binding: swap the repository claim — the signature must break.
+    let mut tampered = att;
+    let b = tampered.oidc_binding.as_mut().unwrap();
+    b.normalized_claims
+        .as_mut()
+        .unwrap()
+        .insert("repository".to_string(), "attacker/fork".into());
+    let report = rt.block_on(auths_verifier::verify_chain(&[tampered], &pk));
+    // An Err (signature mismatch) is equally fail-closed.
+    if let Ok(r) = report {
+        assert!(!r.is_valid(), "tampered binding must not verify");
+    }
+}

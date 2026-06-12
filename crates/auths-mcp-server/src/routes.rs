@@ -1,5 +1,6 @@
 //! Axum route handlers.
 
+use auths_api::rp_auth::{ChallengeMintState, challenge_handler};
 use axum::{
     Extension, Json, Router,
     extract::{Path, State},
@@ -13,7 +14,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::config::McpServerConfig;
 use crate::error::McpServerError;
-use crate::middleware::jwt_auth_middleware;
+use crate::middleware::auth_middleware;
 use crate::state::McpServerState;
 use crate::tools::{
     DeployRequest, ReadFileRequest, ToolResponse, WriteFileRequest, execute_deploy,
@@ -23,6 +24,12 @@ use crate::types::VerifiedAgent;
 
 /// Build the application router.
 ///
+/// Tool routes accept both `Bearer` JWTs and KERI `Auths-Presentation`s (see
+/// [`auth_middleware`]). When the state carries a KERI authorizer, the
+/// `/v1/auth/challenge` mint route is mounted too — the platform's reference
+/// `challenge_handler` over the authorizer's own single-use challenge store —
+/// so a relying party gets the full no-issuer presentation flow out of the box.
+///
 /// Args:
 /// * `state`: The shared MCP server state.
 /// * `config`: The server configuration.
@@ -31,7 +38,7 @@ pub fn router(state: McpServerState, config: &McpServerConfig) -> Router {
         .route("/mcp/tools/{tool_name}", post(handle_tool_call))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
-            jwt_auth_middleware,
+            auth_middleware,
         ));
 
     let public_routes = Router::new()
@@ -42,10 +49,22 @@ pub fn router(state: McpServerState, config: &McpServerConfig) -> Router {
         .route("/mcp/tools", get(list_tools))
         .route("/health", get(health));
 
-    let app = public_routes
-        .merge(protected_routes)
-        .with_state(state)
-        .layer(TraceLayer::new_for_http());
+    // KERI presentation path: agents mint a single-use challenge here, sign over
+    // it, and call tools with `Authorization: Auths-Presentation <token>`.
+    let challenge_mint = state.keri().map(|keri| {
+        Router::new()
+            .route("/v1/auth/challenge", get(challenge_handler))
+            .with_state(ChallengeMintState::new(
+                keri.challenges(),
+                keri.audience().clone(),
+            ))
+    });
+
+    let mut app = public_routes.merge(protected_routes).with_state(state);
+    if let Some(mint) = challenge_mint {
+        app = app.merge(mint);
+    }
+    let app = app.layer(TraceLayer::new_for_http());
 
     if config.enable_cors {
         app.layer(

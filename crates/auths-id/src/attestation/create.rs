@@ -68,6 +68,10 @@ pub struct AttestationInput<'a> {
     pub commit_sha: Option<String>,
     /// Signer type (machine, human, etc.).
     pub signer_type: Option<SignerType>,
+    /// Verified OIDC workload binding, if the signer presented one.
+    /// Included in the signed envelope so verify-time policy joins can
+    /// trust the claims.
+    pub oidc_binding: Option<auths_verifier::core::OidcBinding>,
 }
 
 /// Creates a signed attestation by signing internally using the provided SecureSigner.
@@ -105,6 +109,7 @@ pub fn create_signed_attestation(
         delegated_by,
         commit_sha,
         signer_type,
+        oidc_binding,
     } = input;
     // Length must match the declared curve. No length dispatch — the curve
     // came in-band from the caller, so this is pure validation.
@@ -161,7 +166,7 @@ pub fn create_signed_attestation(
         commit_sha,
         commit_message: None,
         author: None,
-        oidc_binding: None,
+        oidc_binding,
     };
 
     // Canonicalize using single source of truth

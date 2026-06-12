@@ -61,6 +61,8 @@ pub mod error;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
+/// OIDC-subject policy and the verify-time join for keyless CI signing.
+pub mod oidc_policy;
 pub mod presentation;
 mod software_verify;
 pub mod ssh_sig;
@@ -92,6 +94,9 @@ pub use core::{
     SignatureVerifyError, ThresholdPolicy, TypedSignature, VerifiedAttestation,
     decode_public_key_bytes, decode_public_key_hex,
 };
+
+// Re-export the OIDC policy join (keyless CI verify-time exchange)
+pub use oidc_policy::{OidcPolicyError, OidcPolicyJoin, OidcSubjectPolicy};
 
 // Re-export test utilities
 #[cfg(any(test, feature = "test-utils"))]

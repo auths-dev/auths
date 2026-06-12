@@ -290,6 +290,34 @@ impl JwksClient for HttpJwksClient {
     }
 }
 
+/// A JWKS client pinned to a fixed key set — no network, ever.
+///
+/// The adapter for air-gapped and policy-pinned deployments: the verifier
+/// operator ships the issuer's JWKS alongside the policy (exactly like
+/// pinned trust roots) and token validation runs against those keys only.
+/// Also the honest adapter for hermetic tests.
+pub struct PinnedJwksClient {
+    jwks: serde_json::Value,
+}
+
+impl PinnedJwksClient {
+    /// Pin a JWKS document (an object with a `keys` array).
+    ///
+    /// # Args
+    ///
+    /// * `jwks`: The JWKS to serve for every issuer query.
+    pub fn new(jwks: serde_json::Value) -> Self {
+        Self { jwks }
+    }
+}
+
+#[async_trait]
+impl JwksClient for PinnedJwksClient {
+    async fn fetch_jwks(&self, _issuer_url: &str) -> Result<serde_json::Value, OidcError> {
+        Ok(self.jwks.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

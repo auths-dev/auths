@@ -61,6 +61,7 @@ fn canonical_bytes_are_byte_stable_under_fixed_seed() {
         delegated_by: None,
         commit_sha: None,
         signer_type: None,
+        oidc_binding: None,
     };
 
     // Build the attestation body we would sign over without actually
@@ -130,6 +131,6 @@ fn test_build_attestation(input: &AttestationInput<'_>) -> auths_verifier::core:
         commit_sha: input.commit_sha.clone(),
         commit_message: None,
         author: None,
-        oidc_binding: None,
+        oidc_binding: input.oidc_binding.clone(),
     }
 }

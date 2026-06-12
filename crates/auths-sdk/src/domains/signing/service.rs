@@ -15,7 +15,7 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::core::resign_attestation;
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::storage::git_refs::AttestationMetadata;
-use auths_verifier::core::{ResourceId, SignerType};
+use auths_verifier::core::{OidcBinding, ResourceId, SignerType};
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
@@ -660,6 +660,7 @@ fn create_and_sign_attestation(
             delegated_by: None,
             commit_sha,
             signer_type: None,
+            oidc_binding: None,
         },
         signer,
         &noop_provider,
@@ -679,6 +680,28 @@ fn create_and_sign_attestation(
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))
 }
 
+/// Inputs for [`sign_artifact_ephemeral`] — the artifact bytes plus the
+/// provenance the one-time key binds them to. Named fields (the
+/// `AttestationInput` pattern) so call sites stay readable as the shape
+/// evolves.
+pub struct EphemeralSignRequest<'a> {
+    /// Raw artifact bytes to sign.
+    pub data: &'a [u8],
+    /// Optional human-readable name for the artifact.
+    pub artifact_name: Option<String>,
+    /// Git commit SHA this artifact was built from (required, 40 or 64 hex chars).
+    pub commit_sha: String,
+    /// Optional TTL in seconds.
+    pub expires_in: Option<u64>,
+    /// Optional attestation note.
+    pub note: Option<String>,
+    /// Optional CI environment metadata (serialized into payload, covered by signature).
+    pub ci_env: Option<serde_json::Value>,
+    /// Verified OIDC workload binding, if the runner presented a token
+    /// (signed envelope field, so verify-time policy joins can trust it).
+    pub oidc_binding: Option<OidcBinding>,
+}
+
 /// Signs artifact bytes with a one-time ephemeral Ed25519 key. No keychain, no
 /// identity storage, no passphrase — the key is generated, used, and zeroized
 /// within this function call.
@@ -690,29 +713,34 @@ fn create_and_sign_attestation(
 ///
 /// Args:
 /// * `now` - Current UTC time (injected per clock pattern).
-/// * `data` - Raw artifact bytes to sign.
-/// * `artifact_name` - Optional human-readable name for the artifact.
-/// * `commit_sha` - Git commit SHA this artifact was built from (required, 40 or 64 hex chars).
-/// * `expires_in` - Optional TTL in seconds.
-/// * `note` - Optional attestation note.
-/// * `ci_env` - Optional CI environment metadata (serialized into payload, covered by signature).
+/// * `req` - The artifact bytes plus provenance to bind (see
+///   [`EphemeralSignRequest`]).
 ///
 /// Usage:
 /// ```ignore
-/// let result = sign_artifact_ephemeral(
-///     Utc::now(), b"artifact bytes", Some("release.tar.gz".into()),
-///     "abc123def456abc123def456abc123def456abc1".into(), None, None, None,
-/// )?;
+/// let result = sign_artifact_ephemeral(Utc::now(), EphemeralSignRequest {
+///     data: b"artifact bytes",
+///     artifact_name: Some("release.tar.gz".into()),
+///     commit_sha: "abc123def456abc123def456abc123def456abc1".into(),
+///     expires_in: None,
+///     note: None,
+///     ci_env: None,
+///     oidc_binding: None,
+/// })?;
 /// ```
 pub fn sign_artifact_ephemeral(
     now: DateTime<Utc>,
-    data: &[u8],
-    artifact_name: Option<String>,
-    commit_sha: String,
-    expires_in: Option<u64>,
-    note: Option<String>,
-    ci_env: Option<serde_json::Value>,
+    req: EphemeralSignRequest<'_>,
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {
+    let EphemeralSignRequest {
+        data,
+        artifact_name,
+        commit_sha,
+        expires_in,
+        note,
+        ci_env,
+        oidc_binding,
+    } = req;
     // 1. Generate ephemeral P-256 seed and zeroize on drop
     let mut seed_bytes = Zeroizing::new([0u8; 32]);
     ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), seed_bytes.as_mut())
@@ -791,6 +819,7 @@ pub fn sign_artifact_ephemeral(
             delegated_by: None,
             commit_sha: Some(validated_sha),
             signer_type: Some(SignerType::Workload),
+            oidc_binding,
         },
         &signer,
         &noop_provider,
@@ -909,6 +938,7 @@ pub fn sign_artifact_raw(
             delegated_by: None,
             commit_sha: validated_commit_sha,
             signer_type: None,
+            oidc_binding: None,
         },
         &signer,
         &noop_provider,

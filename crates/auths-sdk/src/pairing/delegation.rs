@@ -33,45 +33,29 @@ use auths_crypto::CurveType;
 use auths_id::keri::delegation::{DeviceDipBundle, anchor_received_dip, build_device_dip};
 use auths_id::keri::types::Prefix;
 use auths_id::keri::{Event, parse_did_keri, validate_delegation};
-use auths_keri::{DipEvent, IxnEvent, SourceSeal, serialize_source_seal_couples};
+use auths_keri::{
+    DipEvent, IxnEvent, SourceSeal, decode_signed_dip as keri_decode_signed_dip,
+    encode_signed_dip as keri_encode_signed_dip, serialize_source_seal_couples,
+};
 use auths_verifier::types::CanonicalDid;
 
 use crate::context::AuthsContext;
 use crate::pairing::PairingError;
 
-/// A device's signed delegated-inception, serialized for the pairing wire.
-///
-/// Carried in `SubmitResponseRequest.responder_inception_event` as
-/// base64url(JSON). The attachment (the device's CESR signature over the dip) is
-/// kept alongside the event so the initiator can replay the signed dip exactly.
-#[derive(serde::Serialize, serde::Deserialize)]
-struct WireSignedDip {
-    event: DipEvent,
-    attachment_b64: String,
-}
-
 /// Encode a device-signed dip for the `responder_inception_event` wire field.
+///
+/// The wire form itself ([`auths_keri::WireSignedDip`]) is shared with every
+/// other producer (the mobile FFI's dip assembler); this wrapper only maps the
+/// error into [`PairingError`].
 fn encode_signed_dip(dip: &DipEvent, attachment: &[u8]) -> Result<String, PairingError> {
-    let wire = WireSignedDip {
-        event: dip.clone(),
-        attachment_b64: URL_SAFE_NO_PAD.encode(attachment),
-    };
-    let json = serde_json::to_vec(&wire)
-        .map_err(|e| PairingError::AttestationFailed(format!("encode dip: {e}")))?;
-    Ok(URL_SAFE_NO_PAD.encode(json))
+    keri_encode_signed_dip(dip, attachment)
+        .map_err(|e| PairingError::AttestationFailed(format!("encode dip: {e}")))
 }
 
 /// Decode a device-signed dip received in `responder_inception_event`.
 fn decode_signed_dip(encoded: &str) -> Result<(DipEvent, Vec<u8>), PairingError> {
-    let json = URL_SAFE_NO_PAD
-        .decode(encoded)
-        .map_err(|e| PairingError::AttestationFailed(format!("decode dip envelope: {e}")))?;
-    let wire: WireSignedDip = serde_json::from_slice(&json)
-        .map_err(|e| PairingError::AttestationFailed(format!("decode dip json: {e}")))?;
-    let attachment = URL_SAFE_NO_PAD
-        .decode(&wire.attachment_b64)
-        .map_err(|e| PairingError::AttestationFailed(format!("decode dip attachment: {e}")))?;
-    Ok((wire.event, attachment))
+    keri_decode_signed_dip(encoded)
+        .map_err(|e| PairingError::AttestationFailed(format!("decode dip: {e}")))
 }
 
 /// Encode the root's anchoring `ixn` for the confirmation channel.

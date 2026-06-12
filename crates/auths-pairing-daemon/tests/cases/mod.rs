@@ -10,6 +10,7 @@ mod rate_limiter;
 mod rate_tiers;
 mod request_limits;
 mod router;
+mod shared_kel_rot;
 #[cfg(feature = "subkey-chain-v1")]
 mod subkey_chain;
 mod token;

@@ -191,12 +191,15 @@ pub async fn handle_verify_unified(
         VerifyTarget::ArtifactFile(artifact_path) => {
             handle_artifact_verify(
                 &artifact_path,
-                cmd.signature,
-                cmd.identity_bundle,
-                cmd.witness_receipts,
-                &cmd.witness_keys,
-                cmd.witness_threshold,
-                false,
+                crate::commands::artifact::verify::VerifyArtifactArgs {
+                    signature: cmd.signature,
+                    identity_bundle: cmd.identity_bundle,
+                    witness_receipts: cmd.witness_receipts,
+                    witness_keys: cmd.witness_keys,
+                    witness_threshold: cmd.witness_threshold,
+                    verify_commit: false,
+                    oidc_policy: None,
+                },
             )
             .await
         }

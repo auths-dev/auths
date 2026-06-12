@@ -700,6 +700,7 @@ name = "auths-mcp-server"
 version = "0.1.3"
 dependencies = [
  "anyhow",
+ "auths-api",
  "auths-jwt",
  "auths-rp",
  "auths-sdk",

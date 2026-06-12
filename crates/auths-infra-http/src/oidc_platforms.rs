@@ -100,6 +100,12 @@ pub fn normalize_workload_claims(
                     serde_json::Value::String(workflow.to_string()),
                 );
             }
+            if let Some(workflow_ref) = claims.get("workflow_ref").and_then(|v| v.as_str()) {
+                normalized.insert(
+                    "workflow_ref".to_string(),
+                    serde_json::Value::String(workflow_ref.to_string()),
+                );
+            }
             if let Some(job_workflow_ref) = claims.get("job_workflow_ref").and_then(|v| v.as_str())
             {
                 normalized.insert(
@@ -209,6 +215,7 @@ mod tests {
             "repository": "owner/repo",
             "actor": "github-user",
             "workflow": "test.yml",
+            "workflow_ref": "owner/repo/.github/workflows/test.yml@refs/heads/main",
             "job_workflow_ref": "owner/repo/.github/workflows/test.yml@main",
             "run_id": "12345",
             "run_number": "1"
@@ -224,6 +231,11 @@ mod tests {
         assert_eq!(
             normalized.get("actor").and_then(|v| v.as_str()),
             Some("github-user")
+        );
+        assert_eq!(
+            normalized.get("workflow_ref").and_then(|v| v.as_str()),
+            Some("owner/repo/.github/workflows/test.yml@refs/heads/main"),
+            "workflow_ref must survive normalization — the policy join pins it"
         );
     }
 

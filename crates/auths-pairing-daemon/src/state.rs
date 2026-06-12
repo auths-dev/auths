@@ -6,7 +6,7 @@ use tokio::time::Instant;
 
 use auths_core::pairing::types::{
     CreateSessionRequest, GetConfirmationResponse, GetSessionResponse, SessionStatus,
-    SubmitConfirmationRequest, SubmitResponseRequest, SuccessResponse,
+    SubmitConfirmationRequest, SubmitResponseRequest, SubmitSharedKelRotRequest, SuccessResponse,
 };
 
 /// Errors from session state transitions.
@@ -39,6 +39,11 @@ pub struct DaemonState {
     pub(crate) response_tx: Mutex<Option<oneshot::Sender<SubmitResponseRequest>>>,
     pub(crate) confirmation: Mutex<Option<SubmitConfirmationRequest>>,
     pub(crate) confirmation_notify: Arc<Notify>,
+    /// A co-authored shared-KEL rotation received from the paired device,
+    /// already signature-verified at the HTTP boundary. The embedding host
+    /// takes it and replays it against the registry's prior key state.
+    pub(crate) shared_kel_rot: Mutex<Option<SubmitSharedKelRotRequest>>,
+    pub(crate) shared_kel_rot_notify: Arc<Notify>,
     pub(crate) pairing_token: Vec<u8>,
     /// Replay-protection cache shared across HMAC + Sig auth paths.
     /// Each `(kid, nonce)` is remembered for the nonce TTL window.
@@ -100,6 +105,8 @@ impl DaemonState {
             response_tx: Mutex::new(Some(response_tx)),
             confirmation: Mutex::new(None),
             confirmation_notify: Arc::new(Notify::new()),
+            shared_kel_rot: Mutex::new(None),
+            shared_kel_rot_notify: Arc::new(Notify::new()),
             pairing_token,
             #[cfg(feature = "server")]
             nonce_cache: crate::auth::NonceCache::new(),
@@ -259,6 +266,51 @@ impl DaemonState {
             success: true,
             message: "Confirmation submitted".to_string(),
         })
+    }
+
+    /// Submit a co-authored shared-KEL rotation. One per session — a
+    /// second submission is a conflict (the host has at most one rotation
+    /// to replay; "fixing up" an already-delivered rotation is not a flow).
+    ///
+    /// The handler verifies the envelope's indexed signatures BEFORE this
+    /// is called; state only enforces session identity and single-shot
+    /// semantics.
+    pub async fn submit_shared_kel_rot(
+        &self,
+        id: &str,
+        request: SubmitSharedKelRotRequest,
+    ) -> Result<SuccessResponse, SessionError> {
+        if id != self.session.session_id {
+            return Err(SessionError::Conflict("session ID mismatch"));
+        }
+
+        let mut rot = self.shared_kel_rot.lock().await;
+        if rot.is_some() {
+            return Err(SessionError::Conflict(
+                "shared-KEL rotation already submitted",
+            ));
+        }
+        *rot = Some(request);
+        drop(rot);
+
+        self.shared_kel_rot_notify.notify_waiters();
+
+        Ok(SuccessResponse {
+            success: true,
+            message: "Shared-KEL rotation received".to_string(),
+        })
+    }
+
+    /// Take the received shared-KEL rotation, if any. The embedding host
+    /// calls this (after awaiting [`Self::shared_kel_rot_notify`]) to
+    /// replay the rotation against the registry's prior key state.
+    pub async fn take_shared_kel_rot(&self) -> Option<SubmitSharedKelRotRequest> {
+        self.shared_kel_rot.lock().await.take()
+    }
+
+    /// Notifier fired when a shared-KEL rotation arrives.
+    pub fn shared_kel_rot_notify(&self) -> Arc<Notify> {
+        Arc::clone(&self.shared_kel_rot_notify)
     }
 
     /// Get the current confirmation state.
