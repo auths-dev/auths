@@ -828,13 +828,16 @@ dependencies = [
 name = "auths-rp"
 version = "0.1.3"
 dependencies = [
+ "auths-rp",
  "auths-verifier",
  "base64",
  "chrono",
+ "git2",
  "parking_lot",
  "ring",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

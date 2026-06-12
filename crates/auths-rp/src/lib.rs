@@ -9,7 +9,8 @@
 //! [`WirePresentation::parse`].
 //!
 //! The actual cryptographic check is the shipped, pure `auths_verifier::verify_presentation`;
-//! this crate is the transport + (in later tasks) the Axum middleware and challenge store.
+//! this crate is the transport + the challenge store + the registry-sync surface
+//! ([`registry_sync`]) that keeps a relying party's registry replica current over a wire.
 
 use auths_verifier::{PresentationBinding, PresentationEnvelope};
 use base64::Engine;
@@ -17,12 +18,18 @@ use chrono::{DateTime, Utc};
 
 pub mod challenge;
 pub mod principal;
+pub mod registry_sync;
 
 pub use challenge::{
     ChallengeError, ChallengeStore, DEFAULT_CHALLENGE_TTL_SECS, ExpectedNonce,
     InMemoryChallengeStore, IssuedChallenge,
 };
 pub use principal::{Denied, Grant, VerifiedPrincipal};
+#[cfg(feature = "git-sync")]
+pub use registry_sync::GitRegistrySync;
+pub use registry_sync::{
+    AUTHS_REFS_GLOB, RegistrySync, RegistryWatcher, RemoteUrl, SyncError, SyncOutcome, SyncResult,
+};
 
 /// The `Authorization` scheme name carrying a presentation (RFC 7235 `auth-scheme`).
 pub const AUTHS_PRESENTATION_SCHEME: &str = "Auths-Presentation";
