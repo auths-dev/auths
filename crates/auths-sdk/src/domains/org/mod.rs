@@ -14,6 +14,8 @@ pub mod metrics;
 pub mod offboarding;
 /// Offline verification of an air-gapped org bundle (zero-network, fail-closed).
 pub mod offline_verify;
+/// KEL-anchored OIDC-subject policy: anchor/resolve the keyless-CI trust statement.
+pub mod oidc_policy;
 /// Org-wide authorization policy: author/store/load + the fail-closed gate.
 pub mod policy;
 /// Org services
@@ -35,6 +37,9 @@ pub use offboarding::{
     OffboardingRecord, SignedOffboardingRecord, load_offboarding_record, verify_offboarding_record,
 };
 pub use offline_verify::{OfflineVerifyReport, authenticate_bundled_kel, verify_org_bundle};
+pub use oidc_policy::{
+    LoadedOrgOidcPolicy, OrgOidcPolicySet, load_org_oidc_policy, set_org_oidc_policy,
+};
 pub use policy::{
     Expr, LoadedOrgPolicy, OrgPolicySet, evaluate_with_org_policy, load_org_policy, set_org_policy,
 };

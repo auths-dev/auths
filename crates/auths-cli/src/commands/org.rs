@@ -23,7 +23,8 @@ use auths_sdk::workflows::commit_trust::commit_signer_trailers;
 use auths_sdk::workflows::org::{
     AuthorityAtSigning, Role, add_member, build_org_bundle, classify_authority_at_signing,
     create_org, fleet_metrics, list_members, list_offboarding_records, load_offboarding_record,
-    load_org_policy, member_role_order, revoke_member, set_org_policy, walk_delegation_chain,
+    load_org_policy, member_role_order, revoke_member, set_org_oidc_policy, set_org_policy,
+    walk_delegation_chain,
 };
 
 use crate::factories::storage::build_auths_context;
@@ -264,6 +265,23 @@ pub enum OrgSubcommand {
         /// Policy action (set/show)
         #[command(subcommand)]
         action: PolicyAction,
+    },
+
+    /// Anchor the org's OIDC-subject policy on its KEL (who may sign keylessly).
+    /// Verifiers resolve it with `auths artifact verify --oidc-policy-did <org-did>`
+    /// — the witnessed log is the policy's source of truth, not a pinned file.
+    AnchorOidcPolicy {
+        /// Organization identity ID
+        #[arg(long)]
+        org: String,
+
+        /// Path to the OIDC-subject policy JSON (issuer + repository, optional workflow_ref)
+        #[arg(long)]
+        file: PathBuf,
+
+        /// Org signing key alias (defaults to the org slug alias)
+        #[arg(long)]
+        key: Option<String>,
     },
 
     /// Show fleet governance metrics for an organization
@@ -1119,6 +1137,36 @@ pub fn handle_org(
                 Ok(())
             }
         },
+
+        OrgSubcommand::AnchorOidcPolicy { org, file, key } => {
+            let org_prefix =
+                Prefix::new_unchecked(org.strip_prefix("did:keri:").unwrap_or(&org).to_string());
+            let org_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| org_slug_alias(&org)));
+            let policy_json = fs::read(&file)
+                .with_context(|| format!("Failed to read OIDC policy file {file:?}"))?;
+
+            let sdk_ctx = build_auths_context(
+                &repo_path,
+                &ctx.env_config,
+                Some(passphrase_provider.clone()),
+            )?;
+            let result = set_org_oidc_policy(&sdk_ctx, &org_prefix, &org_alias, &policy_json)
+                .context("Failed to anchor OIDC-subject policy")?;
+
+            println!("✅ OIDC-subject policy anchored on the org KEL:");
+            println!("   Org:           {}", result.org_did);
+            println!("   Policy digest: {}", result.policy_digest);
+            println!(
+                "   Trusts:        {} via issuer {}",
+                result.policy.repository(),
+                result.policy.issuer()
+            );
+            println!(
+                "\nVerifiers resolve it from the witnessed log:\n   auths artifact verify <artifact> --oidc-policy-did {}",
+                result.org_did
+            );
+            Ok(())
+        }
 
         OrgSubcommand::Metrics { org, json } => {
             let org_prefix =

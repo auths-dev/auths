@@ -199,6 +199,7 @@ pub async fn handle_verify_unified(
                     witness_threshold: cmd.witness_threshold,
                     verify_commit: false,
                     oidc_policy: None,
+                    oidc_policy_did: None,
                 },
             )
             .await

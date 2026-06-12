@@ -59,6 +59,9 @@ pub struct VerifyArtifactArgs {
     pub verify_commit: bool,
     /// OIDC-subject policy to JOIN against the signed OIDC binding.
     pub oidc_policy: Option<PathBuf>,
+    /// Org `did:keri:` whose KEL-anchored OIDC-subject policy to resolve and
+    /// JOIN — the witnessed log as the policy's source of truth.
+    pub oidc_policy_did: Option<String>,
 }
 
 /// Execute the `artifact verify` command.
@@ -73,15 +76,17 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         witness_threshold,
         verify_commit,
         oidc_policy,
+        oidc_policy_did,
     } = args;
     let witness_keys = &witness_keys;
     let file_str = file.to_string_lossy().to_string();
 
-    // 0. Parse the OIDC-subject policy up front: an unreadable or malformed
-    //    policy is a "could not attempt" (exit 2), not a verdict.
-    let oidc_policy = match &oidc_policy {
-        None => None,
-        Some(path) => {
+    // 0. Resolve the OIDC-subject policy up front: an unreadable or malformed
+    //    policy is a "could not attempt" (exit 2), not a verdict — except a
+    //    KEL-anchored blob that fails its digest check, which IS a verdict (1).
+    let oidc_policy = match (&oidc_policy, &oidc_policy_did) {
+        (None, None) => None,
+        (Some(path), _) => {
             let raw = match fs::read_to_string(path) {
                 Ok(r) => r,
                 Err(e) => {
@@ -99,6 +104,12 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
                 }
             }
         }
+        (None, Some(org_did)) => match resolve_anchored_oidc_policy(org_did) {
+            Ok(p) => Some(p),
+            Err((exit_code, message)) => {
+                return output_error(&file_str, exit_code, &message);
+            }
+        },
     };
 
     // 1. Locate and load signature file
@@ -416,6 +427,56 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
             error: oidc_error,
         },
     )
+}
+
+/// Resolve the org's KEL-anchored OIDC-subject policy from the local registry.
+///
+/// The org seals the policy digest on its KEL (`auths org anchor-oidc-policy`);
+/// this reads the latest seal, loads the content-addressed blob, and refuses a
+/// digest mismatch — the verifier trusts the org's witnessed log, not a file
+/// someone handed them. Errors carry the verify exit-code contract: a tampered
+/// blob is a verdict (1); everything else is could-not-attempt (2).
+fn resolve_anchored_oidc_policy(org_did: &str) -> Result<OidcSubjectPolicy, (i32, String)> {
+    use auths_sdk::workflows::org::load_org_oidc_policy;
+
+    let Some(prefix) = org_did.strip_prefix("did:keri:") else {
+        return Err((
+            2,
+            format!("--oidc-policy-did requires a did:keri: identifier, got '{org_did}'"),
+        ));
+    };
+    let auths_home = auths_sdk::paths::auths_home()
+        .map_err(|e| (2, format!("Could not locate ~/.auths: {e}")))?;
+    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+    );
+    let org_prefix = auths_verifier::Prefix::new_unchecked(prefix.to_string());
+
+    match load_org_oidc_policy(&registry, &org_prefix) {
+        Ok(Some(loaded)) => {
+            if !is_json_mode() {
+                eprintln!(
+                    "  OIDC policy resolved from the org KEL (digest {})",
+                    loaded.policy_digest
+                );
+            }
+            Ok(loaded.policy)
+        }
+        Ok(None) => Err((
+            2,
+            format!(
+                "organization {org_did} has no OIDC-subject policy anchored on its KEL \
+                 — anchor one with `auths org anchor-oidc-policy`"
+            ),
+        )),
+        Err(e @ auths_sdk::domains::org::error::OrgError::PolicyIntegrity { .. }) => {
+            Err((1, format!("OIDC policy resolution failed: {e}")))
+        }
+        Err(e) => Err((
+            2,
+            format!("Failed to resolve the anchored OIDC policy: {e}"),
+        )),
+    }
 }
 
 /// Resolve identity public key from bundle or from the attestation's issuer DID.

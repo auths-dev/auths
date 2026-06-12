@@ -232,6 +232,13 @@ pub enum ArtifactSubcommand {
         /// Fail-closed: a missing binding or any mismatch fails verification.
         #[arg(long, value_name = "POLICY-FILE")]
         oidc_policy: Option<PathBuf>,
+
+        /// Resolve the OIDC-subject policy from the org's KEL instead of a
+        /// pinned file: reads the latest policy digest the org anchored
+        /// (`auths org anchor-oidc-policy`) from the local registry and refuses
+        /// a digest mismatch — the witnessed log is the source of truth.
+        #[arg(long, value_name = "ORG-DID", conflicts_with = "oidc_policy")]
+        oidc_policy_did: Option<String>,
     },
 }
 
@@ -621,6 +628,7 @@ pub fn handle_artifact(
             signed_at,
             json,
             oidc_policy,
+            oidc_policy_did,
         } => {
             if offline {
                 return verify::handle_offline_verify(
@@ -642,6 +650,7 @@ pub fn handle_artifact(
                     witness_threshold,
                     verify_commit,
                     oidc_policy,
+                    oidc_policy_did,
                 },
             ))
         }
@@ -753,6 +762,42 @@ mod tests {
                 assert!(signature.is_none());
             }
             _ => panic!("expected Publish"),
+        }
+    }
+
+    #[test]
+    fn verify_oidc_policy_did_conflicts_with_policy_file() {
+        // A pinned file and a KEL-resolved policy are two trust postures —
+        // exactly one may be chosen.
+        let err = Cli::try_parse_from([
+            "test",
+            "verify",
+            "a.tar.gz",
+            "--oidc-policy",
+            "p.json",
+            "--oidc-policy-did",
+            "did:keri:EOrg",
+        ]);
+        assert!(err.is_err(), "the two policy sources must be exclusive");
+
+        let ok = Cli::try_parse_from([
+            "test",
+            "verify",
+            "a.tar.gz",
+            "--oidc-policy-did",
+            "did:keri:EOrg",
+        ])
+        .unwrap();
+        match ok.command {
+            ArtifactSubcommand::Verify {
+                oidc_policy,
+                oidc_policy_did,
+                ..
+            } => {
+                assert!(oidc_policy.is_none());
+                assert_eq!(oidc_policy_did.as_deref(), Some("did:keri:EOrg"));
+            }
+            _ => panic!("expected Verify"),
         }
     }
 

@@ -20,6 +20,9 @@ pub use crate::domains::org::offboarding::{
     OffboardingRecord, SignedOffboardingRecord, load_offboarding_record, verify_offboarding_record,
 };
 pub use crate::domains::org::offline_verify::{OfflineVerifyReport, verify_org_bundle};
+pub use crate::domains::org::oidc_policy::{
+    LoadedOrgOidcPolicy, OrgOidcPolicySet, load_org_oidc_policy, set_org_oidc_policy,
+};
 pub use crate::domains::org::policy::{
     Expr, LoadedOrgPolicy, OrgPolicySet, evaluate_with_org_policy, load_org_policy, set_org_policy,
 };

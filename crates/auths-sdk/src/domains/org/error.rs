@@ -144,6 +144,15 @@ pub enum OrgError {
         reason: String,
     },
 
+    /// The supplied OIDC-subject policy did not parse (invalid JSON or empty
+    /// required fields). A policy that does not parse is never anchored — fail
+    /// closed.
+    #[error("invalid OIDC-subject policy: {reason}")]
+    OidcPolicyInvalid {
+        /// The parse failure.
+        reason: String,
+    },
+
     /// The org KEL anchors a policy hash but its content-addressed blob is missing —
     /// the policy cannot be loaded, so authority cannot be evaluated. Fail closed.
     #[error("org policy blob for hash '{hash}' is missing from storage")]
@@ -212,6 +221,7 @@ impl AuthsErrorInfo for OrgError {
             Self::Attestation(_) => "AUTHS-E5617",
             Self::Bundle(e) => e.error_code(),
             Self::PolicyCompile { .. } => "AUTHS-E5622",
+            Self::OidcPolicyInvalid { .. } => "AUTHS-E5628",
             Self::PolicyBlobMissing { .. } => "AUTHS-E5623",
             Self::PolicyIntegrity { .. } => "AUTHS-E5624",
             Self::ChainCycle { .. } => "AUTHS-E5625",
@@ -274,6 +284,9 @@ impl AuthsErrorInfo for OrgError {
             Self::Bundle(e) => e.suggestion(),
             Self::PolicyCompile { .. } => Some(
                 "Fix the policy JSON (a serialized `Expr`); see `auths org policy show` for the current policy",
+            ),
+            Self::OidcPolicyInvalid { .. } => Some(
+                "Fix the OIDC-subject policy JSON (issuer + repository, optional workflow_ref); nothing was anchored",
             ),
             Self::PolicyBlobMissing { .. } => {
                 Some("The policy blob is missing; re-anchor it with `auths org policy set`")
