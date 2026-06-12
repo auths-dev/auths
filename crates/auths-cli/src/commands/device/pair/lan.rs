@@ -263,6 +263,146 @@ pub async fn handle_initiate_lan(
     Ok(())
 }
 
+/// Receive a phone-authored shared-KEL rotation over an ephemeral LAN session.
+///
+/// The host is transport only here — it authors nothing and signs nothing:
+/// 1. Start a one-shot LAN session and display the QR / short code.
+/// 2. The device scans, binds its signing key (`POST /response`), and
+///    submits the co-authored rotation envelope (`POST /shared-kel-rot`),
+///    which the daemon signature-gates before holding.
+/// 3. Return the held envelope; the caller validates it against the
+///    registry's prior key state and appends it
+///    (`auths_sdk::domains::identity::shared_rot::apply_shared_kel_rot`).
+///
+/// Args:
+/// * `now`: Injected clock for session expiry.
+/// * `repo_path`: The identity registry whose controller this session serves.
+/// * `no_qr` / `print_uri` / `no_mdns`: Display + discovery toggles (same as `pair`).
+/// * `expiry_secs`: Session lifetime.
+pub async fn handle_receive_shared_rot(
+    now: chrono::DateTime<chrono::Utc>,
+    repo_path: &std::path::Path,
+    no_qr: bool,
+    print_uri: bool,
+    no_mdns: bool,
+    expiry_secs: u64,
+) -> Result<String> {
+    let identity_storage =
+        auths_sdk::storage::RegistryIdentityStorage::new(repo_path.to_path_buf());
+    let controller_did =
+        auths_sdk::pairing::load_controller_did(&identity_storage).map_err(anyhow::Error::from)?;
+
+    let lan_ip =
+        detect_lan_ip().context("Failed to detect LAN IP. Are you connected to a network?")?;
+    let expiry = chrono::Duration::seconds(expiry_secs as i64);
+
+    // A rotation-receive session grants no capabilities — the envelope's own
+    // indexed signatures (and the registry's prior state) are the authority.
+    let mut session = PairingToken::generate_with_expiry(
+        now,
+        controller_did.clone(),
+        "http://placeholder".to_string(), // replaced below
+        vec![],
+        expiry,
+    )
+    .context("Failed to generate session token")?;
+
+    let request = CreateSessionRequest {
+        session_id: session.token.session_id.clone(),
+        controller_did: session.token.controller_did.clone(),
+        ephemeral_pubkey: auths_sdk::pairing::Base64UrlEncoded::from_raw(
+            session.token.ephemeral_pubkey.clone(),
+        ),
+        short_code: session.token.short_code.clone(),
+        capabilities: session.token.capabilities.clone(),
+        expires_at: session.token.expires_at.timestamp(),
+        recovery_target: None,
+    };
+
+    let mut server = LanPairingServer::start(request, lan_ip).await?;
+    let port = server.addr().port();
+    let endpoint = format!("http://{}:{}", lan_ip, port);
+    session.token.endpoint = format!("{}?token={}", endpoint, server.pairing_token());
+
+    println!();
+    println!(
+        "{}",
+        style(format!("━━━ {PHONE}Receive Identity Rotation (LAN) ━━━")).bold()
+    );
+    println!();
+    println!(
+        "  {} {}",
+        style("Identity:").dim(),
+        style(&controller_did).cyan()
+    );
+    println!();
+
+    let _advertiser = if !no_mdns {
+        match server.advertise(port, &session.token.short_code, &controller_did) {
+            Some(Ok(adv)) => Some(adv),
+            Some(Err(e)) => {
+                println!("  {} {} {}", WARN, style("mDNS unavailable:").yellow(), e);
+                None
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    if !no_qr {
+        let options = QrOptions::default();
+        let qr = render_qr(&session.token, &options).context("Failed to render QR code")?;
+        println!("{}", qr);
+    }
+
+    let sc = &session.token.short_code;
+    println!();
+    println!("  Scan the QR code above, or enter this code on the device:");
+    println!();
+    println!(
+        "    {}",
+        style(format!("{}-{}", &sc[..3], &sc[3..])).bold().cyan()
+    );
+    println!();
+    if print_uri {
+        print_token_uri(&session.token);
+        println!();
+    }
+
+    let wait_spinner = create_wait_spinner(&format!("{PHONE}Waiting for the device's rotation..."));
+    let expiry_duration = Duration::from_secs(expiry_secs);
+
+    let result: Result<String> = async {
+        server
+            .wait_for_response(expiry_duration)
+            .await
+            .map_err(|e| anyhow::anyhow!("device never connected: {e}"))?;
+        // The device is bound; the rotation envelope follows on the same
+        // session. Reuse the full window — the daemon enforces session TTL.
+        let held = server
+            .wait_for_shared_kel_rot(expiry_duration)
+            .await
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "the device connected but submitted no rotation before the session expired"
+                )
+            })?;
+        Ok(held.rot_envelope)
+    }
+    .await;
+
+    if let Some(adv) = _advertiser {
+        adv.shutdown();
+    }
+    match &result {
+        Ok(_) => wait_spinner.finish_with_message(format!("{CHECK}Rotation received!")),
+        Err(_) => wait_spinner.finish_and_clear(),
+    }
+    server.shutdown();
+    result
+}
+
 /// Join a LAN pairing session by discovering it via mDNS.
 pub async fn handle_join_lan(
     now: chrono::DateTime<chrono::Utc>,

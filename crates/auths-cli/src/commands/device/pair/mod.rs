@@ -12,6 +12,9 @@ mod lan_server;
 mod offline;
 mod online;
 
+#[cfg(feature = "lan-pairing")]
+pub use lan::handle_receive_shared_rot;
+
 use std::sync::Arc;
 
 use anyhow::Result;

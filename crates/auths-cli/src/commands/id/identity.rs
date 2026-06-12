@@ -180,6 +180,41 @@ pub enum IdSubcommand {
         /// `--signing-threshold`. Omit to keep the prior `nt`.
         #[arg(long)]
         rotation_threshold: Option<String>,
+
+        /// Receive the rotation from a paired device over LAN instead of
+        /// authoring it locally. The device builds and co-signs the
+        /// shared-KEL rotation; this host only validates it against the
+        /// registry's prior key state and appends it. No local key
+        /// material is touched.
+        #[cfg(feature = "lan-pairing")]
+        #[arg(long, conflicts_with_all = ["alias", "current_key_alias", "next_key_alias", "add_witness", "remove_witness", "witness_threshold", "dry_run"])]
+        from_device: bool,
+
+        /// Don't display the QR code for `--from-device` (only the short code).
+        #[cfg(feature = "lan-pairing")]
+        #[arg(long = "no-qr", requires = "from_device", hide_short_help = true)]
+        no_qr: bool,
+
+        /// Print the session token URI for `--from-device` so scripts can
+        /// deliver it to the device out of band.
+        #[cfg(feature = "lan-pairing")]
+        #[arg(long = "print-uri", requires = "from_device", hide_short_help = true)]
+        print_uri: bool,
+
+        /// Disable mDNS advertisement for `--from-device`.
+        #[cfg(feature = "lan-pairing")]
+        #[arg(long = "no-mdns", requires = "from_device", hide_short_help = true)]
+        no_mdns: bool,
+
+        /// Session lifetime in seconds for `--from-device`.
+        #[cfg(feature = "lan-pairing")]
+        #[arg(
+            long = "timeout",
+            requires = "from_device",
+            default_value = "300",
+            hide_short_help = true
+        )]
+        timeout: u64,
     },
 
     /// Expand a single-device identity into multi-device via one rotation.
@@ -260,6 +295,71 @@ pub enum IdSubcommand {
 
     /// Manage AI agents delegated by this identity (KERI delegated identifiers).
     Agent(super::agent::AgentCommand),
+}
+
+/// `auths id rotate --from-device`: apply a rotation a paired device
+/// authored, instead of authoring one locally.
+///
+/// The device builds and co-signs the shared-KEL rotation (proving
+/// controllership by revealing a pre-committed key); this host receives the
+/// envelope over an ephemeral LAN session, validates it against the
+/// registry's prior key state, and appends it. No local key material is
+/// read or written — the host contributes only its registry.
+#[cfg(feature = "lan-pairing")]
+fn handle_rotate_from_device(
+    repo_path: &std::path::Path,
+    no_qr: bool,
+    print_uri: bool,
+    no_mdns: bool,
+    timeout: u64,
+    now: chrono::DateTime<chrono::Utc>,
+    env_config: &EnvironmentConfig,
+) -> Result<()> {
+    use auths_sdk::domains::identity::shared_rot::apply_shared_kel_rot;
+
+    let rt = tokio::runtime::Runtime::new()?;
+    let envelope = rt.block_on(crate::commands::device::pair::handle_receive_shared_rot(
+        now, repo_path, no_qr, print_uri, no_mdns, timeout,
+    ))?;
+
+    let identity_storage = RegistryIdentityStorage::new(repo_path.to_path_buf());
+    let controller_did =
+        auths_sdk::pairing::load_controller_did(&identity_storage).map_err(anyhow::Error::from)?;
+    let prefix_str = controller_did
+        .strip_prefix("did:keri:")
+        .ok_or_else(|| anyhow!("invalid DID format, expected 'did:keri:': {controller_did}"))?;
+    let prefix = auths_keri::Prefix::new_unchecked(prefix_str.to_string());
+
+    let ctx = crate::factories::storage::build_auths_context(repo_path, env_config, None)?;
+    let applied = apply_shared_kel_rot(&envelope, &prefix, ctx.registry.as_ref())
+        .with_context(|| "Failed to apply the device-authored rotation")?;
+
+    if is_json_mode() {
+        JsonResponse::success(
+            "id rotate",
+            &serde_json::json!({
+                "from_device": true,
+                "controller_did": controller_did,
+                "sequence": applied.sequence.to_string(),
+                "event_said": applied.said.as_str(),
+                "controller_count": applied.controller_count,
+            }),
+        )
+        .print()
+        .map_err(anyhow::Error::from)?;
+    } else {
+        println!("\n✅ Device-authored rotation applied.");
+        println!("   Identity:    {}", controller_did);
+        println!("   KEL advanced to seq {}", applied.sequence);
+        println!("   Controllers in force: {}", applied.controller_count);
+    }
+
+    // The rotation advanced the KEL — restamp the commit-trailers file so
+    // hook-stamped commits carry the new anchor position.
+    if let Err(e) = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&ctx, repo_path) {
+        println!("⚠️  Could not refresh commit trailers ({e}); run `auths doctor`.");
+    }
+    Ok(())
 }
 
 fn display_dry_run_rotate(
@@ -524,7 +624,23 @@ pub fn handle_id(
             remove_device,
             signing_threshold,
             rotation_threshold,
+            #[cfg(feature = "lan-pairing")]
+            from_device,
+            #[cfg(feature = "lan-pairing")]
+            no_qr,
+            #[cfg(feature = "lan-pairing")]
+            print_uri,
+            #[cfg(feature = "lan-pairing")]
+            no_mdns,
+            #[cfg(feature = "lan-pairing")]
+            timeout,
         } => {
+            #[cfg(feature = "lan-pairing")]
+            if from_device {
+                return handle_rotate_from_device(
+                    &repo_path, no_qr, print_uri, no_mdns, timeout, now, env_config,
+                );
+            }
             if !add_device.is_empty()
                 || !remove_device.is_empty()
                 || signing_threshold.is_some()
@@ -1015,5 +1131,46 @@ pub fn handle_id(
         IdSubcommand::Agent(agent_cmd) => {
             super::agent::handle_agent(agent_cmd, repo_path, env_config, passphrase_provider)
         }
+    }
+}
+
+#[cfg(all(test, feature = "lan-pairing"))]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct Harness {
+        #[command(subcommand)]
+        sub: IdSubcommand,
+    }
+
+    #[test]
+    fn rotate_from_device_parses() {
+        let h = Harness::parse_from(["id", "rotate", "--from-device"]);
+        match h.sub {
+            IdSubcommand::Rotate { from_device, .. } => assert!(from_device),
+            other => panic!("expected Rotate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rotate_from_device_conflicts_with_local_authoring_flags() {
+        // The device authors the rotation — naming a local key is a
+        // contradiction and must be refused at parse time.
+        assert!(
+            Harness::try_parse_from(["id", "rotate", "--from-device", "--alias", "main"]).is_err()
+        );
+        assert!(Harness::try_parse_from(["id", "rotate", "--from-device", "--dry-run"]).is_err());
+    }
+
+    #[test]
+    fn rotate_session_toggles_require_from_device() {
+        assert!(Harness::try_parse_from(["id", "rotate", "--no-qr"]).is_err());
+        assert!(Harness::try_parse_from(["id", "rotate", "--print-uri"]).is_err());
+        assert!(
+            Harness::try_parse_from(["id", "rotate", "--from-device", "--no-qr", "--print-uri"])
+                .is_ok()
+        );
     }
 }

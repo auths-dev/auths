@@ -17,6 +17,7 @@ pub use delegation::{
 // Re-exports of pairing types from auths-core for CLI consumption
 pub use auths_core::pairing::types::{
     Base64UrlEncoded, CreateSessionRequest, SubmitConfirmationRequest, SubmitResponseRequest,
+    SubmitSharedKelRotRequest,
 };
 pub use auths_core::pairing::{
     PairingResponse, PairingSession, PairingToken, QrOptions, normalize_short_code, render_qr,
