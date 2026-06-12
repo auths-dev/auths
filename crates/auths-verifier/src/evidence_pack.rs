@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use crate::org_bundle::{
     AirGappedOrgBundle, AuthorityAtSigning, classify_authority_in_bundle, verify_org_bundle,
 };
-use crate::tlog::{ConsistencyProof, InclusionProof, MerkleHash, SignedCheckpoint};
+use crate::tlog::{ConsistencyProof, InclusionProof, MerkleHash, SignedCheckpoint, hash_leaf};
 use crate::types::IdentityDID;
 
 /// The current evidence-pack schema version.
@@ -99,7 +99,12 @@ pub enum ComplianceFramework {
 /// inclusion must be **against** the checkpoint (same root and size).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TransparencyInclusion {
-    /// The artifact's transparency-log leaf hash (the value `inclusion_proof` proves).
+    /// The artifact's transparency-log leaf hash (the value `inclusion_proof`
+    /// proves). For a release row the leaf data is the canonical artifact
+    /// digest string (`sha256:<hex>`), so `leaf_hash =
+    /// hash_leaf(artifact_digest)` — row verification re-derives and compares
+    /// it, binding the proof to *this* artifact rather than to whatever leaf
+    /// the prover chose to embed.
     pub leaf_hash: MerkleHash,
     /// Inclusion proof for `leaf_hash` at tree size `inclusion_proof.size`.
     pub inclusion_proof: InclusionProof,
@@ -214,8 +219,9 @@ pub struct RowVerdict {
     /// Whether re-deriving authority from the embedded KEL matches the row's
     /// recorded verdict (a tampered row flips this to `false`).
     pub authority_consistent: bool,
-    /// Whether the row's transparency inclusion/consistency proof verified, or
-    /// `None` when the row carries no transparency evidence.
+    /// Whether the row's transparency evidence verified: the leaf hash
+    /// re-derives from the row's artifact digest AND the inclusion/consistency
+    /// proof checks out. `None` when the row carries no transparency evidence.
     pub transparency_verified: Option<bool>,
 }
 
@@ -315,10 +321,13 @@ pub fn verify_evidence_pack_offline(
         let rederived = classify_authority_in_bundle(bundle, &signer_prefix, row.signed_at);
         let authority_consistent = rederived == row.authority_at_release;
 
-        let transparency_verified = row
-            .transparency
-            .as_ref()
-            .map(|t| verify_transparency_inclusion(t).is_ok());
+        // The proof must be FOR this row's artifact: the leaf is the canonical
+        // digest string, so a valid proof over some other leaf is a mismatch,
+        // not evidence.
+        let transparency_verified = row.transparency.as_ref().map(|t| {
+            t.leaf_hash == hash_leaf(row.artifact_digest.as_bytes())
+                && verify_transparency_inclusion(t).is_ok()
+        });
 
         verdicts.push(RowVerdict {
             artifact_digest: row.artifact_digest.clone(),

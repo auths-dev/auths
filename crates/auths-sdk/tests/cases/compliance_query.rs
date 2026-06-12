@@ -282,6 +282,89 @@ fn offline_verify_catches_a_tampered_row() {
 }
 
 #[test]
+fn offline_verify_binds_transparency_proofs_to_the_rows_artifact() {
+    use auths_sdk::domains::compliance::query::TransparencyInclusion;
+    use auths_verifier::tlog::{
+        Checkpoint, InclusionProof, LogOrigin, MerkleHash, SignedCheckpoint, compute_root,
+        hash_leaf, prove_inclusion,
+    };
+    use auths_verifier::{Ed25519PublicKey, Ed25519Signature};
+
+    let (ctx, org_alias, org_prefix, org_did, _tmp) = setup();
+    let member = add_test_member(&ctx, &org_prefix, &org_alias, "judy");
+
+    // A two-leaf log: leaf 0 is THIS row's digest, leaf 1 is some other artifact.
+    let digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    let leaves = [hash_leaf(digest.as_bytes()), hash_leaf(b"sha256:other")];
+    let root = compute_root(&leaves);
+    let signed_checkpoint = SignedCheckpoint {
+        checkpoint: Checkpoint {
+            origin: LogOrigin::new("test.example/log").unwrap(),
+            size: 2,
+            root,
+            timestamp: now(),
+        },
+        log_signature: Ed25519Signature::from_bytes([0u8; 64]),
+        log_public_key: Ed25519PublicKey::from_bytes([0u8; 32]),
+        witnesses: vec![],
+        ecdsa_checkpoint_signature: None,
+        ecdsa_checkpoint_key: None,
+    };
+    let inclusion_for = |index: u64, leaf: MerkleHash| TransparencyInclusion {
+        leaf_hash: leaf,
+        inclusion_proof: InclusionProof {
+            index,
+            size: 2,
+            root,
+            hashes: prove_inclusion(&leaves, index).unwrap(),
+        },
+        signed_checkpoint: signed_checkpoint.clone(),
+        consistency_proof: None,
+    };
+
+    let releases = vec![
+        ReleaseRecord {
+            artifact_digest: digest.into(),
+            signer_prefix: member.clone(),
+            signed_at: Some(0),
+            transparency: Some(inclusion_for(0, leaves[0])),
+        },
+        // A perfectly valid Merkle proof — but over the OTHER leaf. A row must
+        // not borrow inclusion evidence that was minted for a different artifact.
+        ReleaseRecord {
+            artifact_digest: digest.into(),
+            signer_prefix: member,
+            signed_at: Some(0),
+            transparency: Some(inclusion_for(1, leaves[1])),
+        },
+    ];
+    let policy = load_witness_policy(None);
+    let pack = build_offline_evidence_pack(
+        &ctx,
+        org_did.clone(),
+        &org_prefix,
+        "2026-Q3",
+        ComplianceFramework::Slsa,
+        &releases,
+        &policy,
+        now(),
+    )
+    .expect("build offline pack");
+
+    let verdicts = verify_evidence_pack_offline(&pack, &[org_did]).expect("offline verify");
+    assert_eq!(
+        verdicts[0].transparency_verified,
+        Some(true),
+        "a proof over this row's own digest verifies"
+    );
+    assert_eq!(
+        verdicts[1].transparency_verified,
+        Some(false),
+        "a valid proof over a different leaf must NOT count as this row's evidence"
+    );
+}
+
+#[test]
 fn dsse_sign_and_verify_round_trips() {
     let (ctx, org_alias, org_prefix, org_did, _tmp) = setup();
     let member = add_test_member(&ctx, &org_prefix, &org_alias, "ivan");

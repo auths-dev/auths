@@ -39,6 +39,10 @@ pub mod verify;
 pub mod witness;
 /// Typed, fail-closed witness-diversity policy loader.
 pub mod witness_policy;
+/// The log write path: append leaves, sign checkpoints, mint inclusion
+/// proofs (requires `native` feature).
+#[cfg(feature = "native")]
+pub mod writer;
 
 // Re-export core types
 pub use bundle::{
@@ -48,7 +52,9 @@ pub use bundle::{
 pub use checkpoint::{Checkpoint, SignedCheckpoint, WitnessCosignature};
 pub use entry::{AccessTier, Entry, EntryBody, EntryContent, EntryType};
 pub use error::TransparencyError;
-pub use merkle::{compute_root, hash_children, hash_leaf, verify_consistency, verify_inclusion};
+pub use merkle::{
+    compute_root, hash_children, hash_leaf, prove_inclusion, verify_consistency, verify_inclusion,
+};
 pub use note::{
     C2spSignature, NoteSignature, build_signature_line, compute_ecdsa_key_id, compute_key_id,
     parse_signed_note, parse_signed_note_c2sp, serialize_signed_note,
@@ -72,6 +78,8 @@ pub use s3_store::S3TileStore;
 pub use store::TileStore;
 #[cfg(feature = "native")]
 pub use verify::{verify_bundle, verify_checkpoint_signature, verify_witness_cosignatures};
+#[cfg(feature = "native")]
+pub use writer::{AppendedLeaf, LogSigningKey, LogWriter};
 
 #[cfg(feature = "native")]
 pub use witness::{

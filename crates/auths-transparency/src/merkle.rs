@@ -5,5 +5,5 @@
 //! (native, FFI, browser WASM). This module re-exports it.
 
 pub use auths_verifier::tlog::merkle::{
-    compute_root, hash_children, hash_leaf, verify_consistency, verify_inclusion,
+    compute_root, hash_children, hash_leaf, prove_inclusion, verify_consistency, verify_inclusion,
 };

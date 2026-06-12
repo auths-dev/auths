@@ -322,6 +322,58 @@ fn largest_power_of_2_lt(n: u64) -> u64 {
     }
 }
 
+/// Generate the RFC 6962 inclusion-proof path for the leaf at `index`.
+///
+/// Returns the ordered sibling hashes from leaf to root — exactly the
+/// `hashes` that [`verify_inclusion`] consumes against
+/// `compute_root(leaves)`. This is `PATH(m, D[0:n])` from RFC 6962
+/// Section 2.1.1, the generation dual of the verification walk above; both
+/// share [`hash_children`]/[`compute_root`] so no second tree shape exists.
+///
+/// Args:
+/// * `leaves` — Every leaf hash in the tree, in log order.
+/// * `index` — Zero-based index of the leaf being proven.
+///
+/// Usage:
+/// ```ignore
+/// let hashes = prove_inclusion(&leaf_hashes, 5)?;
+/// verify_inclusion(&leaf_hashes[5], 5, leaf_hashes.len() as u64, &hashes, &root)?;
+/// ```
+pub fn prove_inclusion(
+    leaves: &[MerkleHash],
+    index: u64,
+) -> Result<Vec<MerkleHash>, TransparencyError> {
+    let size = leaves.len() as u64;
+    if size == 0 {
+        return Err(TransparencyError::InvalidProof("tree size is 0".into()));
+    }
+    if index >= size {
+        return Err(TransparencyError::InvalidProof(format!(
+            "index {index} >= size {size}"
+        )));
+    }
+    Ok(inclusion_path(leaves, index))
+}
+
+/// RFC 6962 `PATH(m, D[0:n])`: recurse into the subtree containing the leaf,
+/// then append the root of the sibling subtree.
+fn inclusion_path(leaves: &[MerkleHash], index: u64) -> Vec<MerkleHash> {
+    let n = leaves.len();
+    if n <= 1 {
+        return Vec::new();
+    }
+    let k = largest_power_of_2_lt(n as u64) as usize;
+    if (index as usize) < k {
+        let mut path = inclusion_path(&leaves[..k], index);
+        path.push(compute_root(&leaves[k..]));
+        path
+    } else {
+        let mut path = inclusion_path(&leaves[k..], index - k as u64);
+        path.push(compute_root(&leaves[..k]));
+        path
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,6 +423,40 @@ mod tests {
     fn compute_root_single_leaf() {
         let h = MerkleHash::from_bytes([0x42; 32]);
         assert_eq!(compute_root(&[h]), h);
+    }
+
+    #[test]
+    fn prove_inclusion_roundtrips_against_verify_inclusion() {
+        // Every leaf of every tree size 1..=20 (covers power-of-2 and ragged
+        // shapes) must produce a path that verify_inclusion accepts.
+        for size in 1u64..=20 {
+            let leaves: Vec<MerkleHash> = (0..size)
+                .map(|i| hash_leaf(format!("leaf-{i}").as_bytes()))
+                .collect();
+            let root = compute_root(&leaves);
+            for index in 0..size {
+                let hashes = prove_inclusion(&leaves, index).unwrap();
+                verify_inclusion(&leaves[index as usize], index, size, &hashes, &root).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn prove_inclusion_path_fails_for_wrong_leaf() {
+        let leaves: Vec<MerkleHash> = (0..7u64)
+            .map(|i| hash_leaf(format!("leaf-{i}").as_bytes()))
+            .collect();
+        let root = compute_root(&leaves);
+        let hashes = prove_inclusion(&leaves, 3).unwrap();
+        let wrong = hash_leaf(b"not-in-the-tree");
+        assert!(verify_inclusion(&wrong, 3, 7, &hashes, &root).is_err());
+    }
+
+    #[test]
+    fn prove_inclusion_rejects_empty_tree_and_out_of_range() {
+        assert!(prove_inclusion(&[], 0).is_err());
+        let leaves = vec![hash_leaf(b"only")];
+        assert!(prove_inclusion(&leaves, 1).is_err());
     }
 
     #[test]

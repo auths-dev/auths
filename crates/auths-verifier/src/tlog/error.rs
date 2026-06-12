@@ -40,4 +40,8 @@ pub enum TransparencyError {
     /// Storage backend error.
     #[error("store error: {0}")]
     StoreError(String),
+
+    /// Log signing-key error (parse, curve mismatch, or signing failure).
+    #[error("signing key error: {0}")]
+    SigningKey(String),
 }

@@ -1,9 +1,13 @@
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use auths_infra_http::HttpRegistryClient;
 use auths_sdk::ports::RegistryClient;
-use auths_transparency::SignedCheckpoint;
+use auths_sdk::workflows::compliance::ArtifactDigest;
+use auths_transparency::{
+    FsTileStore, LogOrigin, LogSigningKey, LogWriter, SignedCheckpoint, hash_leaf,
+};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
@@ -11,8 +15,11 @@ use super::executable::ExecutableCommand;
 use crate::config::CliConfig;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
+/// PKCS#8 signing-key file kept inside the local log directory.
+const LOG_KEY_FILE: &str = "log.key";
+
 #[derive(Args, Debug, Clone)]
-#[command(about = "Inspect and verify the transparency log")]
+#[command(about = "Inspect, verify, and operate the transparency log")]
 pub struct LogCommand {
     #[command(subcommand)]
     pub command: LogSubcommand,
@@ -24,6 +31,10 @@ pub enum LogSubcommand {
     Inspect(InspectArgs),
     /// Verify log consistency from the cached checkpoint
     Verify(VerifyArgs),
+    /// Append an artifact digest to a local tile-backed transparency log
+    Append(AppendArgs),
+    /// Emit offline inclusion evidence for an appended artifact digest
+    Prove(ProveArgs),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -43,6 +54,40 @@ pub struct VerifyArgs {
     pub registry: String,
 }
 
+#[derive(Args, Debug, Clone)]
+pub struct AppendArgs {
+    /// Artifact digest to log (sha256:<64 hex>)
+    #[clap(long)]
+    pub artifact: String,
+
+    /// Directory holding the local log (tiles, checkpoint, signing key)
+    #[clap(long)]
+    pub log_dir: PathBuf,
+
+    /// The log's origin line (its identity in every checkpoint)
+    #[clap(long, default_value = "auths.local/log")]
+    pub origin: String,
+}
+
+#[derive(Args, Debug, Clone)]
+pub struct ProveArgs {
+    /// Artifact digest to prove (sha256:<64 hex>)
+    #[clap(long)]
+    pub artifact: String,
+
+    /// Directory holding the local log (tiles, checkpoint, signing key)
+    #[clap(long)]
+    pub log_dir: PathBuf,
+
+    /// The log's origin line (must match the log's checkpoints)
+    #[clap(long, default_value = "auths.local/log")]
+    pub origin: String,
+
+    /// Write the inclusion-evidence JSON to this file instead of stdout
+    #[clap(long)]
+    pub out: Option<PathBuf>,
+}
+
 #[derive(Serialize)]
 struct VerifyResult {
     consistent: bool,
@@ -52,6 +97,16 @@ struct VerifyResult {
     latest_root: String,
 }
 
+#[derive(Serialize)]
+struct AppendResult {
+    artifact_digest: String,
+    leaf_hash: String,
+    index: u64,
+    size: u64,
+    root: String,
+    origin: String,
+}
+
 impl ExecutableCommand for LogCommand {
     fn execute(&self, _ctx: &CliConfig) -> Result<()> {
         let rt = tokio::runtime::Runtime::new().context("Failed to create async runtime")?;
@@ -59,6 +114,8 @@ impl ExecutableCommand for LogCommand {
             match &self.command {
                 LogSubcommand::Inspect(args) => handle_inspect(args).await,
                 LogSubcommand::Verify(args) => handle_verify(args).await,
+                LogSubcommand::Append(args) => handle_append(args).await,
+                LogSubcommand::Prove(args) => handle_prove(args).await,
             }
         })
     }
@@ -220,5 +277,117 @@ async fn handle_verify(args: &VerifyArgs) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Load the log signing key from `<log-dir>/log.key`, creating it on first
+/// use when `create` is set (the append path); proving against a log that
+/// does not exist yet is an error, not a key-generation event.
+fn load_log_key(log_dir: &Path, create: bool) -> Result<LogSigningKey> {
+    let path = log_dir.join(LOG_KEY_FILE);
+    match std::fs::read(&path) {
+        Ok(der) => LogSigningKey::from_pkcs8_der(&der)
+            .with_context(|| format!("Failed to parse log signing key at {}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound && create => {
+            let key = LogSigningKey::generate().context("Failed to generate log signing key")?;
+            let der = key
+                .to_pkcs8_der()
+                .context("Failed to encode log signing key")?;
+            std::fs::write(&path, der)
+                .with_context(|| format!("Failed to write {}", path.display()))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                    .with_context(|| format!("Failed to restrict {}", path.display()))?;
+            }
+            Ok(key)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            bail!("No log at {} — append an artifact first", log_dir.display())
+        }
+        Err(e) => {
+            Err(e).with_context(|| format!("Failed to read log signing key at {}", path.display()))
+        }
+    }
+}
+
+fn local_log_writer(log_dir: &Path, origin: &str, create: bool) -> Result<LogWriter<FsTileStore>> {
+    let origin = LogOrigin::new(origin).map_err(|e| anyhow::anyhow!("invalid --origin: {e}"))?;
+    if create {
+        std::fs::create_dir_all(log_dir)
+            .with_context(|| format!("Failed to create {}", log_dir.display()))?;
+    }
+    let key = load_log_key(log_dir, create)?;
+    Ok(LogWriter::new(
+        FsTileStore::new(log_dir.to_path_buf()),
+        key,
+        origin,
+    ))
+}
+
+#[allow(clippy::disallowed_methods)] // CLI is the presentation boundary (checkpoint timestamp)
+async fn handle_append(args: &AppendArgs) -> Result<()> {
+    let digest = ArtifactDigest::parse(&args.artifact)
+        .map_err(|e| anyhow::anyhow!("invalid --artifact value: {e}"))?;
+    let writer = local_log_writer(&args.log_dir, &args.origin, true)?;
+
+    let leaf_hash = hash_leaf(digest.as_str().as_bytes());
+    let appended = writer.append(leaf_hash, chrono::Utc::now()).await?;
+    let checkpoint = &appended.signed_checkpoint.checkpoint;
+
+    let result = AppendResult {
+        artifact_digest: digest.as_str().to_string(),
+        leaf_hash: hex::encode(leaf_hash.as_bytes()),
+        index: appended.index,
+        size: checkpoint.size,
+        root: hex::encode(checkpoint.root.as_bytes()),
+        origin: checkpoint.origin.to_string(),
+    };
+
+    if is_json_mode() {
+        JsonResponse::success("log append", result).print()?;
+    } else {
+        println!("Appended to transparency log");
+        println!("  Artifact: {}", result.artifact_digest);
+        println!("  Leaf:     {}", result.leaf_hash);
+        println!("  Index:    {}", result.index);
+        println!("  Size:     {}", result.size);
+        println!("  Root:     {}", result.root);
+        println!("  Origin:   {}", result.origin);
+    }
+    Ok(())
+}
+
+async fn handle_prove(args: &ProveArgs) -> Result<()> {
+    let digest = ArtifactDigest::parse(&args.artifact)
+        .map_err(|e| anyhow::anyhow!("invalid --artifact value: {e}"))?;
+    let writer = local_log_writer(&args.log_dir, &args.origin, false)?;
+
+    let leaf_hash = hash_leaf(digest.as_str().as_bytes());
+    let inclusion = writer.prove(&leaf_hash).await?;
+
+    if let Some(out) = &args.out {
+        let json = serde_json::to_string_pretty(&inclusion)
+            .context("Failed to serialize inclusion evidence")?;
+        std::fs::write(out, json).with_context(|| format!("Failed to write {}", out.display()))?;
+        if is_json_mode() {
+            JsonResponse::success("log prove", &inclusion).print()?;
+        } else {
+            println!("Inclusion evidence written");
+            println!("  Artifact: {}", digest.as_str());
+            println!("  Index:    {}", inclusion.inclusion_proof.index);
+            println!("  Size:     {}", inclusion.inclusion_proof.size);
+            println!("  Out:      {}", out.display());
+        }
+    } else if is_json_mode() {
+        JsonResponse::success("log prove", &inclusion).print()?;
+    } else {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&inclusion)
+                .context("Failed to serialize inclusion evidence")?
+        );
+    }
     Ok(())
 }

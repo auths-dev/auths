@@ -24,6 +24,8 @@ pub mod types;
 
 pub use checkpoint::{Checkpoint, SignedCheckpoint, WitnessCosignature};
 pub use error::TransparencyError;
-pub use merkle::{compute_root, hash_children, hash_leaf, verify_consistency, verify_inclusion};
+pub use merkle::{
+    compute_root, hash_children, hash_leaf, prove_inclusion, verify_consistency, verify_inclusion,
+};
 pub use proof::{ConsistencyProof, InclusionProof};
 pub use types::{LogOrigin, MerkleHash};
