@@ -214,7 +214,7 @@ fn offline_pack_round_trips_and_verifies_with_zero_network() {
     // Serialize → deserialize → verify offline against the org as pinned root.
     let canonical = pack.canonicalize().unwrap();
     let reloaded = EvidencePack::from_json(&canonical).expect("reload pack");
-    let verdicts = verify_evidence_pack_offline(&reloaded, std::slice::from_ref(&org_did))
+    let verdicts = verify_evidence_pack_offline(&reloaded, std::slice::from_ref(&org_did), None)
         .expect("offline verify");
     assert_eq!(verdicts.len(), 1);
     assert!(
@@ -226,7 +226,7 @@ fn offline_pack_round_trips_and_verifies_with_zero_network() {
     // A non-pinned root fails closed.
     let stranger = IdentityDID::new_unchecked("did:keri:EStranger".to_string());
     assert!(
-        verify_evidence_pack_offline(&reloaded, &[stranger]).is_err(),
+        verify_evidence_pack_offline(&reloaded, &[stranger], None).is_err(),
         "an unpinned org must fail offline verification"
     );
 }
@@ -274,7 +274,8 @@ fn offline_verify_catches_a_tampered_row() {
         serde_json::json!({ "authority_at_signing": "authorized_before_revocation" });
     let tampered_pack = EvidencePack::from_json(&tampered.to_string()).unwrap();
 
-    let verdicts = verify_evidence_pack_offline(&tampered_pack, &[org_did]).expect("verify runs");
+    let verdicts =
+        verify_evidence_pack_offline(&tampered_pack, &[org_did], None).expect("verify runs");
     assert!(
         !verdicts[0].authority_consistent,
         "re-deriving authority from the embedded KEL must expose the tampered row"
@@ -351,7 +352,8 @@ fn offline_verify_binds_transparency_proofs_to_the_rows_artifact() {
     )
     .expect("build offline pack");
 
-    let verdicts = verify_evidence_pack_offline(&pack, &[org_did]).expect("offline verify");
+    let verdicts = verify_evidence_pack_offline(&pack, std::slice::from_ref(&org_did), None)
+        .expect("offline verify");
     assert_eq!(
         verdicts[0].transparency_verified,
         Some(true),
@@ -361,6 +363,27 @@ fn offline_verify_binds_transparency_proofs_to_the_rows_artifact() {
         verdicts[1].transparency_verified,
         Some(false),
         "a valid proof over a different leaf must NOT count as this row's evidence"
+    );
+    assert_eq!(
+        verdicts[0].checkpoint_attested, None,
+        "with no pinned log key the verdict honestly reports membership only"
+    );
+
+    // Pin a log key this checkpoint was NOT signed by: Merkle membership still
+    // verifies, but the operator axis fails — a forged/backdated checkpoint is
+    // cryptographically visible, never silently green.
+    let pinned = Ed25519PublicKey::from_bytes([3u8; 32]);
+    let verdicts = verify_evidence_pack_offline(&pack, &[org_did], Some(&pinned))
+        .expect("offline verify with a pinned log key");
+    assert_eq!(
+        verdicts[0].transparency_verified,
+        Some(true),
+        "membership math is unchanged by the pinned key"
+    );
+    assert_eq!(
+        verdicts[0].checkpoint_attested,
+        Some(false),
+        "a checkpoint not signed by the pinned operator must fail the attestation axis"
     );
 }
 
@@ -474,7 +497,7 @@ fn signed_offline_pack_verifies_end_to_end_from_envelope_and_roots_alone() {
 
     // The auditor's whole input: the envelope bytes + a pinned root. No
     // keychain, no registry, no context.
-    let verified = verify_signed_evidence_pack_offline(&raw, std::slice::from_ref(&org_did))
+    let verified = verify_signed_evidence_pack_offline(&raw, std::slice::from_ref(&org_did), None)
         .expect("signed pack verifies offline");
     assert_eq!(verified.verdicts.len(), 2);
     assert!(
@@ -502,14 +525,15 @@ fn signed_offline_pack_verifies_end_to_end_from_envelope_and_roots_alone() {
     tampered.payload = engine.encode(statement.to_string().as_bytes());
     let raw_tampered = tampered.to_canonical_json().unwrap();
     assert!(
-        verify_signed_evidence_pack_offline(&raw_tampered, std::slice::from_ref(&org_did)).is_err(),
+        verify_signed_evidence_pack_offline(&raw_tampered, std::slice::from_ref(&org_did), None)
+            .is_err(),
         "a tampered payload must fail the DSSE signature check"
     );
 
     // An auditor who pinned a different root rejects the whole pack.
     let stranger = IdentityDID::new_unchecked("did:keri:EStranger".to_string());
     assert!(
-        verify_signed_evidence_pack_offline(&raw, &[stranger]).is_err(),
+        verify_signed_evidence_pack_offline(&raw, &[stranger], None).is_err(),
         "an unpinned org must fail closed"
     );
 }

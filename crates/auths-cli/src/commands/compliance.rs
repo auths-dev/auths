@@ -26,7 +26,7 @@ use auths_sdk::workflows::compliance::{
     sign_framework_report, verify_signed_evidence_pack_offline,
 };
 use auths_sdk::workflows::roots::parse_roots_typed;
-use auths_verifier::{IdentityDID, Prefix};
+use auths_verifier::{Ed25519PublicKey, IdentityDID, Prefix};
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
@@ -141,9 +141,12 @@ impl From<CliFramework> for ComplianceFramework {
                         # Build an offline-verifiable evidence pack from the
                         # releases anchored in the org KEL (signed_at derived)
 
-  auths compliance verify --pack acme-2026Q3.evidence --roots auths-roots
+  auths compliance verify --pack acme-2026Q3.evidence --roots auths-roots \\
+      --log-key auths-log.pub
                         # Auditor-side: verify a signed pack offline (exit 0
-                        # authentic / exit 1 rejected) — no account, no network
+                        # authentic / exit 1 rejected) — no account, no network.
+                        # --log-key pins the log operator: every row's checkpoint
+                        # signature must verify, not just its Merkle membership
 
 Releases file (JSON array, caller-asserted alternative to --discover):
   [{\"artifact_digest\":\"sha256:…\",\"signer\":\"did:keri:EMember\",\"signed_at\":41}]"
@@ -246,7 +249,30 @@ pub enum ComplianceSubcommand {
         /// Pinned trust-roots file (one `did:keri:…` per line) — the only trust input
         #[arg(long)]
         roots: PathBuf,
+
+        /// Pinned log-operator key file (one hex Ed25519 key, `#` comments
+        /// allowed). When given, every row's transparency checkpoint must be
+        /// SIGNED by this operator — "in the log" becomes operator-attested
+        /// non-repudiation, not bare Merkle membership
+        #[arg(long)]
+        log_key: Option<PathBuf>,
     },
+}
+
+/// Parse a pinned log-operator key file: the first non-empty, non-comment line,
+/// as a 64-hex-char Ed25519 public key. Fail-closed on anything else.
+fn parse_pinned_log_key(path: &Path) -> Result<Ed25519PublicKey> {
+    let raw = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read pinned log-key file {path:?}"))?;
+    let line = raw
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .ok_or_else(|| anyhow!("pinned log-key file {path:?} contains no key"))?;
+    let bytes = hex::decode(line)
+        .map_err(|e| anyhow!("pinned log-key file {path:?} is not valid hex: {e}"))?;
+    Ed25519PublicKey::try_from_slice(&bytes)
+        .map_err(|e| anyhow!("pinned log-key file {path:?} rejected: {e}"))
 }
 
 /// Handle `auths compliance` subcommands.
@@ -458,31 +484,45 @@ pub fn handle_compliance(
             Ok(())
         }
 
-        ComplianceSubcommand::Verify { pack, roots } => {
+        ComplianceSubcommand::Verify {
+            pack,
+            roots,
+            log_key,
+        } => {
             let envelope_json = fs::read_to_string(&pack)
                 .with_context(|| format!("Failed to read evidence pack {pack:?}"))?;
             let roots_raw = fs::read_to_string(&roots)
                 .with_context(|| format!("Failed to read pinned-roots file {roots:?}"))?;
             let pinned = parse_roots_typed(&roots_raw)
                 .map_err(|e| anyhow!("pinned roots file rejected: {e}"))?;
+            let pinned_log_key = log_key.as_deref().map(parse_pinned_log_key).transpose()?;
 
             // Hard rejections (no envelope, bad DSSE signature, unpinned org,
             // KEL tamper, duplicity) surface here as errors → exit 1.
-            let verified = verify_signed_evidence_pack_offline(&envelope_json, &pinned)
-                .map_err(|e| anyhow!("evidence REJECTED: {e}"))?;
+            let verified = verify_signed_evidence_pack_offline(
+                &envelope_json,
+                &pinned,
+                pinned_log_key.as_ref(),
+            )
+            .map_err(|e| anyhow!("evidence REJECTED: {e}"))?;
             let authentic = verified.authentic();
 
             if is_json_mode() {
                 JsonResponse {
                     success: authentic,
                     command: "compliance verify".to_string(),
-                    data: Some(verify_verdict_json(&pack, &verified, authentic)),
+                    data: Some(verify_verdict_json(
+                        &pack,
+                        &verified,
+                        authentic,
+                        pinned_log_key.is_some(),
+                    )),
                     error: (!authentic)
                         .then(|| "a row is inconsistent with the embedded log".to_string()),
                 }
                 .print()?;
             } else {
-                print_verify_report(&pack, &verified, authentic);
+                print_verify_report(&pack, &verified, authentic, pinned_log_key.is_some());
             }
 
             // A verified envelope whose rows diverge from the embedded log is
@@ -511,6 +551,7 @@ fn verify_verdict_json(
     pack_path: &Path,
     verified: &VerifiedEvidencePack,
     authentic: bool,
+    log_key_pinned: bool,
 ) -> serde_json::Value {
     serde_json::json!({
         "pack": pack_path,
@@ -521,13 +562,19 @@ fn verify_verdict_json(
         "org_key_source": "authenticated embedded KEL",
         "org_kel_seq": verified.org_kel_seq.to_string(),
         "root_pinned": true,
+        "log_key_pinned": log_key_pinned,
         "rows": verified.verdicts,
         "authentic": authentic,
     })
 }
 
 /// Render the auditor-facing verification report (green = proven, red = rejected).
-fn print_verify_report(pack_path: &Path, verified: &VerifiedEvidencePack, authentic: bool) {
+fn print_verify_report(
+    pack_path: &Path,
+    verified: &VerifiedEvidencePack,
+    authentic: bool,
+    log_key_pinned: bool,
+) {
     let out = Output::stdout();
     println!(
         "Offline evidence-pack verification of {}",
@@ -551,15 +598,25 @@ fn print_verify_report(pack_path: &Path, verified: &VerifiedEvidencePack, authen
             verified.org_kel_seq
         ))
     );
+    if log_key_pinned {
+        println!(
+            "  {}",
+            out.success(
+                "Log-operator key pinned — checkpoint signatures verified, not just Merkle membership"
+            )
+        );
+    }
     println!("  Rows:");
     for v in &verified.verdicts {
         let label = authority_label(v);
         let row_ok = v.authority_consistent && label.starts_with("authorized");
         let mark = if v.authority_consistent { "✓" } else { "✗" };
-        let transparency = match v.transparency_verified {
-            Some(true) => "logged",
-            Some(false) => "TRANSPARENCY-FAIL",
-            None => "unlogged",
+        let transparency = match (v.transparency_verified, v.checkpoint_attested) {
+            (Some(true), Some(true)) => "logged+operator-attested",
+            (Some(true), Some(false)) => "CHECKPOINT-UNATTESTED",
+            (Some(true), None) => "logged",
+            (Some(false), _) => "TRANSPARENCY-FAIL",
+            (None, _) => "unlogged",
         };
         let line = format!(
             "{mark} {}  {}  {label}",

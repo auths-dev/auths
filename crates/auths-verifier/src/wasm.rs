@@ -559,12 +559,25 @@ pub fn wasm_verify_org_bundle(
 /// embedded org bundle, re-derives each row's authority-at-release from the
 /// embedded KEL (tamper check), and checks each row's transparency-log
 /// inclusion/consistency proof — so the dashboard computes the verdict live
-/// instead of replaying a recorded native run.
+/// instead of replaying a recorded native run. With a pinned log key, each
+/// row's checkpoint signature is verified against that operator key too
+/// (`checkpoint_attested` in the verdict); without one the verdict honestly
+/// reports membership only.
 ///
 /// Args:
 /// * `pack_json`: The `EvidencePack` JSON (the `.evidence` file).
 /// * `pinned_roots_json`: JSON array of pinned `did:keri:` roots.
+/// * `pinned_log_key_hex`: The pinned log operator key (64 hex chars,
+///   Ed25519), or `undefined` for a membership-only verdict.
 #[wasm_bindgen(js_name = verifyEvidencePackOffline)]
-pub fn wasm_verify_evidence_pack_offline(pack_json: &str, pinned_roots_json: &str) -> String {
-    crate::evidence_pack::verify_evidence_pack_offline_json(pack_json, pinned_roots_json)
+pub fn wasm_verify_evidence_pack_offline(
+    pack_json: &str,
+    pinned_roots_json: &str,
+    pinned_log_key_hex: Option<String>,
+) -> String {
+    crate::evidence_pack::verify_evidence_pack_offline_json(
+        pack_json,
+        pinned_roots_json,
+        pinned_log_key_hex.as_deref(),
+    )
 }

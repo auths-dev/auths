@@ -26,7 +26,7 @@ use crate::domains::compliance::frameworks::{FrameworkReport, INTOTO_STATEMENT_T
 use crate::domains::compliance::query::{
     ComplianceQueryError, EvidencePack, RowVerdict, verify_evidence_pack_offline,
 };
-use auths_verifier::IdentityDID;
+use auths_verifier::{Ed25519PublicKey, IdentityDID};
 
 /// The in-toto Statement payload type carried in the DSSE envelope.
 pub const DSSE_INTOTO_PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
@@ -165,11 +165,14 @@ pub struct VerifiedEvidencePack {
 
 impl VerifiedEvidencePack {
     /// The auditor's single verdict: every row's authority re-derivation matched
-    /// the recorded row, and every transparency proof present verified.
+    /// the recorded row, every transparency proof present verified, and — when a
+    /// log key was pinned — every row's checkpoint signature attested.
     pub fn authentic(&self) -> bool {
-        self.verdicts
-            .iter()
-            .all(|v| v.authority_consistent && v.transparency_verified.unwrap_or(true))
+        self.verdicts.iter().all(|v| {
+            v.authority_consistent
+                && v.transparency_verified.unwrap_or(true)
+                && v.checkpoint_attested.unwrap_or(true)
+        })
     }
 }
 
@@ -185,7 +188,9 @@ impl VerifiedEvidencePack {
 ///    from it — never from a keychain, a server, or a config file.
 /// 3. Verify the DSSE signature over the PAE bytes against that verkey.
 /// 4. Run [`verify_evidence_pack_offline`]: org root pinned, KEL duplicity,
-///    per-row authority re-derivation, transparency proofs where present.
+///    per-row authority re-derivation, transparency proofs where present —
+///    and, with a pinned log key, each row's checkpoint signature against the
+///    pinned log operator.
 ///
 /// Fail-closed: a missing bundle, an unauthenticated KEL, a signature that does
 /// not verify, an unpinned org, or duplicity is an `Err` — never a verdict.
@@ -193,15 +198,18 @@ impl VerifiedEvidencePack {
 /// Args:
 /// * `envelope_json`: The DSSE envelope as produced by [`sign_evidence_pack`].
 /// * `pinned_roots`: The verifier's pinned trust roots (its only trust input).
+/// * `pinned_log_key`: The log operator's Ed25519 key, pinned out of band;
+///   `None` keeps the transparency verdict membership-only (and it says so).
 ///
 /// Usage:
 /// ```ignore
-/// let verified = verify_signed_evidence_pack_offline(&raw, &roots)?;
+/// let verified = verify_signed_evidence_pack_offline(&raw, &roots, Some(&log_key))?;
 /// assert!(verified.authentic());
 /// ```
 pub fn verify_signed_evidence_pack_offline(
     envelope_json: &str,
     pinned_roots: &[IdentityDID],
+    pinned_log_key: Option<&Ed25519PublicKey>,
 ) -> Result<VerifiedEvidencePack, ComplianceQueryError> {
     let envelope = DsseEnvelope::from_json(envelope_json)?;
     let payload = envelope.decoded_payload()?;
@@ -240,7 +248,7 @@ pub fn verify_signed_evidence_pack_offline(
     envelope.verify(org_key.as_bytes(), org_curve)?;
 
     // Only now is the payload trusted enough to re-derive every row from it.
-    let verdicts = verify_evidence_pack_offline(&pack, pinned_roots)?;
+    let verdicts = verify_evidence_pack_offline(&pack, pinned_roots, pinned_log_key)?;
     Ok(VerifiedEvidencePack {
         org_kel_seq: state.sequence,
         pack,

@@ -164,8 +164,11 @@ fn verify_checkpoint(signed: &SignedCheckpoint, trust_root: &TrustRoot) -> Check
 
     match trust_root.signature_algorithm {
         auths_verifier::SignatureAlgorithm::Ed25519 => {
-            let peer_key = UnparsedPublicKey::new(&ED25519, trust_root.log_public_key.as_bytes());
-            match peer_key.verify(note_body.as_bytes(), signed.log_signature.as_bytes()) {
+            // One source of truth for Ed25519 checkpoint verification: the
+            // pinned-key check in the shared verifier core (also requires the
+            // checkpoint's embedded key to BE the pinned key, so a bundle
+            // can't carry a self-chosen operator identity).
+            match signed.verify_log_signature(&trust_root.log_public_key) {
                 Ok(()) => CheckpointStatus::Verified,
                 Err(_) => CheckpointStatus::InvalidSignature,
             }

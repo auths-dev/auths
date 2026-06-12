@@ -20,6 +20,7 @@ use auths_keri::witness::independence::HonestyCeiling;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::core::Ed25519PublicKey;
 use crate::org_bundle::{
     AirGappedOrgBundle, AuthorityAtSigning, classify_authority_in_bundle, verify_org_bundle,
 };
@@ -109,8 +110,10 @@ pub struct TransparencyInclusion {
     /// Inclusion proof for `leaf_hash` at tree size `inclusion_proof.size`.
     pub inclusion_proof: InclusionProof,
     /// The signed checkpoint the inclusion is anchored to (directly, or via the
-    /// consistency proof). Its signature trust requires a **pinned log key** —
-    /// a separate axis from this offline Merkle check.
+    /// consistency proof). Its signature is verified against the verifier's
+    /// **pinned log key** when one is supplied to
+    /// [`verify_evidence_pack_offline`] — upgrading "in the log" from bare
+    /// Merkle membership to operator-attested non-repudiation.
     pub signed_checkpoint: SignedCheckpoint,
     /// Consistency proof from the inclusion's tree size to the checkpoint's, present
     /// only when the inclusion was taken at an earlier size than the checkpoint.
@@ -223,6 +226,13 @@ pub struct RowVerdict {
     /// re-derives from the row's artifact digest AND the inclusion/consistency
     /// proof checks out. `None` when the row carries no transparency evidence.
     pub transparency_verified: Option<bool>,
+    /// Whether the row's signed checkpoint is **attested by the pinned log
+    /// operator**: `Some(true)` when the checkpoint signature verified under
+    /// the caller's pinned log key, `Some(false)` when it did not (a forged
+    /// checkpoint, or one signed by a different operator). `None` when the
+    /// caller pinned no log key or the row carries no transparency evidence —
+    /// the verdict is then Merkle membership only, and says so.
+    pub checkpoint_attested: Option<bool>,
 }
 
 /// Verify the transparency inclusion (and consistency) of one row, offline.
@@ -271,23 +281,29 @@ pub fn verify_transparency_inclusion(t: &TransparencyInclusion) -> Result<(), Ev
 /// self-addresses AND is signed by the controlling key-state), confirms the org
 /// is a pinned root, flags KEL duplicity, then for each row re-derives
 /// authority-at-release from the embedded KEL (tamper check) and verifies any
-/// transparency inclusion/consistency proof. The checkpoint **signature** trust
-/// (that the log operator signed the root) is a separate axis requiring a
-/// pinned log key; this function proves the Merkle membership, not the log
-/// operator's identity.
+/// transparency inclusion/consistency proof. With a `pinned_log_key`, each
+/// row's [`SignedCheckpoint`] signature is also verified against that pinned
+/// operator key ([`SignedCheckpoint::verify_log_signature`]) — "in the log"
+/// becomes operator-attested non-repudiation, and a forged or backdated
+/// checkpoint surfaces as `checkpoint_attested == Some(false)`. With no pinned
+/// log key the verdict is Merkle membership only, reported honestly as
+/// `checkpoint_attested == None`.
 ///
 /// Args:
 /// * `pack`: The pack to verify (must embed an org bundle).
 /// * `pinned_roots`: The verifier's pinned trust roots.
+/// * `pinned_log_key`: The log operator's Ed25519 key, pinned out of band;
+///   `None` skips the checkpoint-signature axis (and the verdict says so).
 ///
 /// Usage:
 /// ```ignore
-/// let verdicts = verify_evidence_pack_offline(&pack, &roots)?;
+/// let verdicts = verify_evidence_pack_offline(&pack, &roots, Some(&log_key))?;
 /// assert!(verdicts.iter().all(|v| v.authority_consistent));
 /// ```
 pub fn verify_evidence_pack_offline(
     pack: &EvidencePack,
     pinned_roots: &[IdentityDID],
+    pinned_log_key: Option<&Ed25519PublicKey>,
 ) -> Result<Vec<RowVerdict>, EvidencePackError> {
     let bundle = pack.org_bundle.as_ref().ok_or_else(|| {
         EvidencePackError::OfflineVerification(
@@ -329,12 +345,20 @@ pub fn verify_evidence_pack_offline(
                 && verify_transparency_inclusion(t).is_ok()
         });
 
+        // The operator axis: only decidable when the verifier pinned a log key
+        // AND the row anchors to a checkpoint — anything else is honestly None.
+        let checkpoint_attested = match (row.transparency.as_ref(), pinned_log_key) {
+            (Some(t), Some(key)) => Some(t.signed_checkpoint.verify_log_signature(key).is_ok()),
+            _ => None,
+        };
+
         verdicts.push(RowVerdict {
             artifact_digest: row.artifact_digest.clone(),
             signer: row.signer.clone(),
             authority_at_release: row.authority_at_release.clone(),
             authority_consistent,
             transparency_verified,
+            checkpoint_attested,
         });
     }
     Ok(verdicts)
@@ -376,14 +400,20 @@ const SERIALIZE_FALLBACK: &str =
 /// Args:
 /// * `pack_json`: The [`EvidencePack`] JSON (the `.evidence` file).
 /// * `pinned_roots_json`: JSON array of the verifier's pinned `did:keri:` roots.
+/// * `pinned_log_key_hex`: The pinned log operator key (64 hex chars, Ed25519),
+///   or `None` for a membership-only verdict.
 ///
 /// Usage:
 /// ```ignore
-/// let verdict = verify_evidence_pack_offline_json(&pack, r#"["did:keri:EOrg"]"#);
+/// let verdict = verify_evidence_pack_offline_json(&pack, r#"["did:keri:EOrg"]"#, None);
 /// ```
-pub fn verify_evidence_pack_offline_json(pack_json: &str, pinned_roots_json: &str) -> String {
+pub fn verify_evidence_pack_offline_json(
+    pack_json: &str,
+    pinned_roots_json: &str,
+    pinned_log_key_hex: Option<&str>,
+) -> String {
     use auths_crypto::AuthsErrorInfo;
-    let envelope = match verify_pack_json_inner(pack_json, pinned_roots_json) {
+    let envelope = match verify_pack_json_inner(pack_json, pinned_roots_json, pinned_log_key_hex) {
         Ok(rows) => PackVerdictJson::Verdicts { rows },
         Err(e) => PackVerdictJson::Error {
             code: e.error_code().to_string(),
@@ -393,9 +423,18 @@ pub fn verify_evidence_pack_offline_json(pack_json: &str, pinned_roots_json: &st
     serde_json::to_string(&envelope).unwrap_or_else(|_| SERIALIZE_FALLBACK.to_string())
 }
 
+/// Parse a pinned log key from its hex wire form (fail-closed on malformed input).
+fn parse_log_key_hex(hex_key: &str) -> Result<Ed25519PublicKey, EvidencePackError> {
+    let bytes = hex::decode(hex_key.trim())
+        .map_err(|e| EvidencePackError::Decode(format!("pinned log key: invalid hex: {e}")))?;
+    Ed25519PublicKey::try_from_slice(&bytes)
+        .map_err(|e| EvidencePackError::Decode(format!("pinned log key: {e}")))
+}
+
 fn verify_pack_json_inner(
     pack_json: &str,
     pinned_roots_json: &str,
+    pinned_log_key_hex: Option<&str>,
 ) -> Result<Vec<RowVerdict>, EvidencePackError> {
     if pack_json.len() > MAX_PACK_JSON_BYTES {
         return Err(EvidencePackError::Decode(format!(
@@ -407,7 +446,8 @@ fn verify_pack_json_inner(
     let pack = EvidencePack::from_json(pack_json)?;
     let pinned_roots: Vec<IdentityDID> = serde_json::from_str(pinned_roots_json)
         .map_err(|e| EvidencePackError::Decode(format!("pinned roots: {e}")))?;
-    verify_evidence_pack_offline(&pack, &pinned_roots)
+    let pinned_log_key = pinned_log_key_hex.map(parse_log_key_hex).transpose()?;
+    verify_evidence_pack_offline(&pack, &pinned_roots, pinned_log_key.as_ref())
 }
 
 #[cfg(test)]
@@ -517,16 +557,30 @@ mod tests {
     fn pack_without_bundle_fails_offline_verification_closed() {
         let pack = sample_pack();
         let roots = vec![IdentityDID::new_unchecked("did:keri:EOrg")];
-        let err = verify_evidence_pack_offline(&pack, &roots).unwrap_err();
+        let err = verify_evidence_pack_offline(&pack, &roots, None).unwrap_err();
         assert!(err.to_string().contains("no embedded org bundle"));
     }
 
     #[test]
     fn pack_json_contract_reports_errors_as_tagged_envelopes() {
-        let verdict = verify_evidence_pack_offline_json("not json", "[]");
+        let verdict = verify_evidence_pack_offline_json("not json", "[]", None);
         let v: serde_json::Value = serde_json::from_str(&verdict).unwrap();
         assert_eq!(v["kind"], "error");
         assert_eq!(v["code"], "AUTHS-E2302");
+    }
+
+    #[test]
+    fn pack_json_contract_rejects_a_malformed_pinned_log_key() {
+        let pack_json = sample_pack().canonicalize().unwrap();
+        for bad in ["not hex", "abcd"] {
+            let verdict = verify_evidence_pack_offline_json(&pack_json, "[]", Some(bad));
+            let v: serde_json::Value = serde_json::from_str(&verdict).unwrap();
+            assert_eq!(
+                v["kind"], "error",
+                "malformed log key '{bad}' must fail closed"
+            );
+            assert_eq!(v["code"], "AUTHS-E2302");
+        }
     }
 
     fn signed_checkpoint_at(size: u64, root: MerkleHash) -> SignedCheckpoint {
