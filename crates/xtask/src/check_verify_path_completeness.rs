@@ -40,6 +40,7 @@ const BANNED_METHODS: &[&str] = &[
 const BANNED_PATHS: &[&str] = &[
     "crates/auths-verifier/src/",
     "crates/auths-cli/src/commands/verify_commit.rs",
+    "crates/auths-cli/src/commands/auth.rs",
 ];
 
 const EXEMPT_PATHS: &[&str] = &["/tests/", "/testing/", "/fakes/"];
