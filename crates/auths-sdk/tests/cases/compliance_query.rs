@@ -785,6 +785,76 @@ fn cra_report_maps_obligations_and_ssdf_practices() {
     assert!(!canonical.contains("non_equivocation"));
 }
 
+#[test]
+fn soc2_report_maps_trust_services_criteria() {
+    let (ctx, org_alias, org_prefix, org_did, _tmp) = setup();
+    let m = add_test_member(&ctx, &org_prefix, &org_alias, "trent");
+    let releases = vec![ReleaseRecord {
+        artifact_digest: "sha256:c2".into(),
+        signer_prefix: m,
+        signed_at: Some(2),
+        transparency: None,
+    }];
+    let pack = pack_with(
+        &ctx,
+        &org_did,
+        &org_prefix,
+        ComplianceFramework::Soc2,
+        &releases,
+    );
+    let report = build_framework_report(&pack, &vsa(SignerVerifierAllowList::new())).unwrap();
+
+    let criteria = report.statement["predicate"]["trustServicesCriteria"]
+        .as_array()
+        .unwrap();
+    assert!(!criteria.is_empty());
+    // The off-boarding controls the demo names must be present.
+    let ids: Vec<&str> = criteria.iter().filter_map(|c| c["id"].as_str()).collect();
+    assert!(ids.contains(&"CC6.2") && ids.contains(&"CC6.3"));
+    assert_eq!(
+        report.predicate_type,
+        "https://auths.dev/compliance/soc2/v1"
+    );
+    let canonical = report.to_intoto_statement().unwrap();
+    assert!(canonical.contains("\"policy_met\":false"));
+    assert!(!canonical.contains("non_equivocation"));
+}
+
+#[test]
+fn iso27001_report_maps_annex_a_controls() {
+    let (ctx, org_alias, org_prefix, org_did, _tmp) = setup();
+    let m = add_test_member(&ctx, &org_prefix, &org_alias, "peggy");
+    let releases = vec![ReleaseRecord {
+        artifact_digest: "sha256:15".into(),
+        signer_prefix: m,
+        signed_at: Some(2),
+        transparency: None,
+    }];
+    let pack = pack_with(
+        &ctx,
+        &org_did,
+        &org_prefix,
+        ComplianceFramework::Iso27001,
+        &releases,
+    );
+    let report = build_framework_report(&pack, &vsa(SignerVerifierAllowList::new())).unwrap();
+
+    let controls = report.statement["predicate"]["annexAControls"]
+        .as_array()
+        .unwrap();
+    assert!(!controls.is_empty());
+    let ids: Vec<&str> = controls.iter().filter_map(|c| c["id"].as_str()).collect();
+    // The 2022 identity/access-rights controls the demo names.
+    assert!(ids.contains(&"A.5.16") && ids.contains(&"A.5.18"));
+    assert_eq!(
+        report.predicate_type,
+        "https://auths.dev/compliance/iso27001/v1"
+    );
+    let canonical = report.to_intoto_statement().unwrap();
+    assert!(canonical.contains("\"policy_met\":false"));
+    assert!(!canonical.contains("non_equivocation"));
+}
+
 // ── Anchored releases: attest at signing time, discover at report time ──────
 
 use auths_sdk::domains::compliance::releases::{ArtifactDigest, attest_release, discover_releases};

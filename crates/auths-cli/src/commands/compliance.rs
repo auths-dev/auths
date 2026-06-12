@@ -108,6 +108,10 @@ pub enum CliFramework {
     Sbom,
     /// EU Cyber Resilience Act obligation mapping.
     Cra,
+    /// SOC 2 Trust Services Criteria (TSC) control mapping.
+    Soc2,
+    /// ISO/IEC 27001:2022 Annex-A control mapping.
+    Iso27001,
 }
 
 impl From<CliFramework> for ComplianceFramework {
@@ -116,6 +120,8 @@ impl From<CliFramework> for ComplianceFramework {
             CliFramework::Slsa => ComplianceFramework::Slsa,
             CliFramework::Sbom => ComplianceFramework::Sbom,
             CliFramework::Cra => ComplianceFramework::Cra,
+            CliFramework::Soc2 => ComplianceFramework::Soc2,
+            CliFramework::Iso27001 => ComplianceFramework::Iso27001,
         }
     }
 }
@@ -187,7 +193,8 @@ pub enum ComplianceSubcommand {
         period: String,
 
         /// Target framework (tags the pack; with `--predicate`, selects the
-        /// rendered predicate: SLSA provenance+VSA / SPDX SBOM / CRA mapping)
+        /// rendered predicate: SLSA provenance+VSA / SPDX SBOM / CRA mapping /
+        /// SOC 2 TSC mapping / ISO 27001 Annex-A mapping)
         #[arg(long, value_enum, default_value = "slsa")]
         framework: CliFramework,
 

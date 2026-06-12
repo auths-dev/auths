@@ -73,9 +73,10 @@ pub enum ComplianceQueryError {
     TamperedRelease(String),
 }
 
-/// The compliance framework a report targets. Predicate rendering (SLSA
-/// provenance / SPDX SBOM / CRA mapping) lands in fn-157.9; here it only tags
-/// the pack.
+/// The compliance framework a report targets. Each variant selects the
+/// predicate [`crate::domains::compliance::frameworks::build_framework_report`]
+/// renders (SLSA provenance + VSA / SPDX SBOM / CRA→SSDF / SOC 2 TSC / ISO
+/// 27001 Annex-A); here it only tags the pack.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ComplianceFramework {
@@ -85,6 +86,10 @@ pub enum ComplianceFramework {
     Sbom,
     /// EU Cyber Resilience Act obligation mapping.
     Cra,
+    /// SOC 2 Trust Services Criteria (TSC) control mapping.
+    Soc2,
+    /// ISO/IEC 27001:2022 Annex-A control mapping.
+    Iso27001,
 }
 
 /// The transparency-log evidence that proves an artifact's entry is in the log,
