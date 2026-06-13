@@ -25,6 +25,7 @@ use auths_sdk::workflows::compliance::{
     build_offline_evidence_pack, discover_releases, load_witness_policy, sign_evidence_pack,
     sign_framework_report, verify_signed_evidence_pack_offline,
 };
+use auths_sdk::workflows::org::resolve_org_signing_alias;
 use auths_sdk::workflows::roots::parse_roots_typed;
 use auths_verifier::{Ed25519PublicKey, IdentityDID, Prefix};
 
@@ -33,26 +34,20 @@ use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
-/// Default keychain alias for an org's signing key (`org-{slug}`), matching the
-/// `auths org` convention.
-fn org_slug_alias(org: &str) -> String {
-    format!(
-        "org-{}",
-        org.chars()
-            .filter(|c| c.is_alphanumeric())
-            .take(20)
-            .collect::<String>()
-            .to_lowercase()
-    )
-}
-
-/// Resolve the org signing alias (defaulting to the slug alias) and its in-band curve.
+/// Resolve the org signing alias and its in-band curve.
+///
+/// The alias resolution is the same single source of truth the `auths org`
+/// commands use ([`resolve_org_signing_alias`]): the org's Primary key is
+/// located in the keychain by its DID, so the alias matches whatever `org
+/// create` stored regardless of the org's human-readable name.
 fn resolve_org_signing(
     sdk_ctx: &AuthsContext,
     org: &str,
     key: Option<String>,
 ) -> Result<(KeyAlias, CurveType)> {
-    let org_alias = KeyAlias::new_unchecked(key.unwrap_or_else(|| org_slug_alias(org)));
+    let org_prefix = org.strip_prefix("did:keri:").unwrap_or(org);
+    let org_alias = resolve_org_signing_alias(sdk_ctx.key_storage.as_ref(), org_prefix, key)
+        .map_err(anyhow::Error::from)?;
     let (_pk, curve) = extract_public_key_bytes(
         sdk_ctx.key_storage.as_ref(),
         &org_alias,
