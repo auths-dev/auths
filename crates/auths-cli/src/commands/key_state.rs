@@ -36,6 +36,13 @@ pub struct KeyStateCommand {
     #[clap(long, value_name = "KSN.json", conflicts_with = "from_kel")]
     pub ingest: Option<PathBuf>,
 
+    /// Reject an ingested notice whose sequence is below this (lowercase-hex)
+    /// value — a verifier already holding a newer state refuses a stale or
+    /// replayed view. Fails closed with a distinct reason; only valid with
+    /// `--ingest`.
+    #[clap(long, value_name = "HEX_SEQ", requires = "ingest")]
+    pub reject_stale_below: Option<String>,
+
     /// Timestamp (RFC 3339) to stamp an emitted notice with. Defaults to the
     /// epoch so emission stays deterministic; pass the real `now` to publish.
     #[clap(long, default_value = "1970-01-01T00:00:00+00:00")]
@@ -81,6 +88,19 @@ impl KeyStateCommand {
             .map_err(|e| anyhow!("read ksn {}: {e}", path.display()))?;
         let record: KeyStateRecord =
             serde_json::from_str(&json).map_err(|e| anyhow!("parse KERI ksn: {e}"))?;
+
+        // Fail closed on a stale view if the verifier names the newest state it
+        // already trusts — a rewind below it is a stale or replayed notice.
+        if let Some(hex_seq) = &self.reject_stale_below {
+            let last_seen =
+                u128::from_str_radix(hex_seq.trim_start_matches("0x"), 16).map_err(|_| {
+                    anyhow!("--reject-stale-below must be lowercase hex, got {hex_seq:?}")
+                })?;
+            record.check_not_stale(last_seen).map_err(|e| {
+                anyhow!("rejected: stale key-state notice — {e}; a verifier holding a newer state refuses to rewind")
+            })?;
+        }
+
         let state = record.into_key_state();
         println!("{}", serde_json::to_string_pretty(&state)?);
         Ok(())

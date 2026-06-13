@@ -31,7 +31,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-use auths_keri::{KeriSequence, VersionString};
+use auths_keri::{KeriSequence, KeyStateRecord, TrustedKel, VersionString, parse_kel_json};
 
 use super::error::{DuplicityEvidence, WitnessError};
 use super::receipt::{Receipt, ReceiptTag, SignedReceipt};
@@ -357,6 +357,7 @@ pub fn router(state: WitnessServerState) -> Router {
         .route("/witness/{prefix}/head", get(get_head))
         .route("/witness/{prefix}/said/{seq}", get(get_said_at_seq))
         .route("/witness/{prefix}/receipt/{said}", get(get_receipt))
+        .route("/witness/{prefix}/key-state", get(get_key_state))
         .route("/health", get(health))
         .with_state(state)
 }
@@ -693,6 +694,28 @@ async fn submit_event(
                 ));
             }
 
+            // Retain the verified event body so the witness can later replay this
+            // identity's KEL into the current key-state it serves. The body is
+            // canonical JSON of the event we just SAID- and signature-checked.
+            let event_json = serde_json::to_string(&event).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to serialize event for retention: {e}"),
+                        duplicity: None,
+                    }),
+                )
+            })?;
+            if let Err(e) = storage.store_event(now, &prefix, event_s, &event_json) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to store event: {}", e),
+                        duplicity: None,
+                    }),
+                ));
+            }
+
             Ok(Json(signed))
         }
         Ok(Some(existing_said)) => {
@@ -821,6 +844,96 @@ async fn get_receipt(
     }
 }
 
+/// `GET /witness/{prefix}/key-state` — the current key-state notice for `prefix`.
+///
+/// Replays the KEL this witness has corroborated for `prefix` into its current
+/// key-state and serves it as a **KERI-conformant key-state record**
+/// (`{vn,i,s,p,d,f,dt,et,kt,k,nt,n,bt,b,c,ee,di}`) — the wire shape a keripy /
+/// keriox peer reads. A thin client can trust this identity's current keys
+/// without replaying the whole log itself.
+///
+/// The notice describes exactly the history *this* witness saw: the record is
+/// built only from retained, signature-verified events, never asserted. Returns
+/// 404 when the witness has corroborated no events for the prefix (it cannot
+/// notice a key-state it never observed), and 500 if a retained KEL fails to
+/// replay (a corrupted store — surfaced, never papered over).
+async fn get_key_state(
+    State(state): State<WitnessServerState>,
+    AxumPath(prefix_str): AxumPath<String>,
+) -> Result<Json<KeyStateRecord>, (StatusCode, Json<ErrorResponse>)> {
+    let prefix = Prefix::new_unchecked(prefix_str);
+
+    let kel_json = {
+        let storage = state.inner.storage.lock().map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "internal lock error".to_string(),
+                    duplicity: None,
+                }),
+            )
+        })?;
+        storage.get_kel(&prefix).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("storage error: {e}"),
+                    duplicity: None,
+                }),
+            )
+        })?
+    };
+
+    if kel_json.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!(
+                    "no key-state for {} — this witness has corroborated no events for it",
+                    prefix.as_str()
+                ),
+                duplicity: None,
+            }),
+        ));
+    }
+
+    // Each row is one canonical event; assemble the in-order KEL as a JSON array
+    // and replay it through the platform's own validation, never a hand-rolled
+    // parser — the key-state and the notice wire shape are the trust kernel's.
+    let kel_array = format!("[{}]", kel_json.join(","));
+    let events = parse_kel_json(&kel_array).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("retained KEL did not parse: {e}"),
+                duplicity: None,
+            }),
+        )
+    })?;
+    let key_state = TrustedKel::from_trusted_source(&events)
+        .replay()
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("retained KEL did not replay: {e}"),
+                    duplicity: None,
+                }),
+            )
+        })?;
+
+    let dt = (state.inner.clock)().to_rfc3339();
+    let record = KeyStateRecord::from_kel(&events, &key_state, dt).ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "retained KEL is empty after replay".to_string(),
+            duplicity: None,
+        }),
+    ))?;
+
+    Ok(Json(record))
+}
+
 /// GET /health - Health check.
 async fn health(State(state): State<WitnessServerState>) -> Json<HealthResponse> {
     let storage = state
@@ -892,6 +1005,139 @@ mod tests {
         event["d"] = serde_json::Value::String(said.into_inner());
 
         event
+    }
+
+    /// Build a full, replay-able KERI inception event — every establishment field
+    /// present (`kt,k,nt,n,bt,b,c,a`), `s` as a lowercase-hex string, a valid
+    /// Ed25519 self-signature, and the auths-computed SAID. Unlike the minimal
+    /// [`make_valid_icp_event`], this is a complete KEL the witness can replay
+    /// into key-state — the shape a real controller submits.
+    fn make_full_icp_event() -> serde_json::Value {
+        let (pkcs8, _pk_hex) = test_keypair();
+        let kp = Ed25519KeyPair::from_pkcs8(&pkcs8).unwrap();
+        let k0 = auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
+        // A next-key commitment (a single-key kt=1/nt=1 inception).
+        let next = auths_keri::KeriPublicKey::ed25519(&[9u8; 32]).unwrap();
+        let ncommit = auths_keri::compute_next_commitment(&next);
+
+        // Self-addressing inception: prefix is blanked during SAID computation,
+        // then set equal to the SAID. Build with empty d/i and x.
+        let mut event = serde_json::json!({
+            "v": "KERI10JSON000000_",
+            "t": "icp",
+            "d": "",
+            "i": "",
+            "s": "0",
+            "kt": "1",
+            "k": [k0],
+            "nt": "1",
+            "n": [ncommit.as_str()],
+            "bt": "0",
+            "b": [],
+            "c": [],
+            "a": [],
+            "x": ""
+        });
+
+        // The SAID self-addresses the inception (d and i both blanked during the
+        // digest), so set i = d = SAID first.
+        let said = crate::crypto::said::compute_said(&event).unwrap();
+        let said_str = said.into_inner();
+        event["d"] = serde_json::Value::String(said_str.clone());
+        event["i"] = serde_json::Value::String(said_str);
+
+        // Sign exactly what the witness verifies: the event with d and x blanked,
+        // i left at the self-addressed prefix.
+        let mut to_sign = event.clone();
+        to_sign["d"] = serde_json::Value::String(String::new());
+        to_sign["x"] = serde_json::Value::String(String::new());
+        let payload = serde_json::to_vec(&to_sign).unwrap();
+        let sig = kp.sign(&payload);
+        event["x"] = serde_json::Value::String(hex::encode(sig.as_ref()));
+
+        event
+    }
+
+    /// Submit `event` to a fresh server and return its (router, prefix).
+    async fn submit_to_fresh_server(event: &serde_json::Value) -> (Router, String) {
+        let prefix = event["i"].as_str().unwrap().to_string();
+        let state = test_state();
+        let app = router(state);
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/witness/{prefix}/event"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(event).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "full icp must be witnessed");
+        (app, prefix)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn key_state_serves_keri_conformant_record() {
+        let event = make_full_icp_event();
+        let (app, prefix) = submit_to_fresh_server(&event).await;
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/witness/{prefix}/key-state"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let record: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let obj = record.as_object().unwrap();
+
+        // The KERI ksn wire shape — labels and field order — not the auths envelope.
+        let keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "vn", "i", "s", "p", "d", "f", "dt", "et", "kt", "k", "nt", "n", "bt", "b", "c",
+                "ee", "di"
+            ]
+        );
+        assert_eq!(obj["vn"], serde_json::json!([1, 0]));
+        assert_eq!(obj["i"], serde_json::Value::String(prefix.clone()));
+        assert_eq!(obj["s"], "0");
+        assert_eq!(obj["et"], "icp");
+        assert_eq!(obj["d"], serde_json::Value::String(prefix));
+
+        // The served record projects back to a usable key-state (parse-don't-validate).
+        let parsed: auths_keri::KeyStateRecord = serde_json::from_slice(&body).unwrap();
+        let state = parsed.into_key_state();
+        assert_eq!(state.sequence, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn key_state_unknown_prefix_is_404() {
+        let app = router(test_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/witness/ENeverWitnessed/key-state")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test(flavor = "multi_thread")]

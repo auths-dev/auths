@@ -159,6 +159,33 @@ impl KeyStateRecord {
         })
     }
 
+    /// The sequence number this record notices (the latest event's `s`, decoded
+    /// from its lowercase-hex wire form).
+    pub fn sequence(&self) -> u128 {
+        u128::from_str_radix(self.s.trim_start_matches("0x"), 16).unwrap_or(0)
+    }
+
+    /// Reject this notice if it is older than a state the verifier already trusts.
+    ///
+    /// A key-state notice is a snapshot; a thin client that has already seen
+    /// sequence `last_seen_seq` (e.g. it holds a fresher witness receipt) must not
+    /// accept a notice that rewinds below it — that is a stale or replayed view of
+    /// the identity. Returns [`KsnError::Stale`] when `self.sequence() <
+    /// last_seen_seq`; equal-or-newer is fine.
+    ///
+    /// Args:
+    /// * `last_seen_seq`: The highest sequence the verifier already trusts.
+    pub fn check_not_stale(&self, last_seen_seq: u128) -> Result<(), KsnError> {
+        let got = self.sequence();
+        if got < last_seen_seq {
+            return Err(KsnError::Stale {
+                got,
+                seen: last_seen_seq,
+            });
+        }
+        Ok(())
+    }
+
     /// Project this KERI record back to the auths [`KeyState`] the rest of the
     /// platform reasons over (a thin client ingesting a peer's published state).
     ///
@@ -940,6 +967,23 @@ mod tests {
         assert_eq!(projected.last_event_said, state.last_event_said);
         assert_eq!(projected.threshold, state.threshold);
         assert!(projected.is_non_transferable);
+    }
+
+    #[test]
+    fn key_state_record_check_not_stale() {
+        let events = crate::validate::parse_kel_json(ICP_KEL_JSON).unwrap();
+        let state = crate::validate::TrustedKel::from_trusted_source(&events)
+            .replay()
+            .unwrap();
+        let record = KeyStateRecord::from_kel(&events, &state, "t").unwrap();
+        assert_eq!(record.sequence(), 0);
+        // A verifier that has seen seq 0 accepts a seq-0 notice; one holding a
+        // newer (seq 1) receipt rejects this stale seq-0 view.
+        assert!(record.check_not_stale(0).is_ok());
+        assert!(matches!(
+            record.check_not_stale(1),
+            Err(KsnError::Stale { got: 0, seen: 1 })
+        ));
     }
 
     #[test]
