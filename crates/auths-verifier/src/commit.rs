@@ -168,6 +168,16 @@ pub fn extract_ssh_signature(
     })
 }
 
+/// Whether a raw git commit object carries an SSH signature at all.
+///
+/// This is the same `gpgsig` SSH-block detection [`extract_ssh_signature`] uses to
+/// decide a commit is unsigned, exposed as a cheap predicate so callers that only
+/// need "did a signature land?" (e.g. confirming an amend actually signed) share
+/// the verifier's single source of truth instead of re-grepping the object.
+pub fn commit_object_is_signed(commit_content: &str) -> bool {
+    extract_ssh_signature(commit_content).is_ok()
+}
+
 /// Construct the SSHSIG "signed data" blob.
 ///
 /// This is the data that the Ed25519 signature actually covers:
@@ -256,6 +266,15 @@ mod tests {
     fn extract_returns_unsigned_for_plain_commit() {
         let err = extract_ssh_signature(UNSIGNED_COMMIT).unwrap_err();
         assert!(matches!(err, CommitVerificationError::UnsignedCommit));
+    }
+
+    #[test]
+    fn commit_object_is_signed_matches_extract() {
+        // The predicate agrees with extract_ssh_signature on every fixture: an SSH
+        // gpgsig block is "signed"; a plain or GPG-only commit is not.
+        assert!(commit_object_is_signed(SIGNED_COMMIT));
+        assert!(!commit_object_is_signed(UNSIGNED_COMMIT));
+        assert!(!commit_object_is_signed(GPG_COMMIT));
     }
 
     #[test]

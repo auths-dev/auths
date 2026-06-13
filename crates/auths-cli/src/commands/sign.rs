@@ -154,6 +154,77 @@ fn ensure_repo_root_pin(signer: &LocalSigner) {
     }
 }
 
+/// Resolve a git ref/range into the list of commit SHAs the amend rewrote, so we
+/// can confirm each one actually carries a signature.
+///
+/// `HEAD`-style single refs resolve to that one commit; `base..tip` ranges resolve
+/// to every commit the rebase re-signed.
+fn resolve_signed_range_shas(range: &str) -> Result<Vec<String>> {
+    let rev_arg = if range.contains("..") {
+        range.to_string()
+    } else {
+        format!("{range}^!")
+    };
+    let output = crate::subprocess::git_command(&["rev-list", &rev_arg])
+        .output()
+        .context("Failed to list commits to confirm signing")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "Could not resolve '{}' to confirm the signature landed.\n\nGit reported: {}",
+            range,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect())
+}
+
+/// Confirm every commit in `range` actually carries an SSH signature after the amend.
+///
+/// The amend embeds the trailers and *asks* git to sign, but git only signs when a
+/// signing program is configured (`gpg.format ssh` + `gpg.ssh.program`). When it is
+/// not, the rewrite lands unsigned — and `auths verify` would then call the commit
+/// `No signature found`. We use the verifier's own `gpgsig` detection as the single
+/// source of truth so success is never claimed for a commit the verifier rejects.
+fn ensure_commits_signed(range: &str) -> Result<()> {
+    let shas = resolve_signed_range_shas(range)?;
+    for sha in &shas {
+        let raw = read_raw_commit_object(sha)?;
+        if !auths_verifier::commit_object_is_signed(&raw) {
+            return Err(anyhow!(
+                "Commit {} was amended but no signature was attached, so `auths verify` would \
+                 call it unsigned. Configure git SSH signing first — run `auths doctor --fix` \
+                 (sets gpg.format=ssh, gpg.ssh.program=auths-sign, commit.gpgsign=true).",
+                short_sha(sha)
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The raw git commit object (`git cat-file commit <sha>`) — the bytes a verifier
+/// reads to decide whether a `gpgsig` SSH block is present.
+fn read_raw_commit_object(sha: &str) -> Result<String> {
+    let output = crate::subprocess::git_command(&["cat-file", "commit", sha])
+        .output()
+        .context("Failed to read commit object to confirm signing")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "git cat-file commit {} failed: {}",
+            short_sha(sha),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout).context("Commit object is not valid UTF-8")
+}
+
+/// First 8 chars of a SHA for human-readable messages.
+fn short_sha(sha: &str) -> &str {
+    sha.get(..8).unwrap_or(sha)
+}
+
 /// Sign a Git commit range, embedding the `Auths-Id` / `Auths-Device` trailers
 /// in-band so a verifier knows which KEL to replay. Amending triggers auths-sign
 /// via git's signing program; the trailer (idempotent via git's
@@ -188,6 +259,10 @@ fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String]) -> Res
             ));
         }
     }
+    // The amend succeeded, but git only attaches a signature when a signing program
+    // is configured. Confirm one actually landed before claiming success — otherwise
+    // `auths verify` would call this commit unsigned and the success line would lie.
+    ensure_commits_signed(range)?;
     if crate::ux::format::is_json_mode() {
         crate::ux::format::JsonResponse::success(
             "sign",

@@ -143,7 +143,7 @@ pub use auths_keri::{
 };
 
 // Re-export commit verification types
-pub use commit::VerifiedCommit;
+pub use commit::{VerifiedCommit, commit_object_is_signed};
 pub use commit_bundle::{BundleTrust, BundleTrustError, verify_commit_with_bundle_json};
 pub use commit_kel::{
     ANCHOR_SEQ_TRAILER, CommitVerdict, DEVICE_TRAILER, ID_TRAILER, SCOPE_TRAILER,
