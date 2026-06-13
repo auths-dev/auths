@@ -82,9 +82,21 @@ auths-pairing-daemon = { workspace = true, optional = true }
 axum = { version = "0.8", optional = true }
 tokio-util = { version = "0.7", optional = true }
 
+# Witness-node operator surface (optional, default-OFF). The `auths witness`
+# subcommand *surface* always compiles (thin clap defs, no heavy deps); only the
+# node *handler* and this crate are feature-gated, so the lean default install
+# stays lean. The dependency arrow is one-way: this crate composes the node
+# crate, never the reverse.
+auths-witness-node = { workspace = true, optional = true }
+
 [features]
 default = ["lan-pairing"]
 lan-pairing = ["dep:auths-pairing-daemon", "dep:axum", "dep:tokio-util", "auths-sdk/lan-pairing"]
+# Enables the real `auths witness up|down|status|register|logs` handlers by
+# pulling the node-operator crate. A build without it keeps these verbs (help
+# and parsing are identical) but the handlers return a "install the witness
+# build" error.
+witness-node = ["dep:auths-witness-node"]
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process"] }

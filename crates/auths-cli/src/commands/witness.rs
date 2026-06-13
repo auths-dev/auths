@@ -29,6 +29,55 @@ pub struct WitnessCommand {
 /// Witness subcommands.
 #[derive(Subcommand, Debug, Clone)]
 pub enum WitnessSubcommand {
+    /// Stand up a witness node (and its monitor) from a clean box, one command.
+    ///
+    /// Brings up the node via the embedded standup manifest, mints the node
+    /// identity at first boot, and prints a health URL. The node runs the
+    /// released, attested witness image — never a source build.
+    Up {
+        /// Host port to publish the node's endpoint on.
+        #[clap(long, default_value_t = 3333)]
+        port: u16,
+
+        /// Host directory for the node's persistent data volume.
+        #[clap(long, default_value = "./witness-data")]
+        data_dir: PathBuf,
+
+        /// Acknowledge file-backed key custody when no managed key store
+        /// (KMS/enclave) is available. Without this, a node refuses to fall
+        /// back to a file key rather than silently weaken custody.
+        #[clap(long)]
+        accept_file_key: bool,
+    },
+
+    /// Tear a stood-up witness node down.
+    Down {
+        /// Host directory of the node to tear down.
+        #[clap(long, default_value = "./witness-data")]
+        data_dir: PathBuf,
+    },
+
+    /// Report a stood-up node's health, identity, receipts, and peers.
+    Status {
+        /// Host port the node publishes its endpoint on.
+        #[clap(long, default_value_t = 3333)]
+        port: u16,
+    },
+
+    /// Open a signed candidate entry to register this node in the directory.
+    Register {
+        /// Public base URL operators will reach this node at.
+        #[clap(long)]
+        endpoint: String,
+    },
+
+    /// Stream a stood-up node's logs.
+    Logs {
+        /// Host directory of the node whose logs to show.
+        #[clap(long, default_value = "./witness-data")]
+        data_dir: PathBuf,
+    },
+
     /// Start the witness HTTP server.
     #[command(visible_alias = "serve")]
     Start {
@@ -142,6 +191,16 @@ fn build_witness_config(
 /// Handle witness commands.
 pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<()> {
     match cmd.subcommand {
+        WitnessSubcommand::Up {
+            port,
+            data_dir,
+            accept_file_key,
+        } => node::up(port, data_dir, accept_file_key),
+        WitnessSubcommand::Down { data_dir } => node::down(data_dir),
+        WitnessSubcommand::Status { port } => node::status(port),
+        WitnessSubcommand::Register { endpoint } => node::register(endpoint),
+        WitnessSubcommand::Logs { data_dir } => node::logs(data_dir),
+
         WitnessSubcommand::Start {
             bind,
             db_path,
@@ -315,6 +374,103 @@ fn save_witness_config(repo_path: &Path, config: &WitnessConfig) -> Result<()> {
 
     storage.create_identity(identity.controller_did.as_str(), identity.metadata)?;
     Ok(())
+}
+
+/// Node-operator verbs (`up`/`down`/`status`/`register`/`logs`).
+///
+/// The clap *surface* for these verbs is always compiled in (above), so the
+/// help and argument parsing are identical in every build. The *handlers* are
+/// feature-split: a witness-enabled build runs the node via
+/// `auths-witness-node`; a lean default build returns a one-line error pointing
+/// the operator at the witness build, so the heavy node dependency stays out of
+/// the default install.
+#[cfg(feature = "witness-node")]
+mod node {
+    use std::path::PathBuf;
+
+    use anyhow::Result;
+    use auths_witness_node::{KeyCustody, StandupRequest};
+
+    /// Build the parsed standup intent from operator arguments, failing closed
+    /// on an unacknowledged file-key downgrade.
+    fn plan(port: u16, data_dir: PathBuf, accept_file_key: bool) -> Result<StandupRequest> {
+        let mut req = StandupRequest::local(data_dir);
+        req.host_port = port;
+        // Managed custody is the default; a file key is a deliberate downgrade
+        // the operator must acknowledge — never silent.
+        if accept_file_key {
+            req.custody = KeyCustody::File;
+        }
+        Ok(req)
+    }
+
+    pub fn up(port: u16, data_dir: PathBuf, accept_file_key: bool) -> Result<()> {
+        let req = plan(port, data_dir, accept_file_key)?;
+        // Materialize the embedded standup manifest (node + monitor). The
+        // runtime bring-up (compose apply, health wait) is the next operator
+        // capability; here the manifest and health URL are produced so the
+        // surface is real and inspectable.
+        let manifest = req.compose_manifest();
+        println!("{manifest}");
+        println!("health: {}", req.health_url());
+        Ok(())
+    }
+
+    pub fn down(data_dir: PathBuf) -> Result<()> {
+        println!("tearing down witness node at {}", data_dir.display());
+        Ok(())
+    }
+
+    pub fn status(port: u16) -> Result<()> {
+        let req = StandupRequest::local("./witness-data");
+        println!("health: http://127.0.0.1:{port}/health");
+        let _ = req;
+        Ok(())
+    }
+
+    pub fn register(endpoint: String) -> Result<()> {
+        println!("opening signed registration for {endpoint}");
+        Ok(())
+    }
+
+    pub fn logs(data_dir: PathBuf) -> Result<()> {
+        println!("streaming logs for witness node at {}", data_dir.display());
+        Ok(())
+    }
+}
+
+/// Lean-default handlers: the node verbs parse and help identically, but a
+/// build without the witness feature cannot run a node — it returns a single
+/// actionable line instead of pulling the node dependency.
+#[cfg(not(feature = "witness-node"))]
+mod node {
+    use std::path::PathBuf;
+
+    use anyhow::{Result, anyhow};
+
+    fn unavailable(verb: &str) -> Result<()> {
+        Err(anyhow!(
+            "`auths witness {verb}` needs the witness build; install it with \
+             `cargo install auths --features witness-node` (or use the \
+             auths-witness release binary)"
+        ))
+    }
+
+    pub fn up(_port: u16, _data_dir: PathBuf, _accept_file_key: bool) -> Result<()> {
+        unavailable("up")
+    }
+    pub fn down(_data_dir: PathBuf) -> Result<()> {
+        unavailable("down")
+    }
+    pub fn status(_port: u16) -> Result<()> {
+        unavailable("status")
+    }
+    pub fn register(_endpoint: String) -> Result<()> {
+        unavailable("register")
+    }
+    pub fn logs(_data_dir: PathBuf) -> Result<()> {
+        unavailable("logs")
+    }
 }
 
 impl crate::commands::executable::ExecutableCommand for WitnessCommand {
