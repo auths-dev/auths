@@ -113,7 +113,12 @@ fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
         .iter()
         .map(|t| format!(" --trailer '{}'", t))
         .collect();
-    let exec_cmd = format!("git commit --amend --no-edit --no-verify{trailer_flags}");
+    // `-c trailer.ifexists=replace`: re-signing a commit that already carries an
+    // Auths-* trailer replaces it in place rather than appending a second copy, so
+    // a re-signed commit (the recovery rewrite) keeps exactly one trailer per token.
+    let exec_cmd = format!(
+        "git -c trailer.ifexists=replace commit --amend --no-edit --no-verify{trailer_flags}"
+    );
     let output = crate::subprocess::git_command(&["rebase", "--exec", &exec_cmd, base])
         .output()
         .context("Failed to spawn git rebase")?;
@@ -227,8 +232,9 @@ fn short_sha(sha: &str) -> &str {
 
 /// Sign a Git commit range, embedding the `Auths-Id` / `Auths-Device` trailers
 /// in-band so a verifier knows which KEL to replay. Amending triggers auths-sign
-/// via git's signing program; the trailer (idempotent via git's
-/// `addIfDifferentNeighbor`) is part of the signed message body.
+/// via git's signing program; the trailers (one per token — re-signing replaces
+/// rather than appends, via `trailer.ifexists=replace`) are part of the signed
+/// message body.
 ///
 /// Args:
 /// * `range` - A git ref or range (e.g., "HEAD", "main..HEAD").
@@ -243,7 +249,17 @@ fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String]) -> Res
         let base = parts[0];
         execute_git_rebase(base, &trailers)?;
     } else {
-        let mut args: Vec<&str> = vec!["commit", "--amend", "--no-edit", "--no-verify"];
+        // `-c trailer.ifexists=replace`: amending a commit that already carries an
+        // Auths-* trailer (a re-sign) replaces that trailer in place instead of
+        // appending a duplicate, so the message keeps exactly one trailer per token.
+        let mut args: Vec<&str> = vec![
+            "-c",
+            "trailer.ifexists=replace",
+            "commit",
+            "--amend",
+            "--no-edit",
+            "--no-verify",
+        ];
         for trailer in &trailers {
             args.push("--trailer");
             args.push(trailer);
