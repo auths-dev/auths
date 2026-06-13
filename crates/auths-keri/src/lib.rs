@@ -90,7 +90,10 @@ pub use events::{
     serialize_attachment, serialize_source_seal_couples,
 };
 pub use keys::{KeriDecodeError, KeriPublicKey};
-pub use ksn::{KSN_TYPE, KSN_VERSION, KeyStateNotice, KsnError, SignedKsn};
+pub use ksn::{
+    KERI_KEY_STATE_VERSION, KSN_TYPE, KSN_VERSION, KeyStateNotice, KeyStateRecord, KsnError,
+    LatestEstablishmentEvent, SignedKsn,
+};
 pub use said::{
     Protocol, SAID_PLACEHOLDER, compute_said, compute_said_with_protocol, compute_section_said,
     verify_said,

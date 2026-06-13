@@ -106,6 +106,7 @@ fn run() -> Result<()> {
         RootCommand::Id(cmd) => cmd.execute(&ctx),
         RootCommand::Device(cmd) => cmd.execute(&ctx),
         RootCommand::Key(cmd) => cmd.execute(&ctx),
+        RootCommand::KeyState(cmd) => cmd.execute(&ctx),
         RootCommand::Approval(cmd) => cmd.execute(&ctx),
         RootCommand::Policy(cmd) => cmd.execute(&ctx),
         RootCommand::Namespace(cmd) => cmd.execute(&ctx),

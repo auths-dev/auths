@@ -26,6 +26,7 @@ pub mod index;
 pub mod init;
 pub mod key;
 pub mod key_detect;
+pub mod key_state;
 pub mod learn;
 pub mod log;
 pub mod multi_sig;

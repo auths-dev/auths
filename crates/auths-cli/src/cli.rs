@@ -25,6 +25,7 @@ use crate::commands::error_lookup::ErrorLookupCommand;
 use crate::commands::id::IdCommand;
 use crate::commands::init::InitCommand;
 use crate::commands::key::KeyCommand;
+use crate::commands::key_state::KeyStateCommand;
 use crate::commands::learn::LearnCommand;
 use crate::commands::log::LogCommand;
 use crate::commands::multi_sig::MultiSigCommand;
@@ -122,6 +123,8 @@ pub enum RootCommand {
     Device(DeviceCommand),
     #[command(hide = true)]
     Key(KeyCommand),
+    #[command(hide = true, name = "key-state")]
+    KeyState(KeyStateCommand),
     #[command(hide = true)]
     Approval(ApprovalCommand),
     #[command(hide = true)]
