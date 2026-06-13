@@ -202,7 +202,9 @@ fn build_keri_public_key(curve: CurveType, bytes: &[u8]) -> Result<KeriPublicKey
                     bytes.len()
                 ))
             })?;
-            Ok(KeriPublicKey::Ed25519(arr))
+            KeriPublicKey::ed25519(&arr).map_err(|e| {
+                ProtocolError::KeyExchangeFailed(format!("Ed25519 pubkey invalid: {e}"))
+            })
         }
         CurveType::P256 => {
             let arr: [u8; 33] = bytes.try_into().map_err(|_| {

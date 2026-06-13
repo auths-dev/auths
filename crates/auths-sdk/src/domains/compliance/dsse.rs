@@ -242,7 +242,7 @@ pub fn verify_signed_evidence_pack_offline(
     let org_key = KeriPublicKey::parse(cesr.as_str())
         .map_err(|e| ComplianceQueryError::Decode(format!("org verkey decode: {e}")))?;
     let org_curve = match org_key {
-        KeriPublicKey::Ed25519(_) => CurveType::Ed25519,
+        KeriPublicKey::Ed25519 { .. } => CurveType::Ed25519,
         KeriPublicKey::P256 { .. } => CurveType::P256,
     };
     envelope.verify(org_key.as_bytes(), org_curve)?;

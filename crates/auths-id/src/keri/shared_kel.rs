@@ -262,7 +262,9 @@ pub fn controller_from_parts(
             let arr: [u8; 32] = verkey_bytes.as_slice().try_into().map_err(|_| {
                 SharedKelError::EventConstruction("Ed25519 verkey must be 32 bytes".into())
             })?;
-            KeriPublicKey::Ed25519(arr)
+            KeriPublicKey::ed25519(&arr).map_err(|e| {
+                SharedKelError::EventConstruction(format!("Ed25519 verkey invalid: {e}"))
+            })?
         }
         CurveType::P256 => {
             let arr: [u8; 33] = verkey_bytes.as_slice().try_into().map_err(|_| {
@@ -294,7 +296,7 @@ mod tests {
     fn controller(did_str: &str) -> ControllerDescriptor {
         ControllerDescriptor {
             identity_did: did(did_str),
-            current_verkey: KeriPublicKey::Ed25519([0u8; 32]),
+            current_verkey: KeriPublicKey::ed25519(&[0u8; 32]).unwrap(),
         }
     }
 

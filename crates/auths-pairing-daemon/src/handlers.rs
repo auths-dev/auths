@@ -199,7 +199,7 @@ fn verify_subkey_chain_if_present(
         // session carrying a chain is a client bug; reject it loudly.
         let subkey_compressed: &[u8] = match subkey_pubkey {
             auths_keri::KeriPublicKey::P256 { key, .. } => key.as_slice(),
-            auths_keri::KeriPublicKey::Ed25519(_) => {
+            auths_keri::KeriPublicKey::Ed25519 { .. } => {
                 return Err(DaemonError::InvalidSubkeyChain {
                     reason: "chain only supported for P-256 subkey",
                 });
@@ -458,7 +458,7 @@ pub(crate) fn decode_device_pubkey(
                 });
             }
             let arr: [u8; 32] = bytes.try_into().map_err(|_| DaemonError::UnauthorizedSig)?;
-            Ok(auths_keri::KeriPublicKey::Ed25519(arr))
+            auths_keri::KeriPublicKey::ed25519(&arr).map_err(|_| DaemonError::UnauthorizedSig)
         }
         CurveTag::P256 => {
             if bytes.len() != 33 {
@@ -520,7 +520,7 @@ mod decode_device_pubkey_tests {
     fn routes_ed25519_by_curve_tag() {
         let r = req(&[0xAB; 32], CurveTag::Ed25519);
         let key = decode_device_pubkey(&r).expect("32-byte Ed25519 must accept");
-        assert!(matches!(key, auths_keri::KeriPublicKey::Ed25519(_)));
+        assert!(matches!(key, auths_keri::KeriPublicKey::Ed25519 { .. }));
     }
 
     #[test]
