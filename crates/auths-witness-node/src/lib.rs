@@ -35,6 +35,14 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod engine;
+pub mod standup;
+
+pub use engine::{DockerEngine, SocketHealthCheck};
+pub use standup::{
+    ContainerEngine, HealthCheck, StandupError, StandupOutcome, stand_up, tear_down,
+};
+
 // Compose the platform's public protocol surface. These re-exports make the
 // composition explicit and give the operator CLI one import path for the
 // protocol types it renders, all sourced from the trust kernel.

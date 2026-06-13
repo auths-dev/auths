@@ -48,6 +48,12 @@ pub enum WitnessSubcommand {
         /// back to a file key rather than silently weaken custody.
         #[clap(long)]
         accept_file_key: bool,
+
+        /// Override the node image to run. Defaults to the released, attested
+        /// image the platform ships. Use this only to pin a specific released
+        /// tag or to run an image already present on an air-gapped host.
+        #[clap(long)]
+        image: Option<String>,
     },
 
     /// Tear a stood-up witness node down.
@@ -55,6 +61,10 @@ pub enum WitnessSubcommand {
         /// Host directory of the node to tear down.
         #[clap(long, default_value = "./witness-data")]
         data_dir: PathBuf,
+
+        /// Host port the node to tear down was published on.
+        #[clap(long, default_value_t = 3333)]
+        port: u16,
     },
 
     /// Report a stood-up node's health, identity, receipts, and peers.
@@ -195,8 +205,9 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             port,
             data_dir,
             accept_file_key,
-        } => node::up(port, data_dir, accept_file_key),
-        WitnessSubcommand::Down { data_dir } => node::down(data_dir),
+            image,
+        } => node::up(port, data_dir, accept_file_key, image),
+        WitnessSubcommand::Down { data_dir, port } => node::down(data_dir, port),
         WitnessSubcommand::Status { port } => node::status(port),
         WitnessSubcommand::Register { endpoint } => node::register(endpoint),
         WitnessSubcommand::Logs { data_dir } => node::logs(data_dir),
@@ -387,13 +398,27 @@ fn save_witness_config(repo_path: &Path, config: &WitnessConfig) -> Result<()> {
 #[cfg(feature = "witness-node")]
 mod node {
     use std::path::PathBuf;
+    use std::time::Duration;
 
-    use anyhow::Result;
-    use auths_witness_node::{KeyCustody, StandupRequest};
+    use anyhow::{Result, anyhow};
+    use auths_witness_node::{
+        DockerEngine, KeyCustody, SocketHealthCheck, StandupRequest, stand_up, tear_down,
+    };
+
+    /// How long to wait for a freshly stood-up node to answer its health
+    /// endpoint before declaring the standup failed. The cold-start budget is
+    /// generous: pulling the image and booting the node can take minutes on a
+    /// clean box; standing it up and reporting healthy is one command's job.
+    const HEALTH_WAIT: Duration = Duration::from_secs(540);
 
     /// Build the parsed standup intent from operator arguments, failing closed
     /// on an unacknowledged file-key downgrade.
-    fn plan(port: u16, data_dir: PathBuf, accept_file_key: bool) -> Result<StandupRequest> {
+    fn plan(
+        port: u16,
+        data_dir: PathBuf,
+        accept_file_key: bool,
+        image: Option<String>,
+    ) -> StandupRequest {
         let mut req = StandupRequest::local(data_dir);
         req.host_port = port;
         // Managed custody is the default; a file key is a deliberate downgrade
@@ -401,31 +426,46 @@ mod node {
         if accept_file_key {
             req.custody = KeyCustody::File;
         }
-        Ok(req)
+        if let Some(reference) = image {
+            req.image.reference = reference;
+        }
+        req
     }
 
-    pub fn up(port: u16, data_dir: PathBuf, accept_file_key: bool) -> Result<()> {
-        let req = plan(port, data_dir, accept_file_key)?;
-        // Materialize the embedded standup manifest (node + monitor). The
-        // runtime bring-up (compose apply, health wait) is the next operator
-        // capability; here the manifest and health URL are produced so the
-        // surface is real and inspectable.
-        let manifest = req.compose_manifest();
-        println!("{manifest}");
-        println!("health: {}", req.health_url());
+    pub fn up(
+        port: u16,
+        data_dir: PathBuf,
+        accept_file_key: bool,
+        image: Option<String>,
+    ) -> Result<()> {
+        let req = plan(port, data_dir, accept_file_key, image);
+        // Bring the node (and its monitor sidecar) up for real, then wait until
+        // it answers its health endpoint. Success is a node answering — not the
+        // command merely returning. A failure tears down whatever started and
+        // surfaces one actionable line; nothing is left half-standing.
+        let outcome = stand_up(&req, &DockerEngine, &SocketHealthCheck, HEALTH_WAIT)
+            .map_err(|e| anyhow!("{e}"))?;
+        println!("health: {}", outcome.health_url);
         Ok(())
     }
 
-    pub fn down(data_dir: PathBuf) -> Result<()> {
-        println!("tearing down witness node at {}", data_dir.display());
+    pub fn down(data_dir: PathBuf, port: u16) -> Result<()> {
+        tear_down(&data_dir, port, &DockerEngine).map_err(|e| anyhow!("{e}"))?;
+        println!("witness node torn down");
         Ok(())
     }
 
     pub fn status(port: u16) -> Result<()> {
-        let req = StandupRequest::local("./witness-data");
-        println!("health: http://127.0.0.1:{port}/health");
-        let _ = req;
-        Ok(())
+        use auths_witness_node::HealthCheck;
+        let url = format!("http://127.0.0.1:{port}/health");
+        if SocketHealthCheck.is_healthy(&url) {
+            println!("healthy: {url}");
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "no node answering at {url} — is one stood up on port {port}?"
+            ))
+        }
     }
 
     pub fn register(endpoint: String) -> Result<()> {
@@ -456,10 +496,15 @@ mod node {
         ))
     }
 
-    pub fn up(_port: u16, _data_dir: PathBuf, _accept_file_key: bool) -> Result<()> {
+    pub fn up(
+        _port: u16,
+        _data_dir: PathBuf,
+        _accept_file_key: bool,
+        _image: Option<String>,
+    ) -> Result<()> {
         unavailable("up")
     }
-    pub fn down(_data_dir: PathBuf) -> Result<()> {
+    pub fn down(_data_dir: PathBuf, _port: u16) -> Result<()> {
         unavailable("down")
     }
     pub fn status(_port: u16) -> Result<()> {

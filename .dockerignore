@@ -1,0 +1,27 @@
+# Keep the Docker build context to source only. Without this, `COPY . .` ships
+# the entire working tree — compiled `target/` trees, local worktrees, Python
+# virtualenvs under examples/, and node_modules — which can be tens of GB and
+# makes the image build slow or fail outright on context transfer. None of it is
+# needed to compile a binary from source.
+
+# Rust build output (every crate's, and the root's)
+target/
+**/target/
+
+# Local git worktrees and VCS metadata
+.worktrees/
+.git/
+
+# Example/app sandboxes: Python venvs and JS deps
+**/.venv/
+**/venv/
+**/node_modules/
+
+# Editor / OS noise
+**/.DS_Store
+**/*.swp
+
+# Build artifacts that are regenerated, never sources
+**/*.profraw
+coverage/
+dist/
