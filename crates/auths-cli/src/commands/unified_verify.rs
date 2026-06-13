@@ -200,6 +200,8 @@ pub async fn handle_verify_unified(
                     verify_commit: false,
                     oidc_policy: None,
                     oidc_policy_did: None,
+                    log_evidence: None,
+                    log_key: None,
                 },
             )
             .await

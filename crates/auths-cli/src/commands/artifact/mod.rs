@@ -239,6 +239,18 @@ pub enum ArtifactSubcommand {
         /// a digest mismatch — the witnessed log is the source of truth.
         #[arg(long, value_name = "ORG-DID", conflicts_with = "oidc_policy")]
         oidc_policy_did: Option<String>,
+
+        /// Offline transparency-log inclusion evidence for this artifact
+        /// (`auths log prove --out`). Verified fully offline; the verdict's
+        /// `anchored` field reports the outcome. Requires --log-key — an
+        /// inclusion proof without a pinned operator proves nothing.
+        #[arg(long, value_name = "EVIDENCE-FILE", requires = "log_key")]
+        log_evidence: Option<PathBuf>,
+
+        /// The log operator's Ed25519 public key (64 hex chars), pinned out
+        /// of band — never trusted from the evidence file itself.
+        #[arg(long, value_name = "HEX", requires = "log_evidence")]
+        log_key: Option<String>,
     },
 }
 
@@ -629,6 +641,8 @@ pub fn handle_artifact(
             json,
             oidc_policy,
             oidc_policy_did,
+            log_evidence,
+            log_key,
         } => {
             if offline {
                 return verify::handle_offline_verify(
@@ -651,6 +665,8 @@ pub fn handle_artifact(
                     verify_commit,
                     oidc_policy,
                     oidc_policy_did,
+                    log_evidence,
+                    log_key,
                 },
             ))
         }
@@ -796,6 +812,44 @@ mod tests {
             } => {
                 assert!(oidc_policy.is_none());
                 assert_eq!(oidc_policy_did.as_deref(), Some("did:keri:EOrg"));
+            }
+            _ => panic!("expected Verify"),
+        }
+    }
+
+    #[test]
+    fn verify_log_evidence_and_log_key_are_a_pair() {
+        // An inclusion proof without a pinned operator key proves nothing,
+        // and a pinned key with nothing to check is operator error — clap
+        // enforces both-or-neither.
+        assert!(
+            Cli::try_parse_from(["test", "verify", "a.tar.gz", "--log-evidence", "e.json"])
+                .is_err(),
+            "--log-evidence without --log-key must be rejected"
+        );
+        assert!(
+            Cli::try_parse_from(["test", "verify", "a.tar.gz", "--log-key", "ab12"]).is_err(),
+            "--log-key without --log-evidence must be rejected"
+        );
+
+        let ok = Cli::try_parse_from([
+            "test",
+            "verify",
+            "a.tar.gz",
+            "--log-evidence",
+            "e.json",
+            "--log-key",
+            "ab12",
+        ])
+        .unwrap();
+        match ok.command {
+            ArtifactSubcommand::Verify {
+                log_evidence,
+                log_key,
+                ..
+            } => {
+                assert_eq!(log_evidence, Some(PathBuf::from("e.json")));
+                assert_eq!(log_key.as_deref(), Some("ab12"));
             }
             _ => panic!("expected Verify"),
         }

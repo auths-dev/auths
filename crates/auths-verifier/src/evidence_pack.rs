@@ -275,6 +275,60 @@ pub fn verify_transparency_inclusion(t: &TransparencyInclusion) -> Result<(), Ev
     Ok(())
 }
 
+/// Binding + inclusion: the evidence is FOR this artifact (its leaf hash
+/// re-derives from the canonical `sha256:<hex>` digest string) AND the
+/// Merkle inclusion/consistency proof checks out. Operator attestation of
+/// the checkpoint is a separate axis — see [`verify_artifact_log_inclusion`].
+fn verify_inclusion_binds_artifact(
+    artifact_digest: &str,
+    t: &TransparencyInclusion,
+) -> Result<(), EvidencePackError> {
+    if t.leaf_hash != hash_leaf(artifact_digest.as_bytes()) {
+        return Err(EvidencePackError::OfflineVerification(format!(
+            "transparency evidence is not for this artifact: leaf hash does not re-derive from {artifact_digest}"
+        )));
+    }
+    verify_transparency_inclusion(t)
+}
+
+/// Verify, fully offline, that an artifact's digest is anchored in a
+/// transparency log operated by the **pinned** key — the all-or-nothing
+/// verdict an artifact verifier needs (vs. the per-axis row verdicts of
+/// [`verify_evidence_pack_offline`]).
+///
+/// Three checks, each fail-closed:
+/// 1. the evidence binds to *this* artifact (`leaf_hash =
+///    hash_leaf(artifact_digest)`);
+/// 2. the Merkle inclusion (and any consistency) proof verifies against the
+///    embedded signed checkpoint;
+/// 3. the checkpoint signature verifies under the caller's pinned log key —
+///    never under the key the evidence itself carries.
+///
+/// Args:
+/// * `artifact_digest`: The canonical `sha256:<64 hex>` digest string — the
+///   exact leaf data the log appended.
+/// * `t`: The inclusion evidence (what `LogWriter::prove` mints).
+/// * `pinned_log_key`: The log operator's Ed25519 key, pinned out of band.
+///
+/// Usage:
+/// ```ignore
+/// verify_artifact_log_inclusion("sha256:ab…", &evidence, &pinned_key)?;
+/// ```
+pub fn verify_artifact_log_inclusion(
+    artifact_digest: &str,
+    t: &TransparencyInclusion,
+    pinned_log_key: &Ed25519PublicKey,
+) -> Result<(), EvidencePackError> {
+    verify_inclusion_binds_artifact(artifact_digest, t)?;
+    t.signed_checkpoint
+        .verify_log_signature(pinned_log_key)
+        .map_err(|e| {
+            EvidencePackError::OfflineVerification(format!(
+                "checkpoint is not attested by the pinned log key: {e}"
+            ))
+        })
+}
+
 /// Verify an offline evidence pack with **zero network**.
 ///
 /// Checks the embedded [`AirGappedOrgBundle`] integrity (every event
@@ -340,10 +394,10 @@ pub fn verify_evidence_pack_offline(
         // The proof must be FOR this row's artifact: the leaf is the canonical
         // digest string, so a valid proof over some other leaf is a mismatch,
         // not evidence.
-        let transparency_verified = row.transparency.as_ref().map(|t| {
-            t.leaf_hash == hash_leaf(row.artifact_digest.as_bytes())
-                && verify_transparency_inclusion(t).is_ok()
-        });
+        let transparency_verified = row
+            .transparency
+            .as_ref()
+            .map(|t| verify_inclusion_binds_artifact(&row.artifact_digest, t).is_ok());
 
         // The operator axis: only decidable when the verifier pinned a log key
         // AND the row anchors to a checkpoint — anything else is honestly None.
@@ -424,7 +478,7 @@ pub fn verify_evidence_pack_offline_json(
 }
 
 /// Parse a pinned log key from its hex wire form (fail-closed on malformed input).
-fn parse_log_key_hex(hex_key: &str) -> Result<Ed25519PublicKey, EvidencePackError> {
+pub fn parse_log_key_hex(hex_key: &str) -> Result<Ed25519PublicKey, EvidencePackError> {
     let bytes = hex::decode(hex_key.trim())
         .map_err(|e| EvidencePackError::Decode(format!("pinned log key: invalid hex: {e}")))?;
     Ed25519PublicKey::try_from_slice(&bytes)
@@ -640,6 +694,91 @@ mod tests {
         assert!(
             verify_transparency_inclusion(&t).is_err(),
             "inclusion not anchored to the checkpoint must fail closed"
+        );
+    }
+
+    /// A checkpoint genuinely signed by `signing_key` over its note body.
+    fn operator_signed_checkpoint(
+        size: u64,
+        root: MerkleHash,
+        signing_key: &ed25519_dalek::SigningKey,
+    ) -> SignedCheckpoint {
+        use ed25519_dalek::Signer;
+        let checkpoint = Checkpoint {
+            origin: LogOrigin::new("auths.dev/log").unwrap(),
+            size,
+            root,
+            timestamp: fixed_now(),
+        };
+        let sig = signing_key.sign(checkpoint.to_note_body().as_bytes());
+        SignedCheckpoint {
+            checkpoint,
+            log_signature: Ed25519Signature::from_bytes(sig.to_bytes()),
+            log_public_key: Ed25519PublicKey::from_bytes(signing_key.verifying_key().to_bytes()),
+            witnesses: vec![],
+            ecdsa_checkpoint_signature: None,
+            ecdsa_checkpoint_key: None,
+        }
+    }
+
+    /// Evidence for `digest` in a two-leaf log signed by `signing_key`.
+    fn artifact_evidence(
+        digest: &str,
+        signing_key: &ed25519_dalek::SigningKey,
+    ) -> TransparencyInclusion {
+        let leaf = hash_leaf(digest.as_bytes());
+        let sibling = hash_leaf(b"sha256:other");
+        let root = hash_children(&leaf, &sibling);
+        TransparencyInclusion {
+            leaf_hash: leaf,
+            inclusion_proof: InclusionProof {
+                index: 0,
+                size: 2,
+                root,
+                hashes: vec![sibling],
+            },
+            signed_checkpoint: operator_signed_checkpoint(2, root, signing_key),
+            consistency_proof: None,
+        }
+    }
+
+    #[test]
+    fn artifact_log_inclusion_verifies_under_the_pinned_operator() {
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let evidence = artifact_evidence(digest, &key);
+        let pinned = Ed25519PublicKey::from_bytes(key.verifying_key().to_bytes());
+        verify_artifact_log_inclusion(digest, &evidence, &pinned)
+            .expect("bound, included, operator-attested evidence verifies");
+    }
+
+    #[test]
+    fn artifact_log_inclusion_rejects_evidence_for_a_different_artifact() {
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let evidence = artifact_evidence(digest, &key);
+        let pinned = Ed25519PublicKey::from_bytes(key.verifying_key().to_bytes());
+        let other = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let err = verify_artifact_log_inclusion(other, &evidence, &pinned)
+            .expect_err("a valid proof for some OTHER leaf is a mismatch, not evidence");
+        assert!(
+            err.to_string().contains("not for this artifact"),
+            "rejection must name the binding failure, got: {err}"
+        );
+    }
+
+    #[test]
+    fn artifact_log_inclusion_rejects_a_different_pinned_operator() {
+        let key = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+        let digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let evidence = artifact_evidence(digest, &key);
+        let other_operator = ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]);
+        let pinned = Ed25519PublicKey::from_bytes(other_operator.verifying_key().to_bytes());
+        let err = verify_artifact_log_inclusion(digest, &evidence, &pinned)
+            .expect_err("a checkpoint from a different operator must fail the pinned-key check");
+        assert!(
+            err.to_string().contains("pinned log key"),
+            "rejection must name the operator failure, got: {err}"
         );
     }
 }

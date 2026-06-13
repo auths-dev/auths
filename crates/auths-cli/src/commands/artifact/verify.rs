@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 
 use auths_keri::witness::SignedReceipt;
 use auths_verifier::core::Attestation;
+use auths_verifier::evidence_pack::{
+    TransparencyInclusion, parse_log_key_hex, verify_artifact_log_inclusion,
+};
 use auths_verifier::oidc_policy::{OidcPolicyJoin, OidcSubjectPolicy};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
@@ -62,6 +65,11 @@ pub struct VerifyArtifactArgs {
     /// Org `did:keri:` whose KEL-anchored OIDC-subject policy to resolve and
     /// JOIN — the witnessed log as the policy's source of truth.
     pub oidc_policy_did: Option<String>,
+    /// Offline transparency-log inclusion evidence (`auths log prove --out`).
+    pub log_evidence: Option<PathBuf>,
+    /// The log operator's pinned Ed25519 key (64 hex chars); paired with
+    /// `log_evidence` at the clap boundary.
+    pub log_key: Option<String>,
 }
 
 /// Execute the `artifact verify` command.
@@ -77,6 +85,8 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         verify_commit,
         oidc_policy,
         oidc_policy_did,
+        log_evidence,
+        log_key,
     } = args;
     let witness_keys = &witness_keys;
     let file_str = file.to_string_lossy().to_string();
@@ -215,7 +225,7 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
     let chain = vec![attestation.clone()];
     let chain_result = verify_chain(&chain, &root_pk).await;
 
-    let (chain_valid, chain_report) = match chain_result {
+    let (chain_valid, mut chain_report) = match chain_result {
         Ok(mut report) => {
             if let Ok(home) = auths_sdk::paths::auths_home() {
                 let storage = auths_sdk::storage::RegistryAttestationStorage::new(&home);
@@ -244,6 +254,75 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         }
     };
 
+    // 6b. Offline transparency anchoring. With inclusion evidence supplied,
+    //     the verdict's `anchored` field is decided by the proof: Anchored
+    //     only when the evidence binds to THIS artifact's digest, its Merkle
+    //     inclusion verifies, and the checkpoint is attested by the pinned
+    //     log key. Fail-closed: evidence that does not prove is a verdict
+    //     (exit 1), never a skip.
+    let mut log_anchor_error: Option<String> = None;
+    if let Some(evidence_path) = &log_evidence {
+        let raw = match fs::read_to_string(evidence_path) {
+            Ok(r) => r,
+            Err(e) => {
+                return output_error(
+                    &file_str,
+                    2,
+                    &format!("Failed to read log evidence {evidence_path:?}: {e}"),
+                );
+            }
+        };
+        let evidence: TransparencyInclusion = match serde_json::from_str(&raw) {
+            Ok(t) => t,
+            Err(e) => {
+                return output_error(&file_str, 2, &format!("Failed to parse log evidence: {e}"));
+            }
+        };
+        // clap enforces the pair; a bare evidence path here is could-not-attempt.
+        let Some(key_hex) = log_key.as_deref() else {
+            return output_error(&file_str, 2, "--log-evidence requires --log-key");
+        };
+        let pinned_key = match parse_log_key_hex(key_hex) {
+            Ok(k) => k,
+            Err(e) => return output_error(&file_str, 2, &format!("{e}")),
+        };
+        // The log's leaf data is the canonical `sha256:<hex>` digest string —
+        // derive it through the same parsed type the append path uses.
+        let canonical_digest = match auths_sdk::workflows::compliance::ArtifactDigest::parse(
+            &format!("{}:{}", file_digest.algorithm, file_digest.hex),
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                return output_error(
+                    &file_str,
+                    2,
+                    &format!("Cannot derive the artifact's canonical log leaf: {e}"),
+                );
+            }
+        };
+        match verify_artifact_log_inclusion(canonical_digest.as_str(), &evidence, &pinned_key) {
+            Ok(()) => {
+                if let Some(report) = chain_report.as_mut() {
+                    report.anchored = Some(auths_keri::AnchorStatus::Anchored);
+                }
+                if !is_json_mode() {
+                    eprintln!(
+                        "  Transparency: {} anchored in log '{}' \
+                         (offline inclusion proof, operator key pinned)",
+                        canonical_digest.as_str(),
+                        evidence.signed_checkpoint.checkpoint.origin
+                    );
+                }
+            }
+            Err(e) => {
+                if let Some(report) = chain_report.as_mut() {
+                    report.anchored = Some(auths_keri::AnchorStatus::NotAnchored);
+                }
+                log_anchor_error = Some(format!("Transparency anchoring failed: {e}"));
+            }
+        }
+    }
+
     // 7. Optional witness verification
     let witness_quorum = match verify_witnesses(
         &chain,
@@ -267,6 +346,13 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         && q.verified < q.required
     {
         valid = false;
+    }
+
+    if let Some(ref msg) = log_anchor_error {
+        valid = false;
+        if !is_json_mode() {
+            eprintln!("  {msg}");
+        }
     }
 
     // 8a. Ephemeral attestation: verify commit signature transitively
@@ -424,7 +510,7 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
             commit_sha: commit_sha_val,
             commit_verified,
             oidc_join,
-            error: oidc_error,
+            error: log_anchor_error.or(oidc_error),
         },
     )
 }
