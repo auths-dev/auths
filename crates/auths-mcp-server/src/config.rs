@@ -39,6 +39,11 @@ pub struct McpServerConfig {
 
     /// Log level filter.
     pub log_level: String,
+
+    /// Directory the file-touching tools (`read_file`, `write_file`) are
+    /// confined to. A relying party roots tool execution at its own workspace
+    /// instead of a pinned location.
+    pub sandbox_root: PathBuf,
 }
 
 impl Default for McpServerConfig {
@@ -53,6 +58,7 @@ impl Default for McpServerConfig {
             jwks_cache_ttl_secs: 3600,
             enable_cors: false,
             log_level: "info".to_string(),
+            sandbox_root: PathBuf::from("/tmp"),
         }
     }
 }
@@ -117,6 +123,12 @@ impl McpServerConfig {
     /// Set log level.
     pub fn with_log_level(mut self, level: impl Into<String>) -> Self {
         self.log_level = level.into();
+        self
+    }
+
+    /// Set the sandbox root the file-touching tools are confined to.
+    pub fn with_sandbox_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.sandbox_root = root.into();
         self
     }
 }

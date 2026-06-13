@@ -17,7 +17,7 @@ use crate::error::McpServerError;
 use crate::middleware::auth_middleware;
 use crate::state::McpServerState;
 use crate::tools::{
-    DeployRequest, ReadFileRequest, ToolResponse, WriteFileRequest, execute_deploy,
+    DeployRequest, ReadFileRequest, Sandbox, ToolResponse, WriteFileRequest, execute_deploy,
     execute_read_file, execute_write_file,
 };
 use crate::types::VerifiedAgent;
@@ -120,12 +120,14 @@ async fn handle_tool_call(
         "read_file" => {
             let request: ReadFileRequest = serde_json::from_slice(&body)
                 .map_err(|e| McpServerError::ToolError(format!("invalid request body: {e}")))?;
-            execute_read_file(request)
+            let sandbox = Sandbox::open(&state.config().sandbox_root)?;
+            execute_read_file(&sandbox, request)
         }
         "write_file" => {
             let request: WriteFileRequest = serde_json::from_slice(&body)
                 .map_err(|e| McpServerError::ToolError(format!("invalid request body: {e}")))?;
-            execute_write_file(request)
+            let sandbox = Sandbox::open(&state.config().sandbox_root)?;
+            execute_write_file(&sandbox, request)
         }
         "deploy" => {
             let request: DeployRequest = serde_json::from_slice(&body)

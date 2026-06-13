@@ -11,6 +11,7 @@
 //! - `AUTHS_MCP_LEEWAY` - Clock skew tolerance in seconds (default: 5)
 //! - `AUTHS_MCP_CORS` - Enable CORS (set to "1" or "true")
 //! - `AUTHS_MCP_LOG_LEVEL` - Log level (default: info)
+//! - `AUTHS_MCP_SANDBOX_ROOT` - Directory file-touching tools are confined to (default: /tmp)
 //! - `PORT` - Alternative port binding (cloud platform support)
 //!
 //! KERI presentation auth (`Authorization: Auths-Presentation`, no issuer in the
@@ -79,6 +80,10 @@ fn main() -> anyhow::Result<()> {
 
     if let Ok(level) = env::var("AUTHS_MCP_LOG_LEVEL") {
         config = config.with_log_level(level);
+    }
+
+    if let Ok(root) = env::var("AUTHS_MCP_SANDBOX_ROOT") {
+        config = config.with_sandbox_root(PathBuf::from(root));
     }
 
     let keri_config = keri_presentation_config_from_env()?;
