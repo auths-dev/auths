@@ -46,7 +46,7 @@ pub enum AuthSubcommand {
     /// Sign an authentication challenge for DID-based login
     Challenge {
         /// The challenge nonce from the authentication server
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         nonce: String,
 
         /// The domain requesting authentication
@@ -57,7 +57,7 @@ pub enum AuthSubcommand {
     /// Verify a challenge response offline against the registry's current key
     Verify {
         /// The challenge nonce this verifier issued
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         nonce: String,
 
         /// The domain the challenge was bound to
