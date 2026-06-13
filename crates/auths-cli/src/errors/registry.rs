@@ -385,6 +385,8 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5314" => Some("# AUTHS-E5314\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AgentNotFound`\n\n## Message\n\nagent not found: {did}\n"),
         "AUTHS-E5315" => Some("# AUTHS-E5315\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::Revoked`\n\n## Message\n\nagent {did} is revoked\n"),
         "AUTHS-E5316" => Some("# AUTHS-E5316\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::OutsideDelegatorScope`\n\n## Message\n\nrequested capability '{capability}' exceeds the delegator's scope\n"),
+        "AUTHS-E5317" => Some("# AUTHS-E5317\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AttestationError`\n\n## Message\n\nagent delegation attestation failed: {0}\n"),
+        "AUTHS-E5318" => Some("# AUTHS-E5318\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AnchorError`\n\n## Message\n\nagent delegation attestation anchoring failed: {0}\n"),
 
         // --- auths-sdk (RegistrationError) ---
         "AUTHS-E5401" => Some("# AUTHS-E5401\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::AlreadyRegistered`\n\n## Message\n\nidentity already registered at this registry\n"),
@@ -431,6 +433,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5625" => Some("# AUTHS-E5625\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::ChainCycle`\n\n## Message\n\ndelegation chain cycle detected at '{did}'\n"),
         "AUTHS-E5626" => Some("# AUTHS-E5626\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::ChainTooDeep`\n\n## Message\n\ndelegation chain exceeds the maximum depth of {max} hops\n"),
         "AUTHS-E5627" => Some("# AUTHS-E5627\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::ChainBrokenHop`\n\n## Message\n\ndelegation chain is broken: no KEL found for '{did}'\n"),
+        "AUTHS-E5628" => Some("# AUTHS-E5628\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::OidcPolicyInvalid`\n\n## Message\n\ninvalid OIDC-subject policy: {reason}\n"),
 
         // --- auths-sdk (ApprovalError) ---
         "AUTHS-E5701" => Some("# AUTHS-E5701\n\n**Crate:** `auths-sdk`\n\n**Type:** `ApprovalError::NotApprovalRequired`\n\n## Message\n\ndecision is not RequiresApproval\n"),
@@ -779,6 +782,8 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5314",
         "AUTHS-E5315",
         "AUTHS-E5316",
+        "AUTHS-E5317",
+        "AUTHS-E5318",
         "AUTHS-E5401",
         "AUTHS-E5402",
         "AUTHS-E5403",
@@ -817,6 +822,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5625",
         "AUTHS-E5626",
         "AUTHS-E5627",
+        "AUTHS-E5628",
         "AUTHS-E5701",
         "AUTHS-E5702",
         "AUTHS-E5703",
@@ -898,6 +904,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 363);
+        assert_eq!(all_codes().len(), 366);
     }
 }
