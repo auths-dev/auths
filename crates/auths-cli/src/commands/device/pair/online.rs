@@ -20,6 +20,7 @@ pub(crate) async fn handle_initiate_online(
     now: chrono::DateTime<chrono::Utc>,
     registry: &str,
     no_qr: bool,
+    print_uri: bool,
     expiry_secs: u64,
     capabilities: &[auths_keri::Capability],
     env_config: &EnvironmentConfig,
@@ -60,6 +61,7 @@ pub(crate) async fn handle_initiate_online(
 
     let registry_str = registry.to_string();
     let no_qr_flag = no_qr;
+    let print_uri_flag = print_uri;
 
     let on_status = move |status: PairingStatus| match status {
         PairingStatus::SessionCreated { token, ttl_seconds } => {
@@ -99,6 +101,10 @@ pub(crate) async fn handle_initiate_online(
                 token.expires_at.format("%H:%M:%S"),
                 ttl_seconds
             );
+            if print_uri_flag {
+                println!();
+                print_token_uri(&token);
+            }
             println!();
             println!("  {}", style("(Press Ctrl+C to cancel)").dim());
             println!();

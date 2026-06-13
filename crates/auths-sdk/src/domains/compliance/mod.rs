@@ -10,14 +10,16 @@ pub mod error;
 pub mod frameworks;
 /// Compliance-as-a-query: deterministic, offline-verifiable evidence packs.
 pub mod query;
+/// Release attestations anchored in the org KEL (attest + discovery).
+pub mod releases;
 /// Compliance services
 pub mod service;
 /// Compliance types and configuration
 pub mod types;
 
 pub use dsse::{
-    DSSE_INTOTO_PAYLOAD_TYPE, DsseEnvelope, DsseSignature, sign_evidence_pack,
-    sign_framework_report,
+    DSSE_INTOTO_PAYLOAD_TYPE, DsseEnvelope, DsseSignature, VerifiedEvidencePack,
+    sign_evidence_pack, sign_framework_report, verify_signed_evidence_pack_offline,
 };
 pub use error::*;
 pub use frameworks::{
@@ -28,4 +30,8 @@ pub use query::{
     ComplianceFramework, ComplianceQueryError, EVIDENCE_PACK_SCHEMA_VERSION, EvidencePack,
     EvidenceRow, ReleaseRecord, RowVerdict, TransparencyInclusion, build_evidence_pack,
     build_offline_evidence_pack, load_witness_policy, verify_evidence_pack_offline,
+};
+pub use releases::{
+    AnchoredRelease, ArtifactDigest, ReleaseAttestation, ReleaseAttestationKind, attest_release,
+    discover_releases,
 };

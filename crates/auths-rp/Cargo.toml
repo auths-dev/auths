@@ -11,11 +11,23 @@ homepage.workspace = true
 auths-verifier.workspace = true
 base64.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
+git2 = { workspace = true, optional = true }
 parking_lot.workspace = true
 ring.workspace = true
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror.workspace = true
+
+[features]
+# The shipped git adapter for the registry-sync port: pulls `refs/auths/*`
+# from a remote into the relying party's own repository. Off by default so
+# wire-parsing consumers don't link libgit2.
+git-sync = ["dep:git2"]
+
+[dev-dependencies]
+# Self-dependency turns git-sync on for this crate's own test builds.
+auths-rp = { path = ".", features = ["git-sync"] }
+tempfile = "3"
 
 [lints]
 workspace = true

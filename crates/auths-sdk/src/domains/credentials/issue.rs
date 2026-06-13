@@ -105,14 +105,9 @@ fn build_attributes(
     expires_at: Option<DateTime<Utc>>,
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut data = serde_json::Map::new();
-    let capability = capabilities
-        .iter()
-        .map(Capability::as_str)
-        .collect::<Vec<_>>()
-        .join(",");
     data.insert(
         CAPABILITY_FIELD.to_string(),
-        serde_json::Value::String(capability),
+        serde_json::Value::String(Capability::join_claim(capabilities)),
     );
     if let Some(role) = role {
         data.insert(
@@ -405,12 +400,7 @@ fn credential_claims(
         .data
         .get(CAPABILITY_FIELD)
         .and_then(|v| v.as_str())
-        .and_then(|c| {
-            c.split(',')
-                .map(Capability::parse)
-                .collect::<Result<Vec<_>, _>>()
-                .ok()
-        })
+        .and_then(|c| Capability::parse_claim(c).ok())
         .unwrap_or_default();
     (subject, caps)
 }

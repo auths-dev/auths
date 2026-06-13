@@ -50,6 +50,8 @@
 pub mod action;
 pub mod clock;
 pub mod commit;
+/// Stateless commit verification against an identity bundle (CLI + WASM).
+pub mod commit_bundle;
 pub mod commit_error;
 pub mod commit_kel;
 /// The single cross-boundary verify contract (JSON request → tagged verdict).
@@ -58,12 +60,20 @@ pub mod core;
 pub mod credential;
 pub mod duplicity;
 pub mod error;
+/// Offline verification of compliance evidence packs.
+pub mod evidence_pack;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
+/// OIDC-subject policy and the verify-time join for keyless CI signing.
+pub mod oidc_policy;
+/// Offline verification of air-gapped org provenance bundles.
+pub mod org_bundle;
 pub mod presentation;
 mod software_verify;
 pub mod ssh_sig;
+/// Transparency-log verification primitives (Merkle proofs, checkpoints).
+pub mod tlog;
 pub mod types;
 pub mod verifier;
 pub mod verify;
@@ -92,6 +102,9 @@ pub use core::{
     SignatureVerifyError, ThresholdPolicy, TypedSignature, VerifiedAttestation,
     decode_public_key_bytes, decode_public_key_hex,
 };
+
+// Re-export the OIDC policy join (keyless CI verify-time exchange)
+pub use oidc_policy::{OidcPolicyError, OidcPolicyJoin, OidcSubjectPolicy};
 
 // Re-export test utilities
 #[cfg(any(test, feature = "test-utils"))]
@@ -130,10 +143,12 @@ pub use auths_keri::{
 };
 
 // Re-export commit verification types
-pub use commit::VerifiedCommit;
+pub use commit::{VerifiedCommit, commit_object_is_signed};
+pub use commit_bundle::{BundleTrust, BundleTrustError, verify_commit_with_bundle_json};
 pub use commit_kel::{
-    ANCHOR_SEQ_TRAILER, CommitVerdict, SCOPE_TRAILER, VerifierWitnessPolicy, WitnessGateStatus,
-    WitnessedVerdict, anchor_seq_trailer, scope_trailer, verify_commit_against_kel,
+    ANCHOR_SEQ_TRAILER, CommitVerdict, DEVICE_TRAILER, ID_TRAILER, SCOPE_TRAILER,
+    VerifierWitnessPolicy, WitnessGateStatus, WitnessedVerdict, anchor_seq_trailer,
+    commit_signer_trailers, scope_trailer, verify_commit_against_kel,
     verify_commit_against_kel_scoped, verify_commit_against_kel_witnessed,
 };
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};

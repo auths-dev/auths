@@ -90,9 +90,9 @@ pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
         .into_iter()
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
-            // Skip non-Rust, hidden dirs, target/
+            // Skip non-Rust, hidden dirs (.git, .worktrees, …), build output, vendored deps
             if e.file_type().is_dir() {
-                return name != "target" && name != ".git" && name != "node_modules";
+                return !name.starts_with('.') && name != "target" && name != "node_modules";
             }
             name.ends_with(".rs")
         })

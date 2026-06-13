@@ -20,7 +20,9 @@ pub struct VerificationReport {
     /// Optional witness quorum result (present when witness verification was performed)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub witness_quorum: Option<WitnessQuorum>,
-    /// Whether the attestation is anchored in the issuer's KEL via an ixn seal.
+    /// Whether the attestation is anchored in a verifiable log: the issuer's
+    /// KEL via an ixn seal, or a transparency log via an offline inclusion
+    /// proof verified under a pinned log key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchored: Option<auths_keri::AnchorStatus>,
     /// Structured duplicity warning from the shared-KEL detector.

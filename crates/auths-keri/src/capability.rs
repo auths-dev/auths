@@ -196,6 +196,63 @@ impl Capability {
     pub fn namespace(&self) -> Option<&str> {
         self.0.split(':').next().filter(|_| self.0.contains(':'))
     }
+
+    // ========================================================================
+    // Capability-claim codec — the single grammar for an ACDC `a.capability`
+    // ========================================================================
+
+    /// Separator between capabilities packed into one `a.capability` claim string.
+    ///
+    /// A capability identifier can never contain a comma ([`Capability::parse`]
+    /// only admits alphanumerics, `:`, `-`, `_`), so the comma is an unambiguous
+    /// delimiter for the multi-capability claim.
+    const CLAIM_SEPARATOR: char = ',';
+
+    /// Encode a set of capabilities into the single `a.capability` claim string.
+    ///
+    /// This is the one source of truth for the on-wire grammar: capabilities are
+    /// joined by [`Self::CLAIM_SEPARATOR`]. The issuer writes the claim with this;
+    /// every reader decodes it with [`Self::parse_claim`] — they cannot disagree.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use auths_keri::Capability;
+    /// let caps = [Capability::parse("fs:read").unwrap(), Capability::parse("fs:write").unwrap()];
+    /// assert_eq!(Capability::join_claim(&caps), "fs:read,fs:write");
+    /// ```
+    pub fn join_claim(capabilities: &[Capability]) -> String {
+        capabilities
+            .iter()
+            .map(Capability::as_str)
+            .collect::<Vec<_>>()
+            .join(&Self::CLAIM_SEPARATOR.to_string())
+    }
+
+    /// Decode an `a.capability` claim string into its capabilities.
+    ///
+    /// The inverse of [`Self::join_claim`]: splits on [`Self::CLAIM_SEPARATOR`] and
+    /// parses each segment. Returns `Err` if any segment is not a valid capability,
+    /// so an issuer/verifier grammar mismatch fails closed rather than silently
+    /// admitting a malformed claim. An empty claim yields no capabilities.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use auths_keri::Capability;
+    /// let caps = Capability::parse_claim("fs:read,fs:write").unwrap();
+    /// assert_eq!(caps.len(), 2);
+    /// assert!(Capability::parse_claim("").unwrap().is_empty());
+    /// ```
+    pub fn parse_claim(claim: &str) -> Result<Vec<Capability>, CapabilityError> {
+        if claim.is_empty() {
+            return Ok(Vec::new());
+        }
+        claim
+            .split(Self::CLAIM_SEPARATOR)
+            .map(Capability::parse)
+            .collect()
+    }
 }
 
 impl fmt::Display for Capability {
@@ -497,6 +554,48 @@ mod tests {
         assert_eq!(caps[0], Capability::sign_commit());
         assert_eq!(caps[1], Capability::manage_members());
         assert_eq!(caps[2], Capability::parse("custom-cap").unwrap());
+    }
+
+    // ========================================================================
+    // Capability-claim codec tests — issuer and verifier share one grammar
+    // ========================================================================
+
+    #[test]
+    fn claim_codec_roundtrips_multi_capability() {
+        let caps = vec![
+            Capability::parse("fs:read").unwrap(),
+            Capability::parse("fs:write").unwrap(),
+        ];
+        let claim = Capability::join_claim(&caps);
+        assert_eq!(claim, "fs:read,fs:write");
+        assert_eq!(Capability::parse_claim(&claim).unwrap(), caps);
+    }
+
+    #[test]
+    fn claim_codec_roundtrips_single_capability() {
+        let caps = vec![Capability::sign_commit()];
+        let claim = Capability::join_claim(&caps);
+        assert_eq!(claim, "sign_commit");
+        assert_eq!(Capability::parse_claim(&claim).unwrap(), caps);
+    }
+
+    #[test]
+    fn parse_claim_empty_is_no_capabilities() {
+        assert!(Capability::parse_claim("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_claim_rejects_malformed_segment() {
+        // A segment with an invalid char fails closed rather than silently dropping.
+        assert!(matches!(
+            Capability::parse_claim("fs:read,has space"),
+            Err(CapabilityError::InvalidChars(_))
+        ));
+    }
+
+    #[test]
+    fn join_claim_of_empty_is_empty_string() {
+        assert_eq!(Capability::join_claim(&[]), "");
     }
 
     // ========================================================================

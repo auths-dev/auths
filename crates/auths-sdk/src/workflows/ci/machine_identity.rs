@@ -1,9 +1,7 @@
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
-use auths_oidc_port::{
-    JwksClient, JwtValidator, OidcError, OidcValidationConfig, TimestampClient, TimestampConfig,
-};
+use auths_oidc_port::{JwtValidator, OidcError, OidcValidationConfig};
 use auths_verifier::core::{Attestation, Ed25519Signature, OidcBinding, ResourceId};
 use auths_verifier::types::CanonicalDid;
 use ring::signature::Ed25519KeyPair;
@@ -26,8 +24,6 @@ use ring::signature::Ed25519KeyPair;
 ///     token,
 ///     config,
 ///     jwt_validator,
-///     jwks_client,
-///     timestamp_client,
 ///     Utc::now(),
 /// ).await?;
 /// ```
@@ -65,23 +61,20 @@ pub struct OidcMachineIdentity {
 
 /// Create a machine identity from an OIDC token.
 ///
-/// Validates the token, extracts claims, performs replay detection,
-/// and optionally timestamps the identity.
+/// Validates the token (signature against the issuer's JWKS via the
+/// injected validator, issuer/audience/expiry claims), extracts and
+/// platform-normalizes the claims, and performs replay detection.
 ///
 /// # Args
 ///
 /// * `token`: Raw JWT OIDC token
 /// * `config`: Machine identity configuration
-/// * `jwt_validator`: JWT validator implementation
-/// * `jwks_client`: JWKS client for key resolution
-/// * `timestamp_client`: Optional timestamp client
+/// * `jwt_validator`: JWT validator implementation (owns JWKS resolution)
 /// * `now`: Current UTC time for validation
 pub async fn create_machine_identity_from_oidc_token(
     token: &str,
     config: OidcMachineIdentityConfig,
     jwt_validator: Arc<dyn JwtValidator>,
-    _jwks_client: Arc<dyn JwksClient>,
-    timestamp_client: Arc<dyn TimestampClient>,
     now: DateTime<Utc>,
 ) -> Result<OidcMachineIdentity, OidcError> {
     let validation_config = OidcValidationConfig::builder()
@@ -136,11 +129,6 @@ pub async fn create_machine_identity_from_oidc_token(
 
     let normalized_claims = normalize_platform_claims(&config.platform, &claims)?;
 
-    let _timestamp = timestamp_client
-        .timestamp(token.as_bytes(), &TimestampConfig::default())
-        .await
-        .ok();
-
     Ok(OidcMachineIdentity {
         platform: config.platform,
         subject,
@@ -182,6 +170,23 @@ fn normalize_platform_claims(
             reason: e,
         }
     })
+}
+
+impl From<&OidcMachineIdentity> for OidcBinding {
+    /// The one conversion from a validated machine identity to the
+    /// signature-covered wire binding — every signing path uses this, so
+    /// the two shapes can never drift.
+    fn from(mi: &OidcMachineIdentity) -> Self {
+        OidcBinding {
+            issuer: mi.issuer.clone(),
+            subject: mi.subject.clone(),
+            audience: mi.audience.clone(),
+            token_exp: mi.token_exp,
+            platform: Some(mi.platform.clone()),
+            jti: mi.jti.clone(),
+            normalized_claims: Some(mi.normalized_claims.clone()),
+        }
+    }
 }
 
 /// Parameters for signing a commit with an identity.
@@ -254,15 +259,7 @@ pub fn sign_commit_with_identity(
 
     let device_pk = auths_verifier::DevicePublicKey::ed25519(device_public_key);
 
-    let oidc_binding = params.oidc_binding.as_ref().map(|mi| OidcBinding {
-        issuer: mi.issuer.clone(),
-        subject: mi.subject.clone(),
-        audience: mi.audience.clone(),
-        token_exp: mi.token_exp,
-        platform: Some(mi.platform.clone()),
-        jti: mi.jti.clone(),
-        normalized_claims: Some(mi.normalized_claims.clone()),
-    });
+    let oidc_binding = params.oidc_binding.as_ref().map(OidcBinding::from);
 
     let rid = format!("auths/commits/{}", params.commit_sha);
 
@@ -382,15 +379,7 @@ mod tests {
             normalized_claims: claims,
         };
 
-        let binding = OidcBinding {
-            issuer: machine_id.issuer.clone(),
-            subject: machine_id.subject.clone(),
-            audience: machine_id.audience.clone(),
-            token_exp: machine_id.token_exp,
-            platform: Some(machine_id.platform.clone()),
-            jti: machine_id.jti.clone(),
-            normalized_claims: Some(machine_id.normalized_claims.clone()),
-        };
+        let binding = OidcBinding::from(&machine_id);
 
         assert_eq!(
             binding.issuer,

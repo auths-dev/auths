@@ -32,7 +32,7 @@ use axum::{
 
 use auths_core::pairing::types::{
     GetConfirmationResponse, GetSessionResponse, SubmitConfirmationRequest, SubmitResponseRequest,
-    SuccessResponse,
+    SubmitSharedKelRotRequest, SuccessResponse,
 };
 
 use crate::DaemonState;
@@ -274,6 +274,74 @@ pub async fn handle_submit_confirmation(
         .await
         .map(Json)
         .map_err(|_| DaemonError::Conflict)
+}
+
+/// Receive a co-authored shared-KEL rotation from the paired device.
+/// Requires `Auths-Sig` under the pubkey bound by `submit_response`.
+///
+/// The envelope is decoded and its CESR indexed signatures are verified
+/// against the rotation's own key list BEFORE it is accepted — the daemon
+/// never holds a blob it has not cryptographically checked. Prior-state
+/// replay (threshold over the prior next-commitments, chain linkage) is
+/// the embedding host's job: only the host has the registry's key state.
+pub async fn handle_submit_shared_kel_rot(
+    Path(id): Path<String>,
+    State(state): State<Arc<DaemonState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<SuccessResponse>, DaemonError> {
+    if state.is_expired(tokio::time::Instant::now()) {
+        return Err(DaemonError::SessionExpired);
+    }
+    let path = format!("/v1/pairing/sessions/{id}/shared-kel-rot");
+    let parsed = extract_auth(&headers, AuthScheme::Sig)?;
+    let pubkey = state
+        .pubkey_binding
+        .current()
+        .ok_or(DaemonError::UnauthorizedSig)?;
+    let expected_kid = pubkey_kid(&pubkey);
+    if parsed.kid != expected_kid {
+        return Err(DaemonError::UnauthorizedSig);
+    }
+    let now = current_unix();
+    verify_sig(&parsed, Method::POST.as_str(), &path, &body, &pubkey, now)
+        .map_err(auth_to_daemon_error)?;
+    state
+        .nonce_cache
+        .check_and_insert(&parsed.kid, &parsed.nonce)
+        .map_err(auth_to_daemon_error)?;
+
+    let request: SubmitSharedKelRotRequest = parse_json_body(&body)?;
+    request
+        .validate()
+        .map_err(|reason| DaemonError::InvalidSharedKelRot { reason })?;
+    verify_shared_kel_rot_envelope(&request.rot_envelope)?;
+
+    state
+        .submit_shared_kel_rot(&id, request)
+        .await
+        .map(Json)
+        .map_err(|_| DaemonError::Conflict)
+}
+
+/// Decode a shared-KEL rotation envelope and verify its indexed signatures
+/// against the event's own key list (`kt` over `k[]`). Returns the typed
+/// boundary error on any failure; the detail lands in server logs via the
+/// `IntoResponse` tracing hook, never on the wire.
+fn verify_shared_kel_rot_envelope(envelope: &str) -> Result<(), DaemonError> {
+    let (rot, attachment) =
+        auths_keri::decode_signed_rot(envelope).map_err(|e| DaemonError::InvalidSharedKelRot {
+            reason: format!("envelope decode: {e}"),
+        })?;
+    let signatures = auths_keri::parse_attachment(&attachment).map_err(|e| {
+        DaemonError::InvalidSharedKelRot {
+            reason: format!("attachment parse: {e}"),
+        }
+    })?;
+    let signed = auths_keri::SignedEvent::new(auths_keri::Event::Rot(rot), signatures);
+    auths_keri::validate_signed_event(&signed, None).map_err(|e| DaemonError::InvalidSharedKelRot {
+        reason: format!("signature validation: {e}"),
+    })
 }
 
 /// Get confirmation state. Requires `Auths-Sig` under the bound pubkey.

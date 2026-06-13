@@ -13,6 +13,7 @@ use super::common::*;
 pub(crate) fn handle_initiate_offline(
     now: chrono::DateTime<chrono::Utc>,
     no_qr: bool,
+    print_uri: bool,
     expiry_secs: u64,
     capabilities: &[auths_keri::Capability],
 ) -> Result<()> {
@@ -72,8 +73,10 @@ pub(crate) fn handle_initiate_offline(
         expiry_secs
     );
     println!();
-    println!("  {} {}", style("URI:").dim(), session.token.to_uri());
-    println!();
+    if print_uri {
+        print_token_uri(&session.token);
+        println!();
+    }
     println!(
         "  {}{}",
         WARN,

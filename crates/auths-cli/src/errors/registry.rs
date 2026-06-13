@@ -82,6 +82,19 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E2108" => Some("# AUTHS-E2108\n\n**Crate:** `auths-verifier`\n\n**Type:** `CommitVerificationError::UnknownSigner`\n\n## Message\n\nsigner key not in allowed keys\n\n## Suggestion\n\nAdd the signer's key to the allowed signers list\n"),
         "AUTHS-E2109" => Some("# AUTHS-E2109\n\n**Crate:** `auths-verifier`\n\n**Type:** `CommitVerificationError::CommitParseFailed`\n\n## Message\n\ncommit parse failed: {0}\n"),
 
+        // --- auths-verifier (OrgBundleError) ---
+        "AUTHS-E2201" => Some("# AUTHS-E2201\n\n**Crate:** `auths-verifier`\n\n**Type:** `OrgBundleError::Integrity`\n\n## Message\n\nbundle integrity failure for '{id}': {reason}\n"),
+        "AUTHS-E2202" => Some("# AUTHS-E2202\n\n**Crate:** `auths-verifier`\n\n**Type:** `OrgBundleError::MissingMemberKel`\n\n## Message\n\nbundle is missing the KEL for delegated member '{member}'\n"),
+        "AUTHS-E2203" => Some("# AUTHS-E2203\n\n**Crate:** `auths-verifier`\n\n**Type:** `OrgBundleError::MissingDelegatorSeal`\n\n## Message\n\nmember '{member}' has no delegation seal in the org KEL\n"),
+        "AUTHS-E2204" => Some("# AUTHS-E2204\n\n**Crate:** `auths-verifier`\n\n**Type:** `OrgBundleError::Canonicalize`\n\n## Message\n\ncanonicalization failed: {0}\n"),
+        "AUTHS-E2205" => Some("# AUTHS-E2205\n\n**Crate:** `auths-verifier`\n\n**Type:** `OrgBundleError::Parse`\n\n## Message\n\nparse failed: {0}\n"),
+        "AUTHS-E2206" => Some("# AUTHS-E2206\n\n**Crate:** `auths-verifier`\n\n**Type:** `OrgBundleError::RecordInvalid`\n\n## Message\n\noffboarding record invalid: {0}\n"),
+
+        // --- auths-verifier (EvidencePackError) ---
+        "AUTHS-E2301" => Some("# AUTHS-E2301\n\n**Crate:** `auths-verifier`\n\n**Type:** `EvidencePackError::Canonicalize`\n\n## Message\n\ncanonicalization failed: {0}\n"),
+        "AUTHS-E2302" => Some("# AUTHS-E2302\n\n**Crate:** `auths-verifier`\n\n**Type:** `EvidencePackError::Decode`\n\n## Message\n\ndecode failed: {0}\n"),
+        "AUTHS-E2303" => Some("# AUTHS-E2303\n\n**Crate:** `auths-verifier`\n\n**Type:** `EvidencePackError::OfflineVerification`\n\n## Message\n\noffline verification failed: {0}\n"),
+
         // --- auths-core (AgentError) ---
         "AUTHS-E3001" => Some("# AUTHS-E3001\n\n**Crate:** `auths-core`\n\n**Type:** `AgentError::KeyNotFound`\n\n## Message\n\nKey not found\n\n## Suggestion\n\nRun `auths key list` to see available keys\n"),
         "AUTHS-E3002" => Some("# AUTHS-E3002\n\n**Crate:** `auths-core`\n\n**Type:** `AgentError::IncorrectPassphrase`\n\n## Message\n\nIncorrect passphrase\n"),
@@ -372,6 +385,8 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5314" => Some("# AUTHS-E5314\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AgentNotFound`\n\n## Message\n\nagent not found: {did}\n"),
         "AUTHS-E5315" => Some("# AUTHS-E5315\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::Revoked`\n\n## Message\n\nagent {did} is revoked\n"),
         "AUTHS-E5316" => Some("# AUTHS-E5316\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::OutsideDelegatorScope`\n\n## Message\n\nrequested capability '{capability}' exceeds the delegator's scope\n"),
+        "AUTHS-E5317" => Some("# AUTHS-E5317\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AttestationError`\n\n## Message\n\nagent delegation attestation failed: {0}\n"),
+        "AUTHS-E5318" => Some("# AUTHS-E5318\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AnchorError`\n\n## Message\n\nagent delegation attestation anchoring failed: {0}\n"),
 
         // --- auths-sdk (RegistrationError) ---
         "AUTHS-E5401" => Some("# AUTHS-E5401\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::AlreadyRegistered`\n\n## Message\n\nidentity already registered at this registry\n"),
@@ -412,15 +427,13 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5616" => Some("# AUTHS-E5616\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::IdentityInit`\n\n## Message\n\nfailed to initialize organization identity: {0}\n"),
         "AUTHS-E5617" => Some("# AUTHS-E5617\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::Attestation`\n\n## Message\n\nfailed to create admin attestation: {0}\n"),
         "AUTHS-E5618" => Some("# AUTHS-E5618\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::MemberNotDelegable`\n\n## Message\n\nmember '{did}' is not a delegated identifier of organization '{org}'\n"),
-        "AUTHS-E5619" => Some("# AUTHS-E5619\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::BundleIntegrity`\n\n## Message\n\nbundle integrity failure for '{id}': {reason}\n"),
-        "AUTHS-E5620" => Some("# AUTHS-E5620\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::BundleMissingMemberKel`\n\n## Message\n\nbundle is missing the KEL for delegated member '{member}'\n"),
-        "AUTHS-E5621" => Some("# AUTHS-E5621\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::BundleMissingDelegatorSeal`\n\n## Message\n\nmember '{member}' has no delegation seal in the org KEL\n"),
         "AUTHS-E5622" => Some("# AUTHS-E5622\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::PolicyCompile`\n\n## Message\n\ninvalid org policy: {reason}\n"),
         "AUTHS-E5623" => Some("# AUTHS-E5623\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::PolicyBlobMissing`\n\n## Message\n\norg policy blob for hash '{hash}' is missing from storage\n"),
         "AUTHS-E5624" => Some("# AUTHS-E5624\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::PolicyIntegrity`\n\n## Message\n\norg policy integrity failure: KEL committed hash '{expected}' but the stored blob hashes to '{actual}'\n"),
         "AUTHS-E5625" => Some("# AUTHS-E5625\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::ChainCycle`\n\n## Message\n\ndelegation chain cycle detected at '{did}'\n"),
         "AUTHS-E5626" => Some("# AUTHS-E5626\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::ChainTooDeep`\n\n## Message\n\ndelegation chain exceeds the maximum depth of {max} hops\n"),
         "AUTHS-E5627" => Some("# AUTHS-E5627\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::ChainBrokenHop`\n\n## Message\n\ndelegation chain is broken: no KEL found for '{did}'\n"),
+        "AUTHS-E5628" => Some("# AUTHS-E5628\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::OidcPolicyInvalid`\n\n## Message\n\ninvalid OIDC-subject policy: {reason}\n"),
 
         // --- auths-sdk (ApprovalError) ---
         "AUTHS-E5701" => Some("# AUTHS-E5701\n\n**Crate:** `auths-sdk`\n\n**Type:** `ApprovalError::NotApprovalRequired`\n\n## Message\n\ndecision is not RequiresApproval\n"),
@@ -537,6 +550,15 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E2107",
         "AUTHS-E2108",
         "AUTHS-E2109",
+        "AUTHS-E2201",
+        "AUTHS-E2202",
+        "AUTHS-E2203",
+        "AUTHS-E2204",
+        "AUTHS-E2205",
+        "AUTHS-E2206",
+        "AUTHS-E2301",
+        "AUTHS-E2302",
+        "AUTHS-E2303",
         "AUTHS-E3001",
         "AUTHS-E3002",
         "AUTHS-E3003",
@@ -760,6 +782,8 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5314",
         "AUTHS-E5315",
         "AUTHS-E5316",
+        "AUTHS-E5317",
+        "AUTHS-E5318",
         "AUTHS-E5401",
         "AUTHS-E5402",
         "AUTHS-E5403",
@@ -792,15 +816,13 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5616",
         "AUTHS-E5617",
         "AUTHS-E5618",
-        "AUTHS-E5619",
-        "AUTHS-E5620",
-        "AUTHS-E5621",
         "AUTHS-E5622",
         "AUTHS-E5623",
         "AUTHS-E5624",
         "AUTHS-E5625",
         "AUTHS-E5626",
         "AUTHS-E5627",
+        "AUTHS-E5628",
         "AUTHS-E5701",
         "AUTHS-E5702",
         "AUTHS-E5703",
@@ -882,6 +904,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 357);
+        assert_eq!(all_codes().len(), 366);
     }
 }

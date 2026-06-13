@@ -128,6 +128,21 @@ impl LanPairingServer {
         self.handle.wait_for_confirmation(timeout).await
     }
 
+    /// Wait for the device to submit a co-authored shared-KEL rotation
+    /// (`POST /shared-kel-rot`), then take it for replay.
+    ///
+    /// Should be called after `wait_for_response` has bound the device's
+    /// signing key. The daemon has already verified the envelope's indexed
+    /// signatures; the caller still validates it against the registry's
+    /// prior key state before appending
+    /// (`auths_sdk::domains::identity::shared_rot::apply_shared_kel_rot`).
+    pub async fn wait_for_shared_kel_rot(
+        &self,
+        timeout: Duration,
+    ) -> Option<auths_sdk::pairing::SubmitSharedKelRotRequest> {
+        auths_sdk::pairing::lan::wait_for_shared_kel_rot(&self.handle, timeout).await
+    }
+
     /// Shut the listener down. Consumes `self`.
     pub fn shutdown(self) {
         self.cancel.cancel();

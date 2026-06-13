@@ -389,28 +389,21 @@ pub async fn wasm_validate_kel_json(
     let attachments: Vec<String> = serde_json::from_str(attachments_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse attachments JSON: {}", e)))?;
 
-    // An absent/short attachment list is an UNAUTHENTICATED KEL — refuse it rather
-    // than fall back to a structural-only replay (that fallback is exactly RT-002).
-    if attachments.len() != events.len() {
-        return Err(JsValue::from_str(&format!(
-            "KEL/attachment length mismatch ({} events vs {} attachments): the KEL is \
-             unauthenticated, refusing (RT-002)",
-            events.len(),
-            attachments.len()
-        )));
-    }
-
-    let signed: Vec<auths_keri::SignedEvent> = events
-        .into_iter()
-        .zip(attachments.iter())
-        .map(|(event, att_hex)| {
-            let bytes = hex::decode(att_hex)
-                .map_err(|e| JsValue::from_str(&format!("Invalid attachment hex: {}", e)))?;
-            let sigs = auths_keri::parse_attachment(&bytes)
-                .map_err(|e| JsValue::from_str(&format!("Invalid CESR attachment: {}", e)))?;
-            Ok(auths_keri::SignedEvent::new(event, sigs))
+    // This entrypoint's wire carries hex; decode to the raw CESR attachment
+    // bytes the shared pairing step consumes.
+    let attachment_bytes: Vec<Vec<u8>> = attachments
+        .iter()
+        .map(|att_hex| {
+            hex::decode(att_hex)
+                .map_err(|e| JsValue::from_str(&format!("Invalid attachment hex: {}", e)))
         })
         .collect::<Result<_, JsValue>>()?;
+
+    // Pairing fails closed on an absent/short attachment list (an
+    // unauthenticated KEL must never degrade to a structural-only replay —
+    // that fallback is exactly RT-002). The rule lives once, in auths-keri.
+    let signed = auths_keri::pair_kel_attachments(events, &attachment_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Invalid CESR attachment: {}", e)))?;
 
     let key_state = auths_keri::validate_signed_kel(&signed, None)
         .map_err(|e| JsValue::from_str(&format!("KEL authentication failed: {}", e)))?;
@@ -518,4 +511,103 @@ pub fn wasm_verify_presentation_json(bundle_json: &str) -> String {
 #[wasm_bindgen(js_name = verifyCredentialJson)]
 pub fn wasm_verify_credential_json(bundle_json: &str) -> String {
     crate::contract::verify_credential_json(bundle_json)
+}
+
+/// Verify an **air-gapped org bundle** offline, returning the tagged verdict
+/// envelope (`kind`: `"report"` | `"error"`) as a JSON string.
+///
+/// Synchronous, executor-free, and panic-free: the verify core
+/// ([`crate::org_bundle::verify_org_bundle`]) is a pure function of the
+/// bundle's bytes — every event's SAID recomputed, every signature
+/// authenticated against the controlling key-state (RT-002), duplicity
+/// flagged, and authority classified by KEL position — so the browser
+/// computes the same verdict the native CLI does, with zero network.
+///
+/// Args:
+/// * `bundle_json`: The `AirGappedOrgBundle` JSON (the `.auths-offline` file).
+/// * `pinned_roots_json`: JSON array of pinned `did:keri:` roots.
+/// * `member_did`: Optional member to classify (`did:keri:` or bare prefix).
+/// * `signed_at`: Optional in-band signing KEL position, as a decimal string.
+#[wasm_bindgen(js_name = verifyOrgBundle)]
+pub fn wasm_verify_org_bundle(
+    bundle_json: &str,
+    pinned_roots_json: &str,
+    member_did: Option<String>,
+    signed_at: Option<String>,
+) -> String {
+    crate::org_bundle::verify_org_bundle_json(
+        bundle_json,
+        pinned_roots_json,
+        member_did.as_deref(),
+        signed_at.as_deref(),
+    )
+}
+
+/// Verify a raw git commit object against an identity bundle, fully stateless,
+/// returning the tagged JSON envelope (`kind`: `"verdict"` | `"error"`).
+///
+/// This is the "commit ← maintainer" leg in the browser: the bundle's KEL is
+/// freshness-checked, self-certification-checked (RT-005), and
+/// signature-authenticated (RT-002), the bundle root must already be in
+/// `pinned_roots_json` (evidence-only), and the commit's SSH signature is
+/// verified in-process against the replayed KEL — the same
+/// [`verify_commit_against_kel`](crate::verify_commit_against_kel) verdict the
+/// native CLI computes, with no git and no identity store.
+///
+/// Args:
+/// * `commit_text`: The raw commit object (`git cat-file commit <sha>` bytes).
+/// * `bundle_json`: The identity bundle JSON (`auths id export-bundle`).
+/// * `pinned_roots_json`: JSON array of independently pinned `did:keri:` roots.
+///
+/// Usage (TypeScript):
+/// ```ignore
+/// const verdict = JSON.parse(await verifyCommitJson(commit, bundle, '["did:keri:E…"]'));
+/// const commitLegHolds = verdict.kind === "verdict" && verdict.valid;
+/// ```
+#[wasm_bindgen(js_name = verifyCommitJson)]
+pub async fn wasm_verify_commit_json(
+    commit_text: &str,
+    bundle_json: &str,
+    pinned_roots_json: &str,
+) -> String {
+    crate::commit_bundle::verify_commit_with_bundle_json(
+        commit_text,
+        bundle_json,
+        pinned_roots_json,
+        SystemClock.now(),
+        &provider(),
+    )
+    .await
+}
+
+/// Verify an **offline compliance evidence pack** with zero network, returning
+/// the tagged verdict envelope (`kind`: `"verdicts"` | `"error"`) as a JSON
+/// string — one verdict per evidence row.
+///
+/// Synchronous, executor-free, and panic-free: the verify core
+/// ([`crate::evidence_pack::verify_evidence_pack_offline`]) authenticates the
+/// embedded org bundle, re-derives each row's authority-at-release from the
+/// embedded KEL (tamper check), and checks each row's transparency-log
+/// inclusion/consistency proof — so the dashboard computes the verdict live
+/// instead of replaying a recorded native run. With a pinned log key, each
+/// row's checkpoint signature is verified against that operator key too
+/// (`checkpoint_attested` in the verdict); without one the verdict honestly
+/// reports membership only.
+///
+/// Args:
+/// * `pack_json`: The `EvidencePack` JSON (the `.evidence` file).
+/// * `pinned_roots_json`: JSON array of pinned `did:keri:` roots.
+/// * `pinned_log_key_hex`: The pinned log operator key (64 hex chars,
+///   Ed25519), or `undefined` for a membership-only verdict.
+#[wasm_bindgen(js_name = verifyEvidencePackOffline)]
+pub fn wasm_verify_evidence_pack_offline(
+    pack_json: &str,
+    pinned_roots_json: &str,
+    pinned_log_key_hex: Option<String>,
+) -> String {
+    crate::evidence_pack::verify_evidence_pack_offline_json(
+        pack_json,
+        pinned_roots_json,
+        pinned_log_key_hex.as_deref(),
+    )
 }

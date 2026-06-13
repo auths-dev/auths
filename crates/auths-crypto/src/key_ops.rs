@@ -27,6 +27,16 @@ pub enum TypedSeed {
 }
 
 impl TypedSeed {
+    /// Builds a typed seed from raw 32-byte material on the named curve — the
+    /// one source of truth for `(curve, bytes) -> TypedSeed`. Adding a curve
+    /// makes this `match` non-exhaustive, so every caller is forced to handle it.
+    pub fn from_curve(curve: CurveType, bytes: [u8; 32]) -> Self {
+        match curve {
+            CurveType::Ed25519 => Self::Ed25519(bytes),
+            CurveType::P256 => Self::P256(bytes),
+        }
+    }
+
     /// Returns the curve this seed belongs to.
     pub fn curve(&self) -> CurveType {
         match self {

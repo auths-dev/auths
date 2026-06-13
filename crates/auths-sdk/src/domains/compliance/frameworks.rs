@@ -37,6 +37,10 @@ pub const SLSA_REPORT_PREDICATE_TYPE: &str = "https://auths.dev/compliance/slsa/
 pub const SBOM_REPORT_PREDICATE_TYPE: &str = "https://auths.dev/compliance/sbom/v1";
 /// CRA obligation-mapping report predicate type.
 pub const CRA_REPORT_PREDICATE_TYPE: &str = "https://auths.dev/compliance/cra/v1";
+/// SOC 2 Trust Services Criteria mapping report predicate type.
+pub const SOC2_REPORT_PREDICATE_TYPE: &str = "https://auths.dev/compliance/soc2/v1";
+/// ISO/IEC 27001:2022 Annex-A mapping report predicate type.
+pub const ISO27001_REPORT_PREDICATE_TYPE: &str = "https://auths.dev/compliance/iso27001/v1";
 
 /// Whether a fact is immutable build-level evidence or a point-in-time status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -148,6 +152,8 @@ pub fn build_framework_report(
         ComplianceFramework::Slsa => Ok(build_slsa(pack, vsa)),
         ComplianceFramework::Sbom => Ok(build_sbom(pack)),
         ComplianceFramework::Cra => Ok(build_cra(pack)),
+        ComplianceFramework::Soc2 => Ok(build_soc2(pack)),
+        ComplianceFramework::Iso27001 => Ok(build_iso27001(pack)),
     }
 }
 
@@ -359,4 +365,131 @@ fn build_cra(pack: &EvidencePack) -> FrameworkReport {
         statement: statement(&pack.rows, CRA_REPORT_PREDICATE_TYPE, predicate),
         sbom_sha256: None,
     }
+}
+
+// ── SOC 2 (TSC) / ISO 27001 (Annex-A) ──────────────────────────────────────────
+
+/// One control mapped from the pack's evidence to a framework's control ID.
+///
+/// The same shape serves SOC 2 (Trust Services Criteria, `id` like `CC6.3`) and
+/// ISO 27001:2022 (Annex-A, `id` like `A.5.18`): each says which evidence the
+/// pack already carries (`satisfied_by`) discharges which control, and at what
+/// `status`. Documentation + a typed report shape over the already-classified
+/// evidence — never a new trust primitive.
+#[derive(Debug, Clone, Serialize)]
+struct ControlMapping {
+    id: &'static str,
+    description: &'static str,
+    satisfied_by: &'static str,
+    status: &'static str,
+}
+
+/// SOC 2 Trust Services Criteria the evidence pack speaks to. Off-boarding a
+/// compromised signer and refusing post-revocation authority is exactly the
+/// logical-access removal CC6.2/CC6.3 test; provenance discharges CC7.x change
+/// integrity.
+const SOC2_CRITERIA: &[ControlMapping] = &[
+    ControlMapping {
+        id: "CC6.1",
+        description: "Logical access security — identity and authority are bound to a self-certifying KEL.",
+        satisfied_by: "authority_at_release",
+        status: "covered",
+    },
+    ControlMapping {
+        id: "CC6.2",
+        description: "Register and authorize new internal/external users before granting access (member onboarding events).",
+        satisfied_by: "authority_at_release",
+        status: "covered",
+    },
+    ControlMapping {
+        id: "CC6.3",
+        description: "Remove access on role change/termination — off-boarding revokes a signer; post-revocation releases are rejected.",
+        satisfied_by: "authority_at_release",
+        status: "covered",
+    },
+    ControlMapping {
+        id: "CC7.2",
+        description: "Detect and act on anomalies — release provenance and the transparency log make tampering evident.",
+        satisfied_by: "slsa_provenance",
+        status: "covered",
+    },
+];
+
+/// ISO/IEC 27001:2022 Annex-A controls the evidence pack speaks to. The 2022
+/// revision's identity/access controls (A.5.16 identity management, A.5.18
+/// access rights, A.8.4 access to source/build) are discharged by the same
+/// authority-at-release evidence.
+const ISO27001_ANNEX_A: &[ControlMapping] = &[
+    ControlMapping {
+        id: "A.5.16",
+        description: "Identity management — each signer is a self-certifying KEL identity.",
+        satisfied_by: "authority_at_release",
+        status: "covered",
+    },
+    ControlMapping {
+        id: "A.5.18",
+        description: "Access rights are provisioned and revoked — off-boarding revokes a signer; post-revocation releases are rejected.",
+        satisfied_by: "authority_at_release",
+        status: "covered",
+    },
+    ControlMapping {
+        id: "A.8.4",
+        description: "Access to source code / build pipeline is authorized at release time, by KEL position.",
+        satisfied_by: "authority_at_release",
+        status: "covered",
+    },
+    ControlMapping {
+        id: "A.8.28",
+        description: "Secure development — release provenance binds each artifact to an authorized signer.",
+        satisfied_by: "slsa_provenance",
+        status: "covered",
+    },
+];
+
+/// Render a control-mapping framework report (SOC 2 / ISO 27001) over the
+/// already-classified pack — the one shape shared by the two control frameworks.
+fn build_control_mapping(
+    pack: &EvidencePack,
+    framework: ComplianceFramework,
+    predicate_type: &str,
+    controls_field: &str,
+    controls: &[ControlMapping],
+    note: &str,
+) -> FrameworkReport {
+    let predicate = serde_json::json!({
+        controls_field: controls,
+        "releasesAssessed": pack.rows.len(),
+        "equivocationVisibility": pack.equivocation_visibility,
+        "note": note,
+    });
+    FrameworkReport {
+        framework,
+        predicate_type: predicate_type.to_string(),
+        statement: statement(&pack.rows, predicate_type, predicate),
+        sbom_sha256: None,
+    }
+}
+
+fn build_soc2(pack: &EvidencePack) -> FrameworkReport {
+    build_control_mapping(
+        pack,
+        ComplianceFramework::Soc2,
+        SOC2_REPORT_PREDICATE_TYPE,
+        "trustServicesCriteria",
+        SOC2_CRITERIA,
+        "Maps the evidence pack to SOC 2 Trust Services Criteria; it is a \
+         reporting mapping over the classified evidence, not a new trust primitive.",
+    )
+}
+
+fn build_iso27001(pack: &EvidencePack) -> FrameworkReport {
+    build_control_mapping(
+        pack,
+        ComplianceFramework::Iso27001,
+        ISO27001_REPORT_PREDICATE_TYPE,
+        "annexAControls",
+        ISO27001_ANNEX_A,
+        "Maps the evidence pack to ISO/IEC 27001:2022 Annex-A controls; it is a \
+         reporting mapping over the classified evidence, not a new trust primitive.",
+    )
 }

@@ -1,11 +1,12 @@
 //! KERI-native MCP tool authorization (dual-mode, alongside the JWT path).
 //!
 //! The JWT path (`auth.rs`) validates an OIDC-bridge-minted token against a JWKS endpoint —
-//! an issuer in the trust path. This module adds the no-issuer alternative: an agent presents
+//! an issuer in the trust path. This module is the no-issuer alternative: an agent presents
 //! proof-of-control of a delegated KERI credential (an `Auths-Presentation`), the relying
 //! party verifies it offline via `auths_sdk::authenticate_presentation`, and the **same**
-//! per-tool capability gate produces a [`VerifiedAgent`]. Both modes can be served together,
-//! so OAuth/JWT clients keep working while new agents adopt the no-issuer passport.
+//! per-tool capability gate produces a [`VerifiedAgent`]. The router serves both modes
+//! together when built with a [`KeriPresentationConfig`], so OAuth/JWT clients keep working
+//! while new agents adopt the no-issuer passport.
 //!
 //! No verification logic is duplicated: the full verify flow lives in `auths-sdk`, and the
 //! capability gate ([`gate`]) is a free function so it is unit-testable without a registry.
@@ -13,13 +14,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use auths_rp::{Audience, ChallengeStore, VerifiedPrincipal, WirePresentation};
+use auths_rp::{
+    Audience, ChallengeStore, InMemoryChallengeStore, VerifiedPrincipal, WirePresentation,
+};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::credentials::authenticate_presentation;
 use auths_sdk::keychain::KeyAlias;
 use auths_verifier::Capability;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 
+use crate::config::KeriPresentationConfig;
 use crate::error::McpServerError;
 use crate::types::VerifiedAgent;
 
@@ -63,11 +67,55 @@ impl KeriToolAuth {
         }
     }
 
+    /// Build a KERI tool authorizer from parsed presentation settings.
+    ///
+    /// Owns the shipped bounded in-memory challenge store; use [`KeriToolAuth::new`]
+    /// to supply a custom [`ChallengeStore`] backend (e.g. shared across nodes).
+    ///
+    /// Args:
+    /// * `ctx`: Auths context over the registry at `config.registry_path`.
+    /// * `config`: Parsed presentation settings (issuer, audience, TTL, capacity).
+    /// * `tool_capabilities`: Map of tool name to the required capability string.
+    pub fn from_config(
+        ctx: Arc<AuthsContext>,
+        config: &KeriPresentationConfig,
+        tool_capabilities: HashMap<String, String>,
+    ) -> Self {
+        let challenges: Arc<dyn ChallengeStore> = Arc::new(InMemoryChallengeStore::with_ttl(
+            config.max_live_challenges,
+            Duration::seconds(config.challenge_ttl_secs),
+        ));
+        Self::new(
+            ctx,
+            config.issuer_alias.clone(),
+            challenges,
+            config.audience.clone(),
+            tool_capabilities,
+        )
+    }
+
+    /// Authenticate an `Auths-Presentation` into a [`VerifiedAgent`] — no per-tool gate.
+    ///
+    /// The route layer gates per tool afterwards, exactly as it does for the JWT
+    /// path, so one capability check governs both schemes.
+    ///
+    /// Args:
+    /// * `presentation`: The `WirePresentation` parsed from the `Authorization` header.
+    /// * `now`: The current time (read at the server boundary).
+    pub async fn authenticate(
+        &self,
+        presentation: WirePresentation,
+        now: DateTime<Utc>,
+    ) -> Result<VerifiedAgent, McpServerError> {
+        Ok(verified_agent(&self.verify(presentation, now).await?))
+    }
+
     /// Authorize a tool call from an `Auths-Presentation` (no JWT, no issuer in the path).
     ///
     /// Verifies the presentation offline (single-use challenge, audience-binding, revocation)
     /// via `auths_sdk::authenticate_presentation`, then checks the per-tool capability —
-    /// yielding the same [`VerifiedAgent`] shape the JWT path produces.
+    /// yielding the same [`VerifiedAgent`] shape the JWT path produces. The one-call
+    /// embedding API; the Axum middleware authenticates here and gates in the route layer.
     ///
     /// Args:
     /// * `presentation`: The `WirePresentation` parsed from the `Authorization` header.
@@ -79,7 +127,17 @@ impl KeriToolAuth {
         tool_name: &str,
         now: DateTime<Utc>,
     ) -> Result<VerifiedAgent, McpServerError> {
-        let principal = authenticate_presentation(
+        let principal = self.verify(presentation, now).await?;
+        gate(&self.tool_capabilities, &principal, tool_name)
+    }
+
+    /// Verify the presentation offline, consuming its single-use challenge.
+    async fn verify(
+        &self,
+        presentation: WirePresentation,
+        now: DateTime<Utc>,
+    ) -> Result<VerifiedPrincipal, McpServerError> {
+        authenticate_presentation(
             &self.ctx,
             &self.issuer_alias,
             &*self.challenges,
@@ -88,8 +146,17 @@ impl KeriToolAuth {
             now,
         )
         .await
-        .map_err(|e| McpServerError::Unauthorized(e.to_string()))?;
-        gate(&self.tool_capabilities, &principal, tool_name)
+        .map_err(|e| McpServerError::Unauthorized(e.to_string()))
+    }
+
+    /// The single-use challenge store (shared with the `/v1/auth/challenge` mint route).
+    pub fn challenges(&self) -> Arc<dyn ChallengeStore> {
+        Arc::clone(&self.challenges)
+    }
+
+    /// The audience presentations must bind to.
+    pub fn audience(&self) -> &Audience {
+        &self.audience
     }
 
     /// The tool-to-capability map.

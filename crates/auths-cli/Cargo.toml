@@ -84,7 +84,7 @@ tokio-util = { version = "0.7", optional = true }
 
 [features]
 default = ["lan-pairing"]
-lan-pairing = ["dep:auths-pairing-daemon", "dep:axum", "dep:tokio-util"]
+lan-pairing = ["dep:auths-pairing-daemon", "dep:axum", "dep:tokio-util", "auths-sdk/lan-pairing"]
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["signal", "process"] }

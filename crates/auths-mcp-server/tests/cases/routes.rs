@@ -257,3 +257,66 @@ async fn unknown_tool_returns_404() {
 
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn unsupported_authorization_scheme_returns_401() {
+    let (base_url, _handle) = start_mock_jwks_server().await;
+    let app = test_router(&base_url);
+
+    let resp = app
+        .oneshot(
+            Request::post("/mcp/tools/read_file")
+                .header("content-type", "application/json")
+                .header("authorization", "Basic dXNlcjpwYXNz")
+                .body(Body::from(r#"{"path":"/tmp/test.txt"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn presentation_scheme_without_keri_authorizer_returns_401() {
+    let (base_url, _handle) = start_mock_jwks_server().await;
+    let app = test_router(&base_url);
+
+    let resp = app
+        .oneshot(
+            Request::post("/mcp/tools/read_file")
+                .header("content-type", "application/json")
+                .header("authorization", "Auths-Presentation eyJub3QiOiJyZWFsIn0")
+                .body(Body::from(r#"{"path":"/tmp/test.txt"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(
+        json["error"]
+            .as_str()
+            .unwrap()
+            .contains("not enabled on this server")
+    );
+}
+
+#[tokio::test]
+async fn challenge_route_absent_without_keri_authorizer() {
+    let (base_url, _handle) = start_mock_jwks_server().await;
+    let app = test_router(&base_url);
+
+    let resp = app
+        .oneshot(
+            Request::get("/v1/auth/challenge")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}

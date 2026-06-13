@@ -63,7 +63,7 @@ pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
             if e.file_type().is_dir() {
-                return name != "target" && name != ".git" && name != "node_modules";
+                return !name.starts_with('.') && name != "target" && name != "node_modules";
             }
             name.ends_with(".rs")
         })
@@ -149,7 +149,7 @@ fn collect_secret_types(workspace_root: &Path) -> anyhow::Result<HashSet<String>
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
             if e.file_type().is_dir() {
-                return name != "target" && name != ".git" && name != "node_modules";
+                return !name.starts_with('.') && name != "target" && name != "node_modules";
             }
             name.ends_with(".rs")
         })

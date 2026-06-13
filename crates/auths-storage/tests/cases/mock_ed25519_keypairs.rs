@@ -219,6 +219,13 @@ const ALL_PKCS8: [&[u8]; 20] = [
     PKCS8_19,
 ];
 
+/// The pre-generated keypair at `index` (0..19) — e.g. to SIGN the events a
+/// fixture appends (the current key of identity `i` is `mock_keypair(i * 2)`).
+pub fn mock_keypair(index: usize) -> Ed25519KeyPair {
+    assert!(index < 20, "only 20 pre-generated keypairs available");
+    Ed25519KeyPair::from_pkcs8(ALL_PKCS8[index]).unwrap()
+}
+
 /// Builds a signed inception event from pre-generated static keypairs.
 ///
 /// Each `index` (0..9) produces a unique identity. Uses keypair pair

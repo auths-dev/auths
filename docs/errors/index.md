@@ -51,6 +51,15 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E2107](AUTHS-E2107.md) | `auths-verifier` | `CommitVerificationError::SignatureInvalid` | signature verification failed |
 | [AUTHS-E2108](AUTHS-E2108.md) | `auths-verifier` | `CommitVerificationError::UnknownSigner` | signer key not in allowed keys |
 | [AUTHS-E2109](AUTHS-E2109.md) | `auths-verifier` | `CommitVerificationError::CommitParseFailed` | commit parse failed: {0} |
+| [AUTHS-E2201](AUTHS-E2201.md) | `auths-verifier` | `OrgBundleError::Integrity` | bundle integrity failure for '{id}': {reason} |
+| [AUTHS-E2202](AUTHS-E2202.md) | `auths-verifier` | `OrgBundleError::MissingMemberKel` | bundle is missing the KEL for delegated member '{member}' |
+| [AUTHS-E2203](AUTHS-E2203.md) | `auths-verifier` | `OrgBundleError::MissingDelegatorSeal` | member '{member}' has no delegation seal in the org KEL |
+| [AUTHS-E2204](AUTHS-E2204.md) | `auths-verifier` | `OrgBundleError::Canonicalize` | canonicalization failed: {0} |
+| [AUTHS-E2205](AUTHS-E2205.md) | `auths-verifier` | `OrgBundleError::Parse` | parse failed: {0} |
+| [AUTHS-E2206](AUTHS-E2206.md) | `auths-verifier` | `OrgBundleError::RecordInvalid` | offboarding record invalid: {0} |
+| [AUTHS-E2301](AUTHS-E2301.md) | `auths-verifier` | `EvidencePackError::Canonicalize` | canonicalization failed: {0} |
+| [AUTHS-E2302](AUTHS-E2302.md) | `auths-verifier` | `EvidencePackError::Decode` | decode failed: {0} |
+| [AUTHS-E2303](AUTHS-E2303.md) | `auths-verifier` | `EvidencePackError::OfflineVerification` | offline verification failed: {0} |
 | [AUTHS-E3001](AUTHS-E3001.md) | `auths-core` | `AgentError::KeyNotFound` | Key not found |
 | [AUTHS-E3002](AUTHS-E3002.md) | `auths-core` | `AgentError::IncorrectPassphrase` | Incorrect passphrase |
 | [AUTHS-E3003](AUTHS-E3003.md) | `auths-core` | `AgentError::MissingPassphrase` | Missing Passphrase |
@@ -274,6 +283,8 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5314](AUTHS-E5314.md) | `auths-sdk` | `AgentError::AgentNotFound` | agent not found: {did} |
 | [AUTHS-E5315](AUTHS-E5315.md) | `auths-sdk` | `AgentError::Revoked` | agent {did} is revoked |
 | [AUTHS-E5316](AUTHS-E5316.md) | `auths-sdk` | `AgentError::OutsideDelegatorScope` | requested capability '{capability}' exceeds the delegator's scope |
+| [AUTHS-E5317](AUTHS-E5317.md) | `auths-sdk` | `AgentError::AttestationError` | agent delegation attestation failed: {0} |
+| [AUTHS-E5318](AUTHS-E5318.md) | `auths-sdk` | `AgentError::AnchorError` | agent delegation attestation anchoring failed: {0} |
 | [AUTHS-E5401](AUTHS-E5401.md) | `auths-sdk` | `RegistrationError::AlreadyRegistered` | identity already registered at this registry |
 | [AUTHS-E5402](AUTHS-E5402.md) | `auths-sdk` | `RegistrationError::QuotaExceeded` | registration quota exceeded — try again later |
 | [AUTHS-E5403](AUTHS-E5403.md) | `auths-sdk` | `RegistrationError::InvalidDidFormat` | invalid DID format: {did} |
@@ -306,15 +317,13 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5616](AUTHS-E5616.md) | `auths-sdk` | `OrgError::IdentityInit` | failed to initialize organization identity: {0} |
 | [AUTHS-E5617](AUTHS-E5617.md) | `auths-sdk` | `OrgError::Attestation` | failed to create admin attestation: {0} |
 | [AUTHS-E5618](AUTHS-E5618.md) | `auths-sdk` | `OrgError::MemberNotDelegable` | member '{did}' is not a delegated identifier of organization '{org}' |
-| [AUTHS-E5619](AUTHS-E5619.md) | `auths-sdk` | `OrgError::BundleIntegrity` | bundle integrity failure for '{id}': {reason} |
-| [AUTHS-E5620](AUTHS-E5620.md) | `auths-sdk` | `OrgError::BundleMissingMemberKel` | bundle is missing the KEL for delegated member '{member}' |
-| [AUTHS-E5621](AUTHS-E5621.md) | `auths-sdk` | `OrgError::BundleMissingDelegatorSeal` | member '{member}' has no delegation seal in the org KEL |
 | [AUTHS-E5622](AUTHS-E5622.md) | `auths-sdk` | `OrgError::PolicyCompile` | invalid org policy: {reason} |
 | [AUTHS-E5623](AUTHS-E5623.md) | `auths-sdk` | `OrgError::PolicyBlobMissing` | org policy blob for hash '{hash}' is missing from storage |
 | [AUTHS-E5624](AUTHS-E5624.md) | `auths-sdk` | `OrgError::PolicyIntegrity` | org policy integrity failure: KEL committed hash '{expected}' but the stored blob hashes to '{actual}' |
 | [AUTHS-E5625](AUTHS-E5625.md) | `auths-sdk` | `OrgError::ChainCycle` | delegation chain cycle detected at '{did}' |
 | [AUTHS-E5626](AUTHS-E5626.md) | `auths-sdk` | `OrgError::ChainTooDeep` | delegation chain exceeds the maximum depth of {max} hops |
 | [AUTHS-E5627](AUTHS-E5627.md) | `auths-sdk` | `OrgError::ChainBrokenHop` | delegation chain is broken: no KEL found for '{did}' |
+| [AUTHS-E5628](AUTHS-E5628.md) | `auths-sdk` | `OrgError::OidcPolicyInvalid` | invalid OIDC-subject policy: {reason} |
 | [AUTHS-E5701](AUTHS-E5701.md) | `auths-sdk` | `ApprovalError::NotApprovalRequired` | decision is not RequiresApproval |
 | [AUTHS-E5702](AUTHS-E5702.md) | `auths-sdk` | `ApprovalError::RequestNotFound` | approval request not found: {hash} |
 | [AUTHS-E5703](AUTHS-E5703.md) | `auths-sdk` | `ApprovalError::RequestExpired` | approval request expired at {expires_at} |

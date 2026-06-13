@@ -64,7 +64,8 @@ deny = [
     "auths-sdk",
     "auths-test-utils",
     "auths-api",
-  ], reason = "git2 must stay in storage/adapter layer; auths-sdk and auths-api git2 are dev-deps only" },
+    "auths-rp",
+  ], reason = "git2 must stay in storage/adapter layer; auths-sdk and auths-api git2 are dev-deps only; auths-rp's git2 is the optional git-sync registry-fetch adapter (feature-gated off by default)" },
 ]
 
 [advisories]

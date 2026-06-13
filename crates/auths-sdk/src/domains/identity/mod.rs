@@ -14,6 +14,8 @@ pub mod registration;
 pub mod rotation;
 /// Identity services
 pub mod service;
+/// Apply a co-authored shared-KEL rotation received from a paired device
+pub mod shared_rot;
 /// Identity types and configuration
 pub mod types;
 

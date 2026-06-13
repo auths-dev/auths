@@ -169,6 +169,13 @@ pub enum DaemonError {
     /// verify, or a self-referential chain (bootstrap == subkey).
     #[error("subkey chain verification failed: {reason}")]
     InvalidSubkeyChain { reason: &'static str },
+
+    /// A submitted shared-KEL rotation envelope failed to decode or its
+    /// indexed signatures did not verify against the event's own key list
+    /// (400). The detail string goes to server logs only — the wire body
+    /// is a fixed safe template like every other variant.
+    #[error("shared-KEL rotation envelope invalid: {reason}")]
+    InvalidSharedKelRot { reason: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +232,7 @@ mod http_response {
                 DaemonError::InvalidPubkeyLength { .. } => "invalid-pubkey-length",
                 DaemonError::UnsupportedSubkeyChain => "unsupported-subkey-chain",
                 DaemonError::InvalidSubkeyChain { .. } => "invalid-subkey-chain",
+                DaemonError::InvalidSharedKelRot { .. } => "invalid-shared-kel-rot",
             }
         }
 
@@ -249,7 +257,8 @@ mod http_response {
                 | DaemonError::ClockSkew
                 | DaemonError::InvalidPubkeyLength { .. }
                 | DaemonError::UnsupportedSubkeyChain
-                | DaemonError::InvalidSubkeyChain { .. } => StatusCode::BAD_REQUEST,
+                | DaemonError::InvalidSubkeyChain { .. }
+                | DaemonError::InvalidSharedKelRot { .. } => StatusCode::BAD_REQUEST,
                 DaemonError::SessionExpired => StatusCode::GONE,
             }
         }
@@ -281,6 +290,7 @@ mod http_response {
                 DaemonError::InvalidPubkeyLength { .. } => "request malformed",
                 DaemonError::UnsupportedSubkeyChain => "unsupported extension",
                 DaemonError::InvalidSubkeyChain { .. } => "request malformed",
+                DaemonError::InvalidSharedKelRot { .. } => "request malformed",
             }
         }
 

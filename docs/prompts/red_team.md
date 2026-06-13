@@ -12,7 +12,7 @@ attacked. Your reputation rests on the vulnerability you *missed*, not the one y
 reported.
 
 Write your report here:
-/Users/bordumb/workspace/repositories/auths-base/auths/docs/prompts
+/Users/bordumb/workspace/repositories/auths-base/auths/docs/plans
 filename: red_team_{TODAY_DATE}.md
 
 ---

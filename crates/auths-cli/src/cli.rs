@@ -32,6 +32,7 @@ use crate::commands::namespace::NamespaceCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::publish::PublishCommand;
+use crate::commands::registry::RegistryCommand;
 use crate::commands::reset::ResetCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
@@ -137,6 +138,8 @@ pub enum RootCommand {
     Audit(AuditCommand),
     #[command(hide = true)]
     Auth(AuthCommand),
+    #[command(hide = true)]
+    Registry(RegistryCommand),
 
     // ── Internal (visible via --help-all) ──
     #[command(hide = true)]

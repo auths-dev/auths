@@ -120,6 +120,8 @@ pub mod rotation;
 pub mod seal;
 pub mod shared_kel;
 pub mod state;
+#[cfg(feature = "git-storage")]
+pub mod sync;
 pub mod types;
 pub mod validate;
 #[cfg(feature = "witness-client")]
@@ -149,7 +151,8 @@ pub use inception::{
 pub use kel::{GitKel, KelError};
 #[cfg(feature = "git-storage")]
 pub use kel_resolver::{
-    KelResolveError, KelResolver, LocalKelResolver, collect_kel, verify_prefix_binding,
+    KelResolveError, KelResolver, LocalKelResolver, collect_kel, collect_kel_capped,
+    verify_prefix_binding,
 };
 #[cfg(feature = "git-storage")]
 pub use resolve::{
@@ -163,6 +166,8 @@ pub use rotation::{
 };
 pub use seal::Seal;
 pub use state::KeyState;
+#[cfg(feature = "git-storage")]
+pub use sync::{KelCaps, MergeOutcome, MergedKel, RegistryMergeError, merge_registries};
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{
     ValidationError, compute_event_said, finalize_dip_event, finalize_drt_event,

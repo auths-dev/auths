@@ -39,55 +39,32 @@
         "size": 5
       },
       "commit_sha": "d4443cd81077f396ec1a1366bc0356cc19b3bbf5"
-    }
-  ],
-  "kel": [
-    {
-      "v": "KERI10JSON00012f_",
-      "t": "icp",
-      "d": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
-      "i": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
-      "s": "0",
-      "kt": "1",
-      "k": [
-        "1AAJAvfTM0XIQXakgoZTmn50ze8cJm6zjjiXEe2xKfzHk43g"
-      ],
-      "nt": "1",
-      "n": [
-        "EGdbaV-wPaf-_ipeasSHuXwmb0YtEt7FaMk68HLxD4mn"
-      ],
-      "bt": "0",
-      "b": [],
-      "c": [],
-      "a": []
     },
     {
-      "v": "KERI10JSON0000ff_",
-      "t": "ixn",
-      "d": "EDxwuXyK6UzdhpDUJOggQGHTdWpc0APpPHihmiUcye6y",
-      "i": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
-      "s": "1",
-      "p": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
-      "a": [
-        {
-          "d": "EBZ9C975VziWzzdir1SctdzUDmqZMCKgG7J6zU9m8aES"
-        }
-      ]
-    },
-    {
-      "v": "KERI10JSON0000ff_",
-      "t": "ixn",
-      "d": "EIrQ9Hly1PL1MkNynKgrQ_X9Mjspm5lxupzyOMasbZQu",
-      "i": "ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
-      "s": "2",
-      "p": "EDxwuXyK6UzdhpDUJOggQGHTdWpc0APpPHihmiUcye6y",
-      "a": [
-        {
-          "d": "EBSIjdFY0dh2tv8BsfpPIBQ-QkA7Ay8d7G3vG18vrkwS"
-        }
-      ]
+      "version": 1,
+      "rid": "sha256:5cb868032393d2735071912dac899f29191d2d294281f914812241f4565ad104",
+      "issuer": "did:keri:ELv6uW2irGkclnFq8lAsAexmoLwZ-3k-ocwjpFBZsIEG",
+      "subject": "did:key:zDnaeh7NXw4vXWstkivGmQaBGZkoG4Fwp6uRAh6Khe5hXmUSj",
+      "device_public_key": {
+        "curve": "p256",
+        "key": "02f7d33345c84176a48286539a7e74cdef1c266eb38e389711edb129fcc7938de0"
+      },
+      "identity_signature": "725d554a771f832f75d2be0928e07b00d01bb43d220786daaedee41f885c895d007a5cb8cab9af990513686fabd4aea55d980244aaecc2d63423bef9b1b6fb6a",
+      "device_signature": "d823437bc8bb5ad3b0e09942b028225fb919ab68a8e108120c2e6baf1230db466f35cc5a43a952fb7763676a3a62a0250a536dfe20a32be474b9ff1a08fb7375",
+      "timestamp": "2026-06-10T01:10:14.307656Z",
+      "note": "example-verify-badge v0.1.0",
+      "payload": {
+        "artifact_type": "file",
+        "digest": {
+          "algorithm": "sha256",
+          "hex": "5cb868032393d2735071912dac899f29191d2d294281f914812241f4565ad104"
+        },
+        "name": "example-verify-badge-v0.1.0.tar.gz",
+        "size": 5035
+      },
+      "commit_sha": "92a3c50319c37d85b7219a9efbc33679b522a4fb"
     }
   ],
-  "bundle_timestamp": "2026-06-10T00:32:04.746971Z",
+  "bundle_timestamp": "2026-06-13T16:06:44.921576Z",
   "max_valid_for_secs": 31536000
 }

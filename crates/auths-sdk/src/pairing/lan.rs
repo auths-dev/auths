@@ -5,7 +5,9 @@
 
 pub use auths_pairing_daemon::{PairingDaemon, PairingDaemonBuilder, PairingDaemonHandle};
 
-use auths_core::pairing::types::CreateSessionRequest;
+use std::time::Duration;
+
+use auths_core::pairing::types::{CreateSessionRequest, SubmitSharedKelRotRequest};
 
 use super::PairingError;
 
@@ -43,4 +45,46 @@ pub fn create_lan_pairing_daemon(
     PairingDaemonBuilder::new()
         .build(session)
         .map_err(|e| PairingError::DaemonError(e.to_string()))
+}
+
+/// Wait for (and take) a co-authored shared-KEL rotation received by the
+/// daemon during this session.
+///
+/// The daemon verifies the envelope's indexed signatures at its HTTP
+/// boundary and holds at most one rotation per session; this awaits
+/// `shared_kel_rot_notify` and takes it for the host to replay against the
+/// registry's prior key state
+/// (`crate::domains::identity::shared_rot::apply_shared_kel_rot`).
+///
+/// Interest in the notifier is registered BEFORE the fast-path take, so a
+/// rotation landing between the two cannot be missed. Returns `None` on
+/// timeout.
+///
+/// Args:
+/// * `handle`: The daemon handle for the live session.
+/// * `timeout`: Maximum time to wait for the device to submit a rotation.
+///
+/// Usage:
+/// ```ignore
+/// if let Some(held) = wait_for_shared_kel_rot(&handle, Duration::from_secs(120)).await {
+///     let applied = apply_shared_kel_rot(&held.rot_envelope, &prefix, registry.as_ref())?;
+/// }
+/// ```
+pub async fn wait_for_shared_kel_rot(
+    handle: &PairingDaemonHandle,
+    timeout: Duration,
+) -> Option<SubmitSharedKelRotRequest> {
+    let state = handle.state();
+    let notify = state.shared_kel_rot_notify();
+    let notified = notify.notified();
+    tokio::pin!(notified);
+    notified.as_mut().enable();
+
+    if let Some(rot) = state.take_shared_kel_rot().await {
+        return Some(rot);
+    }
+    match tokio::time::timeout(timeout, notified).await {
+        Ok(()) => state.take_shared_kel_rot().await,
+        Err(_) => None,
+    }
 }

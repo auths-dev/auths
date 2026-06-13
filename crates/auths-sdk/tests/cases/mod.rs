@@ -21,6 +21,7 @@ mod kill_switch;
 mod local_signer;
 mod org;
 mod org_delegation;
+mod org_oidc_policy;
 mod org_policy;
 mod org_trace;
 mod pairing;

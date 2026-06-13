@@ -181,6 +181,46 @@ paths:
         "503":
           $ref: "#/components/responses/CapacityExhausted"
 
+  /v1/pairing/sessions/{id}/shared-kel-rot:
+    post:
+      operationId: submitSharedKelRot
+      tags: [sessions]
+      summary: Submit a device-authored shared-KEL rotation.
+      description: |
+        Session-scoped signed. On a `rotate` session, the paired device
+        submits a signed shared-KEL rotation envelope for the host to
+        apply via `id rotate --from-device`. The envelope is verified
+        before the session accepts it.
+      security:
+        - AuthsSig: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitSharedKelRotRequest"
+      responses:
+        "200":
+          description: Rotation envelope accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/UnauthorizedSig"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/SessionExpired"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /v1/pairing/sessions/{id}/confirm:
     post:
       operationId: submitPairingConfirmation
@@ -602,6 +642,17 @@ components:
             (initiator) signs for the shared KEL. Size-capped at 1 KB on
             serialize to keep future multi-sig inceptions from silently
             overflowing QR capacity.
+
+    SubmitSharedKelRotRequest:
+      type: object
+      required: [rot_envelope]
+      properties:
+        rot_envelope:
+          type: string
+          description: |
+            Base64url-no-pad wire envelope of the device-signed shared-KEL
+            rotation (`auths_keri::encode_signed_rot`). The host verifies the
+            envelope and applies it via `id rotate --from-device`.
 
     SubmitConfirmationRequest:
       type: object

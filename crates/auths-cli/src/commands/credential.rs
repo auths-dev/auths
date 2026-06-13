@@ -123,7 +123,11 @@ pub enum CredentialSubcommand {
         audience: String,
 
         /// The base64url challenge nonce issued by the relying party.
-        #[arg(long, help = "The base64url challenge nonce from /v1/auth/challenge.")]
+        #[arg(
+            long,
+            allow_hyphen_values = true,
+            help = "The base64url challenge nonce from /v1/auth/challenge."
+        )]
         nonce: String,
     },
 }

@@ -5,6 +5,10 @@ use std::path::{Path, PathBuf};
 
 use auths_keri::witness::SignedReceipt;
 use auths_verifier::core::Attestation;
+use auths_verifier::evidence_pack::{
+    TransparencyInclusion, parse_log_key_hex, verify_artifact_log_inclusion,
+};
+use auths_verifier::oidc_policy::{OidcPolicyJoin, OidcSubjectPolicy};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     CanonicalDid, IdentityBundle, VerificationReport, verify_chain, verify_chain_with_witnesses,
@@ -35,22 +39,111 @@ struct VerifyArtifactResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     commit_verified: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    oidc_join: Option<OidcPolicyJoin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+}
+
+/// How an ephemeral (`did:key:`) attestation's commit-anchor leg is treated.
+///
+/// An ephemeral CI signature trust-chains to a maintainer through its
+/// `commit_sha` (artifact ← ephemeral key ← commit ← maintainer). Resolving
+/// that leg needs the maintainer's repository and pinned roots — which the
+/// scrubbed runner that *produced* the signature does not have. The runner
+/// can still confirm what it just emitted: the artifact's digest and the
+/// ephemeral signature over it. That standalone self-check is [`Self::SignatureOnly`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EphemeralAnchor {
+    /// Trust an ephemeral attestation only after its commit-anchor leg
+    /// resolves to a trusted maintainer. The full chain; the default.
+    Required,
+    /// Confirm an ephemeral attestation from its digest + signature alone,
+    /// without the commit-anchor leg. The signer's self-check: valid means
+    /// "this artifact's digest matches and the ephemeral key signed it",
+    /// not "this signer trust-chains to a maintainer".
+    SignatureOnly,
+}
+
+/// Inputs for [`handle_verify`] beyond the artifact path — named fields
+/// (the `AttestationInput` pattern) so call sites stay readable as the
+/// verify surface grows.
+pub struct VerifyArtifactArgs {
+    /// Path to the signature file (defaults to `<FILE>.auths.json`).
+    pub signature: Option<PathBuf>,
+    /// Identity bundle for stateless verification.
+    pub identity_bundle: Option<PathBuf>,
+    /// Witness receipts file.
+    pub witness_receipts: Option<PathBuf>,
+    /// Witness public keys as DID:hex pairs.
+    pub witness_keys: Vec<String>,
+    /// Number of witnesses required.
+    pub witness_threshold: usize,
+    /// Also verify the source commit's signing attestation.
+    pub verify_commit: bool,
+    /// How to treat an ephemeral attestation's commit-anchor leg.
+    pub ephemeral_anchor: EphemeralAnchor,
+    /// OIDC-subject policy to JOIN against the signed OIDC binding.
+    pub oidc_policy: Option<PathBuf>,
+    /// Org `did:keri:` whose KEL-anchored OIDC-subject policy to resolve and
+    /// JOIN — the witnessed log as the policy's source of truth.
+    pub oidc_policy_did: Option<String>,
+    /// Offline transparency-log inclusion evidence (`auths log prove --out`).
+    pub log_evidence: Option<PathBuf>,
+    /// The log operator's pinned Ed25519 key (64 hex chars); paired with
+    /// `log_evidence` at the clap boundary.
+    pub log_key: Option<String>,
 }
 
 /// Execute the `artifact verify` command.
 ///
 /// Exit codes: 0=valid, 1=invalid, 2=error.
-pub async fn handle_verify(
-    file: &Path,
-    signature: Option<PathBuf>,
-    identity_bundle: Option<PathBuf>,
-    witness_receipts: Option<PathBuf>,
-    witness_keys: &[String],
-    witness_threshold: usize,
-    verify_commit: bool,
-) -> Result<()> {
+pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> {
+    let VerifyArtifactArgs {
+        signature,
+        identity_bundle,
+        witness_receipts,
+        witness_keys,
+        witness_threshold,
+        verify_commit,
+        ephemeral_anchor,
+        oidc_policy,
+        oidc_policy_did,
+        log_evidence,
+        log_key,
+    } = args;
+    let witness_keys = &witness_keys;
     let file_str = file.to_string_lossy().to_string();
+
+    // 0. Resolve the OIDC-subject policy up front: an unreadable or malformed
+    //    policy is a "could not attempt" (exit 2), not a verdict — except a
+    //    KEL-anchored blob that fails its digest check, which IS a verdict (1).
+    let oidc_policy = match (&oidc_policy, &oidc_policy_did) {
+        (None, None) => None,
+        (Some(path), _) => {
+            let raw = match fs::read_to_string(path) {
+                Ok(r) => r,
+                Err(e) => {
+                    return output_error(
+                        &file_str,
+                        2,
+                        &format!("Failed to read OIDC policy {path:?}: {e}"),
+                    );
+                }
+            };
+            match OidcSubjectPolicy::parse(&raw) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    return output_error(&file_str, 2, &format!("{e}"));
+                }
+            }
+        }
+        (None, Some(org_did)) => match resolve_anchored_oidc_policy(org_did) {
+            Ok(p) => Some(p),
+            Err((exit_code, message)) => {
+                return output_error(&file_str, exit_code, &message);
+            }
+        },
+    };
 
     // 1. Locate and load signature file
     let sig_path = signature.unwrap_or_else(|| {
@@ -129,6 +222,7 @@ pub async fn handle_verify(
                 issuer: Some(attestation.issuer.to_string()),
                 commit_sha: attestation.commit_sha.clone(),
                 commit_verified: None,
+                oidc_join: None,
                 error: Some(format!(
                     "Digest mismatch: file={}, attestation={}",
                     file_digest.hex, artifact_meta.digest.hex
@@ -154,7 +248,7 @@ pub async fn handle_verify(
     let chain = vec![attestation.clone()];
     let chain_result = verify_chain(&chain, &root_pk).await;
 
-    let (chain_valid, chain_report) = match chain_result {
+    let (chain_valid, mut chain_report) = match chain_result {
         Ok(mut report) => {
             if let Ok(home) = auths_sdk::paths::auths_home() {
                 let storage = auths_sdk::storage::RegistryAttestationStorage::new(&home);
@@ -183,6 +277,75 @@ pub async fn handle_verify(
         }
     };
 
+    // 6b. Offline transparency anchoring. With inclusion evidence supplied,
+    //     the verdict's `anchored` field is decided by the proof: Anchored
+    //     only when the evidence binds to THIS artifact's digest, its Merkle
+    //     inclusion verifies, and the checkpoint is attested by the pinned
+    //     log key. Fail-closed: evidence that does not prove is a verdict
+    //     (exit 1), never a skip.
+    let mut log_anchor_error: Option<String> = None;
+    if let Some(evidence_path) = &log_evidence {
+        let raw = match fs::read_to_string(evidence_path) {
+            Ok(r) => r,
+            Err(e) => {
+                return output_error(
+                    &file_str,
+                    2,
+                    &format!("Failed to read log evidence {evidence_path:?}: {e}"),
+                );
+            }
+        };
+        let evidence: TransparencyInclusion = match serde_json::from_str(&raw) {
+            Ok(t) => t,
+            Err(e) => {
+                return output_error(&file_str, 2, &format!("Failed to parse log evidence: {e}"));
+            }
+        };
+        // clap enforces the pair; a bare evidence path here is could-not-attempt.
+        let Some(key_hex) = log_key.as_deref() else {
+            return output_error(&file_str, 2, "--log-evidence requires --log-key");
+        };
+        let pinned_key = match parse_log_key_hex(key_hex) {
+            Ok(k) => k,
+            Err(e) => return output_error(&file_str, 2, &format!("{e}")),
+        };
+        // The log's leaf data is the canonical `sha256:<hex>` digest string —
+        // derive it through the same parsed type the append path uses.
+        let canonical_digest = match auths_sdk::workflows::compliance::ArtifactDigest::parse(
+            &format!("{}:{}", file_digest.algorithm, file_digest.hex),
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                return output_error(
+                    &file_str,
+                    2,
+                    &format!("Cannot derive the artifact's canonical log leaf: {e}"),
+                );
+            }
+        };
+        match verify_artifact_log_inclusion(canonical_digest.as_str(), &evidence, &pinned_key) {
+            Ok(()) => {
+                if let Some(report) = chain_report.as_mut() {
+                    report.anchored = Some(auths_keri::AnchorStatus::Anchored);
+                }
+                if !is_json_mode() {
+                    eprintln!(
+                        "  Transparency: {} anchored in log '{}' \
+                         (offline inclusion proof, operator key pinned)",
+                        canonical_digest.as_str(),
+                        evidence.signed_checkpoint.checkpoint.origin
+                    );
+                }
+            }
+            Err(e) => {
+                if let Some(report) = chain_report.as_mut() {
+                    report.anchored = Some(auths_keri::AnchorStatus::NotAnchored);
+                }
+                log_anchor_error = Some(format!("Transparency anchoring failed: {e}"));
+            }
+        }
+    }
+
     // 7. Optional witness verification
     let witness_quorum = match verify_witnesses(
         &chain,
@@ -208,43 +371,113 @@ pub async fn handle_verify(
         valid = false;
     }
 
-    // 8a. Ephemeral attestation: verify commit signature transitively
+    if let Some(ref msg) = log_anchor_error {
+        valid = false;
+        if !is_json_mode() {
+            eprintln!("  {msg}");
+        }
+    }
+
+    // 8a. Ephemeral attestation: trust chains through the commit anchor.
+    //     `--signature-only` confines the verdict to digest + signature — the
+    //     self-check the runner that emitted the attestation can run without the
+    //     maintainer's repo/roots. It does NOT chase the commit-anchor leg, so it
+    //     never claims the signer trust-chains to a maintainer.
     let is_ephemeral = attestation.issuer.as_str().starts_with("did:key:");
     if is_ephemeral && valid {
-        match &attestation.commit_sha {
-            None => {
+        match ephemeral_anchor {
+            EphemeralAnchor::SignatureOnly => {
                 if !is_json_mode() {
                     eprintln!(
-                        "Error: ephemeral attestation (did:key issuer) requires commit_sha. \
-                         This attestation is unsigned provenance without a commit anchor."
+                        "  Signature-only: ephemeral signature over the artifact digest \
+                         verifies; commit-anchor leg NOT checked (signer self-check)."
                     );
                 }
-                valid = false;
             }
-            Some(sha) => {
-                // Verify the commit is signed by a trusted key.
-                // Uses in-process verification via auths-verifier (no git shell-out).
-                let commit_sig_ok = verify_commit_in_process(sha).await;
-
-                if !commit_sig_ok {
-                    valid = false;
-                }
-
-                if !is_json_mode() {
-                    if commit_sig_ok {
+            EphemeralAnchor::Required => match &attestation.commit_sha {
+                None => {
+                    if !is_json_mode() {
                         eprintln!(
-                            "  Trust chain: artifact <- ephemeral key <- commit {} <- maintainer",
-                            &sha[..8.min(sha.len())]
-                        );
-                    } else {
-                        eprintln!(
-                            "  Commit {} is not signed by a trusted maintainer.",
-                            &sha[..8.min(sha.len())]
+                            "Error: ephemeral attestation (did:key issuer) requires commit_sha. \
+                             This attestation is unsigned provenance without a commit anchor."
                         );
                     }
+                    valid = false;
                 }
-            }
+                Some(sha) => {
+                    // Verify the commit is signed by a trusted key.
+                    // Uses in-process verification via auths-verifier (no git shell-out).
+                    let commit_sig_ok = verify_commit_in_process(sha).await;
+
+                    if !commit_sig_ok {
+                        valid = false;
+                    }
+
+                    if !is_json_mode() {
+                        if commit_sig_ok {
+                            eprintln!(
+                                "  Trust chain: artifact <- ephemeral key <- commit {} <- maintainer",
+                                &sha[..8.min(sha.len())]
+                            );
+                        } else {
+                            eprintln!(
+                                "  Commit {} is not signed by a trusted maintainer.",
+                                &sha[..8.min(sha.len())]
+                            );
+                        }
+                    }
+                }
+            },
         }
+    }
+
+    // 8a2. The keyless exchange, verify side: JOIN the attestation's
+    //      signature-covered OIDC binding against the org's pinned policy.
+    //      Fail-closed: only a chain-valid attestation has a trustworthy
+    //      binding, and a missing binding or any claim mismatch is a
+    //      verification failure, never a pass.
+    let mut oidc_error: Option<String> = None;
+    let oidc_join = match &oidc_policy {
+        None => None,
+        Some(_) if !valid => {
+            // Already failing — the binding's claims can't be trusted, so the
+            // join is not attempted (and cannot rescue the verdict).
+            None
+        }
+        Some(policy) => match &attestation.oidc_binding {
+            None => {
+                valid = false;
+                oidc_error = Some(
+                    "OIDC policy join failed: attestation carries no OIDC binding \
+                     — signer presented no verified OIDC identity"
+                        .to_string(),
+                );
+                None
+            }
+            Some(binding) => match policy.join(binding) {
+                Ok(join) => {
+                    if !is_json_mode() {
+                        eprintln!(
+                            "  OIDC policy join: {} via {} (issuer {})",
+                            join.repository,
+                            join.workflow_ref.as_deref().unwrap_or("any workflow"),
+                            join.issuer
+                        );
+                    }
+                    Some(join)
+                }
+                Err(e) => {
+                    valid = false;
+                    oidc_error = Some(format!("OIDC policy join failed: {e}"));
+                    None
+                }
+            },
+        },
+    };
+    if let Some(ref msg) = oidc_error
+        && !is_json_mode()
+    {
+        eprintln!("  {msg}");
     }
 
     // 8b. Display commit linkage info (always, when present)
@@ -313,9 +546,60 @@ pub async fn handle_verify(
             issuer: Some(identity_did.to_string()),
             commit_sha: commit_sha_val,
             commit_verified,
-            error: None,
+            oidc_join,
+            error: log_anchor_error.or(oidc_error),
         },
     )
+}
+
+/// Resolve the org's KEL-anchored OIDC-subject policy from the local registry.
+///
+/// The org seals the policy digest on its KEL (`auths org anchor-oidc-policy`);
+/// this reads the latest seal, loads the content-addressed blob, and refuses a
+/// digest mismatch — the verifier trusts the org's witnessed log, not a file
+/// someone handed them. Errors carry the verify exit-code contract: a tampered
+/// blob is a verdict (1); everything else is could-not-attempt (2).
+fn resolve_anchored_oidc_policy(org_did: &str) -> Result<OidcSubjectPolicy, (i32, String)> {
+    use auths_sdk::workflows::org::load_org_oidc_policy;
+
+    let Some(prefix) = org_did.strip_prefix("did:keri:") else {
+        return Err((
+            2,
+            format!("--oidc-policy-did requires a did:keri: identifier, got '{org_did}'"),
+        ));
+    };
+    let auths_home = auths_sdk::paths::auths_home()
+        .map_err(|e| (2, format!("Could not locate ~/.auths: {e}")))?;
+    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+    );
+    let org_prefix = auths_verifier::Prefix::new_unchecked(prefix.to_string());
+
+    match load_org_oidc_policy(&registry, &org_prefix) {
+        Ok(Some(loaded)) => {
+            if !is_json_mode() {
+                eprintln!(
+                    "  OIDC policy resolved from the org KEL (digest {})",
+                    loaded.policy_digest
+                );
+            }
+            Ok(loaded.policy)
+        }
+        Ok(None) => Err((
+            2,
+            format!(
+                "organization {org_did} has no OIDC-subject policy anchored on its KEL \
+                 — anchor one with `auths org anchor-oidc-policy`"
+            ),
+        )),
+        Err(e @ auths_sdk::domains::org::error::OrgError::PolicyIntegrity { .. }) => {
+            Err((1, format!("OIDC policy resolution failed: {e}")))
+        }
+        Err(e) => Err((
+            2,
+            format!("Failed to resolve the anchored OIDC policy: {e}"),
+        )),
+    }
 }
 
 /// Resolve identity public key from bundle or from the attestation's issuer DID.
@@ -421,6 +705,7 @@ fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
             issuer: None,
             commit_sha: None,
             commit_verified: None,
+            oidc_join: None,
             error: Some(message.to_string()),
         };
         println!("{}", serde_json::to_string(&result)?);

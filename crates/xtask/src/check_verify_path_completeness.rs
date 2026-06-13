@@ -40,6 +40,7 @@ const BANNED_METHODS: &[&str] = &[
 const BANNED_PATHS: &[&str] = &[
     "crates/auths-verifier/src/",
     "crates/auths-cli/src/commands/verify_commit.rs",
+    "crates/auths-cli/src/commands/auth.rs",
 ];
 
 const EXEMPT_PATHS: &[&str] = &["/tests/", "/testing/", "/fakes/"];
@@ -68,7 +69,7 @@ pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
         .filter_entry(|e| {
             let name = e.file_name().to_string_lossy();
             if e.file_type().is_dir() {
-                return name != "target" && name != ".git" && name != "node_modules";
+                return !name.starts_with('.') && name != "target" && name != "node_modules";
             }
             name.ends_with(".rs")
         })

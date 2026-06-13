@@ -15,7 +15,7 @@ use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_id::attestation::core::resign_attestation;
 use auths_id::attestation::create::create_signed_attestation;
 use auths_id::storage::git_refs::AttestationMetadata;
-use auths_verifier::core::{ResourceId, SignerType};
+use auths_verifier::core::{OidcBinding, ResourceId, SignerType};
 use auths_verifier::types::CanonicalDid;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
@@ -660,6 +660,7 @@ fn create_and_sign_attestation(
             delegated_by: None,
             commit_sha,
             signer_type: None,
+            oidc_binding: None,
         },
         signer,
         &noop_provider,
@@ -679,9 +680,36 @@ fn create_and_sign_attestation(
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))
 }
 
-/// Signs artifact bytes with a one-time ephemeral Ed25519 key. No keychain, no
-/// identity storage, no passphrase — the key is generated, used, and zeroized
-/// within this function call.
+/// Inputs for [`sign_artifact_ephemeral`] — the artifact bytes plus the
+/// provenance the one-time key binds them to. Named fields (the
+/// `AttestationInput` pattern) so call sites stay readable as the shape
+/// evolves.
+pub struct EphemeralSignRequest<'a> {
+    /// Raw artifact bytes to sign.
+    pub data: &'a [u8],
+    /// Optional human-readable name for the artifact.
+    pub artifact_name: Option<String>,
+    /// Git commit SHA this artifact was built from (required, 40 or 64 hex chars).
+    pub commit_sha: String,
+    /// Curve the one-time ephemeral key is minted on. A parsed
+    /// [`CurveType`](auths_crypto::CurveType) (the boundary validated it), so
+    /// the signer never branches on a string. Defaults to P-256 via
+    /// `CurveType::default()`.
+    pub curve: auths_crypto::CurveType,
+    /// Optional TTL in seconds.
+    pub expires_in: Option<u64>,
+    /// Optional attestation note.
+    pub note: Option<String>,
+    /// Optional CI environment metadata (serialized into payload, covered by signature).
+    pub ci_env: Option<serde_json::Value>,
+    /// Verified OIDC workload binding, if the runner presented a token
+    /// (signed envelope field, so verify-time policy joins can trust it).
+    pub oidc_binding: Option<OidcBinding>,
+}
+
+/// Signs artifact bytes with a one-time ephemeral key on the requested curve.
+/// No keychain, no identity storage, no passphrase — the key is generated,
+/// used, and zeroized within this function call.
 ///
 /// The ephemeral key signs "this artifact was built from this commit." Trust
 /// derives transitively: consumers verify the commit is signed by a maintainer,
@@ -690,41 +718,47 @@ fn create_and_sign_attestation(
 ///
 /// Args:
 /// * `now` - Current UTC time (injected per clock pattern).
-/// * `data` - Raw artifact bytes to sign.
-/// * `artifact_name` - Optional human-readable name for the artifact.
-/// * `commit_sha` - Git commit SHA this artifact was built from (required, 40 or 64 hex chars).
-/// * `expires_in` - Optional TTL in seconds.
-/// * `note` - Optional attestation note.
-/// * `ci_env` - Optional CI environment metadata (serialized into payload, covered by signature).
+/// * `req` - The artifact bytes plus provenance to bind (see
+///   [`EphemeralSignRequest`]).
 ///
 /// Usage:
 /// ```ignore
-/// let result = sign_artifact_ephemeral(
-///     Utc::now(), b"artifact bytes", Some("release.tar.gz".into()),
-///     "abc123def456abc123def456abc123def456abc1".into(), None, None, None,
-/// )?;
+/// let result = sign_artifact_ephemeral(Utc::now(), EphemeralSignRequest {
+///     data: b"artifact bytes",
+///     artifact_name: Some("release.tar.gz".into()),
+///     commit_sha: "abc123def456abc123def456abc123def456abc1".into(),
+///     curve: auths_crypto::CurveType::default(),
+///     expires_in: None,
+///     note: None,
+///     ci_env: None,
+///     oidc_binding: None,
+/// })?;
 /// ```
 pub fn sign_artifact_ephemeral(
     now: DateTime<Utc>,
-    data: &[u8],
-    artifact_name: Option<String>,
-    commit_sha: String,
-    expires_in: Option<u64>,
-    note: Option<String>,
-    ci_env: Option<serde_json::Value>,
+    req: EphemeralSignRequest<'_>,
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {
-    // 1. Generate ephemeral P-256 seed and zeroize on drop
+    let EphemeralSignRequest {
+        data,
+        artifact_name,
+        commit_sha,
+        curve,
+        expires_in,
+        note,
+        ci_env,
+        oidc_binding,
+    } = req;
+    // 1. Generate the ephemeral seed and zeroize on drop
     let mut seed_bytes = Zeroizing::new([0u8; 32]);
     ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), seed_bytes.as_mut())
         .map_err(|_| ArtifactSigningError::AttestationFailed("RNG failure".into()))?;
 
-    // 2. Derive pubkey and DIDs using P-256 (default curve)
-    let typed_seed = auths_crypto::TypedSeed::P256(*seed_bytes);
+    // 2. Derive pubkey and DIDs on the requested curve
+    let typed_seed = auths_crypto::TypedSeed::from_curve(curve, *seed_bytes);
     let pubkey_vec = auths_crypto::typed_public_key(&typed_seed)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
-    let device_did =
-        CanonicalDid::from_public_key_did_key(&pubkey_vec, auths_crypto::CurveType::P256);
+    let device_did = CanonicalDid::from_public_key_did_key(&pubkey_vec, curve);
     #[allow(clippy::disallowed_methods)]
     let identity_did = IdentityDID::new_unchecked(device_did.as_str());
 
@@ -766,11 +800,11 @@ pub fn sign_artifact_ephemeral(
     let mut seeds: HashMap<String, (SecureSeed, auths_crypto::CurveType)> = HashMap::new();
     seeds.insert(
         identity_alias.as_str().to_string(),
-        (SecureSeed::new(*seed_bytes), auths_crypto::CurveType::P256),
+        (SecureSeed::new(*seed_bytes), curve),
     );
     seeds.insert(
         device_alias.as_str().to_string(),
-        (SecureSeed::new(*seed_bytes), auths_crypto::CurveType::P256),
+        (SecureSeed::new(*seed_bytes), curve),
     );
     let signer = SeedMapSigner { seeds };
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
@@ -783,7 +817,7 @@ pub fn sign_artifact_ephemeral(
             identity_did: &identity_did,
             subject: &device_did,
             device_public_key: &pubkey_vec,
-            device_curve: auths_crypto::CurveType::P256,
+            device_curve: curve,
             payload: Some(payload_value),
             meta: &meta,
             identity_alias: Some(&identity_alias),
@@ -791,6 +825,7 @@ pub fn sign_artifact_ephemeral(
             delegated_by: None,
             commit_sha: Some(validated_sha),
             signer_type: Some(SignerType::Workload),
+            oidc_binding,
         },
         &signer,
         &noop_provider,
@@ -844,10 +879,7 @@ pub fn sign_artifact_raw(
 ) -> Result<ArtifactSigningResult, ArtifactSigningError> {
     // Default to P-256 per workspace convention. The raw seed is 32 bytes for both curves.
     let curve = auths_crypto::CurveType::default();
-    let typed = match curve {
-        auths_crypto::CurveType::Ed25519 => auths_crypto::TypedSeed::Ed25519(*seed.as_bytes()),
-        auths_crypto::CurveType::P256 => auths_crypto::TypedSeed::P256(*seed.as_bytes()),
-    };
+    let typed = auths_crypto::TypedSeed::from_curve(curve, *seed.as_bytes());
     let pubkey = auths_crypto::typed_public_key(&typed)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
@@ -909,6 +941,7 @@ pub fn sign_artifact_raw(
             delegated_by: None,
             commit_sha: validated_commit_sha,
             signer_type: None,
+            oidc_binding: None,
         },
         &signer,
         &noop_provider,

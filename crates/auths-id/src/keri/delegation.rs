@@ -576,11 +576,80 @@ pub fn mark_org_policy(
 /// Args:
 /// * `events`: The org's KEL events (oldest first; the latest anchored policy wins).
 pub fn read_org_policy_hash(events: &[Event]) -> Option<String> {
+    read_latest_marked_digest(events, ORG_POLICY_MARKER)
+}
+
+/// Marker prefix for an org OIDC-subject-policy `Seal::Digest` value
+/// (`oidcpolicy:{source_digest_hex}`).
+///
+/// A different document from the `policy:` authorization policy: this one states
+/// WHICH OIDC workload identity may sign keylessly. The marker is distinct from
+/// `policy:`, the `agent:` role marker, the `agentscope:` scope seal, and the
+/// bare-prefix revocation digest, so no scanner misreads it.
+const ORG_OIDC_POLICY_MARKER: &str = "oidcpolicy:";
+
+/// Anchor an OIDC-subject-policy seal on the org KEL: a
+/// `Seal::Digest{d: "oidcpolicy:{digest}"}` binding the KEL to the digest of the
+/// org's OIDC-subject policy source.
+///
+/// Only the digest rides the KEL — the policy bytes live in a content-addressed
+/// blob (the registry credential store) — so the append-only log stays lean and
+/// the binding is tamper-evident (loaders recompute the blob's digest and
+/// compare). Single-author: the org's current key signs the `ixn`.
+/// Latest-anchored wins.
+///
+/// Args:
+/// * `backend`: Registry backend holding the org KEL.
+/// * `org_prefix` / `org_alias` / `org_curve`: the org authoring the seal.
+/// * `source_digest_hex`: Lowercase-hex digest of the policy's source bytes.
+/// * `passphrase_provider` / `keychain`: org key custody.
+///
+/// Usage:
+/// ```ignore
+/// mark_org_oidc_policy(&*backend, &org_prefix, &org_alias, curve, &digest_hex, &provider, &keychain)?;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub fn mark_org_oidc_policy(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    org_prefix: &Prefix,
+    org_alias: &KeyAlias,
+    org_curve: CurveType,
+    source_digest_hex: &str,
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+) -> Result<(), InitError> {
+    author_root_anchor_ixn(
+        backend,
+        org_prefix,
+        org_alias,
+        org_curve,
+        vec![Seal::Digest {
+            d: Said::new_unchecked(format!("{ORG_OIDC_POLICY_MARKER}{source_digest_hex}")),
+        }],
+        passphrase_provider,
+        keychain,
+    )
+    .map(|_| ())
+}
+
+/// Read the latest OIDC-subject-policy digest anchored on a KEL slice, or `None`
+/// if the org never anchored one. Pure — the inverse of
+/// [`mark_org_oidc_policy`]'s marker.
+///
+/// Args:
+/// * `events`: The org's KEL events (oldest first; the latest anchored policy wins).
+pub fn read_org_oidc_policy_digest(events: &[Event]) -> Option<String> {
+    read_latest_marked_digest(events, ORG_OIDC_POLICY_MARKER)
+}
+
+/// The latest `Seal::Digest` value carrying `marker` on a KEL slice — the one
+/// scan both policy markers share (latest anchored wins).
+fn read_latest_marked_digest(events: &[Event], marker: &str) -> Option<String> {
     let mut found: Option<String> = None;
     for event in events {
         for seal in event.anchors() {
             if let Seal::Digest { d } = seal
-                && let Some(hash) = d.as_str().strip_prefix(ORG_POLICY_MARKER)
+                && let Some(hash) = d.as_str().strip_prefix(marker)
             {
                 found = Some(hash.to_string());
             }

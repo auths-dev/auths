@@ -290,6 +290,7 @@ pub fn create_org(
             delegated_by: None,
             commit_sha: None,
             signer_type: None,
+            oidc_binding: None,
         },
         &signer,
         ctx.passphrase_provider.as_ref(),
@@ -321,6 +322,76 @@ pub fn create_org(
         key_alias: alias.as_str().to_string(),
         metadata: metadata_json,
     })
+}
+
+/// The default keychain alias for an org's signing key, derived from its
+/// identifier (`org-{slug}`).
+///
+/// This is only the *fallback* convention used by [`resolve_org_signing_alias`]
+/// when the keychain holds no Primary key for the org DID (e.g. a server-side
+/// caller that pre-stored its key under this exact alias). The authoritative
+/// resolution is the keychain lookup, not this slug — `org create` and the
+/// org-signing commands once derived this slug from *different* inputs (the org
+/// name vs. the org DID), so the two never matched.
+pub fn org_slug_alias(org: &str) -> String {
+    format!(
+        "org-{}",
+        org.chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(20)
+            .collect::<String>()
+            .to_lowercase()
+    )
+}
+
+/// Resolve the keychain alias of an organization's signing (Primary) key.
+///
+/// The keychain is the single source of truth: an org's signing key is stored
+/// under [`KeyRole::Primary`] keyed by the org's controller DID, regardless of
+/// the human-readable alias chosen at `org create` time. Given the org DID we
+/// ask the keychain which alias holds that Primary key, so every org-signing
+/// command (`add-member`, `revoke-member`, `policy set`, `anchor-oidc-policy`,
+/// compliance) resolves to the *same* alias `create` actually stored — no
+/// fragile slug reconstruction that breaks when name and DID disagree.
+///
+/// Args:
+/// * `keychain`: The key storage port to query.
+/// * `org_prefix`: The org's KERI prefix (the `did:keri:` identifier portion).
+/// * `explicit`: An operator-supplied `--key` alias; when present it wins.
+///
+/// Resolution order:
+/// 1. `explicit` (the operator overrode the default).
+/// 2. The single Primary alias bound to the org DID in the keychain.
+/// 3. The `org-{slug}` fallback derived from the org prefix (only when the
+///    keychain has no Primary key for the DID — a pre-seeded server key).
+///
+/// Usage:
+/// ```ignore
+/// let alias = resolve_org_signing_alias(ctx.key_storage.as_ref(), org_prefix.as_str(), key)?;
+/// ```
+pub fn resolve_org_signing_alias(
+    keychain: &(dyn auths_core::storage::keychain::KeyStorage + Send + Sync),
+    org_prefix: &str,
+    explicit: Option<String>,
+) -> Result<KeyAlias, OrgError> {
+    if let Some(alias) = explicit {
+        return Ok(KeyAlias::new_unchecked(alias));
+    }
+
+    let org_did = auths_verifier::types::IdentityDID::from_prefix(org_prefix)
+        .map_err(|e| OrgError::InvalidDid(e.to_string()))?;
+
+    let primaries = keychain
+        .list_aliases_for_identity_with_role(
+            &org_did,
+            auths_core::storage::keychain::KeyRole::Primary,
+        )
+        .map_err(OrgError::CryptoError)?;
+
+    match primaries.into_iter().next() {
+        Some(alias) => Ok(alias),
+        None => Ok(KeyAlias::new_unchecked(org_slug_alias(org_prefix))),
+    }
 }
 
 /// Look up a single org member by DID (O(1) with the right backend).

@@ -1270,6 +1270,109 @@ pub fn parse_delegated_attachment(
     Ok((sigs, couples))
 }
 
+/// A device-signed delegated inception serialized for a single wire field.
+///
+/// Carried as base64url-no-pad(JSON) wherever a transport needs a signed `dip`
+/// in one string (e.g. a pairing response's `responder_inception_event`). The
+/// CESR signature attachment travels alongside the event so the receiver can
+/// replay the signed dip exactly as the device emitted it.
+///
+/// This is the ONE wire form for a signed dip — every producer (CLI joiner,
+/// mobile FFI) and consumer (the anchoring initiator) goes through
+/// [`encode_signed_dip`] / [`decode_signed_dip`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireSignedDip {
+    /// The device's delegated-inception event.
+    pub event: DipEvent,
+    /// base64url-no-pad of the device's CESR signature attachment over the dip.
+    pub attachment_b64: String,
+}
+
+/// Encode a device-signed dip into its single-string wire form.
+///
+/// Args:
+/// * `dip`: The finalized, device-signed delegated-inception event.
+/// * `attachment`: The device's CESR signature attachment bytes (from
+///   [`serialize_attachment`]).
+pub fn encode_signed_dip(dip: &DipEvent, attachment: &[u8]) -> Result<String, AttachmentError> {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let wire = WireSignedDip {
+        event: dip.clone(),
+        attachment_b64: URL_SAFE_NO_PAD.encode(attachment),
+    };
+    let json =
+        serde_json::to_vec(&wire).map_err(|e| AttachmentError::Encode(format!("dip json: {e}")))?;
+    Ok(URL_SAFE_NO_PAD.encode(json))
+}
+
+/// Decode a single-string wire form back into the dip and its attachment bytes.
+/// Inverse of [`encode_signed_dip`].
+///
+/// Args:
+/// * `encoded`: The base64url-no-pad(JSON) wire string.
+pub fn decode_signed_dip(encoded: &str) -> Result<(DipEvent, Vec<u8>), AttachmentError> {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let json = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|e| AttachmentError::Decode(format!("dip envelope: {e}")))?;
+    let wire: WireSignedDip = serde_json::from_slice(&json)
+        .map_err(|e| AttachmentError::Decode(format!("dip json: {e}")))?;
+    let attachment = URL_SAFE_NO_PAD
+        .decode(&wire.attachment_b64)
+        .map_err(|e| AttachmentError::Decode(format!("dip attachment: {e}")))?;
+    Ok((wire.event, attachment))
+}
+
+/// Single-string wire form of a signed rotation: base64url-no-pad of the
+/// JSON `{event, attachment_b64}` pair.
+///
+/// This is the ONE wire form for a signed `rot` in transit — every producer
+/// (the mobile FFI's shared-KEL rotation assembler) and consumer (the daemon
+/// endpoint that receives a co-authored rotation) goes through
+/// [`encode_signed_rot`] / [`decode_signed_rot`]. Mirrors [`WireSignedDip`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireSignedRot {
+    /// The rotation event.
+    pub event: RotEvent,
+    /// base64url-no-pad of the CESR indexed-signature attachment over the rot.
+    pub attachment_b64: String,
+}
+
+/// Encode a signed rot into its single-string wire form.
+///
+/// Args:
+/// * `rot`: The finalized, signed rotation event.
+/// * `attachment`: The CESR indexed-signature attachment bytes (from
+///   [`serialize_attachment`]).
+pub fn encode_signed_rot(rot: &RotEvent, attachment: &[u8]) -> Result<String, AttachmentError> {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let wire = WireSignedRot {
+        event: rot.clone(),
+        attachment_b64: URL_SAFE_NO_PAD.encode(attachment),
+    };
+    let json =
+        serde_json::to_vec(&wire).map_err(|e| AttachmentError::Encode(format!("rot json: {e}")))?;
+    Ok(URL_SAFE_NO_PAD.encode(json))
+}
+
+/// Decode a single-string wire form back into the rot and its attachment bytes.
+/// Inverse of [`encode_signed_rot`].
+///
+/// Args:
+/// * `encoded`: The base64url-no-pad(JSON) wire string.
+pub fn decode_signed_rot(encoded: &str) -> Result<(RotEvent, Vec<u8>), AttachmentError> {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let json = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|e| AttachmentError::Decode(format!("rot envelope: {e}")))?;
+    let wire: WireSignedRot = serde_json::from_slice(&json)
+        .map_err(|e| AttachmentError::Decode(format!("rot json: {e}")))?;
+    let attachment = URL_SAFE_NO_PAD
+        .decode(&wire.attachment_b64)
+        .map_err(|e| AttachmentError::Decode(format!("rot attachment: {e}")))?;
+    Ok((wire.event, attachment))
+}
+
 /// CESR `Seqner` qb64 width: `0A` hard code (2) + 22 base64 chars = 24.
 const SEQNER_QB64_LEN: usize = 24;
 
@@ -1467,6 +1570,45 @@ fn parse_sig_group(s: &str) -> Result<(Vec<IndexedSignature>, &str), AttachmentE
     Ok((out, cursor))
 }
 
+/// Pair an ordered KEL with its per-event CESR signature attachments,
+/// producing the [`SignedEvent`]s an authenticated replay
+/// ([`validate_signed_kel`](crate::validate_signed_kel)) consumes.
+///
+/// FAIL-CLOSED on count mismatch: a KEL whose attachment list is absent or
+/// short is an *unauthenticated* KEL — it is refused here rather than letting
+/// any caller fall back to a structural-only replay (the RT-002 forge). Every
+/// stateless verify entrypoint (WASM, mobile FFI) routes through this one
+/// definition so the refusal rule cannot drift between transports.
+///
+/// Args:
+/// * `events`: The ordered KEL events, e.g. from [`parse_kel_json`](crate::parse_kel_json).
+/// * `attachments`: One CESR `-A##` indexed-signature group per event, as raw
+///   bytes (the text-domain `.cesr` form; transport encodings like hex are the
+///   caller's adapter concern).
+///
+/// Usage:
+/// ```ignore
+/// let events = auths_keri::parse_kel_json(kel_json)?;
+/// let signed = auths_keri::pair_kel_attachments(events, &attachment_bytes)?;
+/// let state = auths_keri::validate_signed_kel(&signed, None)?;
+/// ```
+pub fn pair_kel_attachments(
+    events: Vec<Event>,
+    attachments: &[impl AsRef<[u8]>],
+) -> Result<Vec<SignedEvent>, AttachmentError> {
+    if attachments.len() != events.len() {
+        return Err(AttachmentError::CountMismatch {
+            events: events.len(),
+            attachments: attachments.len(),
+        });
+    }
+    events
+        .into_iter()
+        .zip(attachments)
+        .map(|(event, att)| Ok(SignedEvent::new(event, parse_attachment(att.as_ref())?)))
+        .collect()
+}
+
 /// Error shape for attachment encode/decode.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -1477,6 +1619,18 @@ pub enum AttachmentError {
     /// Decoding a CESR attachment stream failed (bad counter, malformed Siger, etc.).
     #[error("attachment decode: {0}")]
     Decode(String),
+    /// The KEL and its attachment list disagree in length: at least one event
+    /// has no signature group, so the KEL is unauthenticated. Refused outright
+    /// instead of degrading to a structural-only replay.
+    #[error(
+        "KEL/attachment count mismatch ({events} events vs {attachments} attachments): the KEL is unauthenticated, refusing"
+    )]
+    CountMismatch {
+        /// Number of events in the KEL.
+        events: usize,
+        /// Number of signature attachments supplied.
+        attachments: usize,
+    },
 }
 
 /// CESR base64url alphabet, ordered so `B64_ALPHA[n]` is the char for n.

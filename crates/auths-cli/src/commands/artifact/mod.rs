@@ -1,5 +1,6 @@
 pub mod core;
 pub mod file;
+pub mod oidc;
 pub mod publish;
 pub mod sign;
 pub mod verify;
@@ -10,6 +11,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
 use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::domains::signing::service::EphemeralSignRequest;
 use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::signing::validate_commit_sha;
@@ -87,9 +89,43 @@ pub enum ArtifactSubcommand {
         #[arg(long)]
         ci: bool,
 
+        /// Curve for the ephemeral CI key (`p256` or `ed25519`). Only meaningful
+        /// with --ci; defaults to p256.
+        #[arg(long, value_name = "CURVE", requires = "ci")]
+        curve: Option<auths_crypto::CurveType>,
+
         /// CI platform override when --ci is used outside a detected CI environment.
         #[arg(long, requires = "ci")]
         ci_platform: Option<String>,
+
+        /// Path to the runner's OIDC token (the keyless exchange: the token is
+        /// validated against the issuer's JWKS and the verified claims are
+        /// embedded in the signed attestation as an OIDC binding).
+        #[arg(
+            long,
+            value_name = "TOKEN-FILE",
+            requires = "ci",
+            requires = "oidc_audience"
+        )]
+        oidc_token: Option<PathBuf>,
+
+        /// Expected OIDC token audience (exact match). Required with --oidc-token.
+        #[arg(long, value_name = "AUD", requires = "oidc_token")]
+        oidc_audience: Option<String>,
+
+        /// Expected OIDC token issuer (exact match).
+        #[arg(
+            long,
+            value_name = "URL",
+            requires = "oidc_token",
+            default_value = oidc::DEFAULT_OIDC_ISSUER
+        )]
+        oidc_issuer: String,
+
+        /// Pinned JWKS file for offline/air-gapped token validation
+        /// (default: fetch the issuer's published JWKS over HTTPS).
+        #[arg(long, value_name = "JWKS-FILE", requires = "oidc_token")]
+        oidc_jwks: Option<PathBuf>,
 
         /// Transparency log to submit to (overrides default from trust config).
         #[arg(long, value_name = "LOG_ID")]
@@ -176,6 +212,14 @@ pub enum ArtifactSubcommand {
         #[arg(long)]
         verify_commit: bool,
 
+        /// For an ephemeral (`did:key:`) attestation, confirm the signature over
+        /// the artifact digest WITHOUT chasing the commit-anchor leg. This is the
+        /// runner's self-check: it has no maintainer repo/roots, but it can prove
+        /// it signed what it emitted. A pass means "digest matches, ephemeral key
+        /// signed it", not "the signer trust-chains to a maintainer".
+        #[arg(long, conflicts_with = "verify_commit")]
+        signature_only: bool,
+
         /// Verify an air-gapped org bundle entirely offline (no network access).
         #[arg(long)]
         offline: bool,
@@ -195,6 +239,31 @@ pub enum ArtifactSubcommand {
         /// (offline) Emit the typed verdict as JSON.
         #[arg(long)]
         json: bool,
+
+        /// OIDC-subject policy file to JOIN against the attestation's signed
+        /// OIDC binding (issuer + repository [+ workflow_ref] the org trusts).
+        /// Fail-closed: a missing binding or any mismatch fails verification.
+        #[arg(long, value_name = "POLICY-FILE")]
+        oidc_policy: Option<PathBuf>,
+
+        /// Resolve the OIDC-subject policy from the org's KEL instead of a
+        /// pinned file: reads the latest policy digest the org anchored
+        /// (`auths org anchor-oidc-policy`) from the local registry and refuses
+        /// a digest mismatch — the witnessed log is the source of truth.
+        #[arg(long, value_name = "ORG-DID", conflicts_with = "oidc_policy")]
+        oidc_policy_did: Option<String>,
+
+        /// Offline transparency-log inclusion evidence for this artifact
+        /// (`auths log prove --out`). Verified fully offline; the verdict's
+        /// `anchored` field reports the outcome. Requires --log-key — an
+        /// inclusion proof without a pinned operator proves nothing.
+        #[arg(long, value_name = "EVIDENCE-FILE", requires = "log_key")]
+        log_evidence: Option<PathBuf>,
+
+        /// The log operator's Ed25519 public key (64 hex chars), pinned out
+        /// of band — never trusted from the evidence file itself.
+        #[arg(long, value_name = "HEX", requires = "log_evidence")]
+        log_key: Option<String>,
     },
 }
 
@@ -357,7 +426,12 @@ pub fn handle_artifact(
             commit,
             no_commit,
             ci,
+            curve,
             ci_platform,
+            oidc_token,
+            oidc_audience,
+            oidc_issuer,
+            oidc_jwks,
             log,
             allow_unlogged,
         } => {
@@ -377,14 +451,18 @@ pub fn handle_artifact(
                 let ci_env = match ci_platform.as_deref() {
                     Some("local") => CiEnvironment {
                         platform: CiPlatform::Local,
+                        repository: None,
                         workflow_ref: None,
+                        sha: None,
                         run_id: None,
                         actor: None,
                         runner_os: None,
                     },
                     Some(name) => CiEnvironment {
                         platform: CiPlatform::Generic,
+                        repository: None,
                         workflow_ref: None,
+                        sha: None,
                         run_id: None,
                         actor: None,
                         runner_os: Some(name.to_string()),
@@ -409,14 +487,45 @@ pub fn handle_artifact(
                 #[allow(clippy::disallowed_methods)]
                 let now = chrono::Utc::now();
 
+                // The keyless exchange, sign side: validate the runner's OIDC
+                // token and embed the verified claims in the signed envelope.
+                let oidc_binding = match &oidc_token {
+                    Some(token_path) => {
+                        let audience = oidc_audience.as_deref().ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "--oidc-token requires --oidc-audience <AUD> \
+                                 (the audience the token was minted for)"
+                            )
+                        })?;
+                        let binding = oidc::resolve_oidc_binding(
+                            token_path,
+                            &oidc_issuer,
+                            audience,
+                            oidc_jwks.as_deref(),
+                            &ci_env.platform,
+                            now,
+                        )?;
+                        eprintln!(
+                            "  OIDC identity verified: {} (issuer {})",
+                            binding.subject, binding.issuer
+                        );
+                        Some(binding)
+                    }
+                    None => None,
+                };
+
                 let result = auths_sdk::domains::signing::service::sign_artifact_ephemeral(
                     now,
-                    &data,
-                    artifact_name,
-                    commit_sha,
-                    expires_in,
-                    note,
-                    Some(ci_env_json),
+                    EphemeralSignRequest {
+                        data: &data,
+                        artifact_name,
+                        commit_sha,
+                        curve: curve.unwrap_or_default(),
+                        expires_in,
+                        note,
+                        ci_env: Some(ci_env_json),
+                        oidc_binding,
+                    },
                 )
                 .map_err(|e| anyhow::anyhow!("Ephemeral signing failed: {}", e))?;
 
@@ -540,11 +649,16 @@ pub fn handle_artifact(
             witness_keys,
             witness_threshold,
             verify_commit,
+            signature_only,
             offline,
             roots,
             member,
             signed_at,
             json,
+            oidc_policy,
+            oidc_policy_did,
+            log_evidence,
+            log_key,
         } => {
             if offline {
                 return verify::handle_offline_verify(
@@ -555,15 +669,27 @@ pub fn handle_artifact(
                     json,
                 );
             }
+            let ephemeral_anchor = if signature_only {
+                verify::EphemeralAnchor::SignatureOnly
+            } else {
+                verify::EphemeralAnchor::Required
+            };
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(verify::handle_verify(
                 &file,
-                signature,
-                identity_bundle,
-                witness_receipts,
-                &witness_keys,
-                witness_threshold,
-                verify_commit,
+                verify::VerifyArtifactArgs {
+                    signature,
+                    identity_bundle,
+                    witness_receipts,
+                    witness_keys,
+                    witness_threshold,
+                    verify_commit,
+                    ephemeral_anchor,
+                    oidc_policy,
+                    oidc_policy_did,
+                    log_evidence,
+                    log_key,
+                },
             ))
         }
     }
@@ -674,6 +800,80 @@ mod tests {
                 assert!(signature.is_none());
             }
             _ => panic!("expected Publish"),
+        }
+    }
+
+    #[test]
+    fn verify_oidc_policy_did_conflicts_with_policy_file() {
+        // A pinned file and a KEL-resolved policy are two trust postures —
+        // exactly one may be chosen.
+        let err = Cli::try_parse_from([
+            "test",
+            "verify",
+            "a.tar.gz",
+            "--oidc-policy",
+            "p.json",
+            "--oidc-policy-did",
+            "did:keri:EOrg",
+        ]);
+        assert!(err.is_err(), "the two policy sources must be exclusive");
+
+        let ok = Cli::try_parse_from([
+            "test",
+            "verify",
+            "a.tar.gz",
+            "--oidc-policy-did",
+            "did:keri:EOrg",
+        ])
+        .unwrap();
+        match ok.command {
+            ArtifactSubcommand::Verify {
+                oidc_policy,
+                oidc_policy_did,
+                ..
+            } => {
+                assert!(oidc_policy.is_none());
+                assert_eq!(oidc_policy_did.as_deref(), Some("did:keri:EOrg"));
+            }
+            _ => panic!("expected Verify"),
+        }
+    }
+
+    #[test]
+    fn verify_log_evidence_and_log_key_are_a_pair() {
+        // An inclusion proof without a pinned operator key proves nothing,
+        // and a pinned key with nothing to check is operator error — clap
+        // enforces both-or-neither.
+        assert!(
+            Cli::try_parse_from(["test", "verify", "a.tar.gz", "--log-evidence", "e.json"])
+                .is_err(),
+            "--log-evidence without --log-key must be rejected"
+        );
+        assert!(
+            Cli::try_parse_from(["test", "verify", "a.tar.gz", "--log-key", "ab12"]).is_err(),
+            "--log-key without --log-evidence must be rejected"
+        );
+
+        let ok = Cli::try_parse_from([
+            "test",
+            "verify",
+            "a.tar.gz",
+            "--log-evidence",
+            "e.json",
+            "--log-key",
+            "ab12",
+        ])
+        .unwrap();
+        match ok.command {
+            ArtifactSubcommand::Verify {
+                log_evidence,
+                log_key,
+                ..
+            } => {
+                assert_eq!(log_evidence, Some(PathBuf::from("e.json")));
+                assert_eq!(log_key.as_deref(), Some("ab12"));
+            }
+            _ => panic!("expected Verify"),
         }
     }
 

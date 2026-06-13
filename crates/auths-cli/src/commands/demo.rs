@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use serde_json::Value;
 
-use auths_sdk::domains::signing::service::sign_artifact_ephemeral;
+use auths_sdk::domains::signing::service::{EphemeralSignRequest, sign_artifact_ephemeral};
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
@@ -32,12 +32,16 @@ impl ExecutableCommand for DemoCommand {
         let t_sign = Instant::now();
         let sign_result = sign_artifact_ephemeral(
             Utc::now(),
-            data,
-            Some("demo.txt".into()),
-            DEMO_COMMIT_SHA.into(),
-            None,
-            Some("auths demo — local only".into()),
-            None,
+            EphemeralSignRequest {
+                data,
+                artifact_name: Some("demo.txt".into()),
+                commit_sha: DEMO_COMMIT_SHA.into(),
+                curve: auths_crypto::CurveType::default(),
+                expires_in: None,
+                note: Some("auths demo — local only".into()),
+                ci_env: None,
+                oidc_binding: None,
+            },
         )
         .map_err(|e| anyhow!("{}", e))?;
         let sign_ms = t_sign.elapsed().as_millis();
