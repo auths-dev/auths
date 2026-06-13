@@ -47,7 +47,9 @@ pub use delegated_inception_context::{
 pub use identity_context::{
     P256IdentityInceptionContext, assemble_p256_identity, build_p256_identity_inception_payload,
 };
-pub use kel_verification::{VerifiedKeyState, validate_kel_json};
+pub use kel_verification::{
+    VerifiedKeyState, validate_delegated_kel_json, validate_kel_json,
+};
 pub use pairing_context::{
     PairingBindingContext, assemble_pairing_response_body, build_pairing_binding_message,
 };
