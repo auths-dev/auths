@@ -212,6 +212,14 @@ pub enum ArtifactSubcommand {
         #[arg(long)]
         verify_commit: bool,
 
+        /// For an ephemeral (`did:key:`) attestation, confirm the signature over
+        /// the artifact digest WITHOUT chasing the commit-anchor leg. This is the
+        /// runner's self-check: it has no maintainer repo/roots, but it can prove
+        /// it signed what it emitted. A pass means "digest matches, ephemeral key
+        /// signed it", not "the signer trust-chains to a maintainer".
+        #[arg(long, conflicts_with = "verify_commit")]
+        signature_only: bool,
+
         /// Verify an air-gapped org bundle entirely offline (no network access).
         #[arg(long)]
         offline: bool,
@@ -641,6 +649,7 @@ pub fn handle_artifact(
             witness_keys,
             witness_threshold,
             verify_commit,
+            signature_only,
             offline,
             roots,
             member,
@@ -660,6 +669,11 @@ pub fn handle_artifact(
                     json,
                 );
             }
+            let ephemeral_anchor = if signature_only {
+                verify::EphemeralAnchor::SignatureOnly
+            } else {
+                verify::EphemeralAnchor::Required
+            };
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(verify::handle_verify(
                 &file,
@@ -670,6 +684,7 @@ pub fn handle_artifact(
                     witness_keys,
                     witness_threshold,
                     verify_commit,
+                    ephemeral_anchor,
                     oidc_policy,
                     oidc_policy_did,
                     log_evidence,

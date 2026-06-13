@@ -198,6 +198,7 @@ pub async fn handle_verify_unified(
                     witness_keys: cmd.witness_keys,
                     witness_threshold: cmd.witness_threshold,
                     verify_commit: false,
+                    ephemeral_anchor: crate::commands::artifact::verify::EphemeralAnchor::Required,
                     oidc_policy: None,
                     oidc_policy_did: None,
                     log_evidence: None,

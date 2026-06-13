@@ -44,6 +44,26 @@ struct VerifyArtifactResult {
     error: Option<String>,
 }
 
+/// How an ephemeral (`did:key:`) attestation's commit-anchor leg is treated.
+///
+/// An ephemeral CI signature trust-chains to a maintainer through its
+/// `commit_sha` (artifact ← ephemeral key ← commit ← maintainer). Resolving
+/// that leg needs the maintainer's repository and pinned roots — which the
+/// scrubbed runner that *produced* the signature does not have. The runner
+/// can still confirm what it just emitted: the artifact's digest and the
+/// ephemeral signature over it. That standalone self-check is [`Self::SignatureOnly`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EphemeralAnchor {
+    /// Trust an ephemeral attestation only after its commit-anchor leg
+    /// resolves to a trusted maintainer. The full chain; the default.
+    Required,
+    /// Confirm an ephemeral attestation from its digest + signature alone,
+    /// without the commit-anchor leg. The signer's self-check: valid means
+    /// "this artifact's digest matches and the ephemeral key signed it",
+    /// not "this signer trust-chains to a maintainer".
+    SignatureOnly,
+}
+
 /// Inputs for [`handle_verify`] beyond the artifact path — named fields
 /// (the `AttestationInput` pattern) so call sites stay readable as the
 /// verify surface grows.
@@ -60,6 +80,8 @@ pub struct VerifyArtifactArgs {
     pub witness_threshold: usize,
     /// Also verify the source commit's signing attestation.
     pub verify_commit: bool,
+    /// How to treat an ephemeral attestation's commit-anchor leg.
+    pub ephemeral_anchor: EphemeralAnchor,
     /// OIDC-subject policy to JOIN against the signed OIDC binding.
     pub oidc_policy: Option<PathBuf>,
     /// Org `did:keri:` whose KEL-anchored OIDC-subject policy to resolve and
@@ -83,6 +105,7 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         witness_keys,
         witness_threshold,
         verify_commit,
+        ephemeral_anchor,
         oidc_policy,
         oidc_policy_did,
         log_evidence,
@@ -355,42 +378,56 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         }
     }
 
-    // 8a. Ephemeral attestation: verify commit signature transitively
+    // 8a. Ephemeral attestation: trust chains through the commit anchor.
+    //     `--signature-only` confines the verdict to digest + signature — the
+    //     self-check the runner that emitted the attestation can run without the
+    //     maintainer's repo/roots. It does NOT chase the commit-anchor leg, so it
+    //     never claims the signer trust-chains to a maintainer.
     let is_ephemeral = attestation.issuer.as_str().starts_with("did:key:");
     if is_ephemeral && valid {
-        match &attestation.commit_sha {
-            None => {
+        match ephemeral_anchor {
+            EphemeralAnchor::SignatureOnly => {
                 if !is_json_mode() {
                     eprintln!(
-                        "Error: ephemeral attestation (did:key issuer) requires commit_sha. \
-                         This attestation is unsigned provenance without a commit anchor."
+                        "  Signature-only: ephemeral signature over the artifact digest \
+                         verifies; commit-anchor leg NOT checked (signer self-check)."
                     );
                 }
-                valid = false;
             }
-            Some(sha) => {
-                // Verify the commit is signed by a trusted key.
-                // Uses in-process verification via auths-verifier (no git shell-out).
-                let commit_sig_ok = verify_commit_in_process(sha).await;
-
-                if !commit_sig_ok {
-                    valid = false;
-                }
-
-                if !is_json_mode() {
-                    if commit_sig_ok {
+            EphemeralAnchor::Required => match &attestation.commit_sha {
+                None => {
+                    if !is_json_mode() {
                         eprintln!(
-                            "  Trust chain: artifact <- ephemeral key <- commit {} <- maintainer",
-                            &sha[..8.min(sha.len())]
-                        );
-                    } else {
-                        eprintln!(
-                            "  Commit {} is not signed by a trusted maintainer.",
-                            &sha[..8.min(sha.len())]
+                            "Error: ephemeral attestation (did:key issuer) requires commit_sha. \
+                             This attestation is unsigned provenance without a commit anchor."
                         );
                     }
+                    valid = false;
                 }
-            }
+                Some(sha) => {
+                    // Verify the commit is signed by a trusted key.
+                    // Uses in-process verification via auths-verifier (no git shell-out).
+                    let commit_sig_ok = verify_commit_in_process(sha).await;
+
+                    if !commit_sig_ok {
+                        valid = false;
+                    }
+
+                    if !is_json_mode() {
+                        if commit_sig_ok {
+                            eprintln!(
+                                "  Trust chain: artifact <- ephemeral key <- commit {} <- maintainer",
+                                &sha[..8.min(sha.len())]
+                            );
+                        } else {
+                            eprintln!(
+                                "  Commit {} is not signed by a trusted maintainer.",
+                                &sha[..8.min(sha.len())]
+                            );
+                        }
+                    }
+                }
+            },
         }
     }
 
