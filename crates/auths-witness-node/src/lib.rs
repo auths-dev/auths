@@ -11,8 +11,8 @@
 //! This crate is the seam between a node *operator* (who wants one command to a
 //! healthy, registered node) and the platform's protocol crates (which must be
 //! correct for strangers). It owns the *operation*: the embedded standup
-//! manifest (node + monitor sidecar), the node's key-custody policy, and the
-//! node's operator-facing health surface.
+//! manifest (the released witness node), the node's key-custody policy, the
+//! identity minted at first boot, and the node's operator-facing health surface.
 //!
 //! It owns no *protocol*. Every byte a stranger must verify — the receipt
 //! format, the key-state notice, signature checking — comes from the platform's
@@ -128,14 +128,19 @@ impl StandupRequest {
         format!("http://127.0.0.1:{}/health", self.host_port)
     }
 
-    /// Render the embedded Compose manifest that brings up the node plus its
-    /// monitor sidecar.
+    /// Render the embedded Compose manifest that brings the node up.
     ///
     /// The witness service is the platform's released image — the manifest
     /// declares it `image:`, never `build:`, so standup is never a source
     /// build. The body-size cap the server enforces
     /// ([`auths_witness::MAX_BODY_BYTES`]) is surfaced here as the front-proxy
     /// hint so the two limits cannot drift.
+    ///
+    /// The node's stable signing identity is injected at first boot (the
+    /// `WITNESS_SEED` environment value), so the node advertises the same
+    /// identity across restarts without a key file baked into the image. A
+    /// file-backed custody downgrade is surfaced in the manifest header so an
+    /// operator reading it sees the posture they acknowledged.
     pub fn compose_manifest(&self) -> String {
         let WitnessImage {
             reference,
@@ -146,8 +151,8 @@ impl StandupRequest {
             KeyCustody::File => "file (acknowledged downgrade)",
         };
         format!(
-            "# Embedded witness standup — node + monitor sidecar.\n\
-             # Released image only (never a source build); identity custody: {custody}.\n\
+            "# Embedded witness standup — one node, released image only.\n\
+             # Never a source build; identity custody: {custody}.\n\
              # Max accepted body at the proxy mirrors the server cap: {max_body} bytes.\n\
              services:\n\
              \x20\x20witness:\n\
@@ -155,18 +160,16 @@ impl StandupRequest {
              \x20\x20\x20\x20read_only: true\n\
              \x20\x20\x20\x20ports:\n\
              \x20\x20\x20\x20\x20\x20- \"127.0.0.1:{host_port}:{container_port}\"\n\
-             \x20\x20\x20\x20volumes:\n\
-             \x20\x20\x20\x20\x20\x20- \"{data}:/data\"\n\
-             \x20\x20monitor:\n\
-             \x20\x20\x20\x20image: ghcr.io/auths-dev/auths-monitor:latest\n\
-             \x20\x20\x20\x20depends_on:\n\
-             \x20\x20\x20\x20\x20\x20- witness\n",
+             \x20\x20\x20\x20environment:\n\
+             \x20\x20\x20\x20\x20\x20AUTHS_WITNESS_SEED: \"${{WITNESS_SEED}}\"\n\
+             \x20\x20\x20\x20command: [\"--bind\", \"0.0.0.0:{container_port}\", \"--curve\", \"ed25519\", \"--persist\", \"/data/receipts.db\"]\n\
+             \x20\x20\x20\x20tmpfs:\n\
+             \x20\x20\x20\x20\x20\x20- /data\n",
             custody = custody,
             max_body = MAX_BODY_BYTES,
             reference = reference,
             host_port = self.host_port,
             container_port = container_port,
-            data = self.data_dir.display(),
         )
     }
 }
@@ -214,9 +217,11 @@ mod tests {
             !manifest.contains("build:"),
             "standup must never build from source"
         );
+        // The node mints its identity at first boot via an injected seed, never
+        // a key file baked into the image.
         assert!(
-            manifest.contains("monitor"),
-            "the monitor sidecar must be present"
+            manifest.contains("AUTHS_WITNESS_SEED"),
+            "the node identity must be injected at boot"
         );
         // The proxy body cap is sourced from the platform server constant.
         assert!(manifest.contains(&MAX_BODY_BYTES.to_string()));

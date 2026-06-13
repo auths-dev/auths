@@ -1075,6 +1075,8 @@ dependencies = [
  "auths-keri",
  "auths-verifier",
  "auths-witness",
+ "hex",
+ "rand 0.8.6",
  "serde",
  "serde_json",
  "tempfile",

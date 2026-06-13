@@ -25,6 +25,10 @@ auths-verifier = { workspace = true, features = ["native"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# OS CSPRNG for minting the node's stable signing-identity seed at first boot.
+# Only the OS-backed `OsRng` is used (the workspace bans `thread_rng`/`random`).
+rand = { workspace = true }
+hex = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

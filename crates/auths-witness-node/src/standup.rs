@@ -124,6 +124,18 @@ fn project_name(port: u16) -> String {
     format!("auths-witness-{port}")
 }
 
+/// Mint a fresh 32-byte signing-identity seed from the OS CSPRNG, hex-encoded.
+///
+/// This is the node's identity at first boot: 32 bytes is the witness signer's
+/// seed width, and the hex form is what the node loads. Only the OS-backed
+/// random source is used — never a thread-local or seeded PRNG.
+fn mint_seed_hex() -> String {
+    use rand::RngCore;
+    let mut seed = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut seed);
+    hex::encode(seed)
+}
+
 /// Bring one witness node up and return its proven-live health URL.
 ///
 /// The full bring-up, in order: prepare the data dir, refuse early if the
@@ -158,6 +170,22 @@ pub fn stand_up(
         path: manifest_path.clone(),
         reason: e.to_string(),
     })?;
+
+    // Mint the node's stable signing identity at first boot and pin it next to
+    // the manifest, so the node advertises the same identity across restarts
+    // (and an operator never has to think about a key file). Compose reads the
+    // value from this `.env` and injects it into the node — the manifest never
+    // carries the secret inline. A re-run reuses the existing identity rather
+    // than minting a second one.
+    let env_path = req.data_dir.join(".env");
+    if !env_path.exists() {
+        std::fs::write(&env_path, format!("WITNESS_SEED={}\n", mint_seed_hex())).map_err(|e| {
+            StandupError::DataDir {
+                path: env_path.clone(),
+                reason: e.to_string(),
+            }
+        })?;
+    }
 
     if let Err(reason) = engine.compose_up(&project, &manifest_path) {
         // Leave nothing half-standing.
