@@ -145,6 +145,79 @@ pub fn collect_kel(
     Ok(events)
 }
 
+/// Collect a prefix's full KEL from an **untrusted** [`RegistryBackend`] (a
+/// fetched snapshot), enforcing DoS bounds and the truncation guard.
+///
+/// This is the single capped read every consumer of a remote-sourced registry
+/// goes through: an event-count cap and a total-serialized-bytes cap bound
+/// memory against a hostile source, and a KEL whose first event is not the
+/// inception (sequence 0) is rejected as [`KelResolveError::Truncated`] —
+/// a withheld inception would otherwise make the prefix-binding guard
+/// unrunnable.
+///
+/// Args:
+/// * `registry`: The (untrusted) backend to read from.
+/// * `prefix`: The identifier prefix.
+/// * `max_events`: Hard cap on event count.
+/// * `max_bytes`: Hard cap on total serialized KEL size.
+///
+/// Usage:
+/// ```ignore
+/// let events = collect_kel_capped(&snapshot, &prefix, 10_000, 4 << 20)?;
+/// ```
+pub fn collect_kel_capped(
+    registry: &dyn RegistryBackend,
+    prefix: &Prefix,
+    max_events: usize,
+    max_bytes: usize,
+) -> Result<Vec<Event>, KelResolveError> {
+    let mut events = Vec::new();
+    let mut total_bytes = 0usize;
+    let mut cap_error: Option<KelResolveError> = None;
+
+    let visit = registry.visit_events(prefix, 0, &mut |event| {
+        if events.len() >= max_events {
+            cap_error = Some(KelResolveError::Oversized(format!("> {max_events} events")));
+            return ControlFlow::Break(());
+        }
+        match serde_json::to_vec(event) {
+            Ok(bytes) => {
+                total_bytes += bytes.len();
+                if total_bytes > max_bytes {
+                    cap_error = Some(KelResolveError::Oversized(format!("> {max_bytes} bytes")));
+                    return ControlFlow::Break(());
+                }
+            }
+            Err(e) => {
+                cap_error = Some(KelResolveError::Replay(format!(
+                    "event serialization failed: {e}"
+                )));
+                return ControlFlow::Break(());
+            }
+        }
+        events.push(event.clone());
+        ControlFlow::Continue(())
+    });
+
+    match visit {
+        Ok(()) => {}
+        Err(RegistryError::NotFound { .. }) => {
+            return Err(KelResolveError::NotFound(format!("did:keri:{prefix}")));
+        }
+        Err(e) => return Err(KelResolveError::Backend(e.to_string())),
+    }
+    if let Some(err) = cap_error {
+        return Err(err);
+    }
+    if events.is_empty() {
+        return Err(KelResolveError::NotFound(format!("did:keri:{prefix}")));
+    }
+    if events[0].sequence().value() != 0 {
+        return Err(KelResolveError::Truncated);
+    }
+    Ok(events)
+}
+
 /// The prefix-binding guard: re-derive the inception event's self-addressing
 /// SAID and require it to equal `prefix`.
 ///

@@ -9,6 +9,7 @@ pub mod remote;
 pub mod standalone_attestation;
 pub mod standalone_export;
 pub mod standalone_identity;
+pub mod sync;
 mod tree_ops;
 pub mod vfs;
 
@@ -21,8 +22,11 @@ pub use oobi::{
     OOBI_KEL_FILE, OOBI_RECEIPTS_FILE, OobiExportError, export_identity_oobi, export_receipts_oobi,
     oobi_receipts_relative_path, oobi_relative_path, parse_oobi_kel, parse_oobi_receipts,
 };
-pub use remote::{MAX_KEL_BYTES, MAX_KEL_EVENTS, RemoteKelError, RemoteKelSource};
+pub use remote::{
+    MAX_KEL_BYTES, MAX_KEL_EVENTS, RegistrySnapshot, RemoteKelError, RemoteKelSource,
+};
 pub use standalone_attestation::GitAttestationStorage;
 pub use standalone_export::GitRefSink;
 pub use standalone_identity::GitIdentityStorage;
+pub use sync::{PushOutcome, RegistrySyncError, pull_registry, push_registry};
 pub use vfs::{FixedClock, OsVfs, Vfs};

@@ -11,9 +11,8 @@
 //! before trusting the result. Size caps bound memory against a hostile remote;
 //! a truncation guard rejects a KEL whose inception (seq 0) is absent.
 
-use std::ops::ControlFlow;
-
-use auths_id::ports::registry::{RegistryBackend, RegistryError};
+use auths_id::keri::kel_resolver::{KelResolveError, collect_kel_capped};
+use auths_id::ports::registry::RegistryError;
 use auths_keri::{Event, Prefix};
 use git2::Repository;
 use tempfile::TempDir;
@@ -115,6 +114,18 @@ impl RemoteKelSource {
     /// Args:
     /// * `prefix`: The identifier prefix to read.
     pub fn fetch_kel(&self, prefix: &Prefix) -> Result<Vec<Event>, RemoteKelError> {
+        let snapshot = self.fetch_snapshot()?;
+        read_kel_capped(snapshot.backend(), prefix, MAX_KEL_EVENTS, MAX_KEL_BYTES)
+    }
+
+    /// Fetch the remote's whole packed registry into a throwaway snapshot.
+    ///
+    /// The snapshot is a read-only [`GitRegistryBackend`] over a temp repo —
+    /// the registry-wide primitive `registry pull` merges from. It is
+    /// **untrusted**: callers must run the validated merge (or the per-KEL
+    /// guards) before persisting anything it serves; the temp repo is deleted
+    /// when the snapshot drops.
+    pub fn fetch_snapshot(&self) -> Result<RegistrySnapshot, RemoteKelError> {
         let tmp = TempDir::new().map_err(RemoteKelError::Setup)?;
         let repo = Repository::init(tmp.path()).map_err(|e| RemoteKelError::Fetch {
             url: self.remote_url.clone(),
@@ -124,7 +135,22 @@ impl RemoteKelSource {
 
         let backend =
             GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(tmp.path()));
-        collect_capped_with(&backend, prefix, MAX_KEL_EVENTS, MAX_KEL_BYTES)
+        Ok(RegistrySnapshot { _tmp: tmp, backend })
+    }
+}
+
+/// A fetched remote registry held in a temp repo — read-only, untrusted,
+/// deleted on drop.
+pub struct RegistrySnapshot {
+    /// Owns the temp repo for the snapshot's lifetime.
+    _tmp: TempDir,
+    backend: GitRegistryBackend,
+}
+
+impl RegistrySnapshot {
+    /// The backend reading the fetched registry.
+    pub fn backend(&self) -> &GitRegistryBackend {
+        &self.backend
     }
 }
 
@@ -151,74 +177,35 @@ fn fetch_registry_ref(repo: &Repository, url: &str) -> Result<(), RemoteKelError
     Ok(())
 }
 
-/// Collect a prefix's KEL from `backend`, enforcing event-count and byte caps and
-/// the inception-present (truncation) guard. Separated from [`RemoteKelSource`]
-/// so the caps are unit-testable without a network fetch.
+/// Read a prefix's KEL out of a fetched snapshot under the shared untrusted-read
+/// guards ([`collect_kel_capped`]: caps + truncation), mapped into this
+/// adapter's error vocabulary.
 ///
 /// Args:
 /// * `backend`: The (just-fetched) registry to read from.
 /// * `prefix`: The identifier prefix.
 /// * `max_events`: Hard cap on event count.
 /// * `max_bytes`: Hard cap on total serialized KEL size.
-fn collect_capped_with(
-    backend: &dyn RegistryBackend,
+fn read_kel_capped(
+    backend: &GitRegistryBackend,
     prefix: &Prefix,
     max_events: usize,
     max_bytes: usize,
 ) -> Result<Vec<Event>, RemoteKelError> {
-    let mut events = Vec::new();
-    let mut total_bytes = 0usize;
-    let mut cap_error: Option<RemoteKelError> = None;
-
-    let visit = backend.visit_events(prefix, 0, &mut |event| {
-        if events.len() >= max_events {
-            cap_error = Some(RemoteKelError::Oversized {
-                what: format!("> {max_events} events"),
-            });
-            return ControlFlow::Break(());
-        }
-        match serde_json::to_vec(event) {
-            Ok(bytes) => {
-                total_bytes += bytes.len();
-                if total_bytes > max_bytes {
-                    cap_error = Some(RemoteKelError::Oversized {
-                        what: format!("> {max_bytes} bytes"),
-                    });
-                    return ControlFlow::Break(());
-                }
-            }
-            Err(e) => {
-                cap_error = Some(RemoteKelError::Serialize(e.to_string()));
-                return ControlFlow::Break(());
-            }
-        }
-        events.push(event.clone());
-        ControlFlow::Continue(())
-    });
-
-    match visit {
-        Ok(()) => {}
-        Err(RegistryError::NotFound { .. }) => {
-            return Err(RemoteKelError::NotFound(format!("did:keri:{prefix}")));
-        }
-        Err(e) => return Err(RemoteKelError::Read(e)),
-    }
-    if let Some(err) = cap_error {
-        return Err(err);
-    }
-    if events.is_empty() {
-        return Err(RemoteKelError::NotFound(format!("did:keri:{prefix}")));
-    }
-    if events[0].sequence().value() != 0 {
-        return Err(RemoteKelError::Truncated);
-    }
-    Ok(events)
+    collect_kel_capped(backend, prefix, max_events, max_bytes).map_err(|e| match e {
+        KelResolveError::NotFound(id) => RemoteKelError::NotFound(id),
+        KelResolveError::Oversized(what) => RemoteKelError::Oversized { what },
+        KelResolveError::Truncated => RemoteKelError::Truncated,
+        KelResolveError::Backend(reason) => RemoteKelError::Read(RegistryError::Internal(reason)),
+        other => RemoteKelError::Serialize(other.to_string()),
+    })
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use auths_id::ports::registry::RegistryBackend;
     use auths_keri::{
         CesrKey, IcpEvent, KeriPublicKey, KeriSequence, Said, Threshold, VersionString,
         compute_next_commitment, finalize_icp_event,
@@ -288,7 +275,7 @@ mod tests {
         let (event, prefix) = icp_event();
         backend.append_event(&prefix, &event).unwrap();
 
-        let err = collect_capped_with(&backend, &prefix, 0, MAX_KEL_BYTES).unwrap_err();
+        let err = read_kel_capped(&backend, &prefix, 0, MAX_KEL_BYTES).unwrap_err();
         assert!(matches!(err, RemoteKelError::Oversized { .. }));
     }
 
@@ -301,7 +288,7 @@ mod tests {
         let (event, prefix) = icp_event();
         backend.append_event(&prefix, &event).unwrap();
 
-        let err = collect_capped_with(&backend, &prefix, MAX_KEL_EVENTS, 1).unwrap_err();
+        let err = read_kel_capped(&backend, &prefix, MAX_KEL_EVENTS, 1).unwrap_err();
         assert!(matches!(err, RemoteKelError::Oversized { .. }));
     }
 }

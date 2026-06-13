@@ -34,6 +34,7 @@ pub mod org;
 pub mod policy;
 pub mod provision;
 pub mod publish;
+pub mod registry;
 pub mod reset;
 pub mod scim;
 pub mod sign;
