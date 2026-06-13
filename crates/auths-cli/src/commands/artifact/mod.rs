@@ -89,6 +89,11 @@ pub enum ArtifactSubcommand {
         #[arg(long)]
         ci: bool,
 
+        /// Curve for the ephemeral CI key (`p256` or `ed25519`). Only meaningful
+        /// with --ci; defaults to p256.
+        #[arg(long, value_name = "CURVE", requires = "ci")]
+        curve: Option<auths_crypto::CurveType>,
+
         /// CI platform override when --ci is used outside a detected CI environment.
         #[arg(long, requires = "ci")]
         ci_platform: Option<String>,
@@ -413,6 +418,7 @@ pub fn handle_artifact(
             commit,
             no_commit,
             ci,
+            curve,
             ci_platform,
             oidc_token,
             oidc_audience,
@@ -506,6 +512,7 @@ pub fn handle_artifact(
                         data: &data,
                         artifact_name,
                         commit_sha,
+                        curve: curve.unwrap_or_default(),
                         expires_in,
                         note,
                         ci_env: Some(ci_env_json),

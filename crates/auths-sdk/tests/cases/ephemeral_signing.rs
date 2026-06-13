@@ -12,6 +12,7 @@ fn produces_valid_attestation_with_did_key_issuer() {
             data: b"test data",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -43,6 +44,7 @@ fn signer_type_is_workload() {
             data: b"test data",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -63,6 +65,7 @@ fn commit_sha_is_present() {
             data: b"test data",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -83,6 +86,7 @@ fn each_call_uses_different_ephemeral_key() {
             data: b"data1",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -96,6 +100,7 @@ fn each_call_uses_different_ephemeral_key() {
             data: b"data2",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -127,6 +132,7 @@ fn ci_environment_in_payload() {
             data: b"test data",
             artifact_name: Some("test.tar.gz".into()),
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: Some(ci_env),
@@ -152,6 +158,7 @@ fn empty_data_produces_valid_attestation() {
             data: b"",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -172,6 +179,7 @@ fn invalid_commit_sha_rejected() {
             data: b"test data",
             artifact_name: None,
             commit_sha: "not-a-valid-sha".into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -196,6 +204,7 @@ fn tamper_commit_sha_breaks_signature() {
             data: b"test data",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -242,6 +251,7 @@ fn tamper_artifact_fails_digest_check() {
             data: b"original artifact data",
             artifact_name: None,
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -271,6 +281,7 @@ fn ephemeral_key_collision_check() {
                 data: b"data",
                 artifact_name: None,
                 commit_sha: VALID_SHA.into(),
+                curve: auths_crypto::CurveType::default(),
                 expires_in: None,
                 note: None,
                 ci_env: None,
@@ -321,6 +332,7 @@ fn oidc_binding_is_signature_covered() {
             data: b"release bytes",
             artifact_name: Some("release.tar.gz".into()),
             commit_sha: VALID_SHA.into(),
+            curve: auths_crypto::CurveType::default(),
             expires_in: None,
             note: None,
             ci_env: None,
@@ -371,5 +383,58 @@ fn oidc_binding_is_signature_covered() {
     // An Err (signature mismatch) is equally fail-closed.
     if let Ok(r) = report {
         assert!(!r.is_valid(), "tampered binding must not verify");
+    }
+}
+
+/// The ephemeral signer mints its one-time key on the requested curve and the
+/// produced attestation verifies under that curve — curve parity, not a
+/// hard-coded default. Both supported curves round-trip.
+#[test]
+fn ephemeral_curve_is_honored_and_verifies() {
+    for curve in [
+        auths_crypto::CurveType::P256,
+        auths_crypto::CurveType::Ed25519,
+    ] {
+        let result = sign_artifact_ephemeral(
+            Utc::now(),
+            EphemeralSignRequest {
+                data: b"curve parity",
+                artifact_name: None,
+                commit_sha: VALID_SHA.into(),
+                curve,
+                expires_in: None,
+                note: None,
+                ci_env: None,
+                oidc_binding: None,
+            },
+        )
+        .expect("signing should succeed on every supported curve");
+
+        let att: Attestation = serde_json::from_str(&result.attestation_json).unwrap();
+
+        // The issuer DID resolves to a key on exactly the requested curve.
+        let (pk_bytes, resolved): (Vec<u8>, auths_crypto::CurveType) =
+            match auths_crypto::did_key_decode(att.issuer.as_str()).expect("did:key resolves") {
+                auths_crypto::DecodedDidKey::Ed25519(k) => {
+                    (k.to_vec(), auths_crypto::CurveType::Ed25519)
+                }
+                auths_crypto::DecodedDidKey::P256(k) => (k, auths_crypto::CurveType::P256),
+            };
+        assert_eq!(resolved, curve, "issuer key must be on the requested curve");
+
+        // And the attestation verifies as-signed under that curve.
+        let pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+            .expect("valid device pubkey");
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let report = rt
+            .block_on(auths_verifier::verify_chain(
+                std::slice::from_ref(&att),
+                &pk,
+            ))
+            .expect("verification should run");
+        assert!(
+            report.is_valid(),
+            "{curve} ephemeral attestation must verify"
+        );
     }
 }

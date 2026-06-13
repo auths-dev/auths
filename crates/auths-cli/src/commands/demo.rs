@@ -36,6 +36,7 @@ impl ExecutableCommand for DemoCommand {
                 data,
                 artifact_name: Some("demo.txt".into()),
                 commit_sha: DEMO_COMMIT_SHA.into(),
+                curve: auths_crypto::CurveType::default(),
                 expires_in: None,
                 note: Some("auths demo — local only".into()),
                 ci_env: None,

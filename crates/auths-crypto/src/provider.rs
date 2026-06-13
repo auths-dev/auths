@@ -651,6 +651,29 @@ impl std::fmt::Display for CurveType {
     }
 }
 
+/// The error returned when a curve name cannot be parsed into a [`CurveType`].
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown curve {got:?}: expected 'p256' or 'ed25519'")]
+pub struct ParseCurveError {
+    /// The unrecognized input.
+    pub got: String,
+}
+
+impl std::str::FromStr for CurveType {
+    type Err = ParseCurveError;
+
+    /// Parses a curve name, case-insensitively, accepting the common spellings.
+    /// This is the single source of truth for turning a `--curve` argument into
+    /// a typed [`CurveType`] — round-trips with [`Display`](std::fmt::Display).
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "ed25519" => Ok(Self::Ed25519),
+            "p256" | "p-256" => Ok(Self::P256),
+            _ => Err(ParseCurveError { got: s.to_string() }),
+        }
+    }
+}
+
 impl CurveType {
     /// Returns the expected public key length for this curve.
     pub fn public_key_len(&self) -> usize {
@@ -666,5 +689,32 @@ impl CurveType {
             Self::Ed25519 => ED25519_SIGNATURE_LEN,
             Self::P256 => P256_SIGNATURE_LEN,
         }
+    }
+}
+
+#[cfg(test)]
+mod curve_type_tests {
+    use super::CurveType;
+    use std::str::FromStr;
+
+    #[test]
+    fn parses_canonical_and_aliased_spellings() {
+        assert_eq!(CurveType::from_str("ed25519").unwrap(), CurveType::Ed25519);
+        assert_eq!(CurveType::from_str("Ed25519").unwrap(), CurveType::Ed25519);
+        assert_eq!(CurveType::from_str("p256").unwrap(), CurveType::P256);
+        assert_eq!(CurveType::from_str("P-256").unwrap(), CurveType::P256);
+    }
+
+    #[test]
+    fn display_round_trips_through_from_str() {
+        for c in [CurveType::Ed25519, CurveType::P256] {
+            assert_eq!(CurveType::from_str(&c.to_string()).unwrap(), c);
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_curve() {
+        let err = CurveType::from_str("secp256k1").unwrap_err();
+        assert_eq!(err.got, "secp256k1");
     }
 }

@@ -52,7 +52,8 @@ pub use pkcs8::Pkcs8Der;
 pub use provider::default_provider;
 pub use provider::{
     CryptoError, CryptoProvider, CurveType, ED25519_PUBLIC_KEY_LEN, ED25519_SIGNATURE_LEN,
-    P256_PUBLIC_KEY_LEN, P256_SIGNATURE_LEN, SecureSeed, SeedDecodeError, decode_seed_hex,
+    P256_PUBLIC_KEY_LEN, P256_SIGNATURE_LEN, ParseCurveError, SecureSeed, SeedDecodeError,
+    decode_seed_hex,
 };
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use ring_provider::RingCryptoProvider;
