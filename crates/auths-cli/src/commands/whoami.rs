@@ -1,6 +1,5 @@
 use anyhow::{Result, anyhow};
-use auths_sdk::ports::IdentityStorage;
-use auths_sdk::storage::RegistryIdentityStorage;
+use auths_sdk::domains::identity::local::{LocalSigner, resolve_local_signer};
 use auths_sdk::storage_layout as layout;
 use clap::Parser;
 use serde::Serialize;
@@ -48,19 +47,26 @@ fn current_key_hex(repo_path: &std::path::Path, did: &str) -> Option<(String, St
     Some((hex::encode(pk), format!("{curve:?}").to_lowercase()))
 }
 
-/// Resolve this machine's device DID. Best-effort.
-fn local_device_did(repo_path: &std::path::Path) -> Option<String> {
+/// Resolve this machine's signing identity, uniformly across root and delegate.
+/// Best-effort: `None` lets the caller emit the un-initialised message.
+fn local_signer(repo_path: &std::path::Path) -> Option<LocalSigner> {
     let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
     let ctx = crate::factories::storage::build_auths_context(repo_path, &env_config, None).ok()?;
-    auths_sdk::domains::identity::local::resolve_local_signer(&ctx)
-        .ok()
-        .map(|signer| signer.signer_did.to_string())
+    resolve_local_signer(&ctx).ok()
 }
 
 pub fn handle_whoami(_cmd: WhoamiCommand, repo: Option<std::path::PathBuf>) -> Result<()> {
     let repo_path = layout::resolve_repo_path(repo).map_err(|e| anyhow!(e))?;
 
-    if crate::factories::storage::open_git_repo(&repo_path).is_err() {
+    // One resolver for both machine shapes: `resolve_local_signer` returns the
+    // root identity (`root_did`) and this machine's signer (`signer_did`), which
+    // differ only on a paired delegate. A missing repo or no local signer is the
+    // same "not initialised" outcome.
+    let signer = crate::factories::storage::open_git_repo(&repo_path)
+        .ok()
+        .and_then(|_| local_signer(&repo_path));
+
+    let Some(signer) = signer else {
         if is_json_mode() {
             JsonResponse::<()>::error(
                 "whoami",
@@ -72,42 +78,26 @@ pub fn handle_whoami(_cmd: WhoamiCommand, repo: Option<std::path::PathBuf>) -> R
             out.print_error("No identity found. Run `auths init` to get started.");
         }
         return Ok(());
-    }
+    };
 
-    let storage = RegistryIdentityStorage::new(&repo_path);
-    match storage.load_identity() {
-        Ok(identity) => {
-            let identity_did = identity.controller_did.to_string();
-            let key = current_key_hex(&repo_path, &identity_did);
-            let response = WhoamiResponse {
-                identity_did,
-                label: None,
-                device_did: local_device_did(&repo_path),
-                public_key_hex: key.as_ref().map(|(hex, _)| hex.clone()),
-                curve: key.as_ref().map(|(_, curve)| curve.clone()),
-            };
+    // The signer's own KEL (the device dip on a delegate, the controller icp on a
+    // root) is always local, so its current key resolves on both shapes.
+    let key = current_key_hex(&repo_path, &signer.signer_did);
+    let response = WhoamiResponse {
+        identity_did: signer.root_did.clone(),
+        label: None,
+        device_did: Some(signer.signer_did.clone()),
+        public_key_hex: key.as_ref().map(|(hex, _)| hex.clone()),
+        curve: key.as_ref().map(|(_, curve)| curve.clone()),
+    };
 
-            if is_json_mode() {
-                JsonResponse::success("whoami", &response).print()?;
-            } else {
-                let out = Output::new();
-                out.println(&format!("Identity: {}", out.info(&response.identity_did)));
-                if let Some(ref device) = response.device_did {
-                    out.println(&format!("Device:   {}", out.dim(device)));
-                }
-            }
-        }
-        Err(_) => {
-            if is_json_mode() {
-                JsonResponse::<()>::error(
-                    "whoami",
-                    "No identity found. Run `auths init` to get started.",
-                )
-                .print()?;
-            } else {
-                let out = Output::new();
-                out.print_error("No identity found. Run `auths init` to get started.");
-            }
+    if is_json_mode() {
+        JsonResponse::success("whoami", &response).print()?;
+    } else {
+        let out = Output::new();
+        out.println(&format!("Identity: {}", out.info(&response.identity_did)));
+        if let Some(ref device) = response.device_did {
+            out.println(&format!("Device:   {}", out.dim(device)));
         }
     }
 
