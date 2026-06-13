@@ -36,9 +36,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 pub mod engine;
+pub mod receipt;
 pub mod standup;
 
 pub use engine::{DockerEngine, SocketHealthCheck};
+pub use receipt::ReceiptBundle;
 pub use standup::{
     ContainerEngine, HealthCheck, StandupError, StandupOutcome, stand_up, tear_down,
 };
@@ -47,7 +49,10 @@ pub use standup::{
 // composition explicit and give the operator CLI one import path for the
 // protocol types it renders, all sourced from the trust kernel.
 pub use auths_keri::{KERI_KEY_STATE_VERSION, KSN_TYPE, KeyStateNotice, SignedKsn};
-pub use auths_verifier::{WitnessQuorum, WitnessReceiptResult};
+pub use auths_verifier::{
+    OfflineReceiptVerdict, SignedReceipt, WitnessQuorum, WitnessReceiptResult,
+    verify_receipt_offline,
+};
 pub use auths_witness::{MAX_BODY_BYTES, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT};
 
 /// The released, attested witness image a node runs.

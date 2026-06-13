@@ -20,8 +20,123 @@
 pub use auths_keri::witness::{Receipt, ReceiptTag, SignedReceipt};
 
 use auths_crypto::CryptoProvider;
-use auths_keri::Said;
+use auths_crypto::did_key::{DecodedDidKey, did_key_decode};
+use auths_keri::{KeriPublicKey, Said};
 use serde::{Deserialize, Serialize};
+
+/// The outcome of verifying a single receipt against a witness's published
+/// identity, with NO network and NO registry — a stranger holding only the
+/// receipt and the identity decides here.
+///
+/// The verdict is a parsed sum type, not a boolean: the caller can render
+/// exactly why a receipt failed (an unreadable identity vs. a signature that
+/// did not check) without re-inspecting anything. `Verified` is the only
+/// success arm, so a receipt that did not verify can never be mistaken for one
+/// that did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "result", rename_all = "kebab-case")]
+pub enum OfflineReceiptVerdict {
+    /// The signature verifies against the key embedded in the published
+    /// identity. The receipt is genuine corroboration.
+    Verified {
+        /// The published witness identity the signature verified against.
+        witness: String,
+    },
+    /// The published identity is not a readable `did:key` carrying a supported
+    /// verification key, so no key could be recovered to check against.
+    UnreadableIdentity {
+        /// The reason the identity could not be decoded into a key.
+        reason: String,
+    },
+    /// A key was recovered from the identity, but the signature does not verify
+    /// over the canonical receipt bytes — a tampered or foreign receipt.
+    SignatureFailed {
+        /// The published witness identity the signature was checked against.
+        witness: String,
+    },
+}
+
+impl OfflineReceiptVerdict {
+    /// Whether the receipt is genuine corroboration (the only success arm).
+    pub fn is_verified(&self) -> bool {
+        matches!(self, OfflineReceiptVerdict::Verified { .. })
+    }
+}
+
+/// Verify a witness receipt offline against the witness's PUBLISHED identity
+/// alone — no network, no registry, no separately-supplied key table.
+///
+/// This is the self-contained corroboration check a third party runs on a
+/// clean machine: the witness's published `did:key` identity *embeds* its
+/// verification key, so `{receipt, signature, identity}` is everything needed
+/// to decide. The published identity is the only trust input; the receipt body
+/// carries the *controller* AID in `i`, never the witness, so it cannot
+/// self-attest.
+///
+/// The verdict distinguishes an unreadable identity (the wrong string was
+/// carried) from a signature that did not check (a tampered or foreign
+/// receipt). A single bit flipped anywhere in the signature, the receipt body,
+/// or the identity moves the result off [`OfflineReceiptVerdict::Verified`].
+///
+/// The signed bytes are `serde_json::to_vec(&receipt)`, matching exactly what a
+/// witness server signs when it issues the receipt.
+///
+/// Args:
+/// * `signed`: the receipt body paired with the witness's detached signature.
+/// * `witness_identity`: the witness's published `did:key:z…` identity (as
+///   advertised at its health endpoint).
+///
+/// Usage:
+/// ```ignore
+/// let verdict = verify_receipt_offline(&signed, "did:key:z6Mk…");
+/// assert!(verdict.is_verified());
+/// ```
+pub fn verify_receipt_offline(
+    signed: &SignedReceipt,
+    witness_identity: &str,
+) -> OfflineReceiptVerdict {
+    let decoded = match did_key_decode(witness_identity) {
+        Ok(d) => d,
+        Err(e) => {
+            return OfflineReceiptVerdict::UnreadableIdentity {
+                reason: e.to_string(),
+            };
+        }
+    };
+
+    let key = match &decoded {
+        DecodedDidKey::Ed25519(bytes) => KeriPublicKey::from_verkey_bytes(bytes, decoded.curve()),
+        DecodedDidKey::P256(bytes) => KeriPublicKey::from_verkey_bytes(bytes, decoded.curve()),
+    };
+    let key = match key {
+        Ok(k) => k,
+        Err(e) => {
+            return OfflineReceiptVerdict::UnreadableIdentity {
+                reason: e.to_string(),
+            };
+        }
+    };
+
+    let payload = match serde_json::to_vec(&signed.receipt) {
+        Ok(p) => p,
+        Err(e) => {
+            // A receipt that cannot be re-serialized to its canonical bytes
+            // cannot be checked against any key — it is unusable, not verified.
+            return OfflineReceiptVerdict::UnreadableIdentity {
+                reason: format!("receipt is not serializable to its signing bytes: {e}"),
+            };
+        }
+    };
+
+    match key.verify_signature(&payload, &signed.signature) {
+        Ok(()) => OfflineReceiptVerdict::Verified {
+            witness: witness_identity.to_string(),
+        },
+        Err(_) => OfflineReceiptVerdict::SignatureFailed {
+            witness: witness_identity.to_string(),
+        },
+    }
+}
 
 /// Result of witness quorum verification.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -275,5 +390,81 @@ mod tests {
         let json_out = serde_json::to_string(&receipt).unwrap();
         let parsed: Receipt = serde_json::from_str(&json_out).unwrap();
         assert_eq!(receipt, parsed);
+    }
+
+    /// A signed receipt and the witness's published `did:key` identity, where the
+    /// identity embeds the very key that signed — exactly the self-contained
+    /// pair a stranger carries to verify offline.
+    fn signed_with_published_identity(event_said: &str) -> (SignedReceipt, String) {
+        use auths_crypto::CurveType;
+        let (kp, pk) = create_test_keypair(&[42u8; 32]);
+        let signed = create_signed_receipt(&kp, "EController", event_said, 0);
+        let identity = auths_verifier_did_key(&pk, CurveType::Ed25519);
+        (signed, identity)
+    }
+
+    fn auths_verifier_did_key(pk: &[u8], curve: auths_crypto::CurveType) -> String {
+        // Build the published did:key the same way a witness advertises it.
+        crate::types::CanonicalDid::from_public_key_did_key(pk, curve).into_inner()
+    }
+
+    #[test]
+    fn offline_verify_accepts_a_genuine_receipt_with_no_key_table() {
+        let (signed, identity) = signed_with_published_identity("EEventOffline");
+        let verdict = verify_receipt_offline(&signed, &identity);
+        assert!(
+            verdict.is_verified(),
+            "a genuine receipt must verify against the published identity alone: {verdict:?}"
+        );
+    }
+
+    #[test]
+    fn offline_verify_rejects_a_bit_flipped_signature() {
+        let (mut signed, identity) = signed_with_published_identity("EEventOffline");
+        signed.signature[0] ^= 0x01;
+        let verdict = verify_receipt_offline(&signed, &identity);
+        assert_eq!(
+            verdict,
+            OfflineReceiptVerdict::SignatureFailed {
+                witness: identity.clone()
+            },
+            "a tampered signature must be a distinct SignatureFailed verdict"
+        );
+        assert!(!verdict.is_verified());
+    }
+
+    #[test]
+    fn offline_verify_rejects_a_tampered_receipt_body() {
+        let (mut signed, identity) = signed_with_published_identity("EEventOffline");
+        // Mutate the receipted event SAID — the signature no longer covers it.
+        signed.receipt.d = Said::new_unchecked("EEventTampered".into());
+        let verdict = verify_receipt_offline(&signed, &identity);
+        assert!(matches!(
+            verdict,
+            OfflineReceiptVerdict::SignatureFailed { .. }
+        ));
+    }
+
+    #[test]
+    fn offline_verify_rejects_a_foreign_identity() {
+        // A genuine receipt, but carried with a DIFFERENT witness's identity.
+        let (signed, _genuine) = signed_with_published_identity("EEventOffline");
+        let (_other_kp, other_pk) = create_test_keypair(&[7u8; 32]);
+        let foreign = auths_verifier_did_key(&other_pk, auths_crypto::CurveType::Ed25519);
+        let verdict = verify_receipt_offline(&signed, &foreign);
+        assert!(matches!(
+            verdict,
+            OfflineReceiptVerdict::SignatureFailed { .. }
+        ));
+    }
+
+    #[test]
+    fn offline_verify_flags_an_unreadable_identity_distinctly() {
+        let (signed, _identity) = signed_with_published_identity("EEventOffline");
+        let verdict = verify_receipt_offline(&signed, "not-a-did-key");
+        assert!(matches!(
+            verdict,
+            OfflineReceiptVerdict::UnreadableIdentity { .. }
+        ));
     }
 }
