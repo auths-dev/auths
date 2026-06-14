@@ -39,6 +39,7 @@ pub mod build;
 pub mod engine;
 pub mod receipt;
 pub mod standup;
+pub mod vocabulary;
 
 pub use build::{BuildAttestation, NodeBuildVerdict};
 pub use engine::{DockerEngine, SocketHealthCheck, SocketHttpFetch};
@@ -47,6 +48,7 @@ pub use standup::{
     ContainerEngine, HealthCheck, HttpFetch, HttpResponse, StandupError, StandupOutcome, stand_up,
     tear_down,
 };
+pub use vocabulary::{PROTOCOL_VOCABULARY, scan_for_protocol_vocabulary};
 
 // Compose the platform's public protocol surface. These re-exports make the
 // composition explicit and give the operator CLI one import path for the
@@ -235,14 +237,14 @@ mod tests {
 
     #[test]
     fn health_url_has_no_protocol_vocabulary() {
+        // The operator-vocabulary rule lives in one place; this asserts the
+        // health URL the operator opens is held to it, not to a private copy.
         let url = StandupRequest::local("/tmp/d").health_url();
-        let lowered = url.to_lowercase();
-        for term in ["keri", "kel", "ksn", "said", "cesr", "oobi"] {
-            assert!(
-                !lowered.contains(term),
-                "health URL leaked protocol term: {term}"
-            );
-        }
+        assert_eq!(
+            scan_for_protocol_vocabulary(&url),
+            None,
+            "health URL leaked protocol vocabulary"
+        );
     }
 
     #[test]

@@ -196,6 +196,8 @@ mod tests {
     fn verdict_summary_carries_no_protocol_vocabulary() {
         // The operator-facing line must never leak protocol jargon — operators
         // see "which binary, and can we trust it", never the wire vocabulary.
+        // Held to the one canonical rule (crate::scan_for_protocol_vocabulary),
+        // not a copy maintained here.
         let verdicts = [
             NodeBuildVerdict::Trusted {
                 version: "0.1.3".into(),
@@ -213,16 +215,12 @@ mod tests {
             },
         ];
         for v in verdicts {
-            let lowered = v.summary().to_lowercase();
-            for term in [
-                "keri", "kel", "ksn", "said", "cesr", "oobi", "verkey", "prefix",
-            ] {
-                assert!(
-                    !lowered.contains(term),
-                    "verdict summary leaked protocol term '{term}': {}",
-                    v.summary()
-                );
-            }
+            assert_eq!(
+                crate::scan_for_protocol_vocabulary(&v.summary()),
+                None,
+                "verdict summary leaked protocol vocabulary: {}",
+                v.summary()
+            );
         }
     }
 }
