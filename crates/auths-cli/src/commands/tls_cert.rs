@@ -34,9 +34,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, anyhow};
 use auths_crypto::TypedSignerKey;
 use auths_keri::{
-    KeyState, TlsCertError, TlsKeyAuthorizer, TrustedKel, extract_aid_from_san,
-    issue_authorized_kel_rooted_cert, issue_authorized_kel_rooted_cert_with_key,
-    issue_kel_rooted_cert, issue_kel_rooted_cert_with_key, parse_kel_json,
+    IssuedCert, KeyState, QuicLoopbackOutcome, TlsCertError, TlsKeyAuthorizer, TrustedKel,
+    extract_aid_from_san, issue_authorized_kel_rooted_cert,
+    issue_authorized_kel_rooted_cert_with_key, issue_kel_rooted_cert,
+    issue_kel_rooted_cert_with_key, parse_kel_json, quic_loopback_compose,
     verify_authorized_against_key_state,
 };
 use auths_utils::path::expand_tilde;
@@ -82,12 +83,13 @@ fn load_signer(key_path: &Path) -> Result<TypedSignerKey> {
 /// Issue or verify a KEL-rooted X.509 certificate (TLS composition).
 #[derive(Parser, Debug, Clone)]
 #[command(
-    about = "Issue/verify a KEL-rooted X.509 cert and read its did:keri subjectAltName — an auths identity that stock TLS stacks (rustls/openssl/go) handshake with",
+    about = "Issue/verify a KEL-rooted X.509 cert, read its did:keri subjectAltName, and carry it over TLS or QUIC/HTTP3 — an auths identity that stock TLS stacks (rustls/openssl/go) handshake with",
     after_help = "Examples:
   auths tls-cert issue --from-kel kel.json --sign-key aid.key.pem --san localhost   # AID-authorized leaf
   auths tls-cert issue --from-kel kel.json --sign-key aid.key.pem --out leaf         # writes leaf.cert.pem + leaf.key.pem
   auths tls-cert identity --cert leaf.cert.pem                                       # read the did:keri AID out of the SAN
-  auths tls-cert verify --cert leaf.cert.pem --from-kel kel.json                     # adversarial: rejects forged/revoked/stripped"
+  auths tls-cert verify --cert leaf.cert.pem --from-kel kel.json                     # adversarial: rejects forged/revoked/stripped
+  auths tls-cert quic --from-kel kel.json                                            # carry the leaf + channel binding over QUIC/HTTP3"
 )]
 pub struct TlsCertCommand {
     /// The direction to run: issue our leaf, or verify a peer's.
@@ -104,6 +106,8 @@ pub enum TlsCertAction {
     Identity(IdentityArgs),
     /// Verify a peer's leaf binds to the KEL we hold (peer → us).
     Verify(VerifyArgs),
+    /// Carry the KEL-rooted leaf + channel binding over a QUIC/HTTP3 transport.
+    Quic(QuicArgs),
 }
 
 /// `auths tls-cert issue` — mint a KEL-rooted leaf for one of our AIDs.
@@ -166,6 +170,25 @@ pub struct VerifyArgs {
     pub from_kel: PathBuf,
 }
 
+/// `auths tls-cert quic` — carry the same composition over QUIC/HTTP3.
+///
+/// QUIC runs the same TLS 1.3 handshake inside its CRYPTO frames, so a KERI
+/// identity composes with QUIC — and therefore HTTP/3 — through exactly the same
+/// two mechanisms it composes with TLS-over-TCP: the KEL-rooted leaf the server
+/// presents, and the per-connection channel binding both endpoints export from
+/// the connection's TLS 1.3 secrets. This stands up a real loopback QUIC
+/// connection, serves the leaf over it, and proves both — the client re-roots the
+/// served leaf in the replayed KEL, and both endpoints derive the same channel
+/// binding (a proof bound to it cannot be relayed onto a different connection).
+#[derive(Parser, Debug, Clone)]
+pub struct QuicArgs {
+    /// Replay this KEL and serve its KEL-rooted leaf over the QUIC handshake. The
+    /// KEL is the root of trust the client re-derives by replay — over QUIC
+    /// exactly as over TCP.
+    #[clap(long, value_name = "KEL.json")]
+    pub from_kel: PathBuf,
+}
+
 impl TlsCertCommand {
     /// Run the requested direction.
     pub fn execute(&self, _ctx: &CliConfig) -> Result<()> {
@@ -173,6 +196,7 @@ impl TlsCertCommand {
             TlsCertAction::Issue(args) => args.run(),
             TlsCertAction::Identity(args) => args.run(),
             TlsCertAction::Verify(args) => args.run(),
+            TlsCertAction::Quic(args) => args.run(),
         }
     }
 }
@@ -309,6 +333,47 @@ impl VerifyArgs {
         );
         Ok(())
     }
+}
+
+impl QuicArgs {
+    fn run(&self) -> Result<()> {
+        let state = replay_kel(&self.from_kel)?;
+        // Mint the KEL-rooted leaf the QUIC server presents (localhost SANs so the
+        // loopback handshake is valid for the transport host).
+        let leaf = issue_kel_rooted_cert(&state, &["localhost".to_string(), "::1".to_string()])
+            .map_err(|e| anyhow!("issue KEL-rooted leaf for QUIC: {e}"))?;
+
+        // The loopback driver is a single Tokio runtime turn: stand up a QUIC
+        // endpoint, serve the leaf, connect a client, complete the TLS 1.3
+        // handshake inside QUIC, and prove the composition (leaf re-roots in the
+        // KEL, both ends agree on the channel binding). The transport plumbing
+        // lives in auths-keri; this command is the adapter.
+        let outcome = run_quic_loopback(&leaf, &state)?;
+
+        println!(
+            "QUIC/HTTP3 composition verified — the KEL-rooted leaf and channel binding carry over QUIC\n  did:keri: {}\n  ALPN: h3 (HTTP/3)\n  served leaf re-rooted in the replayed KEL: yes\n  both endpoints derive the same channel binding (anti-relay): {}\n  channel binding: {} ({} bytes, per-connection)",
+            outcome.did_keri,
+            if outcome.binding_agrees { "yes" } else { "no" },
+            outcome.channel_binding_hex,
+            outcome.channel_binding_len,
+        );
+        Ok(())
+    }
+}
+
+/// Drive the QUIC loopback composition on a fresh Tokio runtime.
+///
+/// `auths tls-cert` is otherwise synchronous; QUIC needs an async reactor, so we
+/// spin a current-thread runtime for this one command rather than make the whole
+/// CLI async. The transport itself lives behind [`quic_loopback_compose`] in
+/// `auths-keri` — this is just the runtime adapter.
+fn run_quic_loopback(leaf: &IssuedCert, state: &KeyState) -> Result<QuicLoopbackOutcome> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| anyhow!("build QUIC runtime: {e}"))?;
+    rt.block_on(quic_loopback_compose(&leaf.cert_pem, &leaf.key_pem, state))
+        .map_err(|e| anyhow!("QUIC composition failed: {e}"))
 }
 
 /// `prefix` + `.suffix`, preserving any directory in `prefix`.

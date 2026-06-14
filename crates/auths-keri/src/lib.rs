@@ -55,6 +55,10 @@ pub mod ksn;
 pub mod messages;
 /// Out-Of-Band Introduction (OOBI) — KERI discovery: resolve/serve AID endpoints.
 pub mod oobi;
+/// QUIC/HTTP3 transport for the KEL-rooted TLS composition — the same leaf +
+/// RFC 9266 exporter channel binding, carried over QUIC's TLS 1.3 handshake.
+#[cfg(feature = "quic")]
+pub mod quic_transport;
 mod said;
 mod state;
 /// Backerless TEL (Transaction Event Log) credential-status events: `vcp`/`iss`/`rev`.
@@ -109,6 +113,12 @@ pub use ksn::{
 pub use oobi::{
     EndRoleReply, LocSchemeReply, Oobi, OobiEndpoint, OobiError, OobiResolution, Role,
     ingest_oobi_stream,
+};
+#[cfg(feature = "quic")]
+pub use quic_transport::{
+    QUIC_EXPORTER_CONTEXT, QUIC_EXPORTER_LABEL, QUIC_EXPORTER_LEN, QuicLoopbackOutcome,
+    QuicTransportError, quic_channel_binding, quic_client_config, quic_loopback_compose,
+    quic_server_config,
 };
 pub use said::{
     Protocol, SAID_PLACEHOLDER, compute_said, compute_said_with_protocol, compute_section_said,

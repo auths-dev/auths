@@ -25,8 +25,9 @@ path = "src/bin/verify.rs"
 
 [dependencies]
 # `tls-cert` powers `auths tls-cert` (KEL-rooted X.509 leaf certs for TLS
-# composition); the wire/crypto definition lives in auths-keri.
-auths-keri = { workspace = true, features = ["tls-cert"] }
+# composition); `quic` carries the same leaf + channel binding over QUIC/HTTP3.
+# The wire/crypto definition lives in auths-keri.
+auths-keri = { workspace = true, features = ["tls-cert", "quic"] }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 colored = "3.1.1"

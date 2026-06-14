@@ -687,6 +687,7 @@ dependencies = [
  "hex",
  "p256 0.13.2",
  "proptest",
+ "quinn",
  "rcgen",
  "ring",
  "schemars",
