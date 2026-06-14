@@ -32,6 +32,7 @@ pub mod learn;
 pub mod log;
 pub mod multi_sig;
 pub mod namespace;
+pub mod oobi;
 pub mod org;
 pub mod policy;
 pub mod provision;

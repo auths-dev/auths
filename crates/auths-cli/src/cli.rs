@@ -31,6 +31,7 @@ use crate::commands::learn::LearnCommand;
 use crate::commands::log::LogCommand;
 use crate::commands::multi_sig::MultiSigCommand;
 use crate::commands::namespace::NamespaceCommand;
+use crate::commands::oobi::OobiCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::publish::PublishCommand;
@@ -128,6 +129,8 @@ pub enum RootCommand {
     KeyState(KeyStateCommand),
     #[command(hide = true, name = "did-webs")]
     DidWebs(DidWebsCommand),
+    #[command(hide = true)]
+    Oobi(OobiCommand),
     #[command(hide = true)]
     Approval(ApprovalCommand),
     #[command(hide = true)]

@@ -50,6 +50,8 @@ mod keys;
 pub mod ksn;
 /// Routed KERI message types (qry, rpy, pro, bar, xip, exn).
 pub mod messages;
+/// Out-Of-Band Introduction (OOBI) — KERI discovery: resolve/serve AID endpoints.
+pub mod oobi;
 mod said;
 mod state;
 /// Backerless TEL (Transaction Event Log) credential-status events: `vcp`/`iss`/`rev`.
@@ -96,6 +98,10 @@ pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use ksn::{
     KERI_KEY_STATE_VERSION, KSN_TYPE, KSN_VERSION, KeyStateNotice, KeyStateRecord, KsnError,
     LatestEstablishmentEvent, SignedKsn,
+};
+pub use oobi::{
+    EndRoleReply, LocSchemeReply, Oobi, OobiEndpoint, OobiError, OobiResolution, Role,
+    ingest_oobi_stream,
 };
 pub use said::{
     Protocol, SAID_PLACEHOLDER, compute_said, compute_said_with_protocol, compute_section_said,
