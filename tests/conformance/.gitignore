@@ -1,0 +1,7 @@
+# Python / pytest / uv ephemera — never committed.
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+uv.lock
+.uv/
