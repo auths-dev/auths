@@ -27,8 +27,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
 use auths_keri::{
-    TrustedKel, issue_kel_rooted_cert, issue_kel_rooted_cert_with_key, parse_kel_json,
-    verify_binds_to_key_state,
+    TrustedKel, extract_aid_from_san, issue_kel_rooted_cert, issue_kel_rooted_cert_with_key,
+    parse_kel_json, verify_binds_to_key_state,
 };
 use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};
@@ -38,10 +38,11 @@ use crate::config::CliConfig;
 /// Issue or verify a KEL-rooted X.509 certificate (TLS composition).
 #[derive(Parser, Debug, Clone)]
 #[command(
-    about = "Issue/verify a KEL-rooted X.509 cert — an auths identity that stock TLS stacks (rustls/openssl/go) handshake with",
+    about = "Issue/verify a KEL-rooted X.509 cert and read its did:keri subjectAltName — an auths identity that stock TLS stacks (rustls/openssl/go) handshake with",
     after_help = "Examples:
   auths tls-cert issue --from-kel kel.json --san localhost --san 127.0.0.1
   auths tls-cert issue --from-kel kel.json --out leaf            # writes leaf.cert.pem + leaf.key.pem
+  auths tls-cert identity --cert leaf.cert.pem                   # read the did:keri AID out of the SAN
   auths tls-cert verify --cert leaf.cert.pem --from-kel kel.json"
 )]
 pub struct TlsCertCommand {
@@ -50,11 +51,13 @@ pub struct TlsCertCommand {
     pub action: TlsCertAction,
 }
 
-/// The two directions of KEL-rooted mTLS composition.
+/// The directions of KEL-rooted mTLS composition.
 #[derive(Subcommand, Debug, Clone)]
 pub enum TlsCertAction {
     /// Issue a KEL-rooted leaf certificate for an AID (us → peer).
     Issue(IssueArgs),
+    /// Read the did:keri AID out of a leaf's subjectAltName (X.509-SVID identity).
+    Identity(IdentityArgs),
     /// Verify a peer's leaf binds to the KEL we hold (peer → us).
     Verify(VerifyArgs),
 }
@@ -84,6 +87,15 @@ pub struct IssueArgs {
     pub out: Option<PathBuf>,
 }
 
+/// `auths tls-cert identity` — read the did:keri AID out of a leaf's SAN.
+#[derive(Parser, Debug, Clone)]
+pub struct IdentityArgs {
+    /// The leaf certificate, PEM-encoded. Its `did:keri` subjectAltName names the
+    /// auths identity — the AID a verifier looks up before replaying its KEL.
+    #[clap(long, value_name = "CERT.pem")]
+    pub cert: PathBuf,
+}
+
 /// `auths tls-cert verify` — confirm a peer's leaf is rooted in a KEL we hold.
 #[derive(Parser, Debug, Clone)]
 pub struct VerifyArgs {
@@ -102,6 +114,7 @@ impl TlsCertCommand {
     pub fn execute(&self, _ctx: &CliConfig) -> Result<()> {
         match &self.action {
             TlsCertAction::Issue(args) => args.run(),
+            TlsCertAction::Identity(args) => args.run(),
             TlsCertAction::Verify(args) => args.run(),
         }
     }
@@ -156,6 +169,26 @@ impl IssueArgs {
                 print!("{}", issued.cert_pem);
             }
         }
+        Ok(())
+    }
+}
+
+impl IdentityArgs {
+    fn run(&self) -> Result<()> {
+        let cert_path = expand_tilde(&self.cert)?;
+        let cert_pem = std::fs::read_to_string(&cert_path)
+            .map_err(|e| anyhow!("read cert {}: {e}", cert_path.display()))?;
+
+        // The X.509-SVID identity read: the did:keri AID rides in the SAN every
+        // stock X.509 parser already exposes, so we learn which identity the cert
+        // claims before holding its KEL. The AID is parsed (not just extracted),
+        // so what we print is a valid KERI prefix, not a raw string.
+        let aid = extract_aid_from_san(&cert_pem)
+            .map_err(|e| anyhow!("read did:keri identity from cert SAN: {e}"))?;
+
+        println!(
+            "did:keri:{aid}\n  AID: {aid}\n  (the SAN names the identity; replay its KEL to root trust in the log)"
+        );
         Ok(())
     }
 }

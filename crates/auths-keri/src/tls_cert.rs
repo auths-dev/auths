@@ -100,6 +100,15 @@ pub enum TlsCertError {
     /// The certificate's `did:keri` SAN is absent or does not match the binding.
     #[error("certificate did:keri SAN mismatch: {0}")]
     SanMismatch(String),
+
+    /// The certificate carries no `did:keri` URI in its `subjectAltName` — there
+    /// is no auths identity to read out of it (the X.509-SVID identity surface).
+    #[error("certificate carries no did:keri subjectAltName")]
+    NoSanIdentity,
+
+    /// The `did:keri` SAN was present but its AID is not a valid KERI prefix.
+    #[error("did:keri SAN carries an invalid AID: {0}")]
+    InvalidSanAid(#[from] crate::types::KeriTypeError),
 }
 
 /// The AID key-state a KEL-rooted certificate embeds — the projection of a KEL
@@ -332,6 +341,32 @@ mod backend {
         Ok(None)
     }
 
+    /// Read the AID a certificate claims out of its `did:keri` SAN — the
+    /// X.509-SVID identity surface.
+    ///
+    /// This is the identity-discovery direction (the SPIFFE X.509-SVID precedent):
+    /// the AID rides in the `subjectAltName` URI every stock X.509 parser already
+    /// exposes, so a verifier learns *which* auths identity a peer claims directly
+    /// from the cert — **before** it holds that AID's KEL. The returned [`Prefix`]
+    /// is then the lookup key to fetch and replay the KEL (via an OOBI / a held
+    /// log), at which point [`verify_binds_to_key_state`] re-roots trust in the
+    /// log. Parse, don't validate: the scheme is stripped and the AID is parsed
+    /// into a validated [`Prefix`], so a present-but-malformed identifier is
+    /// [`TlsCertError::InvalidSanAid`] at the boundary, never a raw string the
+    /// caller has to re-check. A cert with no `did:keri` URI SAN is
+    /// [`TlsCertError::NoSanIdentity`] (a plain leaf carries no auths identity).
+    pub fn extract_aid_from_san(cert_pem: &str) -> Result<crate::types::Prefix, TlsCertError> {
+        match extract_did_keri_san(cert_pem)? {
+            Some(uri) => {
+                let aid = uri.strip_prefix(DID_KERI_SCHEME).ok_or_else(|| {
+                    TlsCertError::SanMismatch(format!("SAN {uri} is not a {DID_KERI_SCHEME} URI"))
+                })?;
+                Ok(crate::types::Prefix::new(aid.to_string())?)
+            }
+            None => Err(TlsCertError::NoSanIdentity),
+        }
+    }
+
     /// Verify a KEL-rooted certificate against an AID's KEL key-state.
     ///
     /// The peer→auths direction: parse the cert, read its embedded binding *and*
@@ -396,7 +431,7 @@ mod backend {
 
 #[cfg(feature = "tls-cert")]
 pub use backend::{
-    IssuedCert, extract_binding, extract_did_keri_san, issue_kel_rooted_cert,
+    IssuedCert, extract_aid_from_san, extract_binding, extract_did_keri_san, issue_kel_rooted_cert,
     issue_kel_rooted_cert_with_key, verify_binds_to_key_state,
 };
 
@@ -508,6 +543,44 @@ mod tests {
 
             let san = extract_did_keri_san(&issued.cert_pem).unwrap();
             assert_eq!(san, Some(format!("did:keri:{}", st.prefix.as_str())));
+        }
+
+        #[test]
+        fn aid_reads_out_of_the_san_without_the_kel() {
+            // The X.509-SVID identity surface: a verifier learns *which* AID a
+            // cert claims from the SAN alone, before it holds the KEL.
+            let (st, _) = multi_state();
+            let issued = issue_kel_rooted_cert(&st, &["localhost".to_string()]).unwrap();
+            let aid = extract_aid_from_san(&issued.cert_pem).unwrap();
+            assert_eq!(aid.as_str(), st.prefix.as_str());
+        }
+
+        #[test]
+        fn plain_cert_has_no_san_identity() {
+            // A stock self-signed leaf carries no did:keri SAN, so there is no
+            // auths identity to read out of it — NoSanIdentity, not a panic.
+            let kp = rcgen::KeyPair::generate().unwrap();
+            let params = rcgen::CertificateParams::new(vec!["localhost".to_string()]).unwrap();
+            let cert = params.self_signed(&kp).unwrap();
+            assert!(matches!(
+                extract_aid_from_san(&cert.pem()),
+                Err(TlsCertError::NoSanIdentity)
+            ));
+        }
+
+        #[test]
+        fn malformed_san_aid_is_rejected_at_the_boundary() {
+            // A did:keri SAN whose AID is not a valid KERI prefix is an error at
+            // the parse boundary, never returned as a trusted identity.
+            let kp = rcgen::KeyPair::generate().unwrap();
+            let mut params = rcgen::CertificateParams::new(Vec::new()).unwrap();
+            let bad = rcgen::string::Ia5String::try_from("did:keri:".to_string()).unwrap();
+            params.subject_alt_names.push(rcgen::SanType::URI(bad));
+            let cert = params.self_signed(&kp).unwrap();
+            assert!(matches!(
+                extract_aid_from_san(&cert.pem()),
+                Err(TlsCertError::InvalidSanAid(_))
+            ));
         }
 
         #[test]

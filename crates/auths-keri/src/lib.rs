@@ -122,7 +122,7 @@ pub use tel::{
 pub use tls_cert::{AUTHS_KERI_BINDING_OID, AuthsKeriBinding, DID_KERI_SCHEME, TlsCertError};
 #[cfg(feature = "tls-cert")]
 pub use tls_cert::{
-    IssuedCert, extract_binding, extract_did_keri_san, issue_kel_rooted_cert,
+    IssuedCert, extract_aid_from_san, extract_binding, extract_did_keri_san, issue_kel_rooted_cert,
     issue_kel_rooted_cert_with_key, verify_binds_to_key_state,
 };
 pub use types::{
