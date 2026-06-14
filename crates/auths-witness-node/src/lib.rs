@@ -35,14 +35,17 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod build;
 pub mod engine;
 pub mod receipt;
 pub mod standup;
 
-pub use engine::{DockerEngine, SocketHealthCheck};
+pub use build::{BuildAttestation, NodeBuildVerdict};
+pub use engine::{DockerEngine, SocketHealthCheck, SocketHttpFetch};
 pub use receipt::ReceiptBundle;
 pub use standup::{
-    ContainerEngine, HealthCheck, StandupError, StandupOutcome, stand_up, tear_down,
+    ContainerEngine, HealthCheck, HttpFetch, HttpResponse, StandupError, StandupOutcome, stand_up,
+    tear_down,
 };
 
 // Compose the platform's public protocol surface. These re-exports make the
@@ -50,8 +53,8 @@ pub use standup::{
 // protocol types it renders, all sourced from the trust kernel.
 pub use auths_keri::{KERI_KEY_STATE_VERSION, KSN_TYPE, KeyStateNotice, SignedKsn};
 pub use auths_verifier::{
-    OfflineReceiptVerdict, SignedReceipt, WitnessQuorum, WitnessReceiptResult,
-    verify_receipt_offline,
+    OfflineBuildVerdict, OfflineReceiptVerdict, SignedReceipt, WitnessQuorum, WitnessReceiptResult,
+    verify_build_attestation_offline, verify_receipt_offline,
 };
 pub use auths_witness::{MAX_BODY_BYTES, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT};
 
@@ -109,6 +112,11 @@ pub struct StandupRequest {
     pub custody: KeyCustody,
     /// Where the node's receipts/keystore volume is mounted on the host.
     pub data_dir: PathBuf,
+    /// Host path to the signed build attestation for the released image's binary
+    /// (`auths artifact sign` output). When set, standup mounts it into the node
+    /// and points the binary at it, so the node serves a `/build` proof of which
+    /// binary it runs. `None` stands a node up without that surface.
+    pub build_attestation: Option<PathBuf>,
 }
 
 impl StandupRequest {
@@ -122,6 +130,7 @@ impl StandupRequest {
             host_port: 3333,
             custody: KeyCustody::default(),
             data_dir: data_dir.into(),
+            build_attestation: None,
         }
     }
 
@@ -155,6 +164,23 @@ impl StandupRequest {
             KeyCustody::Managed => "managed (KMS/enclave)",
             KeyCustody::File => "file (acknowledged downgrade)",
         };
+        // When a build attestation is supplied, mount it read-only into the node
+        // and point the binary at it, so the node serves a `/build` proof of
+        // which binary it runs. The attestation is data the node serves, never a
+        // secret, so a plain read-only bind is right.
+        let (attestation_env, attestation_volume) = match &self.build_attestation {
+            Some(path) => (
+                format!(
+                    "\x20\x20\x20\x20\x20\x20AUTHS_WITNESS_BUILD_ATTESTATION: \"{ATTESTATION_CONTAINER_PATH}\"\n"
+                ),
+                format!(
+                    "\x20\x20\x20\x20volumes:\n\
+                     \x20\x20\x20\x20\x20\x20- \"{host}:{ATTESTATION_CONTAINER_PATH}:ro\"\n",
+                    host = path.display(),
+                ),
+            ),
+            None => (String::new(), String::new()),
+        };
         format!(
             "# Embedded witness standup — one node, released image only.\n\
              # Never a source build; identity custody: {custody}.\n\
@@ -167,7 +193,9 @@ impl StandupRequest {
              \x20\x20\x20\x20\x20\x20- \"127.0.0.1:{host_port}:{container_port}\"\n\
              \x20\x20\x20\x20environment:\n\
              \x20\x20\x20\x20\x20\x20AUTHS_WITNESS_SEED: \"${{WITNESS_SEED}}\"\n\
+             {attestation_env}\
              \x20\x20\x20\x20command: [\"--bind\", \"0.0.0.0:{container_port}\", \"--curve\", \"ed25519\", \"--persist\", \"/data/receipts.db\"]\n\
+             {attestation_volume}\
              \x20\x20\x20\x20tmpfs:\n\
              \x20\x20\x20\x20\x20\x20- /data\n",
             custody = custody,
@@ -175,9 +203,15 @@ impl StandupRequest {
             reference = reference,
             host_port = self.host_port,
             container_port = container_port,
+            attestation_env = attestation_env,
+            attestation_volume = attestation_volume,
         )
     }
 }
+
+/// The fixed in-container path the build attestation is mounted at and the node
+/// reads from. One constant so the mount target and the env value cannot drift.
+const ATTESTATION_CONTAINER_PATH: &str = "/build-attestation.json";
 
 /// The KERI wire version of the key-state notice this node serves.
 ///
@@ -230,6 +264,26 @@ mod tests {
         );
         // The proxy body cap is sourced from the platform server constant.
         assert!(manifest.contains(&MAX_BODY_BYTES.to_string()));
+        // With no build attestation, the node serves no `/build` surface — the
+        // manifest neither mounts one nor points the binary at it.
+        assert!(!manifest.contains("AUTHS_WITNESS_BUILD_ATTESTATION"));
+    }
+
+    #[test]
+    fn compose_manifest_mounts_a_supplied_build_attestation() {
+        let mut req = StandupRequest::local("/srv/witness");
+        req.build_attestation = Some(PathBuf::from("/host/build.auths.json"));
+        let manifest = req.compose_manifest();
+        // The node is pointed at the in-container attestation path …
+        assert!(manifest.contains("AUTHS_WITNESS_BUILD_ATTESTATION"));
+        assert!(manifest.contains(ATTESTATION_CONTAINER_PATH));
+        // … and the host file is bind-mounted read-only to that path.
+        assert!(manifest.contains(&format!(
+            "/host/build.auths.json:{ATTESTATION_CONTAINER_PATH}:ro"
+        )));
+        // Still a released image, never a source build.
+        assert!(manifest.contains("image:"));
+        assert!(!manifest.contains("build:"));
     }
 
     #[test]

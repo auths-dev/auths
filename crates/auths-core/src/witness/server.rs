@@ -55,6 +55,67 @@ struct WitnessServerInner {
     storage: Mutex<WitnessStorage>,
     /// Clock function for getting current time
     clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    /// The proof of which binary this node runs (version, self-measured digest,
+    /// and the signed build attestation). `None` when the binary was started
+    /// without a build attestation configured, in which case the `/build`
+    /// surface 404s — a node that cannot prove its binary says so plainly.
+    build_proof: Option<BuildProof>,
+}
+
+/// The proof a node serves of which binary it is running.
+///
+/// Three facts, none of which the server interprets: the running binary's
+/// `version`, the SHA-256 the binary measured of *itself* at startup
+/// (`running_digest`), and the signed build attestation (`attestation`, the raw
+/// `auths artifact sign` document). The server is a serving surface — it pairs
+/// the self-measurement with the signed claim and hands both to whoever asks.
+/// The *verification* (does the attestation's signature hold, and does it attest
+/// THIS running digest?) is a relying party's job, done from these bytes alone.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildProof {
+    /// Version string of the running binary.
+    pub version: String,
+    /// SHA-256 (hex) the binary measured of its own on-disk image at startup.
+    pub running_digest: String,
+    /// The signed build attestation document (`auths artifact sign` output),
+    /// carried verbatim so a relying party verifies the original signed bytes.
+    pub attestation: serde_json::Value,
+}
+
+impl BuildProof {
+    /// Measure the running binary's own on-disk image and pair the digest with
+    /// its version and a signed build attestation.
+    ///
+    /// The digest is computed over the bytes of the executable this process is
+    /// running (`current_exe`), so `running_digest` is the node's measurement of
+    /// *itself* — not a number it was handed. A relying party then checks that
+    /// the signed `attestation` attests this exact digest.
+    ///
+    /// Args:
+    /// * `version`: the running binary's version string.
+    /// * `attestation`: the parsed `auths artifact sign` document to serve verbatim.
+    pub fn measure_self(
+        version: impl Into<String>,
+        attestation: serde_json::Value,
+    ) -> std::io::Result<Self> {
+        let exe = std::env::current_exe()?;
+        let running_digest = sha256_file_hex(&exe)?;
+        Ok(Self {
+            version: version.into(),
+            running_digest,
+            attestation,
+        })
+    }
+}
+
+/// SHA-256 (hex) of a file's bytes.
+///
+/// Reads the file whole (the witness binary is a few MB) through `std::fs::read`
+/// — the sans-IO crate's approved file read — then hashes it.
+fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path)?;
+    Ok(hex::encode(Sha256::digest(&bytes)))
 }
 
 /// Configuration for the witness server.
@@ -69,6 +130,10 @@ pub struct WitnessServerConfig {
     pub tls_cert_path: Option<PathBuf>,
     /// Path to TLS private key (PEM format). Used by `run_server_tls()` when the `tls` feature is enabled.
     pub tls_key_path: Option<PathBuf>,
+    /// Proof of which binary the node runs, served at `/build`. `None` leaves
+    /// the build surface absent (404) — a node that was not given a build
+    /// attestation does not pretend to have one.
+    pub build_proof: Option<BuildProof>,
 }
 
 impl WitnessServerConfig {
@@ -115,7 +180,19 @@ impl WitnessServerConfig {
             db_path,
             tls_cert_path: None,
             tls_key_path: None,
+            build_proof: None,
         })
+    }
+
+    /// Attach the proof of which binary this node runs (served at `/build`).
+    ///
+    /// Consuming-builder so a deployed binary that knows its own version,
+    /// self-measured digest, and signed attestation threads them into the
+    /// server in one call; a binary started without one simply never calls this
+    /// and the build surface stays absent.
+    pub fn with_build_proof(mut self, proof: BuildProof) -> Self {
+        self.build_proof = Some(proof);
+        self
     }
 }
 
@@ -225,6 +302,7 @@ impl WitnessServerState {
                 signer: config.signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
+                build_proof: config.build_proof,
             }),
         })
     }
@@ -243,6 +321,7 @@ impl WitnessServerState {
                 signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
+                build_proof: None,
             }),
         })
     }
@@ -285,6 +364,7 @@ impl WitnessServerState {
                 signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
+                build_proof: None,
             }),
         })
     }
@@ -358,6 +438,7 @@ pub fn router(state: WitnessServerState) -> Router {
         .route("/witness/{prefix}/said/{seq}", get(get_said_at_seq))
         .route("/witness/{prefix}/receipt/{said}", get(get_receipt))
         .route("/witness/{prefix}/key-state", get(get_key_state))
+        .route("/build", get(get_build))
         .route("/health", get(health))
         .with_state(state)
 }
@@ -934,6 +1015,32 @@ async fn get_key_state(
     Ok(Json(record))
 }
 
+/// `GET /build` — the node's proof of which binary it runs.
+///
+/// Serves the [`BuildProof`] the binary measured of itself and was signed
+/// against: version, self-measured running digest, and the verbatim signed
+/// attestation. The server interprets none of it — a relying party decides,
+/// from these bytes alone, whether the attestation's signature holds AND
+/// attests this exact running digest. 404 when the node was started without a
+/// build attestation: a node that cannot prove its binary says so plainly,
+/// rather than serving an unprovable green.
+async fn get_build(
+    State(state): State<WitnessServerState>,
+) -> Result<Json<BuildProof>, (StatusCode, Json<ErrorResponse>)> {
+    match &state.inner.build_proof {
+        Some(proof) => Ok(Json(proof.clone())),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "this node was started without a build attestation — \
+                        it cannot prove which binary it runs"
+                    .to_string(),
+                duplicity: None,
+            }),
+        )),
+    }
+}
+
 /// GET /health - Health check.
 async fn health(State(state): State<WitnessServerState>) -> Json<HealthResponse> {
     let storage = state
@@ -1156,6 +1263,60 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn build_endpoint_absent_without_a_proof_is_404() {
+        // A node started without a build attestation must NOT serve a `/build`
+        // surface — it says plainly it cannot prove its binary (404), never an
+        // unprovable green.
+        let state = test_state();
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/build")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn build_endpoint_serves_the_configured_proof() {
+        // With a proof configured, `/build` serves exactly the self-measurement
+        // and signed attestation the binary handed in — verbatim, uninterpreted.
+        let mut state = test_state();
+        let proof = BuildProof {
+            version: "1.2.3".to_string(),
+            running_digest: "abc123".to_string(),
+            attestation: serde_json::json!({"issuer": "did:key:zTest"}),
+        };
+        // Replace the inner with one carrying the proof (the only field that
+        // differs from `test_state`'s default).
+        let inner = Arc::get_mut(&mut state.inner).expect("sole owner in test");
+        inner.build_proof = Some(proof.clone());
+
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/build")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let served: BuildProof = serde_json::from_slice(&body).unwrap();
+        assert_eq!(served.version, "1.2.3");
+        assert_eq!(served.running_digest, "abc123");
     }
 
     #[tokio::test(flavor = "multi_thread")]

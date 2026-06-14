@@ -10,7 +10,7 @@ pub use auths_keri::witness::independence::{
 
 #[cfg(feature = "witness-server")]
 pub use auths_core::witness::{
-    WitnessIdentityError, WitnessServerConfig, WitnessServerState,
+    BuildProof, WitnessIdentityError, WitnessServerConfig, WitnessServerState,
     generate_and_persist_witness_signer, load_witness_signer, run_server,
     witness_signer_from_seed_hex,
 };

@@ -54,6 +54,13 @@ pub enum WitnessSubcommand {
         /// tag or to run an image already present on an air-gapped host.
         #[clap(long)]
         image: Option<String>,
+
+        /// Path to the released image's signed build attestation (`auths
+        /// artifact sign` output). When supplied, the node serves a proof of
+        /// which binary it runs, and `status` verifies it. Operators pin the
+        /// attestation that ships with the released image.
+        #[clap(long)]
+        build_attestation: Option<PathBuf>,
     },
 
     /// Tear a stood-up witness node down.
@@ -221,7 +228,8 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             data_dir,
             accept_file_key,
             image,
-        } => node::up(port, data_dir, accept_file_key, image),
+            build_attestation,
+        } => node::up(port, data_dir, accept_file_key, image, build_attestation),
         WitnessSubcommand::Down { data_dir, port } => node::down(data_dir, port),
         WitnessSubcommand::Status { port } => node::status(port),
         WitnessSubcommand::VerifyReceipt { receipt } => node::verify_receipt(receipt),
@@ -420,8 +428,9 @@ mod node {
 
     use anyhow::{Result, anyhow};
     use auths_witness_node::{
-        DockerEngine, KeyCustody, OfflineReceiptVerdict, ReceiptBundle, SocketHealthCheck,
-        StandupRequest, stand_up, tear_down,
+        BuildAttestation, DockerEngine, HttpFetch, KeyCustody, NodeBuildVerdict,
+        OfflineReceiptVerdict, ReceiptBundle, SocketHealthCheck, SocketHttpFetch, StandupRequest,
+        stand_up, tear_down,
     };
 
     /// How long to wait for a freshly stood-up node to answer its health
@@ -437,6 +446,7 @@ mod node {
         data_dir: PathBuf,
         accept_file_key: bool,
         image: Option<String>,
+        build_attestation: Option<PathBuf>,
     ) -> StandupRequest {
         let mut req = StandupRequest::local(data_dir);
         req.host_port = port;
@@ -448,6 +458,7 @@ mod node {
         if let Some(reference) = image {
             req.image.reference = reference;
         }
+        req.build_attestation = build_attestation;
         req
     }
 
@@ -456,8 +467,9 @@ mod node {
         data_dir: PathBuf,
         accept_file_key: bool,
         image: Option<String>,
+        build_attestation: Option<PathBuf>,
     ) -> Result<()> {
-        let req = plan(port, data_dir, accept_file_key, image);
+        let req = plan(port, data_dir, accept_file_key, image, build_attestation);
         // Bring the node (and its monitor sidecar) up for real, then wait until
         // it answers its health endpoint. Success is a node answering — not the
         // command merely returning. A failure tears down whatever started and
@@ -476,14 +488,40 @@ mod node {
 
     pub fn status(port: u16) -> Result<()> {
         use auths_witness_node::HealthCheck;
-        let url = format!("http://127.0.0.1:{port}/health");
-        if SocketHealthCheck.is_healthy(&url) {
-            println!("healthy: {url}");
-            Ok(())
-        } else {
-            Err(anyhow!(
-                "no node answering at {url} — is one stood up on port {port}?"
-            ))
+        let health_url = format!("http://127.0.0.1:{port}/health");
+        if !SocketHealthCheck.is_healthy(&health_url) {
+            return Err(anyhow!(
+                "no node answering at {health_url} — is one stood up on port {port}?"
+            ));
+        }
+        println!("healthy: {health_url}");
+
+        // Prove which binary the node runs. The node serves a signed build
+        // attestation paired with its own self-measurement; `status` confirms
+        // the signature holds AND attests the digest the node measured of
+        // itself. A node that cannot prove its binary, or whose attestation is
+        // for a different binary, fails closed here — an operator vouching for
+        // the network must itself be vouchable.
+        let build_url = format!("http://127.0.0.1:{port}/build");
+        let response = SocketHttpFetch
+            .get(&build_url)
+            .map_err(|e| anyhow!("could not read the node's build proof: {e}"))?;
+        if !response.ok {
+            return Err(anyhow!(
+                "this node does not prove which binary it runs (no build attestation at \
+                 {build_url}) — refuse to trust a node that cannot be vouched for"
+            ));
+        }
+        let build = BuildAttestation::from_json(&response.body)
+            .map_err(|e| anyhow!("the node's build proof is unreadable: {e}"))?;
+
+        let rt = tokio::runtime::Runtime::new()?;
+        match rt.block_on(build.verify()) {
+            verdict @ NodeBuildVerdict::Trusted { .. } => {
+                println!("{}", verdict.summary());
+                Ok(())
+            }
+            verdict => Err(anyhow!("{}", verdict.summary())),
         }
     }
 
@@ -560,6 +598,7 @@ mod node {
         _data_dir: PathBuf,
         _accept_file_key: bool,
         _image: Option<String>,
+        _build_attestation: Option<PathBuf>,
     ) -> Result<()> {
         unavailable("up")
     }

@@ -32,6 +32,9 @@ hex = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
+# The build-attestation verdict composes the async platform verifier; its tests
+# need a runtime to drive it.
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true

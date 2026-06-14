@@ -107,6 +107,26 @@ pub trait HealthCheck {
     fn is_healthy(&self, url: &str) -> bool;
 }
 
+/// A response read from a node endpoint: whether the status was `2xx` and the
+/// raw body bytes.
+#[derive(Debug, Clone)]
+pub struct HttpResponse {
+    /// Whether the HTTP status line was `2xx`.
+    pub ok: bool,
+    /// The response body bytes.
+    pub body: Vec<u8>,
+}
+
+/// Fetches a small document a node serves (e.g. its build proof).
+///
+/// A narrow port, like [`HealthCheck`]: the orchestration only needs to GET a
+/// URL and read the body; the transport (raw socket, a real HTTP client, an
+/// in-process stub) lives behind the adapter.
+pub trait HttpFetch {
+    /// GET `url` and return the response, or one actionable error line.
+    fn get(&self, url: &str) -> Result<HttpResponse, String>;
+}
+
 /// The result of a successful standup: the operator-facing health URL of a node
 /// that is already answering there.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,6 +183,19 @@ pub fn stand_up(
         path: req.data_dir.clone(),
         reason: e.to_string(),
     })?;
+
+    // A build attestation is bind-mounted, so its host path must be absolute and
+    // exist — resolve it here at the I/O edge and fail closed if it cannot be,
+    // rather than letting the engine surface an opaque mount error.
+    let mut req = req.clone();
+    if let Some(path) = req.build_attestation.take() {
+        let resolved = std::fs::canonicalize(&path).map_err(|e| StandupError::DataDir {
+            path: path.clone(),
+            reason: format!("build attestation could not be resolved: {e}"),
+        })?;
+        req.build_attestation = Some(resolved);
+    }
+    let req = &req;
 
     let project = project_name(req.host_port);
     let manifest_path = req.data_dir.join("standup.compose.yml");

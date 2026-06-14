@@ -104,6 +104,21 @@ impl HealthCheck for SocketHealthCheck {
     }
 }
 
+/// Fetches an `http://host:port/path` endpoint's body over a raw socket — the
+/// same no-dependency posture as [`SocketHealthCheck`], but returning the
+/// response body (and whether the status was `2xx`) so a caller can read a small
+/// JSON document a node serves (e.g. its build proof).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SocketHttpFetch;
+
+impl crate::standup::HttpFetch for SocketHttpFetch {
+    fn get(&self, url: &str) -> Result<crate::standup::HttpResponse, String> {
+        let (host, port, path) =
+            parse_http_url(url).ok_or_else(|| format!("not a plain-http url: {url}"))?;
+        http_get_body(&host, port, &path).map_err(|e| format!("could not reach {url}: {e}"))
+    }
+}
+
 /// Parse `http://host:port/path` into its parts. Returns `None` for anything
 /// that is not a plain-HTTP URL with an explicit port (which is all standup
 /// ever produces).
@@ -139,6 +154,44 @@ fn http_get_ok(host: &str, port: u16, path: &str) -> std::io::Result<bool> {
         .and_then(|c| c.parse::<u16>().ok())
         .map(|c| (200..300).contains(&c))
         .unwrap_or(false))
+}
+
+/// One blocking HTTP/1.0 GET returning the full response. `ok` is `true` iff the
+/// status line was `2xx`; `body` is everything after the header block. Kept
+/// dependency-free (raw socket) to match the health adapter — the node's build
+/// proof is a small JSON document, so reading it whole is cheap.
+fn http_get_body(
+    host: &str,
+    port: u16,
+    path: &str,
+) -> std::io::Result<crate::standup::HttpResponse> {
+    let mut stream = TcpStream::connect((host, port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+    let req = format!("GET {path} HTTP/1.0\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes())?;
+
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw)?;
+
+    // Split the head from the body at the first blank line (CRLFCRLF).
+    let split = raw.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4);
+    let (head, body) = match split {
+        Some(i) => (&raw[..i], raw[i..].to_vec()),
+        None => (&raw[..], Vec::new()),
+    };
+    let status_line = String::from_utf8_lossy(head)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .to_string();
+    let ok = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|c| c.parse::<u16>().ok())
+        .map(|c| (200..300).contains(&c))
+        .unwrap_or(false);
+    Ok(crate::standup::HttpResponse { ok, body })
 }
 
 #[cfg(test)]

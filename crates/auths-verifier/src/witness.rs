@@ -138,6 +138,140 @@ pub fn verify_receipt_offline(
     }
 }
 
+/// The outcome of verifying a node's build attestation offline — does the node
+/// prove which binary it runs?
+///
+/// Two facts must both hold: the attestation's signature verifies against the
+/// key its self-describing `did:key` issuer embeds, AND the digest it attests is
+/// the digest of the binary actually running (the node's own self-measurement).
+/// A forged attestation — one whose attested digest differs from the running
+/// binary — fails on the second even when its signature is perfectly valid, so a
+/// swapped attestation cannot pass. `Verified` is the only success arm.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "result", rename_all = "kebab-case")]
+pub enum OfflineBuildVerdict {
+    /// The attestation's signature verifies AND it attests the running digest:
+    /// the node provably runs the binary the attestation was signed over.
+    Verified {
+        /// The digest both attested and measured (they agree).
+        digest: String,
+    },
+    /// The attestation could not be read as a signed artifact attestation (no
+    /// payload, no digest, malformed issuer) — there is nothing to check.
+    Unreadable {
+        /// Why the attestation could not be interpreted.
+        reason: String,
+    },
+    /// The attestation's signature does not verify against the key its issuer
+    /// embeds — it was altered or was not produced by the claimed signer.
+    SignatureFailed {
+        /// The issuer the signature was checked against.
+        issuer: String,
+    },
+    /// The signature is valid, but the attestation attests a DIFFERENT digest
+    /// than the binary actually running — a forged or stale attestation, paired
+    /// with a binary it does not describe.
+    DigestMismatch {
+        /// The digest the attestation attests.
+        attested: String,
+        /// The digest the node measured of its running binary.
+        running: String,
+    },
+}
+
+impl OfflineBuildVerdict {
+    /// Whether the node provably runs the attested binary (the only success arm).
+    pub fn is_verified(&self) -> bool {
+        matches!(self, OfflineBuildVerdict::Verified { .. })
+    }
+}
+
+/// Verify a node's build attestation offline against the digest of the binary
+/// it is actually running — the "which binary does this node run?" check.
+///
+/// The attestation is the `auths artifact sign` document the operator produced
+/// over the released binary; its self-describing `did:key` issuer embeds the
+/// verification key, so `{attestation, running_digest}` is everything a relying
+/// party needs. The check is deliberately two-legged and fail-closed:
+///
+/// 1. the signature verifies against the issuer's embedded key
+///    ([`verify_with_keys`](crate::verify_with_keys)); and
+/// 2. the digest the attestation attests equals `running_digest` — the digest
+///    the node measured of its own executable.
+///
+/// A valid signature over the WRONG binary fails on leg 2
+/// ([`OfflineBuildVerdict::DigestMismatch`]): an operator cannot vouch for a
+/// binary they are not running by attaching a correctly-signed attestation for a
+/// different one. This is the dogfood of `auths artifact verify --signature-only`
+/// bound to a live self-measurement.
+///
+/// Args:
+/// * `attestation`: the parsed signed build attestation (`auths artifact sign`).
+/// * `running_digest`: the SHA-256 (hex) the node measured of its own binary.
+#[cfg(feature = "native")]
+pub async fn verify_build_attestation_offline(
+    attestation: &crate::core::Attestation,
+    running_digest: &str,
+) -> OfflineBuildVerdict {
+    // The attested digest lives in the artifact payload the signer covered.
+    let attested = match attestation
+        .payload
+        .as_ref()
+        .and_then(|p| p.get("digest"))
+        .and_then(|d| d.get("hex"))
+        .and_then(|h| h.as_str())
+    {
+        Some(h) => h.to_string(),
+        None => {
+            return OfflineBuildVerdict::Unreadable {
+                reason:
+                    "attestation carries no artifact digest to check against the running binary"
+                        .to_string(),
+            };
+        }
+    };
+
+    // The issuer is a self-describing `did:key` that embeds the signing key —
+    // recover it so the signature can be checked from the attestation alone.
+    let issuer = attestation.issuer.as_str();
+    let decoded = match did_key_decode(issuer) {
+        Ok(d) => d,
+        Err(e) => {
+            return OfflineBuildVerdict::Unreadable {
+                reason: format!("attestation issuer is not a readable did:key: {e}"),
+            };
+        }
+    };
+    let issuer_pk = match crate::core::DevicePublicKey::try_new(decoded.curve(), decoded.bytes()) {
+        Ok(pk) => pk,
+        Err(e) => {
+            return OfflineBuildVerdict::Unreadable {
+                reason: format!("attestation issuer key is unusable: {e}"),
+            };
+        }
+    };
+
+    // Leg 1: the signature must verify against the issuer's embedded key.
+    if crate::verify_with_keys(attestation, &issuer_pk)
+        .await
+        .is_err()
+    {
+        return OfflineBuildVerdict::SignatureFailed {
+            issuer: issuer.to_string(),
+        };
+    }
+
+    // Leg 2: the attested digest must be the digest of the running binary.
+    if attested != running_digest {
+        return OfflineBuildVerdict::DigestMismatch {
+            attested,
+            running: running_digest.to_string(),
+        };
+    }
+
+    OfflineBuildVerdict::Verified { digest: attested }
+}
+
 /// Result of witness quorum verification.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WitnessQuorum {
@@ -466,5 +600,55 @@ mod tests {
             verdict,
             OfflineReceiptVerdict::UnreadableIdentity { .. }
         ));
+    }
+
+    // ── build attestation, offline ───────────────────────────────────────────
+    // The signed-and-matching ("Verified") and forged ("DigestMismatch") arms
+    // are covered end to end against a real `auths artifact sign --ci` output in
+    // the conformance probe (a live node + the dogfooded signer). Here we pin
+    // the fail-closed shape arms that do not need a valid signature: an
+    // attestation with no digest, and one whose issuer is not a readable
+    // did:key, are both Unreadable — never mistaken for a verified build.
+    use crate::testing::AttestationBuilder;
+
+    #[tokio::test]
+    async fn build_verify_no_digest_is_unreadable() {
+        let att = AttestationBuilder::default()
+            .issuer("did:key:z6MkfooNoDigest")
+            .payload(Some(serde_json::json!({ "artifact_type": "file" })))
+            .build();
+        let verdict = verify_build_attestation_offline(&att, "deadbeef").await;
+        assert!(matches!(verdict, OfflineBuildVerdict::Unreadable { .. }));
+    }
+
+    #[tokio::test]
+    async fn build_verify_unreadable_issuer_is_unreadable() {
+        // A digest is present, but the issuer is not a self-describing did:key,
+        // so no key can be recovered to check the signature against.
+        let att = AttestationBuilder::default()
+            .issuer("did:keri:ENotADidKey")
+            .payload(Some(serde_json::json!({
+                "digest": { "algorithm": "sha256", "hex": "abc123" }
+            })))
+            .build();
+        let verdict = verify_build_attestation_offline(&att, "abc123").await;
+        assert!(matches!(verdict, OfflineBuildVerdict::Unreadable { .. }));
+    }
+
+    #[test]
+    fn build_verdict_verified_is_the_only_success_arm() {
+        assert!(
+            OfflineBuildVerdict::Verified {
+                digest: "abc".into()
+            }
+            .is_verified()
+        );
+        assert!(
+            !OfflineBuildVerdict::DigestMismatch {
+                attested: "a".into(),
+                running: "b".into(),
+            }
+            .is_verified()
+        );
     }
 }

@@ -112,7 +112,7 @@ pub use identity::{
 };
 #[cfg(feature = "witness-server")]
 pub use server::{
-    ErrorResponse, HeadResponse, HealthResponse, SaidAtSeqResponse, SubmitEventRequest,
+    BuildProof, ErrorResponse, HeadResponse, HealthResponse, SaidAtSeqResponse, SubmitEventRequest,
     WitnessServerConfig, WitnessServerState, router as witness_router, run_server,
 };
 #[cfg(feature = "witness-server")]
