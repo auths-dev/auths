@@ -183,27 +183,11 @@ fn envelope_to_string(envelope: &CommitBundleEnvelope) -> String {
         .unwrap_or_else(|_| r#"{"kind":"error","error":"serialization failed"}"#.to_string())
 }
 
-/// A stable machine code for each [`CommitVerdict`] variant.
+/// A stable machine code for each [`CommitVerdict`] variant. Thin alias over the
+/// canonical [`CommitVerdict::code`] so the bundle-JSON `kind` and the CLI `status`
+/// field share one source of truth.
 fn verdict_code(verdict: &CommitVerdict) -> &'static str {
-    match verdict {
-        CommitVerdict::Valid { .. } => "valid",
-        CommitVerdict::Unsigned => "unsigned",
-        CommitVerdict::SshSignatureInvalid => "ssh-signature-invalid",
-        CommitVerdict::GpgUnsupported => "gpg-unsupported",
-        CommitVerdict::DeviceKelInvalid(_) => "device-kel-invalid",
-        CommitVerdict::RootKelInvalid(_) => "root-kel-invalid",
-        CommitVerdict::RootNotPinned(_) => "root-not-pinned",
-        CommitVerdict::RootAbandoned => "root-abandoned",
-        CommitVerdict::NotDelegatedByClaimedRoot { .. } => "not-delegated-by-claimed-root",
-        CommitVerdict::DelegationSealNotFound => "delegation-seal-not-found",
-        CommitVerdict::DeviceRevoked => "device-revoked",
-        CommitVerdict::SignedAfterRevocation { .. } => "signed-after-revocation",
-        CommitVerdict::OutsideAgentScope { .. } => "outside-agent-scope",
-        CommitVerdict::AgentExpired { .. } => "agent-expired",
-        CommitVerdict::SignerKeyMismatch => "signer-key-mismatch",
-        CommitVerdict::SignedBySupersededKey => "signed-by-superseded-key",
-        CommitVerdict::WitnessQuorumNotMet { .. } => "witness-quorum-not-met",
-    }
+    verdict.code()
 }
 
 /// A human-readable one-liner for each [`CommitVerdict`] variant.

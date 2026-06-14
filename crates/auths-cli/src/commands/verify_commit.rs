@@ -10,7 +10,7 @@ use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     Attestation, BundleTrust, CommitVerdict, IdentityBundle, VerificationReport,
     VerifierWitnessPolicy, WitnessGateStatus, verify_chain_with_witnesses,
-    verify_commit_against_kel_witnessed,
+    verify_commit_against_kel_witnessed_scoped,
 };
 use clap::Parser;
 use serde::Serialize;
@@ -70,6 +70,11 @@ pub struct VerifyCommitCommand {
 struct VerifyCommitResult {
     commit: String,
     valid: bool,
+    /// Stable machine-readable verdict code (e.g. `valid`, `outside-agent-scope`,
+    /// `device-revoked`). Lets a consumer attribute the outcome to its specific
+    /// cause without parsing the human `error` string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ssh_valid: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -117,6 +122,7 @@ impl VerifyCommitResult {
         Self {
             commit,
             valid: false,
+            status: None,
             ssh_valid: None,
             chain_valid: None,
             chain_report: None,
@@ -461,6 +467,20 @@ async fn verify_one_commit(
             );
         }
     };
+    // The ROOT KEL the verifier replays is the *delegator's* KEL — the carrier of
+    // the agent's delegator-anchored scope seal. When the signer is itself a
+    // delegated identity (its KEL opens with a `dip`, e.g. an agent signing its own
+    // commit), the trustworthy root is the delegator named in that `dip`, NOT the
+    // in-band `Auths-Id` trailer (which an agent acting on its own behalf sets to
+    // itself). Deriving the root from the authenticated device KEL — rather than a
+    // self-asserted trailer — is what lets the scoped commit-verify path replay a
+    // real root KEL (so it does not hit the "delegator lookup required" wall) and
+    // read the agent's scope from the delegator's anchored seal. A non-delegated
+    // signer keeps the trailer-named root unchanged.
+    let root_did = match device_kel.first().and_then(|e| e.delegator()) {
+        Some(delegator) => format!("did:keri:{delegator}"),
+        None => root_did,
+    };
     let root_kel = match resolve_signer_kel(registry, cmd, bundle_kel, &root_did).await {
         Ok(events) => events,
         Err(e) => {
@@ -476,7 +496,15 @@ async fn verify_one_commit(
     } else {
         VerifierWitnessPolicy::Warn
     };
-    let witnessed = verify_commit_against_kel_witnessed(
+    // The signing time gates the delegator-anchored scope/expiry checks. KERI
+    // carries no wall-clock; the verifier injects `now` at this boundary (the SDK
+    // and core never call `Utc::now()`). Scope is read from the delegator's KEL —
+    // a delegate exercising a capability outside its anchored scope is rejected
+    // (`OutsideAgentScope`), and it cannot self-widen because the seal lives in the
+    // root's KEL, which only the root's key can advance.
+    #[allow(clippy::disallowed_methods)]
+    let now = chrono::Utc::now().timestamp();
+    let witnessed = verify_commit_against_kel_witnessed_scoped(
         raw_commit.as_bytes(),
         &device_kel,
         &root_kel,
@@ -484,6 +512,7 @@ async fn verify_one_commit(
         provider,
         receipt_lookup,
         policy,
+        now,
     )
     .await;
     let mut result = verdict_to_result(sha.clone(), witnessed.verdict);
@@ -570,6 +599,10 @@ fn raw_commit_object(sha: &str) -> Result<String> {
 /// and a human-readable reason for every failure mode.
 fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResult {
     let mut result = VerifyCommitResult::failure(commit, String::new());
+    // The stable machine code travels in the `status` field regardless of the
+    // valid/invalid branch — a consumer can attribute the outcome (e.g.
+    // `outside-agent-scope`) without parsing the human `error` string.
+    result.status = Some(verdict.code().to_string());
     match verdict {
         CommitVerdict::Valid {
             signer_did,
@@ -933,6 +966,7 @@ mod tests {
         let r = VerifyCommitResult {
             commit: "abc123".into(),
             valid: true,
+            status: Some("valid".into()),
             ssh_valid: Some(true),
             chain_valid: Some(true),
             chain_report: None,
@@ -970,6 +1004,7 @@ mod tests {
         let r = VerifyCommitResult {
             commit: "abc12345".into(),
             valid: true,
+            status: Some("valid".into()),
             ssh_valid: Some(true),
             chain_valid: None,
             chain_report: None,
@@ -990,6 +1025,7 @@ mod tests {
         let r = VerifyCommitResult {
             commit: "abc12345".into(),
             valid: true,
+            status: Some("valid".into()),
             ssh_valid: Some(true),
             chain_valid: Some(true),
             chain_report: Some(VerificationReport::valid(vec![])),

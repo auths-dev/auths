@@ -477,9 +477,8 @@ fn merge_one_tel(
 
     // Persist verbatim, idempotently (skip an sn the destination already has).
     let mut present: BTreeSet<u128> = BTreeSet::new();
-    read_tel_sns(dest, issuer, registry, credential, &mut present).map_err(|reason| {
-        refused(format!("local TEL event did not parse: {reason}"))
-    })?;
+    read_tel_sns(dest, issuer, registry, credential, &mut present)
+        .map_err(|reason| refused(format!("local TEL event did not parse: {reason}")))?;
     for (sn, bytes) in raw {
         if present.contains(&sn) {
             report.tel_events_already_present += 1;
@@ -502,8 +501,11 @@ fn read_tel_raw(
 ) -> Result<(), String> {
     let mut parse_err: Option<String> = None;
     source
-        .visit_tel_events(issuer, registry, credential, &mut |bytes| {
-            match TelEvent::from_wire_bytes(bytes) {
+        .visit_tel_events(
+            issuer,
+            registry,
+            credential,
+            &mut |bytes| match TelEvent::from_wire_bytes(bytes) {
                 Ok(event) => {
                     raw.push((tel_event_sn(&event), bytes.to_vec()));
                     ControlFlow::Continue(())
@@ -512,8 +514,8 @@ fn read_tel_raw(
                     parse_err = Some(format!("TEL event did not parse: {e}"));
                     ControlFlow::Break(())
                 }
-            }
-        })
+            },
+        )
         .map_err(|e| e.to_string())?;
     match parse_err {
         Some(reason) => Err(reason),
@@ -530,8 +532,11 @@ fn read_tel_sns(
     present: &mut BTreeSet<u128>,
 ) -> Result<(), String> {
     let mut parse_err: Option<String> = None;
-    dest.visit_tel_events(issuer, registry, credential, &mut |bytes| {
-        match TelEvent::from_wire_bytes(bytes) {
+    dest.visit_tel_events(
+        issuer,
+        registry,
+        credential,
+        &mut |bytes| match TelEvent::from_wire_bytes(bytes) {
             Ok(event) => {
                 present.insert(tel_event_sn(&event));
                 ControlFlow::Continue(())
@@ -540,8 +545,8 @@ fn read_tel_sns(
                 parse_err = Some(e.to_string());
                 ControlFlow::Break(())
             }
-        }
-    })
+        },
+    )
     .map_err(|e| e.to_string())?;
     match parse_err {
         Some(reason) => Err(reason),
