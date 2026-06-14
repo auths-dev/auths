@@ -25,6 +25,7 @@ pub mod git_helpers;
 pub mod id;
 pub mod index;
 pub mod init;
+pub mod ipex;
 pub mod key;
 pub mod key_detect;
 pub mod key_state;

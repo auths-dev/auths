@@ -44,6 +44,9 @@ mod crypto;
 pub mod did_webs;
 mod error;
 mod events;
+/// IPEX — the Issuance & Presentation EXchange grant/admit `exn` handshake for
+/// handing over an ACDC credential between KERI controllers.
+pub mod ipex;
 pub mod kel_io;
 mod keys;
 /// Key-State Notice (KSN) — signed snapshot of current key-state for thin clients.
@@ -94,6 +97,7 @@ pub use events::{
     pair_kel_attachments, parse_attachment, parse_delegated_attachment, parse_source_seal_couples,
     serialize_attachment, serialize_source_seal_couples,
 };
+pub use ipex::{IpexAdmit, IpexError, IpexGrant};
 pub use keys::{KeriDecodeError, KeriPublicKey};
 pub use ksn::{
     KERI_KEY_STATE_VERSION, KSN_TYPE, KSN_VERSION, KeyStateNotice, KeyStateRecord, KsnError,

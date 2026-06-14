@@ -109,6 +109,7 @@ fn run() -> Result<()> {
         RootCommand::KeyState(cmd) => cmd.execute(&ctx),
         RootCommand::DidWebs(cmd) => cmd.execute(&ctx),
         RootCommand::Oobi(cmd) => cmd.execute(&ctx),
+        RootCommand::Ipex(cmd) => cmd.execute(&ctx),
         RootCommand::Approval(cmd) => cmd.execute(&ctx),
         RootCommand::Policy(cmd) => cmd.execute(&ctx),
         RootCommand::Namespace(cmd) => cmd.execute(&ctx),

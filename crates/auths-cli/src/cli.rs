@@ -25,6 +25,7 @@ use crate::commands::emergency::EmergencyCommand;
 use crate::commands::error_lookup::ErrorLookupCommand;
 use crate::commands::id::IdCommand;
 use crate::commands::init::InitCommand;
+use crate::commands::ipex::IpexCommand;
 use crate::commands::key::KeyCommand;
 use crate::commands::key_state::KeyStateCommand;
 use crate::commands::learn::LearnCommand;
@@ -131,6 +132,8 @@ pub enum RootCommand {
     DidWebs(DidWebsCommand),
     #[command(hide = true)]
     Oobi(OobiCommand),
+    #[command(hide = true)]
+    Ipex(IpexCommand),
     #[command(hide = true)]
     Approval(ApprovalCommand),
     #[command(hide = true)]
