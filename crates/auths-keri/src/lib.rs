@@ -119,11 +119,16 @@ pub use tel::{
     Iss, Rev, TEL_KERIPY_REVISION, TRAIT_NO_BACKERS, TelAnchorSeal, TelEvent, TelState, Vcp,
     encode_nonce as encode_tel_nonce, to_wire_bytes as tel_to_wire_bytes, validate_tel,
 };
-pub use tls_cert::{AUTHS_KERI_BINDING_OID, AuthsKeriBinding, DID_KERI_SCHEME, TlsCertError};
+pub use tls_cert::{
+    AUTHS_KERI_BINDING_OID, AuthsKeriBinding, DID_KERI_SCHEME, TlsCertError, TlsKeyAuthorization,
+    TlsKeyAuthorizer,
+};
 #[cfg(feature = "tls-cert")]
 pub use tls_cert::{
-    IssuedCert, extract_aid_from_san, extract_binding, extract_did_keri_san, issue_kel_rooted_cert,
-    issue_kel_rooted_cert_with_key, verify_binds_to_key_state,
+    IssuedCert, extract_aid_from_san, extract_binding, extract_did_keri_san, extract_spki_der,
+    issue_authorized_kel_rooted_cert, issue_authorized_kel_rooted_cert_with_key,
+    issue_kel_rooted_cert, issue_kel_rooted_cert_with_key, verify_authorized_against_key_state,
+    verify_binds_to_key_state,
 };
 pub use types::{
     CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,

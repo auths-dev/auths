@@ -11,39 +11,83 @@
 //!
 //! Two directions, both offline/hermetic (the KEL handed in is a local artifact):
 //!
-//! * `auths tls-cert issue --from-kel kel.json` — us → peer: replay the KEL,
-//!   project its current key-state into a KEL-rooted leaf, and emit the cert PEM
-//!   plus the ephemeral TLS private key PEM the acceptor serves.
-//! * `auths tls-cert verify --cert cert.pem --from-kel kel.json` — peer → us:
-//!   parse a peer's leaf, replay the KEL we hold for its AID, and confirm the
-//!   cert binds to that exact replayed key-state (AID, current keys, KEL tip, and
-//!   the `did:keri` SAN). Trust is rooted in the log, never in a CA.
+//! * `auths tls-cert issue --from-kel kel.json --sign-key aid.key.pem` — us →
+//!   peer: replay the KEL, project its current key-state into a KEL-rooted leaf,
+//!   have the AID's current signing key authorize the leaf's TLS key (a KERI
+//!   signature over the leaf SPKI), and emit the cert PEM plus the ephemeral TLS
+//!   private key PEM the acceptor serves.
+//! * `auths tls-cert verify --cert cert.pem --from-kel kel.json` — peer → us: the
+//!   adversarial verifier. Parse a peer's leaf, replay the KEL we hold for its
+//!   AID, and confirm the cert binds to that exact replayed key-state (AID,
+//!   current keys, KEL tip, the `did:keri` SAN) **and** that the AID authorized
+//!   the leaf's TLS key. Rejects a forged binding (matching key-state over an
+//!   attacker's TLS key), a revoked/rotated AID, a stripped binding/authorization,
+//!   and a SAN spoof. Trust is rooted in the log, never in a CA.
 //!
 //! The wire/crypto definition lives in `auths-keri::tls_cert`; this is a thin CLI
 //! adapter over it. The cert's subject key is a fresh ephemeral TLS keypair, so
-//! the AID's long-term signing key never goes on the wire.
+//! the AID's long-term signing key never goes on the wire — only its detached
+//! authorization signature over the public TLS key does.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
+use auths_crypto::TypedSignerKey;
 use auths_keri::{
-    TrustedKel, extract_aid_from_san, issue_kel_rooted_cert, issue_kel_rooted_cert_with_key,
-    parse_kel_json, verify_binds_to_key_state,
+    KeyState, TlsCertError, TlsKeyAuthorizer, TrustedKel, extract_aid_from_san,
+    issue_authorized_kel_rooted_cert, issue_authorized_kel_rooted_cert_with_key,
+    issue_kel_rooted_cert, issue_kel_rooted_cert_with_key, parse_kel_json,
+    verify_authorized_against_key_state,
 };
 use auths_utils::path::expand_tilde;
 use clap::{Parser, Subcommand};
 
 use crate::config::CliConfig;
 
+/// Adapter: a [`TlsKeyAuthorizer`] backed by the AID's current signing key.
+///
+/// The CLI holds the AID's signing key as a local PKCS#8 artifact (the same
+/// hermetic boundary `--from-kel` / `--tls-key` already use); this adapter signs
+/// the leaf's `SubjectPublicKeyInfo` DER with it so the issued leaf carries the
+/// AID's authorization. The core `auths-keri` never imports a key store — it only
+/// sees the port.
+struct SignerKeyAuthorizer {
+    signer: TypedSignerKey,
+    key_index: usize,
+}
+
+impl TlsKeyAuthorizer for SignerKeyAuthorizer {
+    fn current_key_index(&self) -> usize {
+        self.key_index
+    }
+
+    fn sign_tls_key(&self, spki_der: &[u8]) -> Result<Vec<u8>, TlsCertError> {
+        self.signer
+            .sign(spki_der)
+            .map_err(|e| TlsCertError::Generate(format!("authorize TLS key: {e}")))
+    }
+}
+
+/// Load the AID's current signing key from a PKCS#8 PEM file into a typed signer.
+fn load_signer(key_path: &Path) -> Result<TypedSignerKey> {
+    let path = expand_tilde(key_path)?;
+    let pem = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow!("read signing key {}: {e}", path.display()))?;
+    let (_, der) = pkcs8::SecretDocument::from_pem(&pem)
+        .map_err(|e| anyhow!("parse signing key PEM {}: {e}", path.display()))?;
+    TypedSignerKey::from_pkcs8(der.as_bytes())
+        .map_err(|e| anyhow!("load signing key {}: {e}", path.display()))
+}
+
 /// Issue or verify a KEL-rooted X.509 certificate (TLS composition).
 #[derive(Parser, Debug, Clone)]
 #[command(
     about = "Issue/verify a KEL-rooted X.509 cert and read its did:keri subjectAltName — an auths identity that stock TLS stacks (rustls/openssl/go) handshake with",
     after_help = "Examples:
-  auths tls-cert issue --from-kel kel.json --san localhost --san 127.0.0.1
-  auths tls-cert issue --from-kel kel.json --out leaf            # writes leaf.cert.pem + leaf.key.pem
-  auths tls-cert identity --cert leaf.cert.pem                   # read the did:keri AID out of the SAN
-  auths tls-cert verify --cert leaf.cert.pem --from-kel kel.json"
+  auths tls-cert issue --from-kel kel.json --sign-key aid.key.pem --san localhost   # AID-authorized leaf
+  auths tls-cert issue --from-kel kel.json --sign-key aid.key.pem --out leaf         # writes leaf.cert.pem + leaf.key.pem
+  auths tls-cert identity --cert leaf.cert.pem                                       # read the did:keri AID out of the SAN
+  auths tls-cert verify --cert leaf.cert.pem --from-kel kel.json                     # adversarial: rejects forged/revoked/stripped"
 )]
 pub struct TlsCertCommand {
     /// The direction to run: issue our leaf, or verify a peer's.
@@ -79,6 +123,19 @@ pub struct IssueArgs {
     /// fresh ephemeral one (e.g. to reuse a key the acceptor already holds).
     #[clap(long, value_name = "KEY.pem")]
     pub tls_key: Option<PathBuf>,
+
+    /// The AID's current signing key (PKCS#8 PEM). When given, the leaf carries an
+    /// AID authorization over its TLS key (a KERI signature over the leaf SPKI), so
+    /// `verify` can reject a forged binding minted over an attacker's TLS key.
+    /// Without it the leaf only chains to the key-state (the discovery surface) and
+    /// is rejected by the adversarial verifier.
+    #[clap(long, value_name = "AID-KEY.pem")]
+    pub sign_key: Option<PathBuf>,
+
+    /// Which current key (index into the KEL's current key-state) `--sign-key`
+    /// corresponds to. Defaults to 0 (single-sig AIDs).
+    #[clap(long, default_value_t = 0, value_name = "N")]
+    pub sign_key_index: usize,
 
     /// Write `<PREFIX>.cert.pem` + `<PREFIX>.key.pem` instead of printing to
     /// stdout. Without it, the cert PEM is printed (the key never is, to avoid
@@ -136,18 +193,7 @@ fn replay_kel(kel_path: &Path) -> Result<auths_keri::KeyState> {
 impl IssueArgs {
     fn run(&self) -> Result<()> {
         let state = replay_kel(&self.from_kel)?;
-
-        let issued = match &self.tls_key {
-            Some(key_path) => {
-                let path = expand_tilde(key_path)?;
-                let key_pem = std::fs::read_to_string(&path)
-                    .map_err(|e| anyhow!("read TLS key {}: {e}", path.display()))?;
-                issue_kel_rooted_cert_with_key(&state, &key_pem, &self.sans)
-                    .map_err(|e| anyhow!("issue KEL-rooted cert: {e}"))?
-            }
-            None => issue_kel_rooted_cert(&state, &self.sans)
-                .map_err(|e| anyhow!("issue KEL-rooted cert: {e}"))?,
-        };
+        let issued = self.issue(&state)?;
 
         match &self.out {
             Some(prefix) => {
@@ -170,6 +216,47 @@ impl IssueArgs {
             }
         }
         Ok(())
+    }
+
+    /// Mint the leaf, dispatching on whether the AID's signing key (authorized,
+    /// the secure path) and/or a supplied TLS key are provided. One source of
+    /// truth for the four issue paths.
+    fn issue(&self, state: &KeyState) -> Result<auths_keri::IssuedCert> {
+        let tls_key_pem = match &self.tls_key {
+            Some(key_path) => {
+                let path = expand_tilde(key_path)?;
+                Some(
+                    std::fs::read_to_string(&path)
+                        .map_err(|e| anyhow!("read TLS key {}: {e}", path.display()))?,
+                )
+            }
+            None => None,
+        };
+
+        match (&self.sign_key, tls_key_pem) {
+            (Some(sign_key_path), Some(tls_pem)) => {
+                let signer = load_signer(sign_key_path)?;
+                let authorizer = SignerKeyAuthorizer {
+                    signer,
+                    key_index: self.sign_key_index,
+                };
+                issue_authorized_kel_rooted_cert_with_key(state, &authorizer, &tls_pem, &self.sans)
+                    .map_err(|e| anyhow!("issue authorized KEL-rooted cert: {e}"))
+            }
+            (Some(sign_key_path), None) => {
+                let signer = load_signer(sign_key_path)?;
+                let authorizer = SignerKeyAuthorizer {
+                    signer,
+                    key_index: self.sign_key_index,
+                };
+                issue_authorized_kel_rooted_cert(state, &authorizer, &self.sans)
+                    .map_err(|e| anyhow!("issue authorized KEL-rooted cert: {e}"))
+            }
+            (None, Some(tls_pem)) => issue_kel_rooted_cert_with_key(state, &tls_pem, &self.sans)
+                .map_err(|e| anyhow!("issue KEL-rooted cert: {e}")),
+            (None, None) => issue_kel_rooted_cert(state, &self.sans)
+                .map_err(|e| anyhow!("issue KEL-rooted cert: {e}")),
+        }
     }
 }
 
@@ -200,14 +287,25 @@ impl VerifyArgs {
         let cert_pem = std::fs::read_to_string(&cert_path)
             .map_err(|e| anyhow!("read cert {}: {e}", cert_path.display()))?;
 
-        let binding = verify_binds_to_key_state(&cert_pem, &state)
-            .map_err(|e| anyhow!("certificate does not chain to the KEL: {e}"))?;
+        // The adversarial verifier: the leaf must chain to the replayed log AND
+        // carry the AID's authorization over its TLS key. This rejects a forged
+        // binding (matching key-state, attacker's TLS key), a revoked/rotated AID
+        // (key-state diverges from the replay), a stripped binding/authorization,
+        // and a SAN spoof — the T3 rejection classes.
+        let binding = verify_authorized_against_key_state(&cert_pem, &state)
+            .map_err(|e| anyhow!("certificate rejected: {e}"))?;
 
+        let authorized_by = binding
+            .tls_key_authorization
+            .as_ref()
+            .map(|a| a.key_index)
+            .unwrap_or_default();
         println!(
-            "verified: certificate is rooted in the KEL\n  did:keri: {}\n  current keys: {}\n  KEL tip: {}",
+            "verified: certificate is rooted in the KEL and the AID authorized its TLS key\n  did:keri: {}\n  current keys: {}\n  KEL tip: {}\n  TLS key authorized by current key #{}",
             binding.did_keri(),
             binding.current_keys.join(", "),
-            binding.kel_tip
+            binding.kel_tip,
+            authorized_by,
         );
         Ok(())
     }
