@@ -34,6 +34,7 @@
 // ECDH secret or the transport key.
 #![forbid(unsafe_code)]
 
+pub mod channel_binding;
 pub mod domain_separation;
 pub mod envelope;
 mod error;
@@ -45,6 +46,10 @@ pub mod sas;
 mod token;
 pub mod types;
 
+pub use channel_binding::{
+    CHANNEL_BINDING_INFO, ChannelBinding, ChannelBindingError, ChannelBindingProvider,
+    TLS_EXPORTER_LABEL, TLS_EXPORTER_LEN,
+};
 pub use envelope::{
     Envelope, EnvelopeError, EnvelopeSession, MAX_MESSAGES_PER_SESSION, Open, Sealed,
 };

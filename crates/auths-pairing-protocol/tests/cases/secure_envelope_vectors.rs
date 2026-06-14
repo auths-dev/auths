@@ -23,11 +23,23 @@
 use std::path::PathBuf;
 
 use auths_pairing_protocol::{
-    Envelope, EnvelopeSession, MAX_MESSAGES_PER_SESSION, Sealed, TransportKey,
+    ChannelBinding, Envelope, EnvelopeSession, MAX_MESSAGES_PER_SESSION, Sealed, TLS_EXPORTER_LEN,
+    TransportKey,
 };
 use serde::{Deserialize, Serialize};
 
 const VECTORS_PATH: &str = "tests/vectors/secure_envelope.json";
+
+/// Fixed TLS channel-binding (RFC 9266 `tls-exporter`) used for every KAT
+/// vector. Models one TLS connection. A real session derives this from its live
+/// connection; the KAT pins a representative value so every implementation —
+/// Rust here, the Swift mobile mirror — folds an identical binding into the
+/// key + AAD and reproduces byte-identical ciphertext.
+const KAT_CHANNEL_BINDING: [u8; TLS_EXPORTER_LEN] = [0x9C; TLS_EXPORTER_LEN];
+
+fn kat_channel_binding() -> ChannelBinding {
+    ChannelBinding::from_exporter(&KAT_CHANNEL_BINDING).expect("32-byte binding")
+}
 
 /// Top-level KAT document.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -53,6 +65,10 @@ struct Vector {
     iv_hex: String,
     session_id: String,
     path: String,
+    /// 32 bytes (hex) — the RFC 9266 TLS `tls-exporter` channel binding the
+    /// envelope is sealed under. Folded into the key derivation and the AAD;
+    /// an implementation must use this exact value to reproduce the ciphertext.
+    channel_binding_hex: String,
     counter: u32,
     /// UTF-8 plaintext. Kept human-readable where possible; binary vectors
     /// use `plaintext_hex` instead.
@@ -63,7 +79,8 @@ struct Vector {
     plaintext_hex: Option<String>,
     /// Expected nonce (= iv XOR counter_be on last 4 bytes).
     nonce_hex: String,
-    /// Expected AAD (len-prefixed session_id || len-prefixed path || counter_be).
+    /// Expected AAD (len-prefixed session_id || len-prefixed path ||
+    /// len-prefixed channel_binding || counter_be).
     aad_hex: String,
     /// Expected ciphertext || 16-byte Poly1305 tag.
     ciphertext_hex: String,
@@ -250,7 +267,10 @@ async fn regenerate() -> VectorFile {
     VectorFile {
         envelope_info: "auths-pairing-envelope-v1".into(),
         aead: "chacha20poly1305".into(),
-        version: 1,
+        // v2: the envelope is now bound to the TLS channel — the RFC 9266
+        // `tls-exporter` value is folded into the key derivation and the AAD,
+        // so both the AAD layout and the ciphertext changed from v1.
+        version: 2,
         vectors,
     }
 }
@@ -275,7 +295,7 @@ async fn seal_vector(
     assert!((1..MAX_MESSAGES_PER_SESSION).contains(&counter));
 
     let tk = TransportKey::new(transport_key_bytes);
-    let mut session = EnvelopeSession::new(&tk, session_id.to_string(), iv)
+    let mut session = EnvelopeSession::new(&tk, session_id.to_string(), iv, kat_channel_binding())
         .await
         .expect("envelope session");
     for _ in 1..counter {
@@ -298,7 +318,12 @@ async fn seal_vector(
 
     let sealed: Envelope<Sealed> = session.seal(path, &pt_bytes).await.expect("seal");
     let nonce_hex = hex::encode(sealed.nonce());
-    let aad_hex = hex::encode(compute_expected_aad(session_id, path, counter));
+    let aad_hex = hex::encode(compute_expected_aad(
+        session_id,
+        path,
+        &KAT_CHANNEL_BINDING,
+        counter,
+    ));
     let ciphertext_hex = hex::encode(sealed.ciphertext());
 
     Vector {
@@ -307,6 +332,7 @@ async fn seal_vector(
         iv_hex: hex::encode(iv),
         session_id: session_id.to_string(),
         path: path.to_string(),
+        channel_binding_hex: hex::encode(KAT_CHANNEL_BINDING),
         counter,
         plaintext_utf8: pt_utf8,
         plaintext_hex: pt_hex,
@@ -318,14 +344,22 @@ async fn seal_vector(
     }
 }
 
-fn compute_expected_aad(session_id: &str, path: &str, counter: u32) -> Vec<u8> {
+fn compute_expected_aad(
+    session_id: &str,
+    path: &str,
+    channel_binding: &[u8],
+    counter: u32,
+) -> Vec<u8> {
     let sid = session_id.as_bytes();
     let p = path.as_bytes();
-    let mut aad = Vec::with_capacity(4 + sid.len() + 4 + p.len() + 4);
+    let cb = channel_binding;
+    let mut aad = Vec::with_capacity(4 + sid.len() + 4 + p.len() + 4 + cb.len() + 4);
     aad.extend_from_slice(&(sid.len() as u32).to_be_bytes());
     aad.extend_from_slice(sid);
     aad.extend_from_slice(&(p.len() as u32).to_be_bytes());
     aad.extend_from_slice(p);
+    aad.extend_from_slice(&(cb.len() as u32).to_be_bytes());
+    aad.extend_from_slice(cb);
     aad.extend_from_slice(&counter.to_be_bytes());
     aad
 }
@@ -395,7 +429,11 @@ async fn negative_vectors_reject_as_declared() {
     for v in file.vectors.iter().filter(|v| v.expected_result != "valid") {
         let tk = transport_key_from_hex(&v.transport_key_hex);
         let iv = iv_from_hex(&v.iv_hex);
-        let mut session = EnvelopeSession::new(&tk, v.session_id.clone(), iv)
+        let cb = ChannelBinding::from_exporter(
+            &hex::decode(&v.channel_binding_hex).expect("valid channel-binding hex"),
+        )
+        .expect("32-byte channel binding");
+        let mut session = EnvelopeSession::new(&tk, v.session_id.clone(), iv, cb)
             .await
             .expect("envelope session");
 
