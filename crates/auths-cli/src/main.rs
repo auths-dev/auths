@@ -108,6 +108,7 @@ fn run() -> Result<()> {
         RootCommand::Key(cmd) => cmd.execute(&ctx),
         RootCommand::KeyState(cmd) => cmd.execute(&ctx),
         RootCommand::DidWebs(cmd) => cmd.execute(&ctx),
+        RootCommand::TlsCert(cmd) => cmd.execute(&ctx),
         RootCommand::Oobi(cmd) => cmd.execute(&ctx),
         RootCommand::Ipex(cmd) => cmd.execute(&ctx),
         RootCommand::Approval(cmd) => cmd.execute(&ctx),

@@ -42,6 +42,7 @@ use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
 use crate::commands::sign_commit::SignCommitCommand;
 use crate::commands::status::StatusCommand;
+use crate::commands::tls_cert::TlsCertCommand;
 use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
 use crate::commands::whoami::WhoamiCommand;
@@ -130,6 +131,8 @@ pub enum RootCommand {
     KeyState(KeyStateCommand),
     #[command(hide = true, name = "did-webs")]
     DidWebs(DidWebsCommand),
+    #[command(hide = true, name = "tls-cert")]
+    TlsCert(TlsCertCommand),
     #[command(hide = true)]
     Oobi(OobiCommand),
     #[command(hide = true)]

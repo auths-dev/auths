@@ -687,6 +687,7 @@ dependencies = [
  "hex",
  "p256 0.13.2",
  "proptest",
+ "rcgen",
  "ring",
  "schemars",
  "serde",
@@ -694,6 +695,9 @@ dependencies = [
  "subtle",
  "thiserror 2.0.18",
  "tokio",
+ "x509-parser",
+ "yasna",
+ "zeroize",
 ]
 
 [[package]]

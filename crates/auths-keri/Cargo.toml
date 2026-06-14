@@ -26,6 +26,14 @@ serde_json = { version = "1", features = ["preserve_order"] }
 schemars = { workspace = true, optional = true }
 subtle.workspace = true
 thiserror.workspace = true
+# KEL-rooted X.509 leaf certificates (the `tls-cert` feature). rcgen mints the
+# leaf, x509-parser reads it back, yasna wraps the binding extension value, and
+# zeroize protects the ephemeral TLS key. All off by default — the core KERI
+# types carry no TLS-stack dependency.
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "aws_lc_rs", "x509-parser"], optional = true }
+x509-parser = { version = "0.18", optional = true }
+yasna = { version = "0.5", optional = true }
+zeroize = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -37,6 +45,10 @@ cnsa = ["auths-crypto/cnsa"]
 cesr = []
 schema = ["dep:schemars"]
 seal-extensions = []
+# KEL-rooted X.509 leaf certificates: an X.509 leaf whose trust roots in a KEL
+# (did:keri SAN + binding extension), issued/verified against a replayed
+# key-state. Pulls in rcgen/x509-parser; the core crate stays TLS-free without it.
+tls-cert = ["dep:rcgen", "dep:x509-parser", "dep:yasna", "dep:zeroize"]
 
 [dev-dependencies]
 proptest = "1.4"

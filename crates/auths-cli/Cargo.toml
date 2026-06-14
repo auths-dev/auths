@@ -24,7 +24,9 @@ name = "auths-verify"
 path = "src/bin/verify.rs"
 
 [dependencies]
-auths-keri.workspace = true
+# `tls-cert` powers `auths tls-cert` (KEL-rooted X.509 leaf certs for TLS
+# composition); the wire/crypto definition lives in auths-keri.
+auths-keri = { workspace = true, features = ["tls-cert"] }
 clap = { version = "4", features = ["derive", "env"] }
 clap_complete = "4"
 colored = "3.1.1"
