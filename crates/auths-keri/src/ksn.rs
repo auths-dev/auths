@@ -20,6 +20,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::events::Event;
+use crate::types::{ConfigTrait, Prefix, Said, Threshold};
 use crate::witness::StoredReceipt;
 use crate::witness::agreement::{AgreementStatus, WitnessAgreement};
 use crate::{CesrKey, KeyState};
@@ -29,6 +31,206 @@ pub const KSN_VERSION: u32 = 1;
 
 /// The `t` discriminator for a Key-State Notice.
 pub const KSN_TYPE: &str = "ksn";
+
+/// The KERI protocol major/minor version a key-state record reports in `vn`.
+/// Matches the `KERI10` wire generation (keripy `KeyStateRecord.vn == [1, 0]`).
+pub const KERI_KEY_STATE_VERSION: [u32; 2] = [1, 0];
+
+/// The latest establishment-event summary carried in a [`KeyStateRecord`] `ee`
+/// field: the sequence and SAID of the most recent `icp`/`rot`/`dip`/`drt`, plus
+/// the witnesses cut (`br`) and added (`ba`) by that event.
+///
+/// Mirrors keripy's `KeyStateRecord.ee` sub-record (`{s, d, br, ba}`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LatestEstablishmentEvent {
+    /// Sequence number of the latest establishment event, lowercase-hex (`"0"`).
+    pub s: String,
+    /// SAID of the latest establishment event.
+    pub d: Said,
+    /// Witnesses removed by the latest establishment event (rotation cuts).
+    #[serde(default)]
+    pub br: Vec<Prefix>,
+    /// Witnesses added by the latest establishment event (rotation adds).
+    #[serde(default)]
+    pub ba: Vec<Prefix>,
+}
+
+/// A **KERI-conformant key-state notice** — the wire record keripy emits as a
+/// `ksn`/`rpy` reply and persists as `KeyStateRecord`.
+///
+/// This is the byte-interoperable counterpart to the auths-internal
+/// [`KeyStateNotice`]: where `KeyStateNotice` is an auths-only envelope around a
+/// [`KeyState`], `KeyStateRecord` is the canonical KERI shape a peer (keripy,
+/// keriox) produces and consumes — field order and labels
+/// `{vn, i, s, p, d, f, dt, et, kt, k, nt, n, bt, b, c, ee, di}`, sequence
+/// numbers as lowercase hex, thresholds as KERI hex/clause strings.
+///
+/// It is a *parsed* type: holding one means the labels and shapes already
+/// matched the KERI form, so [`KeyStateRecord::into_key_state`] is total. Build
+/// one from an auths KEL with [`KeyStateRecord::from_kel`] (emit a record a peer
+/// can read); accept one from a peer by deserializing then
+/// [`into_key_state`](KeyStateRecord::into_key_state) (consume a keripy KSN).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyStateRecord {
+    /// Protocol version `[major, minor]` — `[1, 0]` for the `KERI10` generation.
+    pub vn: [u32; 2],
+    /// Identifier prefix (the AID this state describes).
+    pub i: Prefix,
+    /// Sequence number of the latest event, lowercase-hex.
+    pub s: String,
+    /// SAID of the prior event (empty at inception).
+    pub p: String,
+    /// SAID of the latest event.
+    pub d: Said,
+    /// First-seen ordinal. auths does not maintain a first-seen log separate from
+    /// the KEL, so this mirrors `s` (the latest sequence) — truthful for a
+    /// single-source replay, where first-seen order *is* event order.
+    pub f: String,
+    /// Controller-asserted timestamp (RFC 3339).
+    pub dt: String,
+    /// Latest establishment event type (`icp`/`rot`/`dip`/`drt`).
+    pub et: String,
+    /// Current signing threshold (KERI hex/clause string).
+    pub kt: Threshold,
+    /// Current signing key(s), CESR-encoded.
+    pub k: Vec<CesrKey>,
+    /// Next-key threshold (KERI hex/clause string).
+    pub nt: Threshold,
+    /// Next-key commitment digest(s).
+    pub n: Vec<Said>,
+    /// Backer (witness) threshold (`bt`, hex string).
+    pub bt: Threshold,
+    /// Current backer (witness) list.
+    pub b: Vec<Prefix>,
+    /// Configuration traits.
+    pub c: Vec<ConfigTrait>,
+    /// Latest establishment event summary (`{s, d, br, ba}`).
+    pub ee: LatestEstablishmentEvent,
+    /// Delegator AID (empty string when not delegated).
+    pub di: String,
+}
+
+impl KeyStateRecord {
+    /// Build a KERI key-state record by replaying a validated KEL into its
+    /// current state, stamped at `dt`.
+    ///
+    /// `events` is the full, in-order KEL (inception first); the record's `s`/`d`
+    /// come from the last event and `p`/`ee`/`et` from its latest establishment
+    /// event. Returns `None` only if `events` is empty (no inception to anchor a
+    /// state) — the caller has nothing to notice.
+    ///
+    /// Args:
+    /// * `events`: The replayed KEL, in sequence order.
+    /// * `state`: The resolved current [`KeyState`] (from `replay`).
+    /// * `dt`: An RFC-3339 timestamp (injected `now`).
+    pub fn from_kel(events: &[Event], state: &KeyState, dt: impl Into<String>) -> Option<Self> {
+        let last = events.last()?;
+        let latest_est = events.iter().rev().find(|e| !e.is_interaction())?;
+        Some(Self {
+            vn: KERI_KEY_STATE_VERSION,
+            i: state.prefix.clone(),
+            s: format!("{:x}", state.sequence),
+            p: last
+                .previous()
+                .map(|s| s.as_str().to_string())
+                .unwrap_or_default(),
+            d: state.last_event_said.clone(),
+            f: format!("{:x}", state.sequence),
+            dt: dt.into(),
+            et: establishment_type(latest_est).to_string(),
+            kt: state.threshold.clone(),
+            k: state.current_keys.clone(),
+            nt: state.next_threshold.clone(),
+            n: state.next_commitment.clone(),
+            bt: state.backer_threshold.clone(),
+            b: state.backers.clone(),
+            c: state.config_traits.clone(),
+            ee: LatestEstablishmentEvent {
+                s: format!("{:x}", latest_est.sequence().value()),
+                d: latest_est.said().clone(),
+                br: Vec::new(),
+                ba: Vec::new(),
+            },
+            di: state
+                .delegator
+                .as_ref()
+                .map(|p| p.as_str().to_string())
+                .unwrap_or_default(),
+        })
+    }
+
+    /// The sequence number this record notices (the latest event's `s`, decoded
+    /// from its lowercase-hex wire form).
+    pub fn sequence(&self) -> u128 {
+        u128::from_str_radix(self.s.trim_start_matches("0x"), 16).unwrap_or(0)
+    }
+
+    /// Reject this notice if it is older than a state the verifier already trusts.
+    ///
+    /// A key-state notice is a snapshot; a thin client that has already seen
+    /// sequence `last_seen_seq` (e.g. it holds a fresher witness receipt) must not
+    /// accept a notice that rewinds below it — that is a stale or replayed view of
+    /// the identity. Returns [`KsnError::Stale`] when `self.sequence() <
+    /// last_seen_seq`; equal-or-newer is fine.
+    ///
+    /// Args:
+    /// * `last_seen_seq`: The highest sequence the verifier already trusts.
+    pub fn check_not_stale(&self, last_seen_seq: u128) -> Result<(), KsnError> {
+        let got = self.sequence();
+        if got < last_seen_seq {
+            return Err(KsnError::Stale {
+                got,
+                seen: last_seen_seq,
+            });
+        }
+        Ok(())
+    }
+
+    /// Project this KERI record back to the auths [`KeyState`] the rest of the
+    /// platform reasons over (a thin client ingesting a peer's published state).
+    ///
+    /// Total: a parsed `KeyStateRecord` already carries the labels and shapes a
+    /// `KeyState` needs, so no field can be missing or mistyped here.
+    pub fn into_key_state(self) -> KeyState {
+        let sequence = u128::from_str_radix(self.s.trim_start_matches("0x"), 16).unwrap_or(0);
+        let last_est_seq =
+            u128::from_str_radix(self.ee.s.trim_start_matches("0x"), 16).unwrap_or(0);
+        let delegator = if self.di.is_empty() {
+            None
+        } else {
+            Some(Prefix::new_unchecked(self.di))
+        };
+        KeyState {
+            prefix: self.i,
+            current_keys: self.k,
+            next_commitment: self.n.clone(),
+            sequence,
+            last_event_said: self.d,
+            is_abandoned: self.n.is_empty() && self.et != "icp" && self.et != "dip",
+            threshold: self.kt,
+            next_threshold: self.nt,
+            backers: self.b,
+            backer_threshold: self.bt,
+            config_traits: self.c,
+            is_non_transferable: self.n.is_empty(),
+            delegator,
+            last_establishment_sequence: last_est_seq,
+        }
+    }
+}
+
+/// The KERI `et` value for an establishment event (`icp`/`rot`/`dip`/`drt`).
+/// Callers pass only establishment events (`!is_interaction`); a stray `ixn`
+/// falls through to its own tag rather than panicking.
+fn establishment_type(event: &Event) -> &'static str {
+    match event {
+        Event::Icp(_) => "icp",
+        Event::Rot(_) => "rot",
+        Event::Dip(_) => "dip",
+        Event::Drt(_) => "drt",
+        Event::Ixn(_) => "ixn",
+    }
+}
 
 /// Errors building or verifying a KSN.
 #[derive(Debug, thiserror::Error)]
@@ -697,5 +899,116 @@ mod tests {
             .verify()
             .expect("controller signature must still verify after attaching receipts");
         assert!(matches!(v.trust, KsnTrust::Witnessed { .. }));
+    }
+
+    // ── KERI-conformant key-state record (KeyStateRecord) ────────────────────
+
+    /// A minimal self-addressing inception KEL (single event) parsed from JSON,
+    /// mirroring the keripy `icp`/`KeyStateRecord` reference vector.
+    const ICP_KEL_JSON: &str = r#"[{
+        "v":"KERI10JSON0000fd_","t":"icp",
+        "d":"EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J",
+        "i":"EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J",
+        "s":"0","kt":"1",
+        "k":["DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"],
+        "nt":"0","n":[],"bt":"0","b":[],"c":[],"a":[]
+    }]"#;
+
+    #[test]
+    fn key_state_record_emits_keri_wire_shape() {
+        let events = crate::validate::parse_kel_json(ICP_KEL_JSON).unwrap();
+        let state = crate::validate::TrustedKel::from_trusted_source(&events)
+            .replay()
+            .unwrap();
+        let record =
+            KeyStateRecord::from_kel(&events, &state, "2026-06-12T02:49:41.677319+00:00").unwrap();
+
+        let json = serde_json::to_value(&record).unwrap();
+        let obj = json.as_object().unwrap();
+        // Field order/labels are the KERI ksn record shape, not the auths envelope.
+        let keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "vn", "i", "s", "p", "d", "f", "dt", "et", "kt", "k", "nt", "n", "bt", "b", "c",
+                "ee", "di"
+            ]
+        );
+        assert_eq!(obj["vn"], serde_json::json!([1, 0]));
+        assert_eq!(obj["s"], "0");
+        assert_eq!(obj["p"], "");
+        assert_eq!(obj["et"], "icp");
+        assert_eq!(obj["kt"], "1");
+        assert_eq!(obj["di"], "");
+        let ee = obj["ee"].as_object().unwrap();
+        assert_eq!(
+            ee.keys().map(String::as_str).collect::<Vec<_>>(),
+            vec!["s", "d", "br", "ba"]
+        );
+    }
+
+    #[test]
+    fn key_state_record_round_trips_through_key_state() {
+        let events = crate::validate::parse_kel_json(ICP_KEL_JSON).unwrap();
+        let state = crate::validate::TrustedKel::from_trusted_source(&events)
+            .replay()
+            .unwrap();
+        let record = KeyStateRecord::from_kel(&events, &state, "t").unwrap();
+
+        // Serialize -> deserialize (the peer's wire path) -> project to KeyState.
+        let wire = serde_json::to_string(&record).unwrap();
+        let parsed: KeyStateRecord = serde_json::from_str(&wire).unwrap();
+        assert_eq!(parsed, record);
+
+        let projected = parsed.into_key_state();
+        assert_eq!(projected.prefix, state.prefix);
+        assert_eq!(projected.current_keys, state.current_keys);
+        assert_eq!(projected.sequence, state.sequence);
+        assert_eq!(projected.last_event_said, state.last_event_said);
+        assert_eq!(projected.threshold, state.threshold);
+        assert!(projected.is_non_transferable);
+    }
+
+    #[test]
+    fn key_state_record_check_not_stale() {
+        let events = crate::validate::parse_kel_json(ICP_KEL_JSON).unwrap();
+        let state = crate::validate::TrustedKel::from_trusted_source(&events)
+            .replay()
+            .unwrap();
+        let record = KeyStateRecord::from_kel(&events, &state, "t").unwrap();
+        assert_eq!(record.sequence(), 0);
+        // A verifier that has seen seq 0 accepts a seq-0 notice; one holding a
+        // newer (seq 1) receipt rejects this stale seq-0 view.
+        assert!(record.check_not_stale(0).is_ok());
+        assert!(matches!(
+            record.check_not_stale(1),
+            Err(KsnError::Stale { got: 0, seen: 1 })
+        ));
+    }
+
+    #[test]
+    fn key_state_record_ingests_peer_published_record() {
+        // A keripy-shaped record arriving over the wire (string sequence, hex
+        // thresholds, empty delegator) projects to a usable KeyState.
+        let wire = r#"{
+            "vn":[1,0],
+            "i":"EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J",
+            "s":"0","p":"",
+            "d":"EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J",
+            "f":"0","dt":"2026-06-12T02:49:41.677319+00:00","et":"icp",
+            "kt":"1","k":["DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"],
+            "nt":"0","n":[],"bt":"0","b":[],"c":[],
+            "ee":{"s":"0","d":"EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J","br":[],"ba":[]},
+            "di":""
+        }"#;
+        let record: KeyStateRecord = serde_json::from_str(wire).unwrap();
+        let state = record.into_key_state();
+        assert_eq!(
+            state.prefix.as_str(),
+            "EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J"
+        );
+        assert_eq!(state.sequence, 0);
+        assert!(state.is_non_transferable);
+        assert!(state.delegator.is_none());
     }
 }

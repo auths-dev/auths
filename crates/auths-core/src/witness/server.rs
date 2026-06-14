@@ -31,7 +31,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-use auths_keri::{KeriSequence, VersionString};
+use auths_keri::{KeriSequence, KeyStateRecord, TrustedKel, VersionString, parse_kel_json};
 
 use super::error::{DuplicityEvidence, WitnessError};
 use super::receipt::{Receipt, ReceiptTag, SignedReceipt};
@@ -55,6 +55,67 @@ struct WitnessServerInner {
     storage: Mutex<WitnessStorage>,
     /// Clock function for getting current time
     clock: Box<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    /// The proof of which binary this node runs (version, self-measured digest,
+    /// and the signed build attestation). `None` when the binary was started
+    /// without a build attestation configured, in which case the `/build`
+    /// surface 404s — a node that cannot prove its binary says so plainly.
+    build_proof: Option<BuildProof>,
+}
+
+/// The proof a node serves of which binary it is running.
+///
+/// Three facts, none of which the server interprets: the running binary's
+/// `version`, the SHA-256 the binary measured of *itself* at startup
+/// (`running_digest`), and the signed build attestation (`attestation`, the raw
+/// `auths artifact sign` document). The server is a serving surface — it pairs
+/// the self-measurement with the signed claim and hands both to whoever asks.
+/// The *verification* (does the attestation's signature hold, and does it attest
+/// THIS running digest?) is a relying party's job, done from these bytes alone.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildProof {
+    /// Version string of the running binary.
+    pub version: String,
+    /// SHA-256 (hex) the binary measured of its own on-disk image at startup.
+    pub running_digest: String,
+    /// The signed build attestation document (`auths artifact sign` output),
+    /// carried verbatim so a relying party verifies the original signed bytes.
+    pub attestation: serde_json::Value,
+}
+
+impl BuildProof {
+    /// Measure the running binary's own on-disk image and pair the digest with
+    /// its version and a signed build attestation.
+    ///
+    /// The digest is computed over the bytes of the executable this process is
+    /// running (`current_exe`), so `running_digest` is the node's measurement of
+    /// *itself* — not a number it was handed. A relying party then checks that
+    /// the signed `attestation` attests this exact digest.
+    ///
+    /// Args:
+    /// * `version`: the running binary's version string.
+    /// * `attestation`: the parsed `auths artifact sign` document to serve verbatim.
+    pub fn measure_self(
+        version: impl Into<String>,
+        attestation: serde_json::Value,
+    ) -> std::io::Result<Self> {
+        let exe = std::env::current_exe()?;
+        let running_digest = sha256_file_hex(&exe)?;
+        Ok(Self {
+            version: version.into(),
+            running_digest,
+            attestation,
+        })
+    }
+}
+
+/// SHA-256 (hex) of a file's bytes.
+///
+/// Reads the file whole (the witness binary is a few MB) through `std::fs::read`
+/// — the sans-IO crate's approved file read — then hashes it.
+fn sha256_file_hex(path: &std::path::Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path)?;
+    Ok(hex::encode(Sha256::digest(&bytes)))
 }
 
 /// Configuration for the witness server.
@@ -69,6 +130,10 @@ pub struct WitnessServerConfig {
     pub tls_cert_path: Option<PathBuf>,
     /// Path to TLS private key (PEM format). Used by `run_server_tls()` when the `tls` feature is enabled.
     pub tls_key_path: Option<PathBuf>,
+    /// Proof of which binary the node runs, served at `/build`. `None` leaves
+    /// the build surface absent (404) — a node that was not given a build
+    /// attestation does not pretend to have one.
+    pub build_proof: Option<BuildProof>,
 }
 
 impl WitnessServerConfig {
@@ -115,7 +180,19 @@ impl WitnessServerConfig {
             db_path,
             tls_cert_path: None,
             tls_key_path: None,
+            build_proof: None,
         })
+    }
+
+    /// Attach the proof of which binary this node runs (served at `/build`).
+    ///
+    /// Consuming-builder so a deployed binary that knows its own version,
+    /// self-measured digest, and signed attestation threads them into the
+    /// server in one call; a binary started without one simply never calls this
+    /// and the build surface stays absent.
+    pub fn with_build_proof(mut self, proof: BuildProof) -> Self {
+        self.build_proof = Some(proof);
+        self
     }
 }
 
@@ -225,6 +302,7 @@ impl WitnessServerState {
                 signer: config.signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
+                build_proof: config.build_proof,
             }),
         })
     }
@@ -243,6 +321,7 @@ impl WitnessServerState {
                 signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
+                build_proof: None,
             }),
         })
     }
@@ -285,6 +364,7 @@ impl WitnessServerState {
                 signer,
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
+                build_proof: None,
             }),
         })
     }
@@ -357,6 +437,8 @@ pub fn router(state: WitnessServerState) -> Router {
         .route("/witness/{prefix}/head", get(get_head))
         .route("/witness/{prefix}/said/{seq}", get(get_said_at_seq))
         .route("/witness/{prefix}/receipt/{said}", get(get_receipt))
+        .route("/witness/{prefix}/key-state", get(get_key_state))
+        .route("/build", get(get_build))
         .route("/health", get(health))
         .with_state(state)
 }
@@ -693,6 +775,28 @@ async fn submit_event(
                 ));
             }
 
+            // Retain the verified event body so the witness can later replay this
+            // identity's KEL into the current key-state it serves. The body is
+            // canonical JSON of the event we just SAID- and signature-checked.
+            let event_json = serde_json::to_string(&event).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to serialize event for retention: {e}"),
+                        duplicity: None,
+                    }),
+                )
+            })?;
+            if let Err(e) = storage.store_event(now, &prefix, event_s, &event_json) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to store event: {}", e),
+                        duplicity: None,
+                    }),
+                ));
+            }
+
             Ok(Json(signed))
         }
         Ok(Some(existing_said)) => {
@@ -821,6 +925,122 @@ async fn get_receipt(
     }
 }
 
+/// `GET /witness/{prefix}/key-state` — the current key-state notice for `prefix`.
+///
+/// Replays the KEL this witness has corroborated for `prefix` into its current
+/// key-state and serves it as a **KERI-conformant key-state record**
+/// (`{vn,i,s,p,d,f,dt,et,kt,k,nt,n,bt,b,c,ee,di}`) — the wire shape a keripy /
+/// keriox peer reads. A thin client can trust this identity's current keys
+/// without replaying the whole log itself.
+///
+/// The notice describes exactly the history *this* witness saw: the record is
+/// built only from retained, signature-verified events, never asserted. Returns
+/// 404 when the witness has corroborated no events for the prefix (it cannot
+/// notice a key-state it never observed), and 500 if a retained KEL fails to
+/// replay (a corrupted store — surfaced, never papered over).
+async fn get_key_state(
+    State(state): State<WitnessServerState>,
+    AxumPath(prefix_str): AxumPath<String>,
+) -> Result<Json<KeyStateRecord>, (StatusCode, Json<ErrorResponse>)> {
+    let prefix = Prefix::new_unchecked(prefix_str);
+
+    let kel_json = {
+        let storage = state.inner.storage.lock().map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "internal lock error".to_string(),
+                    duplicity: None,
+                }),
+            )
+        })?;
+        storage.get_kel(&prefix).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("storage error: {e}"),
+                    duplicity: None,
+                }),
+            )
+        })?
+    };
+
+    if kel_json.is_empty() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!(
+                    "no key-state for {} — this witness has corroborated no events for it",
+                    prefix.as_str()
+                ),
+                duplicity: None,
+            }),
+        ));
+    }
+
+    // Each row is one canonical event; assemble the in-order KEL as a JSON array
+    // and replay it through the platform's own validation, never a hand-rolled
+    // parser — the key-state and the notice wire shape are the trust kernel's.
+    let kel_array = format!("[{}]", kel_json.join(","));
+    let events = parse_kel_json(&kel_array).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("retained KEL did not parse: {e}"),
+                duplicity: None,
+            }),
+        )
+    })?;
+    let key_state = TrustedKel::from_trusted_source(&events)
+        .replay()
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: format!("retained KEL did not replay: {e}"),
+                    duplicity: None,
+                }),
+            )
+        })?;
+
+    let dt = (state.inner.clock)().to_rfc3339();
+    let record = KeyStateRecord::from_kel(&events, &key_state, dt).ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "retained KEL is empty after replay".to_string(),
+            duplicity: None,
+        }),
+    ))?;
+
+    Ok(Json(record))
+}
+
+/// `GET /build` — the node's proof of which binary it runs.
+///
+/// Serves the [`BuildProof`] the binary measured of itself and was signed
+/// against: version, self-measured running digest, and the verbatim signed
+/// attestation. The server interprets none of it — a relying party decides,
+/// from these bytes alone, whether the attestation's signature holds AND
+/// attests this exact running digest. 404 when the node was started without a
+/// build attestation: a node that cannot prove its binary says so plainly,
+/// rather than serving an unprovable green.
+async fn get_build(
+    State(state): State<WitnessServerState>,
+) -> Result<Json<BuildProof>, (StatusCode, Json<ErrorResponse>)> {
+    match &state.inner.build_proof {
+        Some(proof) => Ok(Json(proof.clone())),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "this node was started without a build attestation — \
+                        it cannot prove which binary it runs"
+                    .to_string(),
+                duplicity: None,
+            }),
+        )),
+    }
+}
+
 /// GET /health - Health check.
 async fn health(State(state): State<WitnessServerState>) -> Json<HealthResponse> {
     let storage = state
@@ -894,6 +1114,139 @@ mod tests {
         event
     }
 
+    /// Build a full, replay-able KERI inception event — every establishment field
+    /// present (`kt,k,nt,n,bt,b,c,a`), `s` as a lowercase-hex string, a valid
+    /// Ed25519 self-signature, and the auths-computed SAID. Unlike the minimal
+    /// [`make_valid_icp_event`], this is a complete KEL the witness can replay
+    /// into key-state — the shape a real controller submits.
+    fn make_full_icp_event() -> serde_json::Value {
+        let (pkcs8, _pk_hex) = test_keypair();
+        let kp = Ed25519KeyPair::from_pkcs8(&pkcs8).unwrap();
+        let k0 = auths_keri::KeriPublicKey::ed25519(kp.public_key().as_ref())
+            .unwrap()
+            .to_qb64()
+            .unwrap();
+        // A next-key commitment (a single-key kt=1/nt=1 inception).
+        let next = auths_keri::KeriPublicKey::ed25519(&[9u8; 32]).unwrap();
+        let ncommit = auths_keri::compute_next_commitment(&next);
+
+        // Self-addressing inception: prefix is blanked during SAID computation,
+        // then set equal to the SAID. Build with empty d/i and x.
+        let mut event = serde_json::json!({
+            "v": "KERI10JSON000000_",
+            "t": "icp",
+            "d": "",
+            "i": "",
+            "s": "0",
+            "kt": "1",
+            "k": [k0],
+            "nt": "1",
+            "n": [ncommit.as_str()],
+            "bt": "0",
+            "b": [],
+            "c": [],
+            "a": [],
+            "x": ""
+        });
+
+        // The SAID self-addresses the inception (d and i both blanked during the
+        // digest), so set i = d = SAID first.
+        let said = crate::crypto::said::compute_said(&event).unwrap();
+        let said_str = said.into_inner();
+        event["d"] = serde_json::Value::String(said_str.clone());
+        event["i"] = serde_json::Value::String(said_str);
+
+        // Sign exactly what the witness verifies: the event with d and x blanked,
+        // i left at the self-addressed prefix.
+        let mut to_sign = event.clone();
+        to_sign["d"] = serde_json::Value::String(String::new());
+        to_sign["x"] = serde_json::Value::String(String::new());
+        let payload = serde_json::to_vec(&to_sign).unwrap();
+        let sig = kp.sign(&payload);
+        event["x"] = serde_json::Value::String(hex::encode(sig.as_ref()));
+
+        event
+    }
+
+    /// Submit `event` to a fresh server and return its (router, prefix).
+    async fn submit_to_fresh_server(event: &serde_json::Value) -> (Router, String) {
+        let prefix = event["i"].as_str().unwrap().to_string();
+        let state = test_state();
+        let app = router(state);
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/witness/{prefix}/event"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(event).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "full icp must be witnessed");
+        (app, prefix)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn key_state_serves_keri_conformant_record() {
+        let event = make_full_icp_event();
+        let (app, prefix) = submit_to_fresh_server(&event).await;
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/witness/{prefix}/key-state"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let record: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let obj = record.as_object().unwrap();
+
+        // The KERI ksn wire shape — labels and field order — not the auths envelope.
+        let keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "vn", "i", "s", "p", "d", "f", "dt", "et", "kt", "k", "nt", "n", "bt", "b", "c",
+                "ee", "di"
+            ]
+        );
+        assert_eq!(obj["vn"], serde_json::json!([1, 0]));
+        assert_eq!(obj["i"], serde_json::Value::String(prefix.clone()));
+        assert_eq!(obj["s"], "0");
+        assert_eq!(obj["et"], "icp");
+        assert_eq!(obj["d"], serde_json::Value::String(prefix));
+
+        // The served record projects back to a usable key-state (parse-don't-validate).
+        let parsed: auths_keri::KeyStateRecord = serde_json::from_slice(&body).unwrap();
+        let state = parsed.into_key_state();
+        assert_eq!(state.sequence, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn key_state_unknown_prefix_is_404() {
+        let app = router(test_state());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/witness/ENeverWitnessed/key-state")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn health_endpoint() {
         let state = test_state();
@@ -910,6 +1263,60 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn build_endpoint_absent_without_a_proof_is_404() {
+        // A node started without a build attestation must NOT serve a `/build`
+        // surface — it says plainly it cannot prove its binary (404), never an
+        // unprovable green.
+        let state = test_state();
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/build")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn build_endpoint_serves_the_configured_proof() {
+        // With a proof configured, `/build` serves exactly the self-measurement
+        // and signed attestation the binary handed in — verbatim, uninterpreted.
+        let mut state = test_state();
+        let proof = BuildProof {
+            version: "1.2.3".to_string(),
+            running_digest: "abc123".to_string(),
+            attestation: serde_json::json!({"issuer": "did:key:zTest"}),
+        };
+        // Replace the inner with one carrying the proof (the only field that
+        // differs from `test_state`'s default).
+        let inner = Arc::get_mut(&mut state.inner).expect("sole owner in test");
+        inner.build_proof = Some(proof.clone());
+
+        let app = router(state);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/build")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let served: BuildProof = serde_json::from_slice(&body).unwrap();
+        assert_eq!(served.version, "1.2.3");
+        assert_eq!(served.running_digest, "abc123");
     }
 
     #[tokio::test(flavor = "multi_thread")]

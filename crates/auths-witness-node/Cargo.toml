@@ -1,0 +1,40 @@
+[package]
+name = "auths-witness-node"
+description = "Operator orchestration for running a hardened witness node: embedded standup manifest, key custody policy, and the node's health surface — composes the platform witness/KERI/verifier crates, reimplements no protocol"
+version.workspace = true
+edition = "2024"
+publish = false
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["auths", "keri", "witness", "operator", "standup"]
+categories = ["cryptography", "network-programming"]
+
+[lib]
+name = "auths_witness_node"
+path = "src/lib.rs"
+
+[dependencies]
+# Composition over the platform's PUBLIC crate APIs — depending on these IS the
+# integration. The node crate orchestrates operator standup around the hardened
+# witness server; it reimplements no receipt / key-state / CESR / SAID logic.
+auths-witness.workspace = true
+auths-keri.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }
+
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# OS CSPRNG for minting the node's stable signing-identity seed at first boot.
+# Only the OS-backed `OsRng` is used (the workspace bans `thread_rng`/`random`).
+rand = { workspace = true }
+hex = "0.4"
+
+[dev-dependencies]
+tempfile = "3"
+# The build-attestation verdict composes the async platform verifier; its tests
+# need a runtime to drive it.
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

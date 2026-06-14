@@ -391,6 +391,7 @@ dependencies = [
  "auths-transparency",
  "auths-utils",
  "auths-verifier",
+ "auths-witness-node",
  "axum",
  "base64",
  "bs58",
@@ -686,6 +687,8 @@ dependencies = [
  "hex",
  "p256 0.13.2",
  "proptest",
+ "quinn",
+ "rcgen",
  "ring",
  "schemars",
  "serde",
@@ -693,6 +696,9 @@ dependencies = [
  "subtle",
  "thiserror 2.0.18",
  "tokio",
+ "x509-parser",
+ "yasna",
+ "zeroize",
 ]
 
 [[package]]
@@ -776,6 +782,7 @@ dependencies = [
  "rand 0.8.6",
  "rcgen",
  "ring",
+ "rustls 0.23.38",
  "serde",
  "serde_json",
  "sha2",
@@ -808,6 +815,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "subtle",
  "thiserror 2.0.18",
  "tokio",
  "zeroize",
@@ -1059,11 +1067,28 @@ dependencies = [
  "axum",
  "clap",
  "http-body-util",
+ "serde_json",
  "tokio",
  "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "auths-witness-node"
+version = "0.1.3"
+dependencies = [
+ "anyhow",
+ "auths-keri",
+ "auths-verifier",
+ "auths-witness",
+ "hex",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

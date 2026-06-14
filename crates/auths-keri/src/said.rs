@@ -42,15 +42,57 @@ impl Protocol {
         }
     }
 
-    /// Whether the `i` field is self-addressing (blanked during SAID-ification).
+    /// Whether this protocol's inception events *can* carry a self-addressing
+    /// prefix in `i` (a prefix derived from the event SAID, blanked during
+    /// SAID-ification).
     ///
     /// KERI inception events (`icp`/`dip`) and backerless TEL registry inception
-    /// (`vcp`) derive their prefix from the SAID, so `i` is blanked. ACDC `i` is
-    /// the *issuer* AID (an external reference), so it is never blanked — only
-    /// event protocols consult the `t` field.
+    /// (`vcp`) derive their prefix from the SAID, so a self-addressing `i` is
+    /// blanked. ACDC `i` is the *issuer* AID (an external reference), so it is
+    /// never blanked — only event protocols consult the `t` field.
+    ///
+    /// Note: this gates only the protocol/event-type; whether `i` is *actually*
+    /// self-addressing for a given event is decided per-value by
+    /// [`prefix_is_self_addressing`], because KERI also admits basic-prefix
+    /// inceptions where `i` is a public key and must be kept during hashing.
     fn blanks_inception_prefix(self) -> bool {
         matches!(self, Protocol::Keri)
     }
+}
+
+/// Whether an inception event's current `i` value is a *self-addressing* prefix
+/// (one derived from the event SAID) — the only case in which `i` is blanked
+/// before hashing.
+///
+/// KERI admits two inception prefix kinds for the same keys:
+///
+/// * **self-addressing** — `i` is the SAID itself (a Blake3-256 digest, CESR
+///   code `E`), or, on the emit path, the as-yet-unfilled SAID
+///   [`SAID_PLACEHOLDER`]. keripy blanks `i` along with `d` before hashing.
+/// * **basic** — `i` is the controlling public key (e.g. an Ed25519 verkey,
+///   CESR code `D`/`B`, or a P-256/secp256k1 key, codes `1AAB`/`1AAC`…). It is
+///   *not* derived from the SAID, so keripy 1.3.4 keeps `i` present during
+///   hashing exactly as any other field.
+///
+/// Classifying by the value's CESR derivation code (parse, don't validate)
+/// rather than by event type lets auths reproduce keripy's SAID byte-exact for
+/// *either* prefix kind it ingests, while still emitting only self-addressing
+/// AIDs itself.
+///
+/// Self-addressing `i` is one of:
+/// * **empty** — the auths *emit* path (`finalize_icp_event`) hashes the event
+///   with `i` unset, then fills `i = d` afterwards; an unset `i` is an
+///   as-yet-underived self-addressing prefix, never a basic one (auths emits
+///   only self-addressing AIDs).
+/// * the [`SAID_PLACEHOLDER`] — the explicit "`d`/`i` to be filled" marker.
+/// * a digest prefix (`E…`, Blake3-256) — an already-filled self-addressing AID.
+///
+/// Anything else is a key prefix (a verkey: `D`/`B`/`1AAB`…) and therefore a
+/// *basic* prefix, which keripy keeps during hashing — so auths must too. This
+/// mirrors the discriminator `finalize_icp_event` already uses to decide
+/// whether to set `i = d`.
+fn prefix_is_self_addressing(i: &str) -> bool {
+    i.is_empty() || i == SAID_PLACEHOLDER || i.starts_with('E')
 }
 
 /// Computes a spec-compliant SAID for a KERI event (`KERI10JSON` protocol tag).
@@ -111,8 +153,15 @@ pub fn compute_said_with_protocol(
 
     let placeholder = serde_json::Value::String(SAID_PLACEHOLDER.to_string());
     let event_type = obj.get("t").and_then(|v| v.as_str()).unwrap_or("");
-    let blank_prefix =
-        protocol.blanks_inception_prefix() && matches!(event_type, "icp" | "dip" | "vcp");
+    // Blank `i` only when this is a self-addressing inception: the event type is
+    // an inception (`icp`/`dip`/`vcp`) AND its `i` is actually derived from the
+    // SAID (a digest prefix or the unfilled placeholder). A basic-prefix
+    // inception carries a public key in `i`, which keripy keeps during hashing —
+    // so auths must keep it too, or it computes a confidently-wrong SAID.
+    let inception_prefix = obj.get("i").and_then(|v| v.as_str()).unwrap_or("");
+    let blank_prefix = protocol.blanks_inception_prefix()
+        && matches!(event_type, "icp" | "dip" | "vcp")
+        && prefix_is_self_addressing(inception_prefix);
 
     // Rebuild the map with spec-compliant placeholders and field ordering.
     let mut new_obj = serde_json::Map::new();
@@ -314,13 +363,21 @@ mod tests {
         assert_eq!(said_with, said_without, "x field must not affect SAID");
     }
 
+    /// A *self-addressing* inception blanks `i`, so its SAID is independent of
+    /// the particular (digest-coded) `i` value it carries — including the two
+    /// emit-path forms, the [`SAID_PLACEHOLDER`] and an already-filled `E…`
+    /// prefix.
+    ///
+    /// This is the corrected invariant: it holds *only* for self-addressing
+    /// prefixes. A basic prefix (a verkey in `i`) is kept during hashing and so
+    /// is NOT interchangeable — see [`basic_prefix_inception_keeps_i_matches_keripy`].
     #[test]
-    fn inception_applies_i_placeholder() {
-        let event_a = serde_json::json!({
+    fn self_addressing_inception_said_independent_of_i() {
+        let event_placeholder = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "icp",
             "d": "",
-            "i": "some_prefix_a",
+            "i": SAID_PLACEHOLDER,
             "s": "0",
             "kt": "1",
             "k": ["DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"],
@@ -330,11 +387,11 @@ mod tests {
             "b": [],
             "a": []
         });
-        let event_b = serde_json::json!({
+        let event_digest = serde_json::json!({
             "v": "KERI10JSON000000_",
             "t": "icp",
             "d": "",
-            "i": "some_prefix_b",
+            "i": "EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J",
             "s": "0",
             "kt": "1",
             "k": ["DAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"],
@@ -344,11 +401,11 @@ mod tests {
             "b": [],
             "a": []
         });
-        let said_a = compute_said(&event_a).unwrap();
-        let said_b = compute_said(&event_b).unwrap();
+        let said_placeholder = compute_said(&event_placeholder).unwrap();
+        let said_digest = compute_said(&event_digest).unwrap();
         assert_eq!(
-            said_a, said_b,
-            "inception SAID must be independent of initial i value"
+            said_placeholder, said_digest,
+            "self-addressing inception SAID must be independent of the digest i value"
         );
     }
 
@@ -393,6 +450,85 @@ mod tests {
             "a": []
         });
         assert!(verify_said(&event).is_err());
+    }
+
+    /// keripy oracle (1.3.4): a *basic-prefix* inception keeps `i` (the verkey)
+    /// during hashing, so its SAID differs from the self-addressing form.
+    ///
+    /// Vector: `eventing.incept(keys=[ed.qb64])` (default basic prefix), where
+    /// `ed.qb64 == "DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"`. Cross-checked
+    /// by the interop suite (`interop/vectors/kel/icp-basic.json`, gap IOP-L1d).
+    #[test]
+    fn basic_prefix_inception_keeps_i_matches_keripy() {
+        let raw = r#"{"v":"KERI10JSON0000fd_","t":"icp","d":"EAAD4cS7l9pm_N8JM9UsVeAZhwCIaDkSU341hbhHJbSf","i":"DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f","s":"0","kt":"1","k":["DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"],"nt":"0","n":[],"bt":"0","b":[],"c":[],"a":[]}"#;
+        let event: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let said = compute_said(&event).unwrap();
+        assert_eq!(
+            said.as_str(),
+            "EAAD4cS7l9pm_N8JM9UsVeAZhwCIaDkSU341hbhHJbSf",
+            "basic-prefix icp SAID must match keripy (i kept, not blanked)"
+        );
+        // verify_said must accept the keripy event as-is.
+        assert!(verify_said(&event).is_ok());
+    }
+
+    /// keripy oracle (1.3.4): a *self-addressing* inception still blanks `i`
+    /// (it is the SAID), so this path is unchanged by the basic-prefix fix.
+    ///
+    /// Vector: `eventing.incept(keys=[ed.qb64], code=Blake3_256)` — `i == d`.
+    /// Cross-checked by `interop/vectors/kel/icp-selfaddr.json` (gap IOP-L1a).
+    #[test]
+    fn self_addressing_inception_blanks_i_matches_keripy() {
+        let raw = r#"{"v":"KERI10JSON0000fd_","t":"icp","d":"EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J","i":"EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J","s":"0","kt":"1","k":["DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"],"nt":"0","n":[],"bt":"0","b":[],"c":[],"a":[]}"#;
+        let event: serde_json::Value = serde_json::from_str(raw).unwrap();
+        let said = compute_said(&event).unwrap();
+        assert_eq!(
+            said.as_str(),
+            "EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J",
+            "self-addressing icp SAID must still blank i and match keripy"
+        );
+        assert!(verify_said(&event).is_ok());
+    }
+
+    /// The emit path (auths minting its own AID) fills `i` only after the SAID is
+    /// known, so `compute_said` sees the [`SAID_PLACEHOLDER`] in `i` and must
+    /// still treat it as self-addressing (blank it). Equivalently, an empty `i`
+    /// or the placeholder produce the same SAID as the filled self-addressing `i`.
+    #[test]
+    fn placeholder_inception_prefix_is_self_addressing() {
+        let base = serde_json::json!({
+            "v": "KERI10JSON000000_",
+            "t": "icp",
+            "d": "",
+            "s": "0",
+            "kt": "1",
+            "k": ["DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"],
+            "nt": "0",
+            "n": [],
+            "bt": "0",
+            "b": [],
+            "c": [],
+            "a": []
+        });
+        // i = placeholder
+        let mut with_placeholder = base.clone();
+        with_placeholder["i"] = serde_json::Value::String(SAID_PLACEHOLDER.to_string());
+        // i = a digest prefix (E-coded)
+        let mut with_digest = base.clone();
+        with_digest["i"] =
+            serde_json::Value::String("EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J".to_string());
+        assert_eq!(
+            compute_said(&with_placeholder).unwrap(),
+            compute_said(&with_digest).unwrap(),
+            "placeholder and E-coded i are both self-addressing — same SAID"
+        );
+        assert!(prefix_is_self_addressing(SAID_PLACEHOLDER));
+        assert!(prefix_is_self_addressing(
+            "EOoC9AuwxiwcyUDsa2yNAaZOVWqfiAt4o3R31_8K2Z1J"
+        ));
+        assert!(!prefix_is_self_addressing(
+            "DAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f"
+        ));
     }
 
     /// Guard: `serde_json::Map` must use `IndexMap` (preserve insertion order).

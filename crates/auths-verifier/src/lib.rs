@@ -133,7 +133,12 @@ pub use verify::{
 };
 
 // Re-export witness types
-pub use witness::{SignedReceipt, WitnessQuorum, WitnessReceiptResult, WitnessVerifyConfig};
+#[cfg(feature = "native")]
+pub use witness::verify_build_attestation_offline;
+pub use witness::{
+    OfflineBuildVerdict, OfflineReceiptVerdict, SignedReceipt, WitnessQuorum, WitnessReceiptResult,
+    WitnessVerifyConfig, verify_receipt_offline,
+};
 
 // Re-export KERI types directly from auths-keri
 pub use auths_keri::{

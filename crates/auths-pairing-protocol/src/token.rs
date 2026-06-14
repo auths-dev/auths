@@ -307,7 +307,9 @@ impl PairingSession {
                         device_signing_pubkey.len()
                     ))
                 })?;
-                KeriPublicKey::Ed25519(arr)
+                KeriPublicKey::ed25519(&arr).map_err(|e| {
+                    ProtocolError::KeyExchangeFailed(format!("Ed25519 pubkey invalid: {e}"))
+                })?
             }
             CurveType::P256 => {
                 let arr: [u8; 33] = device_signing_pubkey.try_into().map_err(|_| {

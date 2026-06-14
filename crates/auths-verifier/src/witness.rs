@@ -20,8 +20,257 @@
 pub use auths_keri::witness::{Receipt, ReceiptTag, SignedReceipt};
 
 use auths_crypto::CryptoProvider;
-use auths_keri::Said;
+use auths_crypto::did_key::{DecodedDidKey, did_key_decode};
+use auths_keri::{KeriPublicKey, Said};
 use serde::{Deserialize, Serialize};
+
+/// The outcome of verifying a single receipt against a witness's published
+/// identity, with NO network and NO registry — a stranger holding only the
+/// receipt and the identity decides here.
+///
+/// The verdict is a parsed sum type, not a boolean: the caller can render
+/// exactly why a receipt failed (an unreadable identity vs. a signature that
+/// did not check) without re-inspecting anything. `Verified` is the only
+/// success arm, so a receipt that did not verify can never be mistaken for one
+/// that did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "result", rename_all = "kebab-case")]
+pub enum OfflineReceiptVerdict {
+    /// The signature verifies against the key embedded in the published
+    /// identity. The receipt is genuine corroboration.
+    Verified {
+        /// The published witness identity the signature verified against.
+        witness: String,
+    },
+    /// The published identity is not a readable `did:key` carrying a supported
+    /// verification key, so no key could be recovered to check against.
+    UnreadableIdentity {
+        /// The reason the identity could not be decoded into a key.
+        reason: String,
+    },
+    /// A key was recovered from the identity, but the signature does not verify
+    /// over the canonical receipt bytes — a tampered or foreign receipt.
+    SignatureFailed {
+        /// The published witness identity the signature was checked against.
+        witness: String,
+    },
+}
+
+impl OfflineReceiptVerdict {
+    /// Whether the receipt is genuine corroboration (the only success arm).
+    pub fn is_verified(&self) -> bool {
+        matches!(self, OfflineReceiptVerdict::Verified { .. })
+    }
+}
+
+/// Verify a witness receipt offline against the witness's PUBLISHED identity
+/// alone — no network, no registry, no separately-supplied key table.
+///
+/// This is the self-contained corroboration check a third party runs on a
+/// clean machine: the witness's published `did:key` identity *embeds* its
+/// verification key, so `{receipt, signature, identity}` is everything needed
+/// to decide. The published identity is the only trust input; the receipt body
+/// carries the *controller* AID in `i`, never the witness, so it cannot
+/// self-attest.
+///
+/// The verdict distinguishes an unreadable identity (the wrong string was
+/// carried) from a signature that did not check (a tampered or foreign
+/// receipt). A single bit flipped anywhere in the signature, the receipt body,
+/// or the identity moves the result off [`OfflineReceiptVerdict::Verified`].
+///
+/// The signed bytes are `serde_json::to_vec(&receipt)`, matching exactly what a
+/// witness server signs when it issues the receipt.
+///
+/// Args:
+/// * `signed`: the receipt body paired with the witness's detached signature.
+/// * `witness_identity`: the witness's published `did:key:z…` identity (as
+///   advertised at its health endpoint).
+///
+/// Usage:
+/// ```ignore
+/// let verdict = verify_receipt_offline(&signed, "did:key:z6Mk…");
+/// assert!(verdict.is_verified());
+/// ```
+pub fn verify_receipt_offline(
+    signed: &SignedReceipt,
+    witness_identity: &str,
+) -> OfflineReceiptVerdict {
+    let decoded = match did_key_decode(witness_identity) {
+        Ok(d) => d,
+        Err(e) => {
+            return OfflineReceiptVerdict::UnreadableIdentity {
+                reason: e.to_string(),
+            };
+        }
+    };
+
+    let key = match &decoded {
+        DecodedDidKey::Ed25519(bytes) => KeriPublicKey::from_verkey_bytes(bytes, decoded.curve()),
+        DecodedDidKey::P256(bytes) => KeriPublicKey::from_verkey_bytes(bytes, decoded.curve()),
+    };
+    let key = match key {
+        Ok(k) => k,
+        Err(e) => {
+            return OfflineReceiptVerdict::UnreadableIdentity {
+                reason: e.to_string(),
+            };
+        }
+    };
+
+    let payload = match serde_json::to_vec(&signed.receipt) {
+        Ok(p) => p,
+        Err(e) => {
+            // A receipt that cannot be re-serialized to its canonical bytes
+            // cannot be checked against any key — it is unusable, not verified.
+            return OfflineReceiptVerdict::UnreadableIdentity {
+                reason: format!("receipt is not serializable to its signing bytes: {e}"),
+            };
+        }
+    };
+
+    match key.verify_signature(&payload, &signed.signature) {
+        Ok(()) => OfflineReceiptVerdict::Verified {
+            witness: witness_identity.to_string(),
+        },
+        Err(_) => OfflineReceiptVerdict::SignatureFailed {
+            witness: witness_identity.to_string(),
+        },
+    }
+}
+
+/// The outcome of verifying a node's build attestation offline — does the node
+/// prove which binary it runs?
+///
+/// Two facts must both hold: the attestation's signature verifies against the
+/// key its self-describing `did:key` issuer embeds, AND the digest it attests is
+/// the digest of the binary actually running (the node's own self-measurement).
+/// A forged attestation — one whose attested digest differs from the running
+/// binary — fails on the second even when its signature is perfectly valid, so a
+/// swapped attestation cannot pass. `Verified` is the only success arm.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "result", rename_all = "kebab-case")]
+pub enum OfflineBuildVerdict {
+    /// The attestation's signature verifies AND it attests the running digest:
+    /// the node provably runs the binary the attestation was signed over.
+    Verified {
+        /// The digest both attested and measured (they agree).
+        digest: String,
+    },
+    /// The attestation could not be read as a signed artifact attestation (no
+    /// payload, no digest, malformed issuer) — there is nothing to check.
+    Unreadable {
+        /// Why the attestation could not be interpreted.
+        reason: String,
+    },
+    /// The attestation's signature does not verify against the key its issuer
+    /// embeds — it was altered or was not produced by the claimed signer.
+    SignatureFailed {
+        /// The issuer the signature was checked against.
+        issuer: String,
+    },
+    /// The signature is valid, but the attestation attests a DIFFERENT digest
+    /// than the binary actually running — a forged or stale attestation, paired
+    /// with a binary it does not describe.
+    DigestMismatch {
+        /// The digest the attestation attests.
+        attested: String,
+        /// The digest the node measured of its running binary.
+        running: String,
+    },
+}
+
+impl OfflineBuildVerdict {
+    /// Whether the node provably runs the attested binary (the only success arm).
+    pub fn is_verified(&self) -> bool {
+        matches!(self, OfflineBuildVerdict::Verified { .. })
+    }
+}
+
+/// Verify a node's build attestation offline against the digest of the binary
+/// it is actually running — the "which binary does this node run?" check.
+///
+/// The attestation is the `auths artifact sign` document the operator produced
+/// over the released binary; its self-describing `did:key` issuer embeds the
+/// verification key, so `{attestation, running_digest}` is everything a relying
+/// party needs. The check is deliberately two-legged and fail-closed:
+///
+/// 1. the signature verifies against the issuer's embedded key
+///    ([`verify_with_keys`](crate::verify_with_keys)); and
+/// 2. the digest the attestation attests equals `running_digest` — the digest
+///    the node measured of its own executable.
+///
+/// A valid signature over the WRONG binary fails on leg 2
+/// ([`OfflineBuildVerdict::DigestMismatch`]): an operator cannot vouch for a
+/// binary they are not running by attaching a correctly-signed attestation for a
+/// different one. This is the dogfood of `auths artifact verify --signature-only`
+/// bound to a live self-measurement.
+///
+/// Args:
+/// * `attestation`: the parsed signed build attestation (`auths artifact sign`).
+/// * `running_digest`: the SHA-256 (hex) the node measured of its own binary.
+#[cfg(feature = "native")]
+pub async fn verify_build_attestation_offline(
+    attestation: &crate::core::Attestation,
+    running_digest: &str,
+) -> OfflineBuildVerdict {
+    // The attested digest lives in the artifact payload the signer covered.
+    let attested = match attestation
+        .payload
+        .as_ref()
+        .and_then(|p| p.get("digest"))
+        .and_then(|d| d.get("hex"))
+        .and_then(|h| h.as_str())
+    {
+        Some(h) => h.to_string(),
+        None => {
+            return OfflineBuildVerdict::Unreadable {
+                reason:
+                    "attestation carries no artifact digest to check against the running binary"
+                        .to_string(),
+            };
+        }
+    };
+
+    // The issuer is a self-describing `did:key` that embeds the signing key —
+    // recover it so the signature can be checked from the attestation alone.
+    let issuer = attestation.issuer.as_str();
+    let decoded = match did_key_decode(issuer) {
+        Ok(d) => d,
+        Err(e) => {
+            return OfflineBuildVerdict::Unreadable {
+                reason: format!("attestation issuer is not a readable did:key: {e}"),
+            };
+        }
+    };
+    let issuer_pk = match crate::core::DevicePublicKey::try_new(decoded.curve(), decoded.bytes()) {
+        Ok(pk) => pk,
+        Err(e) => {
+            return OfflineBuildVerdict::Unreadable {
+                reason: format!("attestation issuer key is unusable: {e}"),
+            };
+        }
+    };
+
+    // Leg 1: the signature must verify against the issuer's embedded key.
+    if crate::verify_with_keys(attestation, &issuer_pk)
+        .await
+        .is_err()
+    {
+        return OfflineBuildVerdict::SignatureFailed {
+            issuer: issuer.to_string(),
+        };
+    }
+
+    // Leg 2: the attested digest must be the digest of the running binary.
+    if attested != running_digest {
+        return OfflineBuildVerdict::DigestMismatch {
+            attested,
+            running: running_digest.to_string(),
+        };
+    }
+
+    OfflineBuildVerdict::Verified { digest: attested }
+}
 
 /// Result of witness quorum verification.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -275,5 +524,131 @@ mod tests {
         let json_out = serde_json::to_string(&receipt).unwrap();
         let parsed: Receipt = serde_json::from_str(&json_out).unwrap();
         assert_eq!(receipt, parsed);
+    }
+
+    /// A signed receipt and the witness's published `did:key` identity, where the
+    /// identity embeds the very key that signed — exactly the self-contained
+    /// pair a stranger carries to verify offline.
+    fn signed_with_published_identity(event_said: &str) -> (SignedReceipt, String) {
+        use auths_crypto::CurveType;
+        let (kp, pk) = create_test_keypair(&[42u8; 32]);
+        let signed = create_signed_receipt(&kp, "EController", event_said, 0);
+        let identity = auths_verifier_did_key(&pk, CurveType::Ed25519);
+        (signed, identity)
+    }
+
+    fn auths_verifier_did_key(pk: &[u8], curve: auths_crypto::CurveType) -> String {
+        // Build the published did:key the same way a witness advertises it.
+        crate::types::CanonicalDid::from_public_key_did_key(pk, curve).into_inner()
+    }
+
+    #[test]
+    fn offline_verify_accepts_a_genuine_receipt_with_no_key_table() {
+        let (signed, identity) = signed_with_published_identity("EEventOffline");
+        let verdict = verify_receipt_offline(&signed, &identity);
+        assert!(
+            verdict.is_verified(),
+            "a genuine receipt must verify against the published identity alone: {verdict:?}"
+        );
+    }
+
+    #[test]
+    fn offline_verify_rejects_a_bit_flipped_signature() {
+        let (mut signed, identity) = signed_with_published_identity("EEventOffline");
+        signed.signature[0] ^= 0x01;
+        let verdict = verify_receipt_offline(&signed, &identity);
+        assert_eq!(
+            verdict,
+            OfflineReceiptVerdict::SignatureFailed {
+                witness: identity.clone()
+            },
+            "a tampered signature must be a distinct SignatureFailed verdict"
+        );
+        assert!(!verdict.is_verified());
+    }
+
+    #[test]
+    fn offline_verify_rejects_a_tampered_receipt_body() {
+        let (mut signed, identity) = signed_with_published_identity("EEventOffline");
+        // Mutate the receipted event SAID — the signature no longer covers it.
+        signed.receipt.d = Said::new_unchecked("EEventTampered".into());
+        let verdict = verify_receipt_offline(&signed, &identity);
+        assert!(matches!(
+            verdict,
+            OfflineReceiptVerdict::SignatureFailed { .. }
+        ));
+    }
+
+    #[test]
+    fn offline_verify_rejects_a_foreign_identity() {
+        // A genuine receipt, but carried with a DIFFERENT witness's identity.
+        let (signed, _genuine) = signed_with_published_identity("EEventOffline");
+        let (_other_kp, other_pk) = create_test_keypair(&[7u8; 32]);
+        let foreign = auths_verifier_did_key(&other_pk, auths_crypto::CurveType::Ed25519);
+        let verdict = verify_receipt_offline(&signed, &foreign);
+        assert!(matches!(
+            verdict,
+            OfflineReceiptVerdict::SignatureFailed { .. }
+        ));
+    }
+
+    #[test]
+    fn offline_verify_flags_an_unreadable_identity_distinctly() {
+        let (signed, _identity) = signed_with_published_identity("EEventOffline");
+        let verdict = verify_receipt_offline(&signed, "not-a-did-key");
+        assert!(matches!(
+            verdict,
+            OfflineReceiptVerdict::UnreadableIdentity { .. }
+        ));
+    }
+
+    // ── build attestation, offline ───────────────────────────────────────────
+    // The signed-and-matching ("Verified") and forged ("DigestMismatch") arms
+    // are covered end to end against a real `auths artifact sign --ci` output in
+    // the conformance probe (a live node + the dogfooded signer). Here we pin
+    // the fail-closed shape arms that do not need a valid signature: an
+    // attestation with no digest, and one whose issuer is not a readable
+    // did:key, are both Unreadable — never mistaken for a verified build.
+    use crate::testing::AttestationBuilder;
+
+    #[tokio::test]
+    async fn build_verify_no_digest_is_unreadable() {
+        let att = AttestationBuilder::default()
+            .issuer("did:key:z6MkfooNoDigest")
+            .payload(Some(serde_json::json!({ "artifact_type": "file" })))
+            .build();
+        let verdict = verify_build_attestation_offline(&att, "deadbeef").await;
+        assert!(matches!(verdict, OfflineBuildVerdict::Unreadable { .. }));
+    }
+
+    #[tokio::test]
+    async fn build_verify_unreadable_issuer_is_unreadable() {
+        // A digest is present, but the issuer is not a self-describing did:key,
+        // so no key can be recovered to check the signature against.
+        let att = AttestationBuilder::default()
+            .issuer("did:keri:ENotADidKey")
+            .payload(Some(serde_json::json!({
+                "digest": { "algorithm": "sha256", "hex": "abc123" }
+            })))
+            .build();
+        let verdict = verify_build_attestation_offline(&att, "abc123").await;
+        assert!(matches!(verdict, OfflineBuildVerdict::Unreadable { .. }));
+    }
+
+    #[test]
+    fn build_verdict_verified_is_the_only_success_arm() {
+        assert!(
+            OfflineBuildVerdict::Verified {
+                digest: "abc".into()
+            }
+            .is_verified()
+        );
+        assert!(
+            !OfflineBuildVerdict::DigestMismatch {
+                attested: "a".into(),
+                running: "b".into(),
+            }
+            .is_verified()
+        );
     }
 }

@@ -200,7 +200,9 @@ pub fn resolve_current_public_key(
         reason: e.to_string(),
     })?;
     let (bytes, curve) = match parsed {
-        auths_keri::KeriPublicKey::Ed25519(pk) => (pk.to_vec(), auths_crypto::CurveType::Ed25519),
+        auths_keri::KeriPublicKey::Ed25519 { key: pk, .. } => {
+            (pk.to_vec(), auths_crypto::CurveType::Ed25519)
+        }
         auths_keri::KeriPublicKey::P256 { key, .. } => {
             (key.to_vec(), auths_crypto::CurveType::P256)
         }

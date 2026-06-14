@@ -270,7 +270,7 @@ pub fn verify_sig(
 pub fn pubkey_kid(pk: &auths_keri::KeriPublicKey) -> [u8; 16] {
     let mut h = Sha256::new();
     match pk {
-        auths_keri::KeriPublicKey::Ed25519(arr) => h.update(arr),
+        auths_keri::KeriPublicKey::Ed25519 { key, .. } => h.update(key),
         auths_keri::KeriPublicKey::P256 { key, .. } => h.update(key),
     }
     let full = h.finalize();
@@ -389,9 +389,10 @@ impl PubkeyBinding {
 
 fn keri_pubkeys_equal(a: &auths_keri::KeriPublicKey, b: &auths_keri::KeriPublicKey) -> bool {
     match (a, b) {
-        (auths_keri::KeriPublicKey::Ed25519(x), auths_keri::KeriPublicKey::Ed25519(y)) => {
-            bool::from(x[..].ct_eq(&y[..]))
-        }
+        (
+            auths_keri::KeriPublicKey::Ed25519 { key: x, .. },
+            auths_keri::KeriPublicKey::Ed25519 { key: y, .. },
+        ) => bool::from(x[..].ct_eq(&y[..])),
         (
             auths_keri::KeriPublicKey::P256 { key: x, .. },
             auths_keri::KeriPublicKey::P256 { key: y, .. },
@@ -528,7 +529,7 @@ mod tests {
     #[test]
     fn pubkey_binding_first_sighting_binds() {
         let b = PubkeyBinding::new();
-        let pk = auths_keri::KeriPublicKey::Ed25519([0x11; 32]);
+        let pk = auths_keri::KeriPublicKey::ed25519(&[0x11; 32]).unwrap();
         assert!(b.bind_or_match(&pk).is_ok());
         // Same key again → OK.
         assert!(b.bind_or_match(&pk).is_ok());
@@ -537,8 +538,8 @@ mod tests {
     #[test]
     fn pubkey_binding_divergent_key_rejected() {
         let b = PubkeyBinding::new();
-        let pk1 = auths_keri::KeriPublicKey::Ed25519([0x11; 32]);
-        let pk2 = auths_keri::KeriPublicKey::Ed25519([0x22; 32]);
+        let pk1 = auths_keri::KeriPublicKey::ed25519(&[0x11; 32]).unwrap();
+        let pk2 = auths_keri::KeriPublicKey::ed25519(&[0x22; 32]).unwrap();
         b.bind_or_match(&pk1).unwrap();
         let r = b.bind_or_match(&pk2);
         assert!(matches!(r, Err(AuthError::KeyBindingMismatch)));
@@ -547,7 +548,7 @@ mod tests {
     #[test]
     fn pubkey_binding_different_curve_rejected() {
         let b = PubkeyBinding::new();
-        let pk_ed = auths_keri::KeriPublicKey::Ed25519([0x11; 32]);
+        let pk_ed = auths_keri::KeriPublicKey::ed25519(&[0x11; 32]).unwrap();
         let pk_p256 = auths_keri::KeriPublicKey::P256 {
             key: [0x11; 33],
             transferable: true,

@@ -5,9 +5,12 @@
 //!
 //! # Schema
 //!
-//! Two tables are used:
+//! Three tables are used:
 //! - `first_seen`: Records (prefix, seq) → SAID mappings
 //! - `receipts`: Stores issued receipts by (prefix, event_said)
+//! - `events`: Retains the verified key-event body by (prefix, seq) so the
+//!   witness can replay an identity's KEL into current key-state (the key-state
+//!   notice it serves), not just the SAID it first saw
 //!
 //! # Feature Gate
 //!
@@ -80,6 +83,14 @@ impl WitnessStorage {
                     PRIMARY KEY (prefix, event_said)
                 );
 
+                CREATE TABLE IF NOT EXISTS events (
+                    prefix TEXT NOT NULL,
+                    seq INTEGER NOT NULL,
+                    event_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (prefix, seq)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_receipts_prefix ON receipts(prefix);
                 "#,
             )
@@ -142,6 +153,74 @@ impl WitnessStorage {
         } else {
             Ok(None)
         }
+    }
+
+    /// Retain a verified key-event body at `(prefix, seq)`.
+    ///
+    /// First-seen-wins: a body is recorded only the first time the witness
+    /// accepts an event at `(prefix, seq)`. A later submission at the same
+    /// position with the same SAID is a no-op; a different SAID is rejected
+    /// upstream as duplicity before reaching here. The retained KEL is what the
+    /// witness replays into the current key-state it serves — so the served
+    /// notice describes exactly the history this witness corroborated.
+    ///
+    /// `event_json` is the canonical JSON of the accepted event (already SAID-
+    /// and signature-verified by the caller).
+    pub fn store_event(
+        &self,
+        now: DateTime<Utc>,
+        prefix: &Prefix,
+        seq: u128,
+        event_json: &str,
+    ) -> Result<(), WitnessError> {
+        let now = now.to_rfc3339();
+
+        let mut stmt = self
+            .conn
+            .prepare(
+                "INSERT OR IGNORE INTO events (prefix, seq, event_json, created_at) \
+                 VALUES (?, ?, ?, ?)",
+            )
+            .map_err(|e| WitnessError::Storage(format!("failed to prepare store_event: {}", e)))?;
+
+        stmt.bind((1, prefix.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
+        stmt.bind((2, seq as i64))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind seq: {}", e)))?;
+        stmt.bind((3, event_json))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind event_json: {}", e)))?;
+        stmt.bind((4, now.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind now: {}", e)))?;
+
+        stmt.next()
+            .map_err(|e| WitnessError::Storage(format!("failed to execute store_event: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Retrieve a prefix's retained KEL, in sequence order (inception first).
+    ///
+    /// Returns the verified event bodies this witness has accepted for `prefix`,
+    /// ordered by sequence — the in-order replay input for building a key-state
+    /// notice. An empty vector means the witness has corroborated no events for
+    /// this prefix (it cannot speak to a key-state it never saw).
+    pub fn get_kel(&self, prefix: &Prefix) -> Result<Vec<String>, WitnessError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT event_json FROM events WHERE prefix = ? ORDER BY seq ASC")
+            .map_err(|e| WitnessError::Storage(format!("failed to prepare get_kel: {}", e)))?;
+
+        stmt.bind((1, prefix.as_str()))
+            .map_err(|e| WitnessError::Storage(format!("failed to bind prefix: {}", e)))?;
+
+        let mut kel = Vec::new();
+        while let Ok(sqlite::State::Row) = stmt.next() {
+            let json: String = stmt
+                .read(0)
+                .map_err(|e| WitnessError::Storage(format!("failed to read event_json: {}", e)))?;
+            kel.push(json);
+        }
+        Ok(kel)
     }
 
     /// Check for duplicity: same (prefix, seq) with different SAID.
@@ -427,6 +506,42 @@ mod tests {
 
         let result = storage.get_receipt(&p, &said("ENONEXISTENT")).unwrap();
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn store_event_and_get_kel_in_order() {
+        let storage = WitnessStorage::in_memory().unwrap();
+        let p = prefix("EPrefix");
+
+        // Inserted out of order; retrieval must be sequence-ordered.
+        storage.store_event(now(), &p, 1, r#"{"s":"1"}"#).unwrap();
+        storage.store_event(now(), &p, 0, r#"{"s":"0"}"#).unwrap();
+
+        let kel = storage.get_kel(&p).unwrap();
+        assert_eq!(kel, vec![r#"{"s":"0"}"#, r#"{"s":"1"}"#]);
+    }
+
+    #[test]
+    fn store_event_first_seen_wins() {
+        let storage = WitnessStorage::in_memory().unwrap();
+        let p = prefix("EPrefix");
+
+        storage
+            .store_event(now(), &p, 0, r#"{"first":true}"#)
+            .unwrap();
+        // A second write at the same position is ignored — the witness retains
+        // the body it first corroborated.
+        storage
+            .store_event(now(), &p, 0, r#"{"second":true}"#)
+            .unwrap();
+
+        assert_eq!(storage.get_kel(&p).unwrap(), vec![r#"{"first":true}"#]);
+    }
+
+    #[test]
+    fn get_kel_unknown_prefix_is_empty() {
+        let storage = WitnessStorage::in_memory().unwrap();
+        assert!(storage.get_kel(&prefix("ENeverSeen")).unwrap().is_empty());
     }
 
     #[test]

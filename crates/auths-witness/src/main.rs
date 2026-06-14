@@ -9,12 +9,18 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
 use auths_core::witness::{
-    WitnessServerConfig, WitnessServerState, generate_and_persist_witness_signer,
+    BuildProof, WitnessServerConfig, WitnessServerState, generate_and_persist_witness_signer,
     load_witness_signer, witness_signer_from_seed_hex,
 };
 use auths_crypto::CurveType;
 use auths_witness::hardened_witness_app;
 use clap::Parser;
+
+/// Environment variable naming the file that holds this binary's signed build
+/// attestation (`auths artifact sign` output). When set, the node measures its
+/// own running binary, pairs it with the signed attestation, and serves both at
+/// `/build` so a relying party can prove which binary the node runs.
+const BUILD_ATTESTATION_ENV: &str = "AUTHS_WITNESS_BUILD_ATTESTATION";
 
 /// Slim, hardened KERI rct-witness server.
 #[derive(Parser, Debug)]
@@ -91,6 +97,39 @@ fn resolve_signer(args: &Args, curve: CurveType) -> Result<auths_crypto::TypedSi
     }
 }
 
+/// Resolve the build proof to serve at `/build`, if one is configured.
+///
+/// When `AUTHS_WITNESS_BUILD_ATTESTATION` names a readable signed attestation,
+/// the node measures its own running binary and pairs it with that attestation.
+/// A node started without the env var serves no `/build` surface — it does not
+/// pretend to prove a binary it was given no attestation for. A configured-but-
+/// unreadable/malformed attestation is fail-closed: a node that was told to
+/// prove its binary and cannot must refuse to start, never serve a silent gap.
+fn resolve_build_proof() -> Result<Option<BuildProof>> {
+    #[allow(clippy::disallowed_methods)]
+    // Boundary: the binary reads its own deployment env, exactly as it does for
+    // AUTHS_WITNESS_SEED. A container injects the attestation file path here.
+    let Some(path) = std::env::var_os(BUILD_ATTESTATION_ENV) else {
+        return Ok(None);
+    };
+    let path = PathBuf::from(path);
+    let bytes = std::fs::read(&path).with_context(|| {
+        format!(
+            "{BUILD_ATTESTATION_ENV} points at {} but it could not be read",
+            path.display()
+        )
+    })?;
+    let attestation: serde_json::Value = serde_json::from_slice(&bytes).with_context(|| {
+        format!(
+            "the build attestation at {} is not valid JSON",
+            path.display()
+        )
+    })?;
+    let proof = BuildProof::measure_self(env!("CARGO_PKG_VERSION"), attestation)
+        .context("could not measure the running binary for the build proof")?;
+    Ok(Some(proof))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -101,8 +140,11 @@ async fn main() -> Result<()> {
     let curve = parse_curve(&args.curve)?;
     let signer = resolve_signer(&args, curve)?;
 
-    let config = WitnessServerConfig::from_signer(args.persist.clone(), signer)
+    let mut config = WitnessServerConfig::from_signer(args.persist.clone(), signer)
         .map_err(|e| anyhow!("witness config: {e}"))?;
+    if let Some(proof) = resolve_build_proof()? {
+        config = config.with_build_proof(proof);
+    }
     let state = WitnessServerState::new(config).map_err(|e| anyhow!("witness state: {e}"))?;
 
     tracing::info!(

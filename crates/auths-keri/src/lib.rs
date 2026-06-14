@@ -40,18 +40,32 @@ pub mod acdc;
 /// Validated capability identifiers — the atomic unit of authorization in Auths.
 pub mod capability;
 mod crypto;
+/// `did:webs` DID-document projection of a resolved KERI key-state.
+pub mod did_webs;
 mod error;
 mod events;
+/// IPEX — the Issuance & Presentation EXchange grant/admit `exn` handshake for
+/// handing over an ACDC credential between KERI controllers.
+pub mod ipex;
 pub mod kel_io;
 mod keys;
 /// Key-State Notice (KSN) — signed snapshot of current key-state for thin clients.
 pub mod ksn;
 /// Routed KERI message types (qry, rpy, pro, bar, xip, exn).
 pub mod messages;
+/// Out-Of-Band Introduction (OOBI) — KERI discovery: resolve/serve AID endpoints.
+pub mod oobi;
+/// QUIC/HTTP3 transport for the KEL-rooted TLS composition — the same leaf +
+/// RFC 9266 exporter channel binding, carried over QUIC's TLS 1.3 handshake.
+#[cfg(feature = "quic")]
+pub mod quic_transport;
 mod said;
 mod state;
 /// Backerless TEL (Transaction Event Log) credential-status events: `vcp`/`iss`/`rev`.
 pub mod tel;
+/// KEL-rooted X.509 leaf certificates — composing a KERI identity with TLS
+/// (did:keri SAN + KEL key-state binding extension, verified by replay).
+pub mod tls_cert;
 mod types;
 mod validate;
 /// Witness protocol types: receipts, providers, and error reporting for split-view defense.
@@ -80,6 +94,7 @@ pub use capability::{
     Capability, CapabilityError, MANAGE_MEMBERS, ROTATE_KEYS, SIGN_COMMIT, SIGN_RELEASE,
 };
 pub use crypto::{compute_next_commitment, verify_commitment};
+pub use did_webs::{DidWebsDocument, PublicKeyJwk, VerificationMethod};
 pub use error::{KeriTranslationError, TelError};
 pub use events::{
     AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
@@ -89,8 +104,22 @@ pub use events::{
     pair_kel_attachments, parse_attachment, parse_delegated_attachment, parse_source_seal_couples,
     serialize_attachment, serialize_source_seal_couples,
 };
+pub use ipex::{IpexAdmit, IpexError, IpexGrant};
 pub use keys::{KeriDecodeError, KeriPublicKey};
-pub use ksn::{KSN_TYPE, KSN_VERSION, KeyStateNotice, KsnError, SignedKsn};
+pub use ksn::{
+    KERI_KEY_STATE_VERSION, KSN_TYPE, KSN_VERSION, KeyStateNotice, KeyStateRecord, KsnError,
+    LatestEstablishmentEvent, SignedKsn,
+};
+pub use oobi::{
+    EndRoleReply, LocSchemeReply, Oobi, OobiEndpoint, OobiError, OobiResolution, Role,
+    ingest_oobi_stream,
+};
+#[cfg(feature = "quic")]
+pub use quic_transport::{
+    QUIC_EXPORTER_CONTEXT, QUIC_EXPORTER_LABEL, QUIC_EXPORTER_LEN, QuicLoopbackOutcome,
+    QuicTransportError, quic_channel_binding, quic_client_config, quic_loopback_compose,
+    quic_server_config,
+};
 pub use said::{
     Protocol, SAID_PLACEHOLDER, compute_said, compute_said_with_protocol, compute_section_said,
     verify_said,
@@ -99,6 +128,17 @@ pub use state::{AnchorStatus, KeyState};
 pub use tel::{
     Iss, Rev, TEL_KERIPY_REVISION, TRAIT_NO_BACKERS, TelAnchorSeal, TelEvent, TelState, Vcp,
     encode_nonce as encode_tel_nonce, to_wire_bytes as tel_to_wire_bytes, validate_tel,
+};
+pub use tls_cert::{
+    AUTHS_KERI_BINDING_OID, AuthsKeriBinding, DID_KERI_SCHEME, TlsCertError, TlsKeyAuthorization,
+    TlsKeyAuthorizer,
+};
+#[cfg(feature = "tls-cert")]
+pub use tls_cert::{
+    IssuedCert, extract_aid_from_san, extract_binding, extract_did_keri_san, extract_spki_der,
+    issue_authorized_kel_rooted_cert, issue_authorized_kel_rooted_cert_with_key,
+    issue_kel_rooted_cert, issue_kel_rooted_cert_with_key, verify_authorized_against_key_state,
+    verify_binds_to_key_state,
 };
 pub use types::{
     CesrKey, ConfigTrait, Fraction, FractionError, KeriTypeError, Prefix, Said, Threshold,

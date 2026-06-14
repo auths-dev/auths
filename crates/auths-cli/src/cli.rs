@@ -19,16 +19,20 @@ use crate::commands::debug::DebugCmd;
 use crate::commands::demo::DemoCommand;
 use crate::commands::device::DeviceCommand;
 use crate::commands::device::pair::PairCommand;
+use crate::commands::did_webs::DidWebsCommand;
 use crate::commands::doctor::DoctorCommand;
 use crate::commands::emergency::EmergencyCommand;
 use crate::commands::error_lookup::ErrorLookupCommand;
 use crate::commands::id::IdCommand;
 use crate::commands::init::InitCommand;
+use crate::commands::ipex::IpexCommand;
 use crate::commands::key::KeyCommand;
+use crate::commands::key_state::KeyStateCommand;
 use crate::commands::learn::LearnCommand;
 use crate::commands::log::LogCommand;
 use crate::commands::multi_sig::MultiSigCommand;
 use crate::commands::namespace::NamespaceCommand;
+use crate::commands::oobi::OobiCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::publish::PublishCommand;
@@ -38,6 +42,7 @@ use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
 use crate::commands::sign_commit::SignCommitCommand;
 use crate::commands::status::StatusCommand;
+use crate::commands::tls_cert::TlsCertCommand;
 use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
 use crate::commands::whoami::WhoamiCommand;
@@ -122,6 +127,16 @@ pub enum RootCommand {
     Device(DeviceCommand),
     #[command(hide = true)]
     Key(KeyCommand),
+    #[command(hide = true, name = "key-state")]
+    KeyState(KeyStateCommand),
+    #[command(hide = true, name = "did-webs")]
+    DidWebs(DidWebsCommand),
+    #[command(hide = true, name = "tls-cert")]
+    TlsCert(TlsCertCommand),
+    #[command(hide = true)]
+    Oobi(OobiCommand),
+    #[command(hide = true)]
+    Ipex(IpexCommand),
     #[command(hide = true)]
     Approval(ApprovalCommand),
     #[command(hide = true)]

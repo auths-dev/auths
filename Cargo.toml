@@ -28,6 +28,7 @@ members = [
   "crates/auths-rp",
   "crates/xtask", "crates/auths-api",
   "crates/auths-witness",
+  "crates/auths-witness-node",
   "crates/auths-checkpoint-cosigner",
   "crates/auths-monitor",
 ]
@@ -96,6 +97,8 @@ auths-pairing-protocol = { path = "crates/auths-pairing-protocol", version = "0.
 auths-storage = { path = "crates/auths-storage", version = "0.1.3" }
 auths-transparency = { path = "crates/auths-transparency", version = "0.1.3", default-features = false }
 auths-utils = { path = "crates/auths-utils", version = "0.1.3" }
+auths-witness = { path = "crates/auths-witness", version = "0.1.3" }
+auths-witness-node = { path = "crates/auths-witness-node", version = "0.1.3" }
 insta = { version = "1", features = ["json"] }
 
 # Compile crypto-heavy crates with optimizations even in dev/test builds.

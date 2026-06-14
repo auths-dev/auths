@@ -31,6 +31,11 @@
 
 use sha2::{Digest, Sha256};
 
+use auths_pairing_protocol::{
+    ChannelBinding, ChannelBindingError, ChannelBindingProvider, TLS_EXPORTER_LABEL,
+    TLS_EXPORTER_LEN,
+};
+
 use crate::error::DaemonError;
 
 /// Cert + key material for a TLS-enabled daemon session, plus the
@@ -117,6 +122,43 @@ impl DaemonError {
     }
 }
 
+/// Adapter: extract the RFC 9266 `tls-exporter` channel binding from a live
+/// `rustls` connection.
+///
+/// This is the concrete TLS-stack side of the
+/// [`ChannelBindingProvider`] port. The pairing protocol stays
+/// transport-agnostic; this function is the only place that knows the binding
+/// is sourced from `rustls`. It exports keying material under the registered
+/// label [`TLS_EXPORTER_LABEL`] with an **absent** context (RFC 5705
+/// distinguishes absent from empty; RFC 9266 specifies no context) and length
+/// [`TLS_EXPORTER_LEN`], matching what any stock TLS stack — Go `crypto/tls`,
+/// OpenSSL, BoringSSL — produces for the same connection.
+///
+/// `conn` is the connection's [`rustls::ConnectionCommon`], reachable from
+/// either a server or client connection (and from a `tokio_rustls` stream via
+/// its `get_ref().1`). The handshake MUST be complete; before it is, rustls
+/// returns an error and this surfaces [`ChannelBindingError::ExporterUnavailable`]
+/// so the caller fails closed rather than minting an unbound, relay-able proof.
+pub fn rustls_channel_binding<D>(
+    conn: &rustls::ConnectionCommon<D>,
+) -> Result<ChannelBinding, ChannelBindingError> {
+    let mut material = [0u8; TLS_EXPORTER_LEN];
+    conn.export_keying_material(&mut material, TLS_EXPORTER_LABEL, None)
+        .map_err(|e| ChannelBindingError::ExporterUnavailable(e.to_string()))?;
+    ChannelBinding::from_exporter(&material)
+}
+
+/// Newtype wrapper so a `rustls` connection can be passed wherever a
+/// [`ChannelBindingProvider`] is expected, keeping the protocol core free of
+/// any TLS-stack type.
+pub struct RustlsChannelBinding<'a, D>(pub &'a rustls::ConnectionCommon<D>);
+
+impl<D> ChannelBindingProvider for RustlsChannelBinding<'_, D> {
+    fn channel_binding(&self) -> Result<ChannelBinding, ChannelBindingError> {
+        rustls_channel_binding(self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,5 +181,152 @@ mod tests {
         let b = generate_tls_material(&sans).unwrap();
         // Fresh keypair each time → different SPKI.
         assert_ne!(a.spki_sha256, b.spki_sha256);
+    }
+
+    // ---- channel-binding adapter (RFC 9266 tls-exporter) over real rustls ----
+
+    use std::sync::Arc;
+
+    use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
+    use rustls::{ClientConfig, ClientConnection, ServerConfig, ServerConnection};
+
+    /// Accept any server cert — the test only exercises the exporter, and the
+    /// pairing protocol pins the SPKI out-of-band, not via a CA.
+    #[derive(Debug)]
+    struct NoVerify;
+
+    impl ServerCertVerifier for NoVerify {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &CertificateDer<'_>,
+            _intermediates: &[CertificateDer<'_>],
+            _server_name: &ServerName<'_>,
+            _ocsp: &[u8],
+            _now: UnixTime,
+        ) -> Result<ServerCertVerified, rustls::Error> {
+            Ok(ServerCertVerified::assertion())
+        }
+        fn verify_tls12_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &rustls::DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+        fn verify_tls13_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &rustls::DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            use rustls::SignatureScheme::*;
+            vec![ECDSA_NISTP256_SHA256, ED25519, RSA_PSS_SHA256]
+        }
+    }
+
+    fn provider() -> Arc<rustls::crypto::CryptoProvider> {
+        Arc::new(rustls::crypto::aws_lc_rs::default_provider())
+    }
+
+    /// Drive a TLS 1.3 handshake between a fresh server and client connection
+    /// over in-memory buffers, then return both ends' channel bindings.
+    fn handshake_bindings() -> (ChannelBinding, ChannelBinding) {
+        // Fresh self-signed cert (rcgen) for the server.
+        let mat = generate_tls_material(&["localhost".to_string()]).expect("cert");
+        let certs = rustls_pemcert(&mat.cert_pem);
+        let key = rustls_pemkey(&mat.key_pem);
+
+        let server_cfg = ServerConfig::builder_with_provider(provider())
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .expect("server cfg");
+        let client_cfg = ClientConfig::builder_with_provider(provider())
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoVerify))
+            .with_no_client_auth();
+
+        let mut server = ServerConnection::new(Arc::new(server_cfg)).unwrap();
+        let mut client = ClientConnection::new(
+            Arc::new(client_cfg),
+            ServerName::try_from("localhost").unwrap(),
+        )
+        .unwrap();
+
+        // Pump bytes until both handshakes complete.
+        for _ in 0..16 {
+            if !client.is_handshaking() && !server.is_handshaking() {
+                break;
+            }
+            transfer(&mut client, &mut server);
+            let _ = server.process_new_packets().unwrap();
+            transfer(&mut server, &mut client);
+            let _ = client.process_new_packets().unwrap();
+        }
+        assert!(!client.is_handshaking(), "client handshake stalled");
+        assert!(!server.is_handshaking(), "server handshake stalled");
+
+        let cb_client = rustls_channel_binding(&client).expect("client binding");
+        let cb_server = rustls_channel_binding(&server).expect("server binding");
+        (cb_client, cb_server)
+    }
+
+    fn transfer<A, B>(
+        from: &mut rustls::ConnectionCommon<A>,
+        to: &mut rustls::ConnectionCommon<B>,
+    ) {
+        let mut buf = Vec::new();
+        while from.wants_write() {
+            from.write_tls(&mut buf).unwrap();
+        }
+        let mut cursor = std::io::Cursor::new(buf);
+        while (cursor.position() as usize) < cursor.get_ref().len() {
+            to.read_tls(&mut cursor).unwrap();
+        }
+    }
+
+    fn rustls_pemcert(pem: &str) -> Vec<CertificateDer<'static>> {
+        use rustls::pki_types::pem::PemObject;
+        CertificateDer::pem_slice_iter(pem.as_bytes())
+            .collect::<Result<Vec<_>, _>>()
+            .expect("cert pem")
+    }
+
+    fn rustls_pemkey(pem: &str) -> PrivateKeyDer<'static> {
+        use rustls::pki_types::pem::PemObject;
+        PrivateKeyDer::from_pem_slice(pem.as_bytes()).expect("key pem")
+    }
+
+    #[test]
+    fn exporter_binding_is_equal_across_the_same_session() {
+        // RFC 9266: both endpoints of one TLS connection derive the SAME
+        // exporter value. This is what lets the two pairing ends agree on a
+        // binding without transmitting it.
+        let (client, server) = handshake_bindings();
+        assert_eq!(
+            client, server,
+            "client and server of the same TLS session must derive the same binding"
+        );
+    }
+
+    #[test]
+    fn exporter_binding_differs_across_sessions() {
+        // RFC 9266: two independent TLS connections derive DIFFERENT exporter
+        // values — the per-session property the anti-relay check rests on, and
+        // the behavior any conformant stock TLS stack exhibits.
+        let (c1, _s1) = handshake_bindings();
+        let (c2, _s2) = handshake_bindings();
+        assert_ne!(
+            c1, c2,
+            "two independent TLS sessions must derive distinct bindings"
+        );
     }
 }

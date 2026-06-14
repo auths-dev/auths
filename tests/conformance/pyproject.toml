@@ -1,0 +1,30 @@
+[project]
+name = "auths-keripy-conformance"
+version = "0.1.0"
+description = "Byte-for-byte conformance of the auths KERI CLI against keripy 1.3.4"
+# keri==1.3.4 pulls hio, which requires Python >=3.12.6; pinning below 3.14
+# keeps uv from selecting hio>=0.7.17 (which demands 3.14). Without this the
+# `uv run` resolver used in CI is unsatisfiable.
+requires-python = ">=3.12.6,<3.14"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-timeout>=2.1",
+    "keri==1.3.4",
+    "cryptography",
+    "pyyaml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+markers = [
+    "requires_binary: marks tests that require the compiled auths binary",
+]
+strict_markers = true
+# `timeout` is honored when pytest-timeout is installed (see dev deps); harmless
+# otherwise. Per-subprocess timeouts are also enforced in conftest's run_auths.
+timeout = 60
