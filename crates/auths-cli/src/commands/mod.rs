@@ -17,6 +17,7 @@ pub mod credential;
 pub mod debug;
 pub mod demo;
 pub mod device;
+pub mod did_webs;
 pub mod doctor;
 pub mod emergency;
 pub mod error_lookup;

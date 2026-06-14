@@ -19,6 +19,7 @@ use crate::commands::debug::DebugCmd;
 use crate::commands::demo::DemoCommand;
 use crate::commands::device::DeviceCommand;
 use crate::commands::device::pair::PairCommand;
+use crate::commands::did_webs::DidWebsCommand;
 use crate::commands::doctor::DoctorCommand;
 use crate::commands::emergency::EmergencyCommand;
 use crate::commands::error_lookup::ErrorLookupCommand;
@@ -125,6 +126,8 @@ pub enum RootCommand {
     Key(KeyCommand),
     #[command(hide = true, name = "key-state")]
     KeyState(KeyStateCommand),
+    #[command(hide = true, name = "did-webs")]
+    DidWebs(DidWebsCommand),
     #[command(hide = true)]
     Approval(ApprovalCommand),
     #[command(hide = true)]

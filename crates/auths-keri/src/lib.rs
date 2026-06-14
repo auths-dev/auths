@@ -40,6 +40,8 @@ pub mod acdc;
 /// Validated capability identifiers — the atomic unit of authorization in Auths.
 pub mod capability;
 mod crypto;
+/// `did:webs` DID-document projection of a resolved KERI key-state.
+pub mod did_webs;
 mod error;
 mod events;
 pub mod kel_io;
@@ -80,6 +82,7 @@ pub use capability::{
     Capability, CapabilityError, MANAGE_MEMBERS, ROTATE_KEYS, SIGN_COMMIT, SIGN_RELEASE,
 };
 pub use crypto::{compute_next_commitment, verify_commitment};
+pub use did_webs::{DidWebsDocument, PublicKeyJwk, VerificationMethod};
 pub use error::{KeriTranslationError, TelError};
 pub use events::{
     AgentScope, DipEvent, DipEventInit, DrtEvent, DrtEventInit, Event, IcpEvent, IcpEventInit,
