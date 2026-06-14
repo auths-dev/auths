@@ -15,8 +15,8 @@ use serde::Serialize;
 use auths_rp::{Nonce, WirePresentation};
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::domains::credentials::{
-    CredentialVerdict, PresentationChallenge, VerifierWitnessPolicy, issue, list,
-    present_credential, revoke, verify_by_said,
+    CredentialVerdict, PresentationChallenge, UsageObservation, VerifierWitnessPolicy, issue, list,
+    present_credential, revoke, verify_by_said_with_usage,
 };
 use auths_sdk::keychain::KeyAlias;
 use auths_sdk::signing::PassphraseProvider;
@@ -106,6 +106,20 @@ pub enum CredentialSubcommand {
             help = "Fail closed unless every lifecycle anchor reaches witness quorum."
         )]
         require_witnesses: bool,
+
+        /// Enforce a quantitative usage cap against an observed call count.
+        ///
+        /// Path to a JSON usage observation `{"said":"…","calls_used":N}`. When the
+        /// credential carries a `calls:<N>` cap, the observed count is checked
+        /// against the verifier's monotonic usage ledger: an over-budget count fails
+        /// with `cap_exceeded`, a replayed (lower) count fails with
+        /// `usage_counter_rolled_back`. Omitted for credentials without a usage cap.
+        #[arg(
+            long = "usage-counter",
+            value_name = "FILE",
+            help = "Enforce a quantitative usage cap against an observed call count (JSON: {\"said\":…,\"calls_used\":N})."
+        )]
+        usage_counter: Option<PathBuf>,
     },
 
     /// Present a credential: prove control of the subject AID and emit an `Auths-Presentation` header.
@@ -325,6 +339,7 @@ pub fn handle_credential(
             credential_said,
             issuer,
             require_witnesses,
+            usage_counter,
         } => {
             let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
             let issuer_alias = KeyAlias::new_unchecked(issuer);
@@ -333,22 +348,48 @@ pub fn handle_credential(
             } else {
                 VerifierWitnessPolicy::Warn
             };
+            let observation = match usage_counter {
+                Some(path) => Some(load_usage_observation(&path)?),
+                None => None,
+            };
             // Clock at the presentation boundary.
             #[allow(clippy::disallowed_methods)]
             let now = chrono::Utc::now();
             let rt = tokio::runtime::Runtime::new()?;
             let verdict = rt
-                .block_on(verify_by_said(
+                .block_on(verify_by_said_with_usage(
                     &ctx,
                     &issuer_alias,
                     &credential_said,
                     policy,
                     now,
+                    &repo_path,
+                    observation,
                 ))
                 .map_err(anyhow::Error::new)?;
             print_verdict(&credential_said, &verdict)
         }
     }
+}
+
+/// Load an observed usage count from a `{"said":…,"calls_used":N}` JSON file.
+///
+/// The presented count is *untrusted* caller input (e.g. an agent's reported call
+/// count); the verifier checks it against its own monotonic usage ledger. A missing
+/// or malformed file is a hard error — the cap was requested, so it must be enforced.
+fn load_usage_observation(path: &PathBuf) -> Result<UsageObservation> {
+    #[derive(serde::Deserialize)]
+    struct UsageCounterFile {
+        calls_used: u64,
+    }
+    let bytes = std::fs::read(path)
+        .map_err(|e| anyhow::anyhow!("usage counter file read failed ({}): {e}", path.display()))?;
+    let parsed: UsageCounterFile = serde_json::from_slice(&bytes).map_err(|e| {
+        anyhow::anyhow!("usage counter file parse failed ({}): {e}", path.display())
+    })?;
+    Ok(UsageObservation {
+        calls_used: parsed.calls_used,
+    })
 }
 
 /// Render a verification verdict to stdout (JSON or human-readable).
@@ -390,6 +431,28 @@ fn describe(verdict: &CredentialVerdict) -> (&'static str, Option<String>, Optio
         CredentialVerdict::StaleOrUnresolvable { as_of, reason } => (
             "stale_or_unresolvable",
             Some(reason.clone()),
+            Some(as_of.seq),
+        ),
+        CredentialVerdict::UsageCapExceeded {
+            as_of,
+            observed,
+            cap,
+        } => (
+            "cap_exceeded",
+            Some(format!(
+                "usage cap reached: {observed} of {cap} calls already spent"
+            )),
+            Some(as_of.seq),
+        ),
+        CredentialVerdict::UsageCounterRolledBack {
+            as_of,
+            observed,
+            high_water,
+        } => (
+            "usage_counter_rolled_back",
+            Some(format!(
+                "replayed usage counter: presented {observed}, but {high_water} already observed"
+            )),
             Some(as_of.seq),
         ),
         CredentialVerdict::Resolved { verdict, as_of } => {

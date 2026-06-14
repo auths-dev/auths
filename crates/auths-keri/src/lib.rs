@@ -91,7 +91,7 @@ pub use acdc::{
     compute_capability_schema_said, compute_schema_said,
 };
 pub use capability::{
-    Capability, CapabilityError, MANAGE_MEMBERS, ROTATE_KEYS, SIGN_COMMIT, SIGN_RELEASE,
+    Capability, CapabilityError, MANAGE_MEMBERS, ROTATE_KEYS, SIGN_COMMIT, SIGN_RELEASE, UsageCap,
 };
 pub use crypto::{compute_next_commitment, verify_commitment};
 pub use did_webs::{DidWebsDocument, PublicKeyJwk, VerificationMethod};
