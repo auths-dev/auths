@@ -123,11 +123,19 @@ fn test_init_happy_path() {
         ".auths/roots should pin a did:keri root, got: {roots}"
     );
 
-    // Output uses eprintln, so DID appears in stderr
+    // Output uses eprintln, so the identity appears in stderr. First-run
+    // human-facing output renders identifiers in product form (`auths:<prefix>`),
+    // not the canonical `did:keri:` method (which stays in --json / files / wire),
+    // so a newcomer is never shown protocol vocabulary on the way to the aha.
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("did:keri:"),
-        "output should contain identity DID, got: {}",
+        stderr.contains("auths:"),
+        "output should contain the identity in product form (auths:<prefix>), got: {}",
+        stderr
+    );
+    assert!(
+        !stderr.contains("did:keri:"),
+        "first-run human output must not surface the did:keri method, got: {}",
         stderr
     );
 }

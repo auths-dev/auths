@@ -27,10 +27,10 @@ use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
-/// Issue, revoke, list, and verify capability credentials (ACDCs).
+/// Issue, revoke, list, and verify capability credentials.
 #[derive(Parser, Debug, Clone)]
 #[command(
-    about = "Issue, revoke, list, and verify capability credentials (ACDCs).",
+    about = "Issue, revoke, list, and verify capability credentials.",
     after_help = "Examples:
   auths credential issue --issuer my-key --to did:keri:E… --cap sign --role deployer
   auths credential revoke ECred… --issuer my-key
@@ -200,9 +200,14 @@ pub fn handle_credential(
                 )
                 .print()?;
             } else {
-                println!("✓ Credential issued and anchored to the issuer KEL:");
+                println!(
+                    "✓ Credential issued and recorded in the issuer's tamper-evident history:"
+                );
                 println!("  credential: {}", issued.credential_said);
-                println!("  issuee:     {}", issued.issuee_did);
+                println!(
+                    "  issuee:     {}",
+                    crate::ux::product_id(&issued.issuee_did)
+                );
             }
             Ok(())
         }
@@ -259,7 +264,7 @@ pub fn handle_credential(
                 .print()?;
             } else {
                 println!(
-                    "✓ Credential revoked (rev anchored in the issuer KEL): {credential_said}"
+                    "✓ Credential revoked (recorded in the issuer's tamper-evident history): {credential_said}"
                 );
             }
             Ok(())
@@ -303,7 +308,7 @@ pub fn handle_credential(
                     println!(
                         "  {} → {} [{}]{}",
                         c.credential_said,
-                        c.subject_did,
+                        crate::ux::product_id(&c.subject_did),
                         c.capabilities
                             .iter()
                             .map(|cap| cap.as_str())
@@ -366,7 +371,7 @@ fn print_verdict(credential_said: &str, verdict: &CredentialVerdict) -> Result<(
     } else if valid {
         println!("✓ Credential is valid: {credential_said}");
         if let Some(seq) = as_of {
-            println!("  as-of issuer KEL seq {seq}");
+            println!("  as of the issuer's history revision {seq}");
         }
     } else {
         println!("✗ Credential did not verify: {credential_said}");
@@ -397,7 +402,9 @@ fn describe(verdict: &CredentialVerdict) -> (&'static str, Option<String>, Optio
                 Inner::RegistryNotEstablished => ("registry_not_established", None, seq),
                 Inner::CredentialRevoked { revoked_at } => (
                     "revoked",
-                    Some(format!("revoked at issuer KEL seq {revoked_at}")),
+                    Some(format!(
+                        "revoked at the issuer's history revision {revoked_at}"
+                    )),
                     seq,
                 ),
                 Inner::Expired { expired_at, .. } => {

@@ -22,7 +22,7 @@ use crate::ux::format::{JsonResponse, is_json_mode};
 /// Manage AI agents delegated by your identity.
 #[derive(Parser, Debug, Clone)]
 #[command(
-    about = "Manage AI agents (KERI delegated identifiers).",
+    about = "Manage AI agents (delegated identities under your root).",
     after_help = "Examples:
   auths id agent add --label deploy-bot --key my-key   # Delegate a new agent"
 )]
@@ -154,9 +154,11 @@ pub fn handle_agent(
                 )
                 .print()?;
             } else {
-                println!("✓ Agent delegated as a KERI delegated identifier:");
-                println!("  {}", result.agent_did);
-                println!("\nThe root anchored this agent's delegation in its KEL.");
+                println!("✓ Agent delegated under your identity:");
+                println!("  {}", crate::ux::product_id(&result.agent_did));
+                println!(
+                    "\nYour root identity authorized this agent and recorded it in your tamper-evident history."
+                );
             }
             Ok(())
         }
@@ -177,7 +179,10 @@ pub fn handle_agent(
                 )
                 .print()?;
             } else {
-                println!("✓ Agent key rotated (drt anchored by the root): {agent_did}");
+                println!(
+                    "✓ Agent key rotated (recorded by your root identity): {}",
+                    crate::ux::product_id(&agent_did)
+                );
             }
             Ok(())
         }
@@ -198,7 +203,10 @@ pub fn handle_agent(
                 )
                 .print()?;
             } else {
-                println!("✓ Agent revoked (revocation anchored in the root KEL): {agent_did}");
+                println!(
+                    "✓ Agent revoked (recorded in your tamper-evident history): {}",
+                    crate::ux::product_id(&agent_did)
+                );
             }
             Ok(())
         }
@@ -224,7 +232,7 @@ pub fn handle_agent(
                 println!("Delegated agents:");
                 for a in &shown {
                     let status = if a.revoked { " (revoked)" } else { "" };
-                    println!("  {}{}", a.agent_did, status);
+                    println!("  {}{}", crate::ux::product_id(&a.agent_did), status);
                 }
             }
             Ok(())
