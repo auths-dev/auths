@@ -24,11 +24,12 @@
 //! signature attachments included, so the destination's KELs remain
 //! authenticatable (never merely structurally replayable).
 
+use std::collections::{BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
 use auths_keri::{
-    DelegatorKelLookup, KelSealIndex, Prefix, Said, SignedEvent, SourceSeal,
-    parse_delegated_attachment, validate_signed_kel,
+    Acdc, DelegatorKelLookup, KelSealIndex, Prefix, Said, SignedEvent, SourceSeal, TelEvent,
+    parse_delegated_attachment, validate_signed_kel, validate_tel,
 };
 
 use super::kel_resolver::{KelResolveError, collect_kel_capped, verify_prefix_binding};
@@ -139,6 +140,45 @@ pub enum RegistryMergeError {
     /// A backend read/write failed.
     #[error("registry backend error: {0}")]
     Storage(#[from] RegistryError),
+
+    /// A source credential blob did not parse as a stored ACDC envelope, or its
+    /// recomputed SAID did not match the SAID it was filed under — a tampered or
+    /// malformed credential body is refused rather than copied onto the cold
+    /// machine.
+    #[error("source credential {credential} under {issuer} was refused: {reason}")]
+    CredentialRefused {
+        /// The issuer the credential was filed under.
+        issuer: Prefix,
+        /// The credential SAID (the on-disk filename).
+        credential: Said,
+        /// Why it was refused.
+        reason: String,
+    },
+
+    /// A source credential names an issuer whose KEL was not authenticated in
+    /// this merge — a credential with no anchoring identity is never imported.
+    #[error("source credential {credential} names unknown issuer {issuer} (no authenticated KEL)")]
+    CredentialOrphan {
+        /// The unanchored issuer.
+        issuer: Prefix,
+        /// The orphaned credential SAID.
+        credential: Said,
+    },
+
+    /// A source TEL chain failed structural validation (a recomputed event SAID
+    /// did not match, or the `vcp → iss… → rev…` shape was broken) — a tampered
+    /// TEL is refused rather than copied.
+    #[error("source TEL {credential} under {issuer}/{registry} was refused: {reason}")]
+    TelRefused {
+        /// The issuer the TEL was filed under.
+        issuer: Prefix,
+        /// The registry SAID.
+        registry: Said,
+        /// The credential SAID the TEL belongs to.
+        credential: Said,
+        /// Why it was refused.
+        reason: String,
+    },
 }
 
 /// Merge every identity's KEL from `source` into `dest` under the guards
@@ -277,6 +317,321 @@ fn merge_kel(
             Ok(MergeOutcome::Advanced { events: appended })
         }
     }
+}
+
+/// What the credential + TEL merge did, counted over the whole registry.
+///
+/// The KEL merge ([`merge_registries`]) is the trust core — it authenticates
+/// every imported event. This report covers the *artifact* layer that rides on
+/// top of those authenticated KELs: the ACDC credential bodies and their TEL
+/// chains, which a cold machine needs to re-verify a credential end-to-end.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct MergedCredentials {
+    /// Credential bodies newly written to the destination.
+    pub credentials_imported: usize,
+    /// Credential bodies the destination already held (idempotent skip).
+    pub credentials_already_present: usize,
+    /// TEL events newly written to the destination.
+    pub tel_events_imported: usize,
+    /// TEL events the destination already held (idempotent skip).
+    pub tel_events_already_present: usize,
+}
+
+/// Merge every credential body and TEL chain from `source` into `dest`.
+///
+/// Runs AFTER [`merge_registries`] has authenticated the KELs: the credential
+/// and TEL artifacts ride on those KELs and are re-verified at
+/// `credential verify` time (the issuer's detached signature is checked against
+/// the authenticated key-state; the TEL anchors are checked against the KEL).
+/// This step only *materializes* the bodies so a cold machine has them to verify.
+///
+/// It is still fail-closed, mirroring the KEL merge's discipline:
+///
+/// - **anchored-issuer only** — a credential whose issuer has no authenticated
+///   KEL (not in `authenticated_issuers`) is refused
+///   ([`RegistryMergeError::CredentialOrphan`]); a dangling credential is never
+///   imported;
+/// - **content-address consistency** — a credential body must parse and
+///   recompute to the SAID it is filed under, and name that issuer
+///   ([`RegistryMergeError::CredentialRefused`]); a byte-flipped credential is
+///   refused, not copied;
+/// - **TEL structural validity** — a TEL chain must pass [`validate_tel`]
+///   (every event's recomputed SAID matches; the `vcp → iss… → rev…` shape
+///   holds) before any event is written ([`RegistryMergeError::TelRefused`]); a
+///   byte-flipped TEL event is refused.
+///
+/// Writes are idempotent: a credential body / TEL event the destination already
+/// holds (by SAID-addressed path) is skipped, so a re-pull changes nothing.
+/// Any refusal aborts the whole step — a pull never partially trusts a source.
+///
+/// Args:
+/// * `source`: The untrusted registry snapshot to read artifacts from.
+/// * `dest`: The trusted local registry to import into.
+/// * `authenticated_issuers`: Prefixes whose KELs `merge_registries` authenticated.
+///
+/// Usage:
+/// ```ignore
+/// let kels = merge_registries(src, dst, &caps)?;
+/// let issuers = kels.iter().map(|m| m.prefix.clone()).collect();
+/// let creds = merge_credentials_and_tel(src, dst, &issuers)?;
+/// ```
+pub fn merge_credentials_and_tel(
+    source: &dyn RegistryBackend,
+    dest: &dyn RegistryBackend,
+    authenticated_issuers: &HashSet<Prefix>,
+) -> Result<MergedCredentials, RegistryMergeError> {
+    let mut report = MergedCredentials::default();
+    merge_credential_bodies(source, dest, authenticated_issuers, &mut report)?;
+    merge_tel_chains(source, dest, authenticated_issuers, &mut report)?;
+    Ok(report)
+}
+
+/// Import every source credential body for an authenticated issuer (the first
+/// leg of [`merge_credentials_and_tel`]).
+fn merge_credential_bodies(
+    source: &dyn RegistryBackend,
+    dest: &dyn RegistryBackend,
+    authenticated_issuers: &HashSet<Prefix>,
+    report: &mut MergedCredentials,
+) -> Result<(), RegistryMergeError> {
+    let mut credentials: Vec<(Prefix, Said, Vec<u8>)> = Vec::new();
+    source.visit_credentials(&mut |issuer, credential, bytes| {
+        credentials.push((issuer.clone(), credential.clone(), bytes.to_vec()));
+        ControlFlow::Continue(())
+    })?;
+
+    for (issuer, credential, bytes) in credentials {
+        if !authenticated_issuers.contains(&issuer) {
+            return Err(RegistryMergeError::CredentialOrphan { issuer, credential });
+        }
+        verify_credential_body(&issuer, &credential, &bytes)?;
+
+        if dest.load_credential(&issuer, &credential)?.is_some() {
+            report.credentials_already_present += 1;
+            continue;
+        }
+        dest.store_credential(&issuer, &credential, &bytes)?;
+        report.credentials_imported += 1;
+    }
+    Ok(())
+}
+
+/// Import every source TEL chain for an authenticated issuer (the second leg of
+/// [`merge_credentials_and_tel`]).
+fn merge_tel_chains(
+    source: &dyn RegistryBackend,
+    dest: &dyn RegistryBackend,
+    authenticated_issuers: &HashSet<Prefix>,
+    report: &mut MergedCredentials,
+) -> Result<(), RegistryMergeError> {
+    let mut coordinates: Vec<(Prefix, Said, Said)> = Vec::new();
+    source.visit_tel_registries(&mut |issuer, registry, credential| {
+        coordinates.push((issuer.clone(), registry.clone(), credential.clone()));
+        ControlFlow::Continue(())
+    })?;
+
+    for (issuer, registry, credential) in coordinates {
+        if !authenticated_issuers.contains(&issuer) {
+            return Err(RegistryMergeError::CredentialOrphan { issuer, credential });
+        }
+        merge_one_tel(source, dest, &issuer, &registry, &credential, report)?;
+    }
+    Ok(())
+}
+
+/// Validate and import one TEL coordinate's events, idempotently.
+fn merge_one_tel(
+    source: &dyn RegistryBackend,
+    dest: &dyn RegistryBackend,
+    issuer: &Prefix,
+    registry: &Said,
+    credential: &Said,
+    report: &mut MergedCredentials,
+) -> Result<(), RegistryMergeError> {
+    let refused = |reason: String| RegistryMergeError::TelRefused {
+        issuer: issuer.clone(),
+        registry: registry.clone(),
+        credential: credential.clone(),
+        reason,
+    };
+
+    // Read the source TEL events (raw bytes + each event's own sequence, which is
+    // the storage key — not the iteration position).
+    let mut raw: Vec<(u128, Vec<u8>)> = Vec::new();
+    read_tel_raw(source, issuer, registry, credential, &mut raw).map_err(&refused)?;
+    if raw.is_empty() {
+        return Ok(());
+    }
+
+    // Structural validation BEFORE any write: a byte-flipped TEL event fails its
+    // own SAID recomputation inside validate_tel and is refused whole. An
+    // `iss`/`rev` coordinate carries only that chain's suffix, which validate_tel
+    // rejects as missing its inception — so prepend the registry's `vcp` slot for
+    // the check (the `vcp` coordinate is itself credential == registry).
+    let mut chain: Vec<TelEvent> = Vec::new();
+    if credential != registry {
+        collect_tel(source, issuer, registry, registry, &mut chain).map_err(&refused)?;
+    }
+    collect_tel(source, issuer, registry, credential, &mut chain).map_err(&refused)?;
+    validate_tel(&chain).map_err(|e| refused(e.to_string()))?;
+
+    // Persist verbatim, idempotently (skip an sn the destination already has).
+    let mut present: BTreeSet<u128> = BTreeSet::new();
+    read_tel_sns(dest, issuer, registry, credential, &mut present).map_err(|reason| {
+        refused(format!("local TEL event did not parse: {reason}"))
+    })?;
+    for (sn, bytes) in raw {
+        if present.contains(&sn) {
+            report.tel_events_already_present += 1;
+            continue;
+        }
+        dest.append_tel_event(issuer, registry, credential, sn, &bytes)?;
+        report.tel_events_imported += 1;
+    }
+    Ok(())
+}
+
+/// Read one coordinate's TEL events into `(sn, bytes)` pairs, surfacing a parse
+/// failure as a reason string.
+fn read_tel_raw(
+    source: &dyn RegistryBackend,
+    issuer: &Prefix,
+    registry: &Said,
+    credential: &Said,
+    raw: &mut Vec<(u128, Vec<u8>)>,
+) -> Result<(), String> {
+    let mut parse_err: Option<String> = None;
+    source
+        .visit_tel_events(issuer, registry, credential, &mut |bytes| {
+            match TelEvent::from_wire_bytes(bytes) {
+                Ok(event) => {
+                    raw.push((tel_event_sn(&event), bytes.to_vec()));
+                    ControlFlow::Continue(())
+                }
+                Err(e) => {
+                    parse_err = Some(format!("TEL event did not parse: {e}"));
+                    ControlFlow::Break(())
+                }
+            }
+        })
+        .map_err(|e| e.to_string())?;
+    match parse_err {
+        Some(reason) => Err(reason),
+        None => Ok(()),
+    }
+}
+
+/// Collect the destination coordinate's already-present TEL sequence numbers.
+fn read_tel_sns(
+    dest: &dyn RegistryBackend,
+    issuer: &Prefix,
+    registry: &Said,
+    credential: &Said,
+    present: &mut BTreeSet<u128>,
+) -> Result<(), String> {
+    let mut parse_err: Option<String> = None;
+    dest.visit_tel_events(issuer, registry, credential, &mut |bytes| {
+        match TelEvent::from_wire_bytes(bytes) {
+            Ok(event) => {
+                present.insert(tel_event_sn(&event));
+                ControlFlow::Continue(())
+            }
+            Err(e) => {
+                parse_err = Some(e.to_string());
+                ControlFlow::Break(())
+            }
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    match parse_err {
+        Some(reason) => Err(reason),
+        None => Ok(()),
+    }
+}
+
+/// The storage sequence key for a TEL event (its own `s` field).
+fn tel_event_sn(event: &TelEvent) -> u128 {
+    match event {
+        TelEvent::Vcp(vcp) => vcp.s.value(),
+        TelEvent::Iss(iss) => iss.s.value(),
+        TelEvent::Rev(rev) => rev.s.value(),
+    }
+}
+
+/// Refuse a credential body whose recomputed SAID or issuer disagrees with the
+/// SAID-addressed path it was served under.
+fn verify_credential_body(
+    issuer: &Prefix,
+    credential: &Said,
+    bytes: &[u8],
+) -> Result<(), RegistryMergeError> {
+    let refused = |reason: String| RegistryMergeError::CredentialRefused {
+        issuer: issuer.clone(),
+        credential: credential.clone(),
+        reason,
+    };
+
+    // The stored envelope is `{ "acdc": {…}, "signature": [...] }`; the trust
+    // core here is the ACDC body's content-addressing. The detached issuer
+    // signature is re-checked against the authenticated KEL at verify time.
+    let value: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|e| refused(format!("blob is not JSON: {e}")))?;
+    let acdc_value = value
+        .get("acdc")
+        .ok_or_else(|| refused("blob has no `acdc` body".to_string()))?;
+    let acdc: Acdc = serde_json::from_value(acdc_value.clone())
+        .map_err(|e| refused(format!("acdc body did not parse: {e}")))?;
+
+    acdc.verify_said()
+        .map_err(|e| refused(format!("acdc SAID does not recompute: {e}")))?;
+    if acdc.d.as_str() != credential.as_str() {
+        return Err(refused(format!(
+            "acdc SAID {} does not match the path SAID {}",
+            acdc.d.as_str(),
+            credential.as_str()
+        )));
+    }
+    if acdc.i.as_str() != issuer.as_str() {
+        return Err(refused(format!(
+            "acdc issuer {} does not match the path issuer {}",
+            acdc.i.as_str(),
+            issuer.as_str()
+        )));
+    }
+    Ok(())
+}
+
+/// Append one coordinate's parsed TEL events onto `chain`, surfacing a parse
+/// failure as the refusal reason string.
+fn collect_tel(
+    source: &dyn RegistryBackend,
+    issuer: &Prefix,
+    registry: &Said,
+    credential: &Said,
+    chain: &mut Vec<TelEvent>,
+) -> Result<(), String> {
+    let mut parse_err: Option<String> = None;
+    source
+        .visit_tel_events(
+            issuer,
+            registry,
+            credential,
+            &mut |bytes| match TelEvent::from_wire_bytes(bytes) {
+                Ok(event) => {
+                    chain.push(event);
+                    ControlFlow::Continue(())
+                }
+                Err(e) => {
+                    parse_err = Some(format!("TEL event did not parse: {e}"));
+                    ControlFlow::Break(())
+                }
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    if let Some(reason) = parse_err {
+        return Err(reason);
+    }
+    Ok(())
 }
 
 /// Resolves a delegated event's anchoring seal from the merge's registries —

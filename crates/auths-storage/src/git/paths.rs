@@ -232,3 +232,23 @@ pub fn credential_file(issuer: &str, credential_said: &str) -> String {
         STORAGE_SCHEMA_VERSION, issuer, credential_said
     )
 }
+
+/// Path to the top-level credentials directory (the enumeration root).
+///
+/// Usage:
+/// ```ignore
+/// let dir = credentials_root(); // "v1/credentials"
+/// ```
+pub fn credentials_root() -> String {
+    format!("{}/credentials", STORAGE_SCHEMA_VERSION)
+}
+
+/// Path to the top-level TEL directory (the enumeration root).
+///
+/// Usage:
+/// ```ignore
+/// let dir = tel_root(); // "v1/tel"
+/// ```
+pub fn tel_root() -> String {
+    format!("{}/tel", STORAGE_SCHEMA_VERSION)
+}

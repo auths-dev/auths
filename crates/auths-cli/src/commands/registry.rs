@@ -8,7 +8,9 @@ use anyhow::{Result, anyhow};
 use clap::{Parser, Subcommand};
 use serde::Serialize;
 
-use auths_sdk::storage::{MergeOutcome, MergedKel, PushOutcome, pull_registry, push_registry};
+use auths_sdk::storage::{
+    MergeOutcome, MergedCredentials, MergedKel, PushOutcome, pull_registry, push_registry,
+};
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
@@ -65,6 +67,8 @@ struct PushReport {
 struct PullReport {
     remote: String,
     merged: Vec<MergedKel>,
+    #[serde(flatten)]
+    credentials: MergedCredentials,
 }
 
 impl ExecutableCommand for RegistryCommand {
@@ -96,20 +100,21 @@ impl ExecutableCommand for RegistryCommand {
                 Ok(())
             }
             RegistrySubcommand::Pull { remote } => {
-                let merged = pull_registry(&registry_root, remote)?;
+                let report = pull_registry(&registry_root, remote)?;
                 if is_json_mode() {
                     JsonResponse::success(
                         "registry pull",
                         PullReport {
                             remote: remote.clone(),
-                            merged,
+                            merged: report.merged,
+                            credentials: report.credentials,
                         },
                     )
                     .print()?;
                 } else {
                     let out = Output::new();
                     out.print_success(&format!("Registry pulled from {remote}"));
-                    for kel in &merged {
+                    for kel in &report.merged {
                         let line = match &kel.outcome {
                             MergeOutcome::Imported { events } => {
                                 format!("{} imported ({events} events)", kel.prefix)
@@ -122,6 +127,13 @@ impl ExecutableCommand for RegistryCommand {
                             }
                         };
                         out.print_info(&line);
+                    }
+                    let creds = &report.credentials;
+                    if creds.credentials_imported > 0 || creds.tel_events_imported > 0 {
+                        out.print_info(&format!(
+                            "{} credential(s) and {} status event(s) imported",
+                            creds.credentials_imported, creds.tel_events_imported
+                        ));
                     }
                 }
                 Ok(())

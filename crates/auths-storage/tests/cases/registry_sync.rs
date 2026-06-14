@@ -94,7 +94,7 @@ fn push_then_pull_imports_authenticated_kel() {
     );
 
     let dest_dir = tempfile::tempdir().unwrap();
-    let merged = pull_registry(dest_dir.path(), &url).unwrap();
+    let merged = pull_registry(dest_dir.path(), &url).unwrap().merged;
     assert_eq!(merged.len(), 1);
     assert_eq!(merged[0].prefix, prefix);
     assert!(matches!(
@@ -127,14 +127,14 @@ fn pull_advances_then_reports_already_current() {
         PushOutcome::Updated
     );
 
-    let merged = pull_registry(dest_dir.path(), &url).unwrap();
+    let merged = pull_registry(dest_dir.path(), &url).unwrap().merged;
     assert!(matches!(
         merged[0].outcome,
         MergeOutcome::Advanced { events: 1 }
     ));
 
     // Pulling again changes nothing — the merge is idempotent.
-    let merged = pull_registry(dest_dir.path(), &url).unwrap();
+    let merged = pull_registry(dest_dir.path(), &url).unwrap().merged;
     assert!(matches!(merged[0].outcome, MergeOutcome::AlreadyCurrent));
 }
 
@@ -222,7 +222,7 @@ fn pull_into_unprovisioned_root_provisions_it() {
 
     let dest_root = tempfile::tempdir().unwrap();
     let dest_path = dest_root.path().join("never-initialized");
-    let merged = pull_registry(&dest_path, &url).unwrap();
+    let merged = pull_registry(&dest_path, &url).unwrap().merged;
     assert_eq!(merged.len(), 1);
 
     let dest = GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&dest_path));

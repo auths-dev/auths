@@ -167,7 +167,10 @@ pub use rotation::{
 pub use seal::Seal;
 pub use state::KeyState;
 #[cfg(feature = "git-storage")]
-pub use sync::{KelCaps, MergeOutcome, MergedKel, RegistryMergeError, merge_registries};
+pub use sync::{
+    KelCaps, MergeOutcome, MergedCredentials, MergedKel, RegistryMergeError,
+    merge_credentials_and_tel, merge_registries,
+};
 pub use types::{KeriTypeError, Prefix, Said, prefix_from_did};
 pub use validate::{
     ValidationError, compute_event_said, finalize_dip_event, finalize_drt_event,

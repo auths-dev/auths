@@ -28,5 +28,5 @@ pub use remote::{
 pub use standalone_attestation::GitAttestationStorage;
 pub use standalone_export::GitRefSink;
 pub use standalone_identity::GitIdentityStorage;
-pub use sync::{PushOutcome, RegistrySyncError, pull_registry, push_registry};
+pub use sync::{PushOutcome, RegistryPullReport, RegistrySyncError, pull_registry, push_registry};
 pub use vfs::{FixedClock, OsVfs, Vfs};
