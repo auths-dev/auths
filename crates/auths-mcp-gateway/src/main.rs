@@ -66,12 +66,27 @@ struct WrapArgs {
     scope: Vec<String>,
 
     /// The quantitative budget for the session, e.g. `--budget '$5'` or `--budget 20calls`.
+    ///
+    /// The cap is enforced from the DURABLE, verifier-held cross-rail counter (D8) —
+    /// the SAME monotonic SETTLED counter (persisted under the verifier's
+    /// `budget-ledger`, keyed to the agent delegation, summed across ALL rails) the
+    /// hermetic gate drives, not an in-memory per-session tally. One cap binds spend
+    /// across every rail and tool by pre-authorization (reserve before the rail is
+    /// touched, settle the actual after), so the live wire cannot allow a cross-rail
+    /// call the gate refuses (#281).
     #[arg(long = "budget", value_name = "BUDGET")]
     budget: Option<String>,
 
     /// The grant time-to-live, e.g. `--ttl 30m`.
     #[arg(long = "ttl", value_name = "TTL")]
     ttl: Option<String>,
+
+    /// The agent delegation identifier (`did:keri:…`) the durable cross-rail counter is
+    /// keyed to — the verifier-held SETTLED counter sums every rail's spend for THIS
+    /// delegation. Optional: when the live-agent harness has not yet bound the agent's
+    /// delegation on the wire, a stable session key roots the durable counter.
+    #[arg(long = "agent-delegation", value_name = "DID")]
+    agent_delegation: Option<String>,
 
     /// A downstream credential the GATEWAY custodies and injects into the wrapped
     /// downstream (repeatable), e.g. `--custody-credential DOWNSTREAM_API_KEY=sk-…`
@@ -133,6 +148,7 @@ async fn run_wrap(args: WrapArgs) -> ExitCode {
         scope: args.scope,
         budget: args.budget,
         ttl: args.ttl,
+        agent_delegation: args.agent_delegation,
         custody,
         downstream: args.downstream,
     };

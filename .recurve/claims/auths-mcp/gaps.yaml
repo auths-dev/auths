@@ -280,25 +280,56 @@
   title: Live-wire counter parity — the live wrap path enforces the cross-rail budget via
     the durable CrossRailBudget, matching the hermetic gate
   class: wire-mismatch
-  status: open
+  status: closed
   severity: headline
   reads: gateway
   covers:
   - budget-boundary
   evidence:
   - 'maps #281 (live-wire parity): crates/auths-mcp-gateway/src/proxy.rs — GatewayProxy::spent_cents
-    is a v0 in-memory per-session cap guard (meters nothing per rail), NOT the durable verifier-held
+    WAS a v0 in-memory per-session cap guard (meters nothing per rail), NOT the durable verifier-held
     CrossRailBudget the hermetic replay gate drives (crates/auths-mcp-core/src/budget.rs);
-    the live wrap path can therefore allow a cross-rail call the gate refuses'
+    the live wrap path could therefore allow a cross-rail call the gate refuses'
   - the per-call cryptographic proof on the live MCP wire rides with the live-agent harness
     (proxy.rs module docs), so the FULL live-wire verdict match is evidence-only (deferred);
     this claim GATES the counter-SOURCE parity — that the live wrap path enforces from the
     SAME durable cross-rail counter as the gate — and discloses the rest as evidence (per
-    the arming contract; do not fake the live MCP session)
-  observed: 'RED at baseline 2026-06-15: ours=wire-not-on-durable-counter expected=live-wire-on-durable-cross-rail-counter
-    — the live wrap path still enforces the cap with the v0 in-memory guard (proxy.rs spent_cents),
-    NOT the durable verifier-held CrossRailBudget the gate uses; #281/AGENT-MCP-8 (wire the
-    durable counter into wrap so live-wire verdicts match the hermetic gate) is not built'
+    the arming contract; the live MCP session is NOT faked)
+  - 'BUILT: crates/auths-mcp-gateway/src/proxy.rs — the v0 in-memory GatewayProxy::spent_cents
+    tally is REMOVED and the live `wrap` path now enforces from the DURABLE verifier-held
+    CrossRailBudget (crates/auths-mcp-core/src/budget.rs) — the SAME counter the hermetic gate
+    drives. GatewayProxy now holds `budget: Arc<Mutex<CrossRailBudget>>` opened at the verifier
+    repo (AUTHS_REPO/AUTHS_HOME, persisted under <repo>/budget-ledger), keyed to the agent
+    delegation, summed across ALL rails. call_tool runs the shared free function enforce_wire_budget()
+    which PRE-AUTHORIZES (CrossRailBudget::reserve) BEFORE the rail is touched — refusing
+    usage-cap-exceeded if the reservation would cross the cap, downstream never invoked — then
+    SETTLES the actual (CrossRailBudget::settle) and releases the slack, exactly as PerCallGate::judge/settle
+    do. WireBudgetOutcome::code() returns the same kebab verdict codes as Verdict::code()
+    (allowed / usage-cap-exceeded / usage-counter-rolled-back). `wrap --help` surfaces the budget
+    as the durable, verifier-held cross-rail counter. PARITY UNIT TEST: proxy.rs
+    wire_budget_matches_gate_for_cross_rail_sequence drives the SAME cross-rail sequence (stripe
+    $3.00 + x402 $1.50, then the $0.60 x402 over $5.10) through BOTH enforce_wire_budget AND the
+    gate''s reserve/settle mapping, each against its own durable CrossRailBudget, and asserts the
+    verdict streams are IDENTICAL (allowed/allowed/usage-cap-exceeded) — real runtime parity, not
+    the binary-string signature. Companion tests: wire_budget_is_durable_and_cross_rail (a resumed
+    wrap session refuses from the PERSISTED high-water — the durability a per-session RAM guard
+    cannot express), wire_budget_releases_slack_like_the_gate, non_metered_call_reserves_and_settles_nothing.
+    DEFERRED (honest, not faked): the per-call cryptographic proof on the live MCP wire rides with
+    the live-agent harness, so the FULL live-wire verdict match stays out-of-band evidence; this
+    cycle wires + gates the counter SOURCE parity. SECURITY-RELEVANT: live spend-enforcement path
+    changed.'
+  observed: 'GREEN 2026-06-15: the v0 in-memory spent_cents guard is GONE and the live wrap path
+    references the durable cross-rail counter (binary carries `budget-ledger`; `wrap --help`
+    declares the budget durable / cross-rail / verifier-held), so counter-SOURCE parity holds; AND
+    the hermetic gate, driven over the identical cross-rail transcript, produces the reference
+    verdict stream allowed / allowed / usage-cap-exceeded from the durable CrossRailBudget. The
+    runtime parity unit test (proxy.rs wire_budget_matches_gate_for_cross_rail_sequence) proves the
+    live wrap path''s enforce_wire_budget yields the SAME verdict stream as the gate''s reserve/settle
+    path over the same sequence, both from the durable counter — the live wire cannot allow what the
+    gate refuses (#281). Trap RED (v0-guard-divergence): the captured stream where the live wrap path
+    ALLOWED a cross-rail call the gate REFUSED (the v0 in-memory guard let through what the durable
+    counter caught) is refused — the adversarial twin holds. cargo test -p auths-mcp-gateway
+    -p auths-mcp-core green (incl. the 4 new parity tests); clippy clean on the touched crates.'
   smallest_fix: 'Replace the v0 in-memory guard (proxy.rs GatewayProxy::spent_cents) with
     the durable verifier-held CrossRailBudget (crates/auths-mcp-core/src/budget.rs) on the
     live `wrap` path so the live wire enforces the cross-rail cap from the SAME counter the

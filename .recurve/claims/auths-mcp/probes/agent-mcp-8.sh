@@ -81,11 +81,19 @@ gate_ok=0
 # no longer carry the v0 in-memory `spent_cents` guard.
 has_v0_guard=0
 has_durable_on_wire=0
-if strings "$GATEWAY_BIN" 2>/dev/null | grep -qiE 'spent_cents|v0 (cap )?(spend )?guard|in-memory cap'; then
+# Capture the binary's strings ONCE into a var, then grep the var — never
+# `strings … | grep -q …`. Under `set -o pipefail` (sourced from harness/env.sh) a
+# `grep -q` that matches early closes the pipe, `strings` is killed by SIGPIPE (141),
+# and pipefail propagates 141 as the pipeline's exit — so a binary that DOES contain
+# `budget-ledger` would read as absent. Greping a captured var has no pipe and no
+# SIGPIPE, so the truth condition (the string is present) is measured correctly.
+GW_STRINGS="$(strings "$GATEWAY_BIN" 2>/dev/null)"
+if grep -qiE 'spent_cents|v0 (cap )?(spend )?guard|in-memory cap' <<<"$GW_STRINGS"; then
     has_v0_guard=1
 fi
-if strings "$GATEWAY_BIN" 2>/dev/null | grep -qiE 'budget-ledger' \
-   && "$GATEWAY_BIN" wrap --help 2>&1 | grep -qiE 'durable|cross-rail counter|verifier-held'; then
+WRAP_HELP="$("$GATEWAY_BIN" wrap --help 2>&1)"
+if grep -qiE 'budget-ledger' <<<"$GW_STRINGS" \
+   && grep -qiE 'durable|cross-rail counter|verifier-held' <<<"$WRAP_HELP"; then
     has_durable_on_wire=1
 fi
 parity_ok=0
