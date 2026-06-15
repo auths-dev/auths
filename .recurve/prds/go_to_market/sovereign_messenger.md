@@ -36,9 +36,9 @@ flowchart TB
         KEL["KEL replay → current keys<br/>pre-rotation makes rotations verifiable"]
         OOBI["OOBI + witnesses<br/>resolve an AID → keys + endpoints"]
     end
-    subgraph enc["2. Message encryption: MLS or Signal Protocol"]
+    subgraph enc["2. Message encryption: Signal Protocol"]
         X3DH["initial key agreement<br/>bootstrapped from the KERI identity key"]
-        RATCHET["Double Ratchet / MLS ratchet<br/>forward secrecy + post-compromise security"]
+        RATCHET["Double Ratchet / Signal ratchet<br/>forward secrecy + post-compromise security"]
     end
     subgraph net["3. Transport: untrusted relays"]
         RELAY["store-and-forward<br/>content is E2E, the relay never had your number"]
@@ -49,9 +49,9 @@ flowchart TB
 - **Layer 1 — identity (auths/KERI).** The AID is the address and its own proof of control.
   Key discovery is OOBI resolution to a witnessed KEL; key continuity is pre-rotation;
   multi-device is delegated sub-identities under one root; recovery is M-of-N guardians.
-- **Layer 2 — encryption (MLS / Signal Protocol).** KERI authenticates *who*; the ratchet
+- **Layer 2 — encryption (Signal Protocol).** KERI authenticates *who*; the ratchet
   encrypts *the messages*. The initial key agreement bootstraps from the KERI-authenticated
-  identity key, then the Double Ratchet (1:1) or MLS group ratchet (groups) takes over for
+  identity key, then the Double Ratchet (1:1) or Signal group ratchet (groups) takes over for
   forward secrecy and post-compromise security. **KERI does not replace the ratchet — it
   roots it.**
 - **Layer 3 — transport (untrusted relays).** Store-and-forward servers deliver ciphertext.
@@ -85,7 +85,7 @@ sequenceDiagram
 | Multi-device (delegated sub-identities) | ✅ built | device-linking UX |
 | Recovery (M-of-N guardians) | ◔ aspirational | the guardian ceremony + UX |
 | Metadata privacy (pairwise / unlinkable AIDs) | ◔ aspirational | per-contact AID derivation |
-| **Message encryption + forward secrecy** | ❌ not auths's job | integrate **MLS (RFC 9420)** or the Signal Protocol |
+| **Message encryption + forward secrecy** | ❌ not auths's job | integrate Signal Protocol |
 | **Ephemeral prekeys** | ❌ | publish prekey bundles signed by the AID's current key |
 | **Transport / store-and-forward** | ❌ | relay infrastructure (untrusted) |
 | **Abuse / sybil resistance** | ❌ | the genuinely new problem — see §6 |
@@ -120,9 +120,9 @@ sequenceDiagram
   > reserve true uniqueness (proof-of-personhood — an unsolved, centralizing problem) for
   > open-network cases a messenger doesn't have.
 - **The ratchet is not optional.** KERI gives authenticated identity keys; it does **not**
-  give per-message forward secrecy or post-compromise security. Skipping MLS/Signal Protocol
+  give per-message forward secrecy or post-compromise security. Skipping Signal Protocol
   would be a downgrade from Signal, not an upgrade. The value is in the *identity root*, not
-  in reinventing the crypto.
+  in reinventing the messaging crypto.
 - **Metadata.** No phone number removes Signal's contact-discovery liability outright (no
   address-book to leak). Pairwise AIDs make linkage across contacts impossible. But the
   relays still see delivery patterns; sealed-sender-class techniques still apply.
