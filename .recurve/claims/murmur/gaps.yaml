@@ -267,23 +267,30 @@
   title: The untrusted relay cannot tamper, replay, or link — bit-flipped ciphertext fails
     AEAD, a replay is deduped, the envelope carries only a pairwise id
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - crates/murmur-relay/src/main.rs — the queue (and therefore dedup) is unbuilt; no AEAD
-    verification path exists on the receive side yet
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=aead-rejected+replay-deduped
-    — the relay receive path (AEAD verify + dedup) is unbuilt (murmur-relay 0.1.3: store-and-forward
-    wire not built yet (the mailbox queue + pull/subscribe surface is the slice''s transport
-    work)); ENC-5 is open'
-  smallest_fix: 'On receive, reject bit-flipped ciphertext via AEAD (no padding/oracle), dedup
-    a replayed ciphertext, and ensure the relay-visible envelope carries only a pairwise mailbox
-    id (never a stable cross-contact linker). Adversarial (the trap): a tampered ciphertext
-    accepted, or a replay delivered twice, must fail. TRAP probes/enc-5.trap/tamper-accepted/
-    — a captured run where a bit-flipped ciphertext was accepted must turn the probe RED.'
+  - crates/murmur-core/src/relay.rs — MailboxStore.deposit fingerprints the opaque ciphertext
+    (SHA-256, per mailbox) and drops a byte-identical replay; the fingerprint outlives a drain
+  - crates/murmur-core/src/lib.rs — hold_relay_boundary drives all three properties end-to-end
+    (tamper rejected by AEAD with a uniform error, replay deduped to one delivery, envelope scanned
+    routing-only)
+  - crates/murmur-relay/src/main.rs — the serve self-test's boundary leg prints aead-rejected +
+    replay-deduped over a real sealed envelope
+  observed: 'GREEN 2026-06-15: a bit-flipped ciphertext fails the recipient''s AEAD and is rejected
+    with the same uniform error a wrong key produces (no padding/oracle); a byte-identical capture
+    re-presented to the relay is deduped on a per-mailbox ciphertext fingerprint so the recipient
+    drains exactly one copy; the relay-visible envelope carries only the pairwise mailbox id (body,
+    sender address, and session key each scanned for and found absent). The trap (a captured run
+    where a bit-flipped ciphertext was accepted) still turns the probe RED.'
+  smallest_fix: 'Done: relay-side dedup (MailboxStore.deposit, SHA-256 over ciphertext, per mailbox,
+    surviving a drain) drops a replay; the AEAD open already rejects a bit-flip with a uniform error
+    (no oracle); the routing-only scan proves the envelope carries only a pairwise mailbox id. A
+    tampered ciphertext that opened, or a replay delivered twice, fails the leg closed. TRAP probes/enc-5.trap/tamper-accepted/
+    — a captured run where a bit-flipped ciphertext was accepted turns the probe RED.'
   probe: probes/enc-5.sh
   unlocks: The relay is dumb AND safe — tamper/replay/link all closed at the boundary.
 

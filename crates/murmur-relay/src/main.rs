@@ -26,6 +26,7 @@ use std::process::ExitCode;
 use murmur_core::{
     ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle, PrekeySecrets,
     Session, deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only,
+    hold_relay_boundary,
 };
 
 /// What the relay was asked to do.
@@ -274,6 +275,55 @@ fn run_routing_only() -> Result<String, String> {
     ))
 }
 
+/// Prove the untrusted-relay boundary holds (PRD §10, the untrusted-relay claim):
+/// the relay can tamper, replay, or link **nothing**. A message is sealed and
+/// deposited; a
+/// bit-flipped copy is opened and must fail AEAD (rejected, no oracle); the
+/// original capture is re-presented and must be deduped so the recipient drains
+/// exactly one copy; and the relay-visible envelope is scanned and must carry only
+/// the pairwise mailbox id. Any property that does not hold fails the leg closed.
+///
+/// The output line carries the markers a reader greps for — `aead-rejected` (the
+/// bit-flip failed the tag) and `replay-deduped` (the re-presented capture was
+/// dropped) — alongside the mailbox the envelope routed on.
+fn run_relay_boundary() -> Result<String, String> {
+    let session_secret = [0x5au8; 32];
+    let mac = Endpoint::new(
+        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
+        Session::from_secret(session_secret),
+    );
+    let phone = Endpoint::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint phone identity: {e}"))?,
+        Session::from_secret(session_secret),
+    );
+
+    let mut directory = ContactDirectory::new();
+    directory.admit(mac.aid().clone(), mac.public_key().to_vec());
+    directory.admit(phone.aid().clone(), phone.public_key().to_vec());
+
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:phone");
+
+    let receipt = hold_relay_boundary(
+        &mac,
+        &phone,
+        &mailbox,
+        "held at the untrusted boundary",
+        &mut relay,
+        &directory,
+    )
+    .map_err(|e| format!("the boundary broke: {e}"))?;
+
+    Ok(format!(
+        "aead-rejected + replay-deduped: a bit-flipped ciphertext failed AEAD and was rejected (no \
+         oracle); a byte-identical replay was deduped at the relay so the recipient drained {} copy; \
+         the envelope carried only the pairwise mailbox id {mbx} (body, sender address, and session \
+         key each scanned for and found absent)",
+        receipt.copies_delivered,
+        mbx = receipt.mailbox.as_str(),
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -287,8 +337,13 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 4] =
-                [run_delivery, run_rooted, run_forward_secret, run_routing_only];
+            let legs: [fn() -> Result<String, String>; 5] = [
+                run_delivery,
+                run_rooted,
+                run_forward_secret,
+                run_routing_only,
+                run_relay_boundary,
+            ];
             for leg in legs {
                 match leg() {
                     Ok(line) => println!("murmur-relay {}: {line}", murmur_core::VERSION),

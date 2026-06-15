@@ -62,7 +62,7 @@ pub use identity::{Identity, verify_sender};
 pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
 pub use ratchet::Ratchet;
-pub use relay::{MailboxId, MailboxStore, RelayRequest};
+pub use relay::{DepositOutcome, MailboxId, MailboxStore, RelayRequest};
 pub use session::Session;
 pub use trust::{TrustState, TrustVerdict};
 
@@ -601,6 +601,130 @@ pub fn deliver_routing_only(
     })
 }
 
+/// The verdict of holding the untrusted-relay boundary against tamper, replay, and
+/// linkage (PRD §10, the untrusted-relay claim). Driving it proves three properties
+/// at once over a real sealed envelope, so a regression in any one fails the leg
+/// closed:
+///
+///  * **tamper** — a bit-flipped ciphertext fails the recipient's AEAD and is
+///    rejected with the *same* uniform error a wrong key or a moved mailbox
+///    produces, so a relay flipping bytes learns nothing (no decryption oracle);
+///  * **replay** — a byte-identical capture re-presented to the relay is deduped at
+///    the boundary, so the recipient drains the message once, not twice;
+///  * **link** — the relay-visible envelope carries only the pairwise mailbox id;
+///    the body, the sender address, and the session key are each absent from the
+///    wire bytes.
+///
+/// Returned by [`hold_relay_boundary`] so the relay binary's self-test (and the
+/// harness) can assert the boundary held rather than merely that a message flowed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayBoundaryReceipt {
+    /// The mailbox the deduped replay was addressed to — the routing handle the
+    /// relay correlates on, and the only thing the routing-only scan permits in the
+    /// wire bytes.
+    pub mailbox: MailboxId,
+    /// How many copies of one capture the relay forwarded after a replay was
+    /// re-presented — exactly one, the dedup having dropped the second.
+    pub copies_delivered: usize,
+    /// The routing-only report for the relay-visible envelope: the body, sender
+    /// address, and session key were each scanned for and found absent.
+    pub routing_only: RoutingOnlyReport,
+}
+
+/// Drive the untrusted-relay boundary guard once, hermetically (PRD §10, the
+/// untrusted-relay claim): prove that the relay cannot tamper, replay, or link.
+///
+///  1. The sender seals a message for the recipient and deposits it; the relay
+///     queues fresh ciphertext.
+///  2. **Tamper:** a single bit of the captured ciphertext is flipped and the
+///     tampered envelope is opened by the recipient — it MUST fail AEAD and be
+///     [`CoreError::Rejected`]. A tampered ciphertext that *opened* would mean the
+///     relay can forge, and is returned as an error (the RED the trap records).
+///  3. **Replay:** the original (un-flipped) capture is re-deposited; the relay
+///     MUST dedup it ([`DepositOutcome::DedupedReplay`]). The recipient then drains
+///     and opens exactly one copy, authenticating as the sender.
+///  4. **Link:** the captured outer envelope is scanned and proven to carry only
+///     the pairwise mailbox id — body, sender address, and session key all absent.
+///
+/// Returns a [`RelayBoundaryReceipt`] iff the tampered open was rejected, the
+/// replay was deduped to a single delivery, and the envelope scanned routing-only.
+/// Any property that fails to hold is an error, never a silent pass.
+pub fn hold_relay_boundary(
+    sender: &Endpoint,
+    recipient: &Endpoint,
+    mailbox: &MailboxId,
+    body: &str,
+    relay: &mut MailboxStore,
+    directory: &dyn Directory,
+) -> CoreResult<RelayBoundaryReceipt> {
+    // (1) Seal and deposit. The relay only ever sees the outer envelope.
+    let outer = sender.seal_to(recipient.aid(), mailbox, body)?;
+    if relay.deposit(&outer) != DepositOutcome::Queued {
+        return Err(CoreError::Rejected(
+            "fresh ciphertext was not queued by the relay",
+        ));
+    }
+
+    // (2) Tamper: flip one bit of the captured ciphertext and prove the recipient's
+    // AEAD rejects it — with the same uniform error a wrong key produces, so the
+    // relay gets no oracle distinguishing "tampered" from "wrong key".
+    let mut tampered = outer.clone();
+    let last = tampered
+        .ciphertext
+        .len()
+        .checked_sub(1)
+        .ok_or(CoreError::Malformed("sealed ciphertext was empty".into()))?;
+    tampered.ciphertext[last] ^= 0xff;
+    match recipient.open(&tampered, directory) {
+        Ok(_) => {
+            return Err(CoreError::Rejected(
+                "tamper-accepted: a bit-flipped ciphertext opened — the relay can forge",
+            ));
+        }
+        Err(CoreError::Rejected(_)) => { /* AEAD rejected the tampered bytes, as required */ }
+        Err(other) => return Err(other),
+    }
+
+    // (3) Replay: re-present the exact original capture; the relay must dedup it.
+    if relay.deposit(&outer) != DepositOutcome::DedupedReplay {
+        return Err(CoreError::Rejected(
+            "replay-delivered-twice: a byte-identical capture was queued a second time",
+        ));
+    }
+    let drained = relay.handle(&RelayRequest::Drain(mailbox.clone()));
+    let copies_delivered = drained.len();
+    if copies_delivered != 1 {
+        return Err(CoreError::Rejected(
+            "replay-delivered-twice: the recipient drained more than one copy of one capture",
+        ));
+    }
+    let pulled = drained
+        .into_iter()
+        .next()
+        .ok_or(CoreError::Rejected("nothing arrived at the mailbox"))?;
+    let message = recipient.open(&pulled, directory)?;
+    if &message.from != sender.aid() {
+        return Err(CoreError::Rejected(
+            "the deduped delivery did not authenticate as the sender",
+        ));
+    }
+
+    // (4) Link: the relay-visible envelope carries only the pairwise mailbox id.
+    let routing_only = leakcheck::prove_routing_only(
+        &outer,
+        body.as_bytes(),
+        sender.aid().as_str(),
+        sender.session.secret_bytes(),
+        sender.session.secret_bytes(),
+    )?;
+
+    Ok(RelayBoundaryReceipt {
+        mailbox: mailbox.clone(),
+        copies_delivered,
+        routing_only,
+    })
+}
+
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing
 // without exposing the secret key or session on the public API.
 #[cfg(test)]
@@ -793,6 +917,31 @@ mod tests {
             forged.verify_rooted(bob.public_key()),
             Err(CoreError::Rejected(_))
         ));
+    }
+
+    #[test]
+    fn the_relay_boundary_holds_against_tamper_replay_and_link() {
+        let secret = [0x5au8; 32];
+        let mac = endpoint(1, secret);
+        let phone = endpoint(2, secret);
+        let dir = directory_of(&[&mac, &phone]);
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:phone");
+
+        let receipt = hold_relay_boundary(
+            &mac,
+            &phone,
+            &mailbox,
+            "held at the boundary",
+            &mut relay,
+            &dir,
+        )
+        .unwrap();
+
+        // Exactly one copy survived the replay, and the envelope routed only.
+        assert_eq!(receipt.copies_delivered, 1);
+        assert_eq!(receipt.mailbox, mailbox);
+        assert_eq!(receipt.routing_only.mailbox, mailbox);
     }
 
     #[test]
