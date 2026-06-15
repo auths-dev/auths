@@ -47,17 +47,28 @@
     a verified continuation is unwired'
   - crates/murmur-core/src/trust.rs TrustState — the three states (Verified, VerifiedContinuation,
     NonContinuationWarning) are modelled but never produced by a real replay
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=verified-continuation+substituted-rejected
-    — the KEL replay + pre-rotation commitment check is unbuilt (murmur-relay 0.1.3: store-and-forward
-    wire not built yet (the mailbox queue + pull/subscribe surface is the slice''s transport
-    work)); MSG-2 is open'
+  - 'STRENGTHENED (PRD §2 binding mechanism) — the verdict alone is not enough: on a verified
+    rotation the app must RE-KEY the Signal session (never continue the old ratchet across an
+    identity change) and re-verify the republished prekey bundle against the freshly-replayed
+    current key; neither the re-key nor the prekey re-verify is wired yet'
+  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=verified-continuation+rekeyed+prekey-reverified+substituted-rejected
+    — the KEL replay + pre-rotation commitment check + the on-rotation Signal re-key and prekey
+    re-verify are unbuilt (murmur-relay 0.1.3: store-and-forward wire not built yet (the mailbox
+    queue + pull/subscribe surface is the slice''s transport work)); MSG-2 is open'
   smallest_fix: 'Wire evaluate() to replay the contact''s KEL and run the pre-rotation commitment
     check (verify the new key was pre-committed by the prior key-state): a pre-committed rotation
     yields VerifiedContinuation; a substituted (not-pre-committed) key yields NonContinuationWarning,
-    NOT a soft re-pin. Adversarial (the trap): a substituted key a pinning model would wave
-    through as a mere warning must yield NonContinuationWarning here. TRAP probes/msg-2.trap/substituted-key/
-    — a captured rotation where a non-pre-committed key verified as a continuation must turn
-    the probe RED.'
+    NOT a soft re-pin. STRENGTHENED (PRD §2 binding mechanism — these are load-bearing, not
+    cosmetic): on a verified rotation the app must RE-KEY the Signal session deterministically
+    — tear down and re-establish X3DH against the freshly-replayed key-state, NEVER continue
+    the old ratchet across an identity change — AND re-verify the republished prekey bundle
+    against the freshly-replayed CURRENT key (accepting a bundle whose signer you did not re-check
+    is the dangerous bug). Adversarial (the trap): a substituted key a pinning model would wave
+    through as a mere warning must yield NonContinuationWarning here; AND the old ratchet must
+    never be continued across an identity change, and a stale-signer prekey must never be accepted.
+    TRAP probes/msg-2.trap/substituted-key/ — a captured rotation where a non-pre-committed key
+    verified as a continuation, where the ratchet was continued across an identity change, or
+    where a stale-signer prekey was accepted, must turn the probe RED.'
   probe: probes/msg-2.sh
   unlocks: The wedge — verifiable key continuity (pre-rotation) no pinning model can match.
 
@@ -355,3 +366,108 @@
   probe: probes/dev-1.sh
   unlocks: The whole pitch in one gesture — send from the Mac, watch it arrive verified on
     the phone.
+
+- id: WIT-1
+  title: A forked KEL is rejected and a relay-suppressed / stale key-state is caught by the
+    witness threshold — the continuity story's correctness root
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: relay
+  covers:
+  - '2'
+  - '3'
+  evidence:
+  - crates/murmur-core/src/trust.rs evaluate() fails closed NotBuilt — the KEL replay it would
+    drive has no forked-KEL detection and no witness-threshold corroboration, so a malicious
+    relay could serve a stale or forked key-state to suppress or fake a rotation
+  - PRD §2 'binding mechanism' + §3.1 — benign-continuity's integrity DEPENDS on rejecting a
+    forked KEL (two different rotations at the same sequence) and on the witness threshold catching
+    a relay-suppressed/stale key-state; the launch-centralization asterisk is load-bearing here,
+    not cosmetic
+  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=fork-rejected+stale-caught
+    — the forked-KEL detection + witness-threshold corroboration is unbuilt (murmur-relay 0.1.3:
+    store-and-forward wire not built yet (the mailbox queue + pull/subscribe surface is the
+    slice''s transport work)); WIT-1 is open'
+  smallest_fix: 'Make the replay refuse a FORKED KEL (two different rotations claiming the same
+    sequence number must be rejected, never silently last-writer-wins) and make a relay-suppressed
+    / stale key-state FAIL the witness-threshold check (a key-state under the receipt threshold,
+    or staler than a corroborated witness set, is not accepted as current). This is the single
+    most important correctness dependency: MSG-2''s verified-continuation badge is only trustworthy
+    if the key-state it replays is the one true witnessed log. Adversarial (the trap): a forked
+    KEL accepted, or a stale/relay-suppressed key-state passed without witness corroboration,
+    must fail. TRAP probes/wit-1.trap/forked-kel/ — a captured replay where a forked or stale
+    key-state was accepted must turn the probe RED.'
+  probe: probes/wit-1.sh
+  unlocks: The correctness root of the whole continuity story — the badge means something only
+    because the log under it is the one true witnessed log.
+
+- id: RVK-1
+  title: Revocation resolves from witness-corroborated key-state, not a relay's cache; the honest
+    stale-served window is acknowledged
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: relay
+  covers:
+  - '6'
+  - '10'
+  evidence:
+  - crates/murmur-core/src/lib.rs open() fails closed NotBuilt — the sender-AID resolve has
+    no notion of WHERE the key-state came from, so a revocation could be resolved from a relay''s
+    stale cache instead of witness-corroborated state
+  - 'PRD §6.5 — revocation is prevention-vs-detection, not an instant global kill: only as fast
+    as each contact re-resolves, and only safe if they get witness-corroborated state; an offline
+    or stale-served contact still has a window that must be disclosed, not hidden'
+  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=revoked-rejected-from-corroborated+stale-window-disclosed
+    — revocation resolution from witness-corroborated state is unbuilt (murmur-relay 0.1.3:
+    store-and-forward wire not built yet (the mailbox queue + pull/subscribe surface is the
+    slice''s transport work)); RVK-1 is open'
+  smallest_fix: 'Resolve revocation from WITNESS-CORROBORATED key-state, never a relay''s cache:
+    after the root revokes a delegated device, a contact re-resolving corroborated state must
+    REJECT the device''s next message — and the honest stale-served window (an offline contact,
+    or one served a relay''s stale cache) must be ACKNOWLEDGED in the verdict, never silently
+    waved through as safe. This strengthens MSG-4''s clawback (PRD §6.5): clawback is detection,
+    witness-dependent, not an instant global kill. Adversarial (the trap): a revoked device
+    accepted from corroborated state, a relay cache trusted over the witnesses, or a hidden
+    stale window, must fail. TRAP probes/rvk-1.trap/revoked-from-corroborated/ — a captured
+    flow where a revoked device verified from corroborated state, or the stale window was hidden,
+    must turn the probe RED.'
+  probe: probes/rvk-1.sh
+  unlocks: Revocation as honest detection — clawback from corroborated state, with the stale-served
+    window disclosed rather than oversold as an instant kill.
+
+- id: ENC-7
+  title: The multi-device key lifecycle is specified and gated on the external cryptographic
+    audit before any real user
+  class: security-tradeoff
+  status: open
+  severity: headline
+  reads: none
+  covers:
+  - '10'
+  evidence:
+  - the multi-device key lifecycle — N delegated devices, each with its own Signal identity
+    key and prekey bundles, continuity that must hold across rotation AND delegation simultaneously
+    — is the combinatorial state machine where the subtle break hides (PRD §10 release gate);
+    no spec artifact and no external-audit verdict exist yet
+  - 'PRD §10 — a green ENC-1..6 gate is NECESSARY but NOT SUFFICIENT here: ENC-1..6 are written
+    by the same people who wrote the wiring, so on this surface self-tests are a floor, not
+    an audit; the KERI↔Signal join + the multi-device lifecycle must pass EXTERNAL cryptographic
+    review before any non-demo user'
+  observed: 'RED at baseline 2026-06-15: ours=lifecycle-unspecified-no-external-audit expected=specified+externally-audited
+    — the multi-device key-lifecycle spec is not written down and no external cryptographic
+    audit verdict is recorded; ENC-7 is open and REVIEW-GATED (never self-closes on a green
+    gate)'
+  smallest_fix: 'REVIEW-GATED (security-tradeoff — NEVER auto-closed): SPECIFY the multi-device
+    key lifecycle (N devices × Signal identity keys × prekey bundles; continuity across rotation
+    AND delegation simultaneously) at cycles/enc-7/key-lifecycle.md — the falsifiable floor —
+    AND gate promotion on an EXTERNAL cryptographic audit recorded at cycles/enc-7/external-audit.md
+    (PRD §10 release gate). A green matrix gate is necessary but NOT sufficient; this promotes
+    only through REVIEW.md, never through an unattended cycle. Adversarial (the trap): the lifecycle
+    closed on self-tests alone, or a rotation-during-delegation continuity break slipping through,
+    must fail. TRAP probes/enc-7.trap/closed-without-audit/ — a captured lifecycle closed without
+    an external audit must turn the probe RED.'
+  probe: probes/enc-7.sh
+  unlocks: The PRD §10 release gate as a real, falsifiable claim — the join that decides whether
+    a real user can be told this is private waits for an external auditor, not for us.

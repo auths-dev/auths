@@ -16,10 +16,10 @@ if [ -n "${TRAP_FIXTURE:-}" ]; then
     [ -f "${TRAP_FIXTURE}/capture.out" ] \
         || broken "trap fixture missing capture.out: ${TRAP_FIXTURE}"
     out="$(cat "${TRAP_FIXTURE}/capture.out")"
-    if printf '%s' "$out" | grep -qiE 'revoked-device-accepted|clawback-failed|not built|feature absent'; then
-        red "ours=revoked-device-accepted expected=revoked-rejected — a revoked device's message still verified (\"$(printf '%s' "$out" | head -1)\"); the chain clawback regressed"
+    if printf '%s' "$out" | grep -qiE 'revoked-device-accepted|clawback-failed|revoked-accepted-from-corroborated|not built|feature absent'; then
+        red "ours=revoked-device-accepted expected=revoked-rejected-from-corroborated — a revoked device's message still verified, or revocation resolved from a relay cache rather than witness-corroborated state (\"$(printf '%s' "$out" | head -1)\"); the chain clawback regressed"
     fi
-    green "captured flow verified the delegated device as the root AID and rejected it after revocation — the adversarial twin holds"
+    green "captured flow verified the delegated device as the root AID and rejected it after revocation from witness-corroborated state — the adversarial twin holds (the honest stale-served window is carried by RVK-1)"
 fi
 
 relay_ready || broken "no staged bin/murmur-relay — run the suite rebuild first"

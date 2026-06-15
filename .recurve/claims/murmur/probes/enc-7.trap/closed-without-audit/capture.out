@@ -1,0 +1,1 @@
+closed-on-self-tests: the multi-device key lifecycle was marked passing on the implementers' own tests with no-external-audit, and a rotation-delegation-continuity-broke case slipped through
