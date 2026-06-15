@@ -12,7 +12,9 @@ use auths_id::keri::credential_registry::{
 };
 use auths_id::keri::parse_did_keri;
 use auths_id::keri::types::Prefix;
-use auths_keri::{Acdc, Capability, Said, TelEvent, compute_capability_schema_said, validate_tel};
+use auths_keri::{
+    Acdc, Capability, Said, TelEvent, UsageCap, compute_capability_schema_said, validate_tel,
+};
 use chrono::{DateTime, Utc};
 
 use crate::context::AuthsContext;
@@ -98,6 +100,25 @@ fn guard_issuee_exists(ctx: &AuthsContext, issuee_did: &str) -> Result<Prefix, C
     Ok(issuee_prefix)
 }
 
+/// Refuse a malformed quantitative usage cap at issuance.
+///
+/// A capability addressing the reserved `calls` usage resource (`calls:` /
+/// `calls<=`) MUST carry a valid non-negative integer bound. A `calls`-resource
+/// capability whose bound does not parse (`calls:`, `calls:abc`, `calls:-1`)
+/// would be minted as an opaque, *uncapped* string — a budget that silently never
+/// fires — so it is refused here, loudly, with [`CredentialError::MalformedUsageCap`].
+/// Well-formed caps (`calls:3`) and ordinary presence tokens pass through.
+fn guard_quant_caps_wellformed(capabilities: &[Capability]) -> Result<(), CredentialError> {
+    for cap in capabilities {
+        if UsageCap::is_malformed_quant_predicate(cap) {
+            return Err(CredentialError::MalformedUsageCap {
+                cap: cap.as_str().to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Build the capability ACDC attributes map (`capability`, optional `role`/`expiry`).
 fn build_attributes(
     capabilities: &[Capability],
@@ -155,6 +176,7 @@ pub fn issue(
 ) -> Result<CredentialIssuance, CredentialError> {
     let (issuer_prefix, issuer_curve) = resolve_issuer(ctx, issuer_alias)?;
     let issuee_prefix = guard_issuee_exists(ctx, issuee_did)?;
+    guard_quant_caps_wellformed(capabilities)?;
 
     let registry = ensure_registry(
         ctx.registry.as_ref(),
@@ -403,4 +425,34 @@ fn credential_claims(
         .and_then(|c| Capability::parse_claim(c).ok())
         .unwrap_or_default();
     (subject, caps)
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::guard_quant_caps_wellformed;
+    use crate::domains::credentials::error::CredentialError;
+    use auths_keri::Capability;
+
+    #[test]
+    fn wellformed_and_presence_caps_pass() {
+        let caps = vec![
+            Capability::parse("calls:3").unwrap(),
+            Capability::parse("calls:0").unwrap(),
+            Capability::sign_commit(),
+            Capability::parse("acme:deploy").unwrap(),
+        ];
+        assert!(guard_quant_caps_wellformed(&caps).is_ok());
+    }
+
+    #[test]
+    fn malformed_quant_cap_is_refused() {
+        for bad in ["calls:", "calls:abc"] {
+            let caps = vec![Capability::sign_commit(), Capability::parse(bad).unwrap()];
+            let err = guard_quant_caps_wellformed(&caps).unwrap_err();
+            assert!(
+                matches!(err, CredentialError::MalformedUsageCap { ref cap } if cap == bad),
+                "{bad} must be refused as MalformedUsageCap, got {err:?}"
+            );
+        }
+    }
 }

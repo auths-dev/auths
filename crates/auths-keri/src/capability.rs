@@ -348,6 +348,48 @@ impl UsageCap {
             .or_else(|| segment.strip_prefix(&format!("{USAGE_CAP_RESOURCE}<=")))?;
         bound.parse::<u64>().ok().map(Self::calls)
     }
+
+    /// Whether a capability *intends* to be a quantitative usage cap.
+    ///
+    /// True for any capability addressing the reserved quantitative resource — the
+    /// `calls:` / `calls<=` prefix — regardless of whether its bound parses. This is
+    /// the discriminator that separates "a `calls`-resource predicate" (which must
+    /// carry a valid numeric bound) from an ordinary presence token that happens to
+    /// be unrecognized. An issuer uses it to reject a `calls`-prefixed capability
+    /// whose bound does not parse, instead of silently minting it as an uncapped
+    /// opaque string.
+    fn segment_targets_usage_resource(segment: &str) -> bool {
+        segment.starts_with(&format!("{USAGE_CAP_RESOURCE}:"))
+            || segment.starts_with(&format!("{USAGE_CAP_RESOURCE}<="))
+    }
+
+    /// Whether `cap` is a MALFORMED quantitative usage predicate.
+    ///
+    /// `true` iff the capability targets the reserved `calls` usage resource (the
+    /// `calls:` / `calls<=` prefix) but its bound does NOT parse to a valid
+    /// non-negative call count — e.g. `calls:`, `calls:abc`, `calls:-1`. Such a
+    /// capability looks like a budget but enforces none: [`Self::from_capability`]
+    /// yields `None`, so the credential would verify at any count. An issuer must
+    /// refuse it rather than mint a cap that is silently no cap.
+    ///
+    /// A well-formed cap (`calls:3`) is **not** malformed; a presence token
+    /// (`sign_commit`, `acme:deploy`) is **not** malformed (it targets no usage
+    /// resource); only a `calls`-resource capability with an unparseable bound is.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use auths_keri::{Capability, UsageCap};
+    ///
+    /// assert!(UsageCap::is_malformed_quant_predicate(&Capability::parse("calls:abc").unwrap()));
+    /// assert!(UsageCap::is_malformed_quant_predicate(&Capability::parse("calls:").unwrap()));
+    /// assert!(!UsageCap::is_malformed_quant_predicate(&Capability::parse("calls:3").unwrap()));
+    /// assert!(!UsageCap::is_malformed_quant_predicate(&Capability::sign_commit()));
+    /// ```
+    pub fn is_malformed_quant_predicate(cap: &Capability) -> bool {
+        let segment = cap.as_str();
+        Self::segment_targets_usage_resource(segment) && Self::from_claim_segment(segment).is_none()
+    }
 }
 
 impl fmt::Display for UsageCap {
@@ -748,6 +790,52 @@ mod tests {
     #[test]
     fn usage_cap_displays_canonical_grammar() {
         assert_eq!(UsageCap::calls(3).to_string(), "calls:3");
+    }
+
+    #[test]
+    fn malformed_quant_predicate_flags_unparseable_calls_bounds() {
+        // A `calls`-resource capability whose bound does not parse is malformed: it
+        // looks like a budget but enforces none.
+        for bad in ["calls:", "calls:abc"] {
+            let cap = Capability::parse(bad).unwrap();
+            assert_eq!(
+                UsageCap::from_capability(&cap),
+                None,
+                "{bad} carries no cap"
+            );
+            assert!(
+                UsageCap::is_malformed_quant_predicate(&cap),
+                "{bad} must be flagged malformed"
+            );
+        }
+        // `calls:-1` normalizes to `calls:_1` (a `-` is admitted, not a sign); its
+        // bound `_1` does not parse, so it is malformed too.
+        let neg: Capability = "calls:-1".parse().unwrap();
+        assert!(UsageCap::is_malformed_quant_predicate(&neg));
+    }
+
+    #[test]
+    fn malformed_quant_predicate_passes_wellformed_and_presence_tokens() {
+        // A well-formed cap is not malformed.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("calls:3").unwrap()
+        ));
+        // Zero is a real bound, not malformed.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("calls:0").unwrap()
+        ));
+        // Presence tokens target no usage resource — never malformed.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::sign_commit()
+        ));
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("acme:deploy").unwrap()
+        ));
+        // A capability that merely *contains* "calls" but does not target the
+        // resource prefix is not a quantitative predicate.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("recalls:thing").unwrap()
+        ));
     }
 
     // ========================================================================
