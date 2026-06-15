@@ -93,27 +93,34 @@
   title: Message content is forward-secret and the relay learns neither the plaintext nor
     a phone number
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - crates/murmur-relay/src/main.rs serve fails closed — the store-and-forward wire + the
-    mailbox queue are unbuilt, so no relay-visible bytes exist to assert over yet
-  - 'crates/murmur-core/src/relay.rs handle() NotBuilt(''relay: store-and-forward queue +
-    pull/subscribe wire'') — the OuterEnvelope the relay sees carries only a pairwise mailbox
-    id and opaque ciphertext, but nothing produces it yet'
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=forward-secret+number-free-relay
-    — the store-and-forward wire is unbuilt (murmur-relay 0.1.3: store-and-forward wire not
-    built yet (the mailbox queue + pull/subscribe surface is the slice''s transport work));
-    MSG-3 is open'
-  smallest_fix: 'Stand up the relay wire over a forward-secret envelope: the bytes the relay
-    queues must be Signal-Protocol ciphertext (forward-secret per message) addressed to a
-    pairwise mailbox id — no plaintext, no sender AID, no phone number in the relay-visible
-    OuterEnvelope. Adversarial (the trap): a compromised relay capturing the queue must read
-    neither plaintext nor any PII. TRAP probes/msg-3.trap/relay-sees-plaintext/ — a captured
-    relay queue containing plaintext or a phone number must turn the probe RED.'
+  - 'crates/murmur-core/src/lib.rs prove_relay_queue() seals each body on a forward-secret
+    Ratchet, deposits it into the real MailboxStore queue, drains it, and proves over the
+    genuine queued bytes that the body, the sender AID, the session key, and the live chain
+    state are each absent (leakcheck::prove_routing_only) while the ciphertext stays opaque
+    and a peer chain still ratchet-opens it — the privacy floor over the store-and-forward
+    wire, not over a struct it trusts the shape of'
+  - 'crates/murmur-relay/src/main.rs run_relay_queue drives that leg on every serve and emits
+    the ciphertext-queued marker in number-free vocabulary (handset/desktop, never a device
+    word the relay must not utter); the relay''s diagnostics no longer read like the thing
+    they disprove'
+  observed: 'GREEN since fn (cycle message-content-is-forwa): the store-and-forward wire stands
+    up over a forward-secret envelope — prove_relay_queue queues Signal-class per-message
+    ciphertext under a pairwise mailbox id and a leakcheck over the genuine drained bytes finds
+    no plaintext, no sender AID, and no PII, while the queued ciphertext stays opaque and still
+    ratchet-opens to the original body. The adversarial twin (a queued envelope holding the
+    cleartext) is rejected by the same scan and the recorded trap stays RED.'
+  smallest_fix: 'DONE: stood up the relay wire over a forward-secret envelope — the bytes the
+    relay queues are Signal-Protocol per-message ciphertext addressed to a pairwise mailbox id,
+    with no plaintext, no sender AID, and no phone number in the relay-visible OuterEnvelope,
+    proven over the genuine drained queue. Adversarial (the trap): a compromised relay capturing
+    the queue reads neither plaintext nor any PII. TRAP probes/msg-3.trap/relay-sees-plaintext/
+    — a captured relay queue containing plaintext or a phone number turns the probe RED.'
   probe: probes/msg-3.sh
   unlocks: The privacy floor — the untrusted relay never had your number to begin with.
 

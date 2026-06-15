@@ -525,6 +525,169 @@ pub fn deliver_forward_secret(
     }
 }
 
+/// The verdict of standing up the store-and-forward wire and proving the bytes the
+/// relay actually queued are forward-secret ciphertext that learns nothing (PRD
+/// §3.1 Layer 3 + §10, the privacy-floor claim). Returned by [`prove_relay_queue`]
+/// so the relay binary's self-test (and the harness) can assert the property over
+/// the *genuine queued envelope* — what an attacker who seized the relay's mailbox
+/// would hold — rather than over a struct it merely trusts the shape of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayQueueReceipt {
+    /// The pairwise mailbox id the relay queued the bytes under — the routing
+    /// handle it correlates on, carrying no AID and no number.
+    pub mailbox: MailboxId,
+    /// How many forward-secret ciphertext envelopes were stored-and-forwarded
+    /// through the relay's queue and drained back out, in order.
+    pub envelopes_queued: u64,
+    /// The leakcheck verdict over the relay-visible bytes of the queued envelope:
+    /// the message body, the sender address, the session content key, and the
+    /// live forward-secret chain state were each scanned for and found absent.
+    pub routing_only: RoutingOnlyReport,
+}
+
+/// Stand up the store-and-forward wire over a forward-secret envelope and prove the
+/// privacy floor (PRD §3.1 Layer 3 + §10, the privacy-floor claim): the bytes the
+/// relay queues are **Signal-class forward-secret ciphertext** (a fresh per-message
+/// ratchet key, the spent key zeroized) addressed to a **pairwise mailbox id**, and
+/// an attacker who captured that queue reads **neither plaintext nor any PII**.
+///
+/// This is the conjunction the floor turns on, proven over the *literal queued
+/// envelope* — `deliver_forward_secret` proves a later state can't reopen an earlier
+/// ciphertext, and `deliver_routing_only` scans a captured envelope; this leg stands
+/// up the actual store-and-forward queue and proves both at once on what it holds:
+///
+///  1. each `bodies[i]` is sealed on a forward-secret sending [`Ratchet`] (a fresh
+///     per-message key, ratcheted forward and zeroized) into an authenticated inner
+///     envelope, wrapped as an [`OuterEnvelope`] under the pairwise `mailbox`, and
+///     **deposited into the relay's [`MailboxStore`]** — the real queue;
+///  2. the relay's queue is **drained**, so what is scanned is exactly the bytes the
+///     relay stored-and-forwarded. The first queued envelope is held to the
+///     routing-only bar by [`leakcheck::prove_routing_only`]: the plaintext, the
+///     sender AID, the session content key, and the *live chain state* are each
+///     confirmed **absent** from the relay-visible bytes — the relay sees the
+///     mailbox and opaque bytes, nothing else;
+///  3. the queued ciphertext is confirmed **opaque** — it does not equal, contain,
+///     or prefix the plaintext — and a peer receiving [`Ratchet`] **ratchet-opens it
+///     back to the original body**, so the queued bytes are genuine deliverable
+///     forward-secret ciphertext, not unintelligible filler that would pass a scan
+///     for free.
+///
+/// Returns a [`RelayQueueReceipt`] iff every body was queued, the queued envelope
+/// scanned routing-only, the ciphertext was opaque, and the recipient recovered the
+/// body. Any property that fails to hold is an error, never a silent pass — a queued
+/// envelope found to carry the plaintext or any PII (the adversarial twin the trap
+/// records) fails the leg closed.
+pub fn prove_relay_queue(
+    sender: &Identity,
+    recipient: &Identity,
+    root_secret: [u8; 32],
+    mailbox: &MailboxId,
+    bodies: &[&str],
+    relay: &mut MailboxStore,
+    directory: &dyn Directory,
+) -> CoreResult<RelayQueueReceipt> {
+    if bodies.is_empty() {
+        return Err(CoreError::Malformed(
+            "the relay-queue proof needs at least one message to queue".into(),
+        ));
+    }
+    let root = Session::from_secret(root_secret);
+    let mut send_chain = Ratchet::from_session(&root)?;
+    let mut recv_chain = Ratchet::from_session(&root)?;
+    let mailbox_aad = mailbox.as_str().as_bytes();
+
+    // (1) Seal each body on the forward-secret sending chain into an authenticated
+    // inner envelope, wrap it as an outer envelope, and DEPOSIT it into the relay's
+    // real queue. The relay only ever touches the outer envelope.
+    for body in bodies {
+        let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+        let signature = sender.sign(&signing_bytes)?;
+        let inner = InnerEnvelope {
+            sender: sender.aid().clone(),
+            recipient: recipient.aid().clone(),
+            body: (*body).to_string(),
+            signature,
+        };
+        let inner_bytes = serde_json::to_vec(&inner)
+            .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
+        let ciphertext = send_chain.seal(mailbox_aad, &inner_bytes)?;
+        if relay.deposit(&OuterEnvelope {
+            to_mailbox: mailbox.clone(),
+            ciphertext,
+        }) != DepositOutcome::Queued
+        {
+            return Err(CoreError::Rejected(
+                "a forward-secret envelope was not queued by the relay",
+            ));
+        }
+    }
+
+    // (2) Drain the relay's queue — what we scan from here on is exactly the bytes
+    // the relay stored-and-forwarded, captured as an attacker who seized the mailbox
+    // would hold them.
+    let queued = relay.handle(&RelayRequest::Drain(mailbox.clone()));
+    if queued.len() != bodies.len() {
+        return Err(CoreError::Rejected(
+            "not every forward-secret envelope arrived in the relay queue",
+        ));
+    }
+    let first = queued
+        .first()
+        .ok_or(CoreError::Rejected("the relay queue drained empty"))?;
+    let routing_only = leakcheck::prove_routing_only(
+        first,
+        bodies[0].as_bytes(),
+        sender.aid().as_str(),
+        root.secret_bytes(),
+        // the live chain state after sealing every message — a later chain-key value
+        // than any that sealed a queued envelope, so its absence is a real check
+        send_chain.chain_state(),
+    )?;
+
+    // (3) The queued ciphertext must be OPAQUE — not the plaintext in disguise — and
+    // a peer receiving chain must ratchet-open it back to the original body, so what
+    // is queued is genuine deliverable forward-secret ciphertext, not filler that
+    // would scan clean for free.
+    let plaintext = bodies[0].as_bytes();
+    let opaque = first.ciphertext != plaintext
+        && !first
+            .ciphertext
+            .windows(plaintext.len().max(1))
+            .any(|w| w == plaintext);
+    if !opaque {
+        return Err(CoreError::Rejected(
+            "the queued ciphertext was not opaque — the plaintext appeared in the relay bytes",
+        ));
+    }
+    let mut envelopes_queued = 0u64;
+    for env in &queued {
+        let inner_bytes = recv_chain.open(mailbox_aad, &env.ciphertext)?;
+        let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
+            .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
+        let sender_key = directory
+            .resolve(&inner.sender)
+            .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
+        verify_sender(
+            &inner.sender,
+            &sender_key,
+            &inner.signing_bytes_for(),
+            &inner.signature,
+        )?;
+        envelopes_queued += 1;
+    }
+    if envelopes_queued == 0 || queued[0].ciphertext == bodies[0].as_bytes() {
+        return Err(CoreError::Rejected(
+            "the relay-queue proof did not recover an authenticated body from the queued ciphertext",
+        ));
+    }
+
+    Ok(RelayQueueReceipt {
+        mailbox: mailbox.clone(),
+        envelopes_queued,
+        routing_only,
+    })
+}
+
 /// The verdict of capturing a real sealed envelope as the untrusted relay sees it
 /// and proving it leaks nothing but routing (PRD §10, the metadata-hygiene claim).
 /// Two captures are proven, one per send path the engine has — the fixed-session
@@ -1150,5 +1313,90 @@ mod tests {
     fn open_via_the_ffi_is_honestly_unbuilt() {
         let outer = OuterEnvelope::placeholder();
         assert!(matches!(open(&outer), Err(CoreError::NotBuilt(_))));
+    }
+
+    #[test]
+    fn the_relay_queue_holds_only_forward_secret_routing_bytes() {
+        // The privacy floor: several bodies are sealed on a forward-secret ratchet,
+        // stored-and-forwarded through the relay's real queue, and the queued bytes
+        // are proven to carry the mailbox id and opaque ciphertext only.
+        let desktop = Identity::from_seed([0x11u8; 32]).unwrap();
+        let handset = Identity::from_seed([0x22u8; 32]).unwrap();
+        let dir = directory_of(&[
+            &Endpoint::new(desktop.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(handset.clone(), Session::from_secret([0u8; 32])),
+        ]);
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:pairwise-mailbox");
+        let bodies = ["the body the relay must never read", "and one more"];
+
+        let receipt = prove_relay_queue(
+            &desktop,
+            &handset,
+            [0x5au8; 32],
+            &mailbox,
+            &bodies,
+            &mut relay,
+            &dir,
+        )
+        .unwrap();
+
+        assert_eq!(receipt.mailbox, mailbox);
+        assert_eq!(receipt.envelopes_queued, bodies.len() as u64);
+        assert_eq!(receipt.routing_only.mailbox, mailbox);
+        // Every secret (body, sender address, session key, chain state) was checked.
+        assert_eq!(receipt.routing_only.secrets_checked, 4);
+    }
+
+    #[test]
+    fn a_queued_envelope_that_leaked_the_body_is_caught() {
+        // The adversarial twin (the trap): if the relay queue ever held the cleartext
+        // body instead of opaque ciphertext, the leakcheck scan over the queued bytes
+        // must reject it — the privacy floor proves the absence, never narrates it.
+        // We deposit a malformed envelope whose "ciphertext" is the body verbatim and
+        // confirm prove_routing_only over the queued bytes fails closed.
+        let desktop = Identity::from_seed([0x11u8; 32]).unwrap();
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:pairwise-mailbox");
+        let body = b"the body the relay must never read";
+        relay.deposit(&OuterEnvelope {
+            to_mailbox: mailbox.clone(),
+            ciphertext: body.to_vec(),
+        });
+        let queued = relay.handle(&RelayRequest::Drain(mailbox.clone()));
+        let leaked = queued.first().unwrap();
+        let err = leakcheck::prove_routing_only(
+            leaked,
+            body,
+            desktop.aid().as_str(),
+            &[0u8; 32],
+            &[1u8; 32],
+        )
+        .unwrap_err();
+        assert!(matches!(err, CoreError::Rejected(_)));
+    }
+
+    #[test]
+    fn an_empty_body_list_is_rejected_not_silently_passed() {
+        let desktop = Identity::from_seed([0x11u8; 32]).unwrap();
+        let handset = Identity::from_seed([0x22u8; 32]).unwrap();
+        let dir = directory_of(&[
+            &Endpoint::new(desktop.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(handset.clone(), Session::from_secret([0u8; 32])),
+        ]);
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:pairwise-mailbox");
+        assert!(matches!(
+            prove_relay_queue(
+                &desktop,
+                &handset,
+                [0x5au8; 32],
+                &mailbox,
+                &[],
+                &mut relay,
+                &dir
+            ),
+            Err(CoreError::Malformed(_))
+        ));
     }
 }

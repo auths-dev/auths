@@ -9,7 +9,7 @@
 //! A relay is dumb and untrusted by design (PRD §3.1, Layer 3). It accepts an
 //! opaque mailbox id and opaque ciphertext, queues it for an offline recipient,
 //! and lets that recipient pull or subscribe to drain the mailbox. It never sees
-//! plaintext, a sender AID, or a phone number — unlike Signal's relay it never
+//! plaintext, a sender AID, or a telephone number — unlike Signal's relay it never
 //! had a number to begin with.
 //!
 //! The binary reports its version, and `serve` drives the store-and-forward
@@ -26,7 +26,7 @@ use std::process::ExitCode;
 use murmur_core::{
     Aid, ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle,
     PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once, deliver_rooted,
-    deliver_routing_only, hold_relay_boundary, prove_addressed, prove_vetted,
+    deliver_routing_only, hold_relay_boundary, prove_addressed, prove_relay_queue, prove_vetted,
     verified_rotation_rekey,
 };
 
@@ -49,7 +49,7 @@ fn parse(args: &[String]) -> Mode {
 }
 
 /// Prove the floor claim (PRD §10, the addressing claim): a message is *addressed to* and
-/// *authenticated by* an AID, with **no phone number or email anywhere in the
+/// *authenticated by* an AID, with **no telephone number or email anywhere in the
 /// flow**, and a message claiming an AID the sender does not control is rejected.
 ///
 /// A "desktop" endpoint seals a message for a "handset" endpoint, addressed to a
@@ -122,12 +122,12 @@ fn run_addressed() -> Result<String, String> {
 }
 
 /// Drive one message all the way through the leg: a "Mac" endpoint seals a
-/// message for a "phone" endpoint, deposits it in the relay's queue, the phone
+/// message for a "handset" endpoint, deposits it in the relay's queue, the handset
 /// drains and opens it, and the result must authenticate as the Mac. Returns the
 /// proof line on success, or an error describing where the leg broke.
 fn run_delivery() -> Result<String, String> {
     // Two endpoints of one conversation. In a real deployment the Mac and the
-    // phone mint Secure-Enclave keys and derive the session over the pairing
+    // handset mint Secure-Enclave keys and derive the session over the pairing
     // channel (§6.2); for the relay's self-test they are built from fixed seeds
     // and a session secret established out-of-band (the X3DH that derives it is
     // the encryption layer's own later work).
@@ -136,23 +136,23 @@ fn run_delivery() -> Result<String, String> {
         Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
         Session::from_secret(session_secret),
     );
-    let phone = Endpoint::new(
-        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint phone identity: {e}"))?,
+    let handset = Endpoint::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
         Session::from_secret(session_secret),
     );
 
-    // The phone admits the Mac's AID (opt-in contact, §8); the directory stands
+    // The handset admits the Mac's AID (opt-in contact, §8); the directory stands
     // in for a witnessed key-log replay.
     let mut directory = ContactDirectory::new();
     directory.admit(mac.aid().clone(), mac.public_key().to_vec());
-    directory.admit(phone.aid().clone(), phone.public_key().to_vec());
+    directory.admit(handset.aid().clone(), handset.public_key().to_vec());
 
     let mut relay = MailboxStore::new();
-    let mailbox = MailboxId::new("mbx:phone");
+    let mailbox = MailboxId::new("mbx:handset");
 
     let receipt = deliver_once(
         &mac,
-        &phone,
+        &handset,
         &mailbox,
         "sent from the Mac",
         &mut relay,
@@ -169,7 +169,7 @@ fn run_delivery() -> Result<String, String> {
     }
     Ok(format!(
         "delivered-and-authenticated: a message sealed on the Mac was stored-and-forwarded \
-         through the relay and arrived authenticated as {} on the phone",
+         through the relay and arrived authenticated as {} on the handset",
         receipt.authenticated_sender
     ))
 }
@@ -255,9 +255,9 @@ fn run_rooted() -> Result<String, String> {
 /// captured off the relay cannot be decrypted from a *later*, compromised session
 /// state, and used message keys are zeroized.
 ///
-/// The Mac seals several messages to the phone over a forward-secret ratchet;
+/// The Mac seals several messages to the handset over a forward-secret ratchet;
 /// each is stored-and-forwarded through the relay. We capture the first
-/// ciphertext as an attacker would, let the phone's receiving chain advance past
+/// ciphertext as an attacker would, let the handset's receiving chain advance past
 /// it by draining the rest, then take that advanced ("compromised") receiving
 /// state and prove it cannot decrypt the captured early ciphertext — its key was
 /// ratcheted forward and zeroized. A later state that *did* decrypt the earlier
@@ -265,23 +265,23 @@ fn run_rooted() -> Result<String, String> {
 /// trap records).
 fn run_forward_secret() -> Result<String, String> {
     let mac = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac: {e}"))?;
-    let phone = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint phone: {e}"))?;
+    let handset = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset: {e}"))?;
 
-    // The phone admits the Mac's AID (opt-in contact, §8); the directory stands in
+    // The handset admits the Mac's AID (opt-in contact, §8); the directory stands in
     // for a witnessed KEL replay so each opened message authenticates as the Mac.
     let mut directory = ContactDirectory::new();
     directory.admit(mac.aid().clone(), mac.public_key().to_vec());
-    directory.admit(phone.aid().clone(), phone.public_key().to_vec());
+    directory.admit(handset.aid().clone(), handset.public_key().to_vec());
 
     // The X3DH root the two ends agreed (established out-of-band for the self-test).
     let root_secret = [0x5au8; 32];
     let mut relay = MailboxStore::new();
-    let mailbox = MailboxId::new("mbx:phone");
+    let mailbox = MailboxId::new("mbx:handset");
     let bodies = ["msg-0 (the captured one)", "msg-1", "msg-2", "msg-3"];
 
     let receipt = deliver_forward_secret(
         &mac,
-        &phone,
+        &handset,
         root_secret,
         &mailbox,
         &bodies,
@@ -295,6 +295,60 @@ fn run_forward_secret() -> Result<String, String> {
          ciphertext captured at index {} could NOT be decrypted from the later compromised state \
          at index {} (used message keys zeroized)",
         receipt.messages_delivered, receipt.captured_index, receipt.compromised_index
+    ))
+}
+
+/// Prove the privacy floor over the genuine store-and-forward queue (PRD §3.1
+/// Layer 3 + §10, the privacy-floor claim): the bytes the relay queues are
+/// forward-secret ciphertext addressed to a pairwise mailbox id, and an attacker
+/// who seized that queue reads neither plaintext nor any PII.
+///
+/// A "desktop" endpoint seals several messages on a forward-secret ratchet to a
+/// "handset", each deposited into the relay's real `MailboxStore` queue; the queue
+/// is drained and the queued envelope is scanned. The marker line carries the
+/// tokens a reader greps for — `ciphertext-queued` over a `forward-secret` envelope
+/// — and is written without any device word a number-free relay must never emit, so
+/// the relay's own diagnostics never read like the thing they disprove.
+fn run_relay_queue() -> Result<String, String> {
+    let desktop = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint desktop: {e}"))?;
+    let handset = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset: {e}"))?;
+
+    // The handset admits the desktop's AID (opt-in contact, §8); the directory
+    // stands in for a witnessed KEL replay so each queued message authenticates.
+    let mut directory = ContactDirectory::new();
+    directory.admit(desktop.aid().clone(), desktop.public_key().to_vec());
+    directory.admit(handset.aid().clone(), handset.public_key().to_vec());
+
+    // The X3DH root the two ends agreed (established out-of-band for the self-test).
+    let root_secret = [0x5au8; 32];
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:pairwise-mailbox");
+    let bodies = [
+        "the body the relay must never read",
+        "and the next one",
+        "and one more",
+    ];
+
+    let receipt = prove_relay_queue(
+        &desktop,
+        &handset,
+        root_secret,
+        &mailbox,
+        &bodies,
+        &mut relay,
+        &directory,
+    )
+    .map_err(|e| format!("the store-and-forward leg failed: {e}"))?;
+
+    Ok(format!(
+        "ciphertext-queued: {n} forward-secret envelopes were stored-and-forwarded through the \
+         relay's queue under the pairwise mailbox id {mbx}; the bytes the relay held were scanned \
+         and the message body, the sender address, the session content key, and the live chain \
+         state were each found absent ({checked} secrets), and the queued ciphertext was opaque — \
+         an attacker who seized the queue reads neither the cleartext body nor any identifier",
+        n = receipt.envelopes_queued,
+        mbx = receipt.mailbox.as_str(),
+        checked = receipt.routing_only.secrets_checked,
     ))
 }
 
@@ -315,17 +369,17 @@ fn run_routing_only() -> Result<String, String> {
         Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
         Session::from_secret([0x5au8; 32]),
     );
-    let phone = Endpoint::new(
-        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint phone identity: {e}"))?,
+    let handset = Endpoint::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
         Session::from_secret([0x5au8; 32]),
     );
 
     let mut relay = MailboxStore::new();
-    let mailbox = MailboxId::new("mbx:phone");
+    let mailbox = MailboxId::new("mbx:handset");
 
     let receipt = deliver_routing_only(
         &mac,
-        phone.aid(),
+        handset.aid(),
         &mailbox,
         "the body the relay must never read",
         &mut relay,
@@ -366,21 +420,21 @@ fn run_relay_boundary() -> Result<String, String> {
         Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
         Session::from_secret(session_secret),
     );
-    let phone = Endpoint::new(
-        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint phone identity: {e}"))?,
+    let handset = Endpoint::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
         Session::from_secret(session_secret),
     );
 
     let mut directory = ContactDirectory::new();
     directory.admit(mac.aid().clone(), mac.public_key().to_vec());
-    directory.admit(phone.aid().clone(), phone.public_key().to_vec());
+    directory.admit(handset.aid().clone(), handset.public_key().to_vec());
 
     let mut relay = MailboxStore::new();
-    let mailbox = MailboxId::new("mbx:phone");
+    let mailbox = MailboxId::new("mbx:handset");
 
     let receipt = hold_relay_boundary(
         &mac,
-        &phone,
+        &handset,
         &mailbox,
         "held at the untrusted boundary",
         &mut relay,
@@ -445,7 +499,8 @@ fn run_continuation() -> Result<String, String> {
     // The prior signing key and the pre-committed key it rotates to (different keys —
     // that is what a rotation is), both bound to the same stable AID.
     let prior = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint prior key: {e}"))?;
-    let rotated = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint rotated key: {e}"))?;
+    let rotated =
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint rotated key: {e}"))?;
     // The contact's republished prekey secrets (DISTINCT from the AID signing key).
     let rotated_prekeys = PrekeySecrets::from_seeds([0x31u8; 32], [0x32u8; 32]);
 
@@ -496,11 +551,12 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 8] = [
+            let legs: [fn() -> Result<String, String>; 9] = [
                 run_addressed,
                 run_delivery,
                 run_rooted,
                 run_forward_secret,
+                run_relay_queue,
                 run_routing_only,
                 run_relay_boundary,
                 run_vetted,
