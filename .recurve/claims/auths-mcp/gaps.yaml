@@ -428,7 +428,7 @@
   title: The x402/USDC rail is metered into the SAME cross-rail cap as Stripe (cross-rail
     summing, testnet-flagged) — the gateway extracts the x402 amount and sums it cross-rail
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: gateway
   covers:
@@ -446,15 +446,69 @@
     scheme=exact, network=base-sepolia, maxAmountRequired in atomic USDC 6-decimal units,
     the canonical base-sepolia USDC asset, the settlement tx) — no live x402 call'
   - 'LIVE-SCOPE FLAG: the LIVE x402 rail needs a FUNDED USDC TESTNET WALLET (base-sepolia)
-    to settle on-chain — OUT OF HERMETIC SCOPE. The hermetic probe proves COST-EXTRACTION
-    (atomic-USDC→cents) + CROSS-RAIL METERING ONLY; the funded-wallet live leg is evidence-only,
+    + an x402 FACILITATOR URL to settle on-chain — OUT OF HERMETIC SCOPE, and (unlike Stripe)
+    a key alone does NOT cover it. The hermetic probe proves COST-EXTRACTION (atomic-USDC→cents)
+    + CROSS-RAIL METERING ONLY; the funded-wallet+facilitator live leg is evidence-only,
     deferred (D7-style)'
-  observed: 'RED at baseline 2026-06-15: ours=verdict-seq(got allowed/allowed/allowed) no-x402-extraction(stripe-charge/x402-tx
-    absent or rail unattributed) expected=x402-amount-extracted(atomic-USDC→cents)+cross-rail-summed+cap-enforced
-    — the gateway does not EXTRACT the x402 amount from the recorded settlement response and
-    meter it CROSS-RAIL into the same cap as Stripe; the x402 cost extraction + the testnet-flagged
-    x402 adapter + cross-rail summing (PRD §11) are not built. (LIVE x402 also needs a funded
-    USDC testnet wallet — out of hermetic scope.)'
+  - 'BUILT: crates/auths-mcp-core/src/rail.rs — the x402 rail-response cost EXTRACTOR added
+    ALONGSIDE extract_stripe (one dispatch in extract(): "stripe"→extract_stripe, "x402"→extract_x402).
+    Given a recorded/live x402 settlement response it reads requirements.maxAmountRequired (ATOMIC
+    USDC, 6 decimals) and converts atomic-USDC→cents (atomic / 10000 = 1e6/100, EXACT-division
+    only — a sub-cent residue is refused, not truncated) as the authoritative cost, and
+    settlement.transaction (0x…) as the receipt reference. The network must be a TESTNET
+    (base-sepolia) — a mainnet network is refused, not mis-metered (mirrors PAY-1''s USD-only /
+    sk_live guard); a failed (success:false) or non-0x settle is refused. The amount comes from
+    the RESPONSE, never an agent-declared number. The gateway extraction wiring (crates/auths-mcp-gateway/src/replay.rs)
+    is rail-agnostic — it resolves the call''s response_fixture under AUTHS_MCP_RAIL_FIXTURES,
+    calls extract_rail_cost(rail, bytes), and reserves/settles the EXTRACTED amount into the SAME
+    cross-rail CrossRailBudget (crates/auths-mcp-core/src/budget.rs, which already sums all rails
+    keyed to the agent delegation — PAY-1/MCP-3 built it): reserve the ceiling BEFORE the rail is
+    touched, so the cross-rail cap-crosser is refused usage-cap-exceeded before the x402 facilitator
+    settles; settle the extracted amount cross-rail; release the slack. The receipt names rail=x402
+    + the 0x… settlement tx ONLY when the call actually settled (a refused over-cap call names no
+    settled tx). auths-mcp-core holds ZERO payment code — the extractor only reads the documented
+    x402 response shape. Unit-tested: rail.rs (extracts_atomic_usdc_as_cents_and_the_settlement_tx,
+    the_x402_cost_is_the_response_amount_not_an_agent_number, mainnet_network_is_refused_not_mis_metered,
+    sub_cent_atomic_amount_is_refused_not_truncated, failed_or_malformed_settlement_is_refused,
+    dispatch_by_rail_name) + budget.rs (cross_rail_summing_one_cap_two_rails — the moat).'
+  - 'BUILT (wrapper repo): auths-mcp/examples/payments/adapters/x402-adapter/ — the testnet-flagged
+    x402/USDC MCP server. Dependency-free MCP-over-stdio server (initialize/tools/list/tools/call)
+    exposing paid_call; built against the x402 SettlementResponse + PaymentRequirements shapes
+    (coinbase/x402 spec v1) on base-sepolia. HERMETIC (no wallet): returns the recorded testnet
+    settlement shape (NOT a faked on-chain settle — the recorded response the gateway extracts from).
+    LIVE (a FUNDED base-sepolia USDC TESTNET WALLET + an x402 FACILITATOR URL, BOTH custodied by
+    the gateway, never the agent): builds the PaymentRequirements and settles a real USDC transfer
+    through the facilitator. honestly FLAGGED (adapter README + this observed): unlike Stripe a key
+    alone does NOT cover x402 — the live settle needs the funded testnet wallet + facilitator, is
+    out of hermetic scope, and is NEVER faked (with no wallet+facilitator it runs hermetic; a
+    mainnet network is refused). Self-check (node test.mjs) GREEN — it extracts the SAME cost the
+    probe asserts (1500000 atomic → 150 cents, tx 0x1234…; the $0.60 cross-rail cap-crosser;
+    sub-cent/mainnet/failed-settle all refused; hasLiveWallet requires BOTH wallet AND facilitator).'
+  observed: 'GREEN at baseline 2026-06-15: the x402/USDC rail is metered into the SAME $5 cap as
+    Stripe (cross-rail summing) — driving the gateway over the PAY-2 transcript (one $5 cap spanning
+    the stripe AND x402 rails, NO cost_cents supplied), the in-budget Stripe charge settled allowed
+    with its cost EXTRACTED from the recorded Stripe response (amount_captured=300 → $3.00,
+    charge=ch_3MmlLrLkdIwHu7ix0snN0B15, rail=stripe, cross_rail_cumulative=$3.00), THEN the in-budget
+    x402 settlement settled allowed with its cost EXTRACTED from the recorded x402 settlement
+    (maxAmountRequired=1500000 atomic USDC → 150 cents = $1.50, rail=x402, tx
+    0x1234567890abcdef…) metered into the SAME counter (cross_rail_cumulative=$4.50 — summed
+    cross-rail, not siloed); and the third x402 call (maxAmountRequired=600000 atomic = $0.60 —
+    tiny in an x402-only silo, where x402-alone is just $2.10) was refused usage-cap-exceeded
+    (cap_cents=500 would_be_cents=510) BEFORE the x402 facilitator settled (downstream NOT invoked,
+    no tx in its receipt) because the SHARED cross-rail counter was already $4.50 spent — the moat a
+    per-rail-siloed budget cannot express (it would wave the $0.60 through). The receipts evidence
+    cross-rail cost-EXTRACTION: rail=stripe + ch_… AND rail=x402 + 0x… tx, the running total the
+    cross-rail cumulative — not transcript-supplied numbers (none were). The settle is
+    rail-response-authoritative, testnet-guarded (a mainnet network is refused, not mis-metered),
+    exact (a sub-cent atomic residue is refused, not truncated). Trap RED (cap-not-enforced/cross-rail):
+    a captured stream where the cross-rail-over-cap x402 settlement was ALLOWED past the $5 cap (the
+    per-rail silo waved it through) is refused — the adversarial twin holds. cargo test -p auths-mcp-core
+    -p auths-mcp-gateway green (incl. the new x402 extraction + cross-rail tests); clippy clean on the
+    touched crates; leakcheck clean. SECURITY-RELEVANT: a SECOND spend-metering rail (x402/USDC) lands;
+    the extracted cost is rail-response-authoritative and testnet-only (no mainnet real-money path).
+    LIVE x402 SCOPE: the on-chain settle still needs a FUNDED base-sepolia USDC TESTNET WALLET + an
+    x402 FACILITATOR URL — a key alone does NOT cover it (unlike Stripe); out of hermetic scope,
+    evidence-only, deferred (D7), never faked.'
   smallest_fix: 'Build the gateway-side x402 cost extraction: given a recorded x402/USDC settlement
     RESPONSE, extract the paid amount (the x402 SettlementResponse / PaymentRequirements maxAmountRequired,
     atomic USDC at 6 decimals → cents) and RESERVE/SETTLE it into the SAME cross-rail CrossRailBudget

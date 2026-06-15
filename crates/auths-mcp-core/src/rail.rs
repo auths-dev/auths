@@ -29,6 +29,22 @@
 //! unit for USD), and the reference is `charge.id` (`ch_…`). Extraction is tight to
 //! the documented shape so adding a real `sk_test_…` key (the live evidence leg) makes
 //! the same code path read a real test-mode charge with minimal reconciliation.
+//!
+//! ## x402 / USDC (the second rail — cross-rail summing, PRD §11)
+//!
+//! The x402 rail settles a metered tool call in USDC and returns an x402
+//! `SettlementResponse` alongside the `PaymentRequirements` it was settled against
+//! (coinbase/x402 spec v1). The settled amount is `requirements.maxAmountRequired` —
+//! but in **atomic** USDC units (USDC has 6 decimals), so `1500000` atomic = 1.50 USDC
+//! = 150 cents. Extraction converts atomic-USDC → cents (`atomic * 100 / 1e6`,
+//! exact-division-only — a sub-cent residue is refused, not silently truncated). The
+//! reference is the on-chain settlement tx (`settlement.transaction`, `0x…`) a stranger
+//! re-derives the cost by. The **network must be a testnet** (`base-sepolia`): a mainnet
+//! network is refused rather than mis-metered, mirroring Stripe's USD-only / live-key
+//! guard — and honestly flagging that the LIVE on-chain settle needs a funded testnet
+//! wallet + facilitator (out of hermetic scope), not a key alone. The extracted cost
+//! settles into the **same** [`crate::budget::CrossRailBudget`] as Stripe — one cap
+//! across both rails (the moat a per-rail silo cannot express).
 
 use serde::Deserialize;
 
@@ -113,12 +129,127 @@ pub fn extract_stripe(response_bytes: &[u8]) -> Result<ExtractedCost, RailError>
     })
 }
 
+/// USDC has 6 decimals: `maxAmountRequired` is in ATOMIC units, so `1_000_000` atomic =
+/// 1 USDC. Cents are USDC's two-decimal minor unit, so 1 USDC = 100 cents and the
+/// atomic-per-cent divisor is `1e6 / 100 = 10_000`.
+const USDC_ATOMIC_PER_CENT: u64 = 10_000;
+
+/// The set of x402 networks this rail meters — **testnets only**. A mainnet network is
+/// refused, not mis-metered (the moat's honesty: the LIVE x402 settle needs a funded
+/// testnet wallet + facilitator, out of hermetic scope — never real-money mainnet here).
+const X402_TESTNETS: &[&str] = &["base-sepolia"];
+
+/// A recorded (or live) **x402 settlement** response, parsed to the documented fields
+/// the cost extraction reads (coinbase/x402 spec v1: `SettlementResponse` +
+/// `PaymentRequirements`). Only the metering-relevant fields are modeled; serde drops
+/// the rest, keeping this tight to the documented shape.
+#[derive(Debug, Clone, Deserialize)]
+struct X402SettlementResponse {
+    /// The `PaymentRequirements` this call was settled against — carries the amount.
+    requirements: X402Requirements,
+    /// The on-chain `SettlementResponse` — carries the tx the receipt names.
+    settlement: X402Settlement,
+}
+
+/// The x402 `PaymentRequirements` fields the cost extraction reads. `maxAmountRequired`
+/// is the settled amount in ATOMIC USDC (6 decimals) — a string in the spec, parsed
+/// here. `network` pins the chain (testnet-only is enforced).
+#[derive(Debug, Clone, Deserialize)]
+struct X402Requirements {
+    /// The settled amount in ATOMIC USDC units (6 decimals), as a decimal string per the
+    /// x402 spec. Converted atomic-USDC → cents by the extractor.
+    #[serde(rename = "maxAmountRequired")]
+    max_amount_required: String,
+    /// The x402 network (e.g. `base-sepolia`). A mainnet network is refused.
+    network: String,
+}
+
+/// The x402 `SettlementResponse` fields the cost extraction reads. `transaction` (`0x…`)
+/// is the on-chain settlement tx the receipt names so the metered cost is re-derivable.
+#[derive(Debug, Clone, Deserialize)]
+struct X402Settlement {
+    /// Whether the on-chain settle succeeded.
+    success: bool,
+    /// The settlement tx hash (`0x…`) — the receipt-grade reference.
+    transaction: String,
+}
+
+/// Extract the settled cost from a recorded/live **x402/USDC settlement** response.
+///
+/// Reads `requirements.maxAmountRequired` (ATOMIC USDC, 6 decimals) and converts it to
+/// cents (`atomic * 100 / 1e6`, i.e. `atomic / 10_000`) as the authoritative cost, and
+/// `settlement.transaction` (`0x…`) as the receipt reference. The amount comes from the
+/// RESPONSE — an agent that under-declared the cost cannot change what is metered. The
+/// network must be a **testnet** (`base-sepolia`): a mainnet network is refused rather
+/// than mis-metered (mirrors Stripe's USD-only / live-key guard). A sub-cent atomic
+/// residue (an amount not an exact number of cents) is refused, not silently truncated —
+/// the metered cost must equal the settled amount exactly.
+pub fn extract_x402(response_bytes: &[u8]) -> Result<ExtractedCost, RailError> {
+    let parsed: X402SettlementResponse = serde_json::from_slice(response_bytes)
+        .map_err(|e| RailError::Parse(format!("x402 settlement: {e}")))?;
+
+    // Testnet-only: a mainnet network is refused (the live leg needs a funded testnet
+    // wallet + facilitator, never real-money mainnet here).
+    let network = parsed.requirements.network.to_ascii_lowercase();
+    if !X402_TESTNETS.contains(&network.as_str()) {
+        return Err(RailError::MissingField(format!(
+            "x402 network `{network}` is not a supported testnet ({}) — refusing rather than \
+             mis-metering a mainnet (real-money) settle (the LIVE x402 leg needs a funded \
+             testnet wallet + facilitator, out of hermetic scope)",
+            X402_TESTNETS.join(", ")
+        )));
+    }
+
+    // The settle must have succeeded to be metered — a failed settle costs nothing.
+    if !parsed.settlement.success {
+        return Err(RailError::MissingField(
+            "x402 settlement.success is false — a failed settle has no metered cost".to_string(),
+        ));
+    }
+
+    let tx = parsed.settlement.transaction;
+    if !tx.starts_with("0x") || tx.len() <= 2 {
+        return Err(RailError::MissingField(format!(
+            "x402 settlement.transaction `{tx}` is not a 0x… tx hash"
+        )));
+    }
+
+    // maxAmountRequired is ATOMIC USDC (6 decimals) as a decimal string.
+    let atomic: u64 = parsed
+        .requirements
+        .max_amount_required
+        .parse()
+        .map_err(|e| {
+            RailError::MissingField(format!(
+                "x402 maxAmountRequired `{}` is not a non-negative atomic-USDC integer: {e}",
+                parsed.requirements.max_amount_required
+            ))
+        })?;
+
+    // atomic-USDC → cents, exact-division only: a sub-cent residue is refused so the
+    // metered cost equals the settled amount exactly (never silently truncated).
+    if !atomic.is_multiple_of(USDC_ATOMIC_PER_CENT) {
+        return Err(RailError::MissingField(format!(
+            "x402 maxAmountRequired {atomic} atomic USDC is a sub-cent amount \
+             (not a whole number of cents) — refusing rather than truncating"
+        )));
+    }
+    let amount_cents = atomic / USDC_ATOMIC_PER_CENT;
+
+    Ok(ExtractedCost {
+        amount_cents,
+        rail: "x402".to_string(),
+        reference: tx,
+    })
+}
+
 /// Extract the settled cost from a rail's response, dispatching on the rail name. This
 /// is the near-pluggable seam: a new rail adds an extractor here (and only here —
 /// nothing else in the core learns about a rail's response shape).
 pub fn extract(rail: &str, response_bytes: &[u8]) -> Result<ExtractedCost, RailError> {
     match rail {
         "stripe" => extract_stripe(response_bytes),
+        "x402" => extract_x402(response_bytes),
         other => Err(RailError::UnknownRail(other.to_string())),
     }
 }
@@ -183,9 +314,100 @@ mod tests {
     fn dispatch_by_rail_name() {
         let cost = extract("stripe", STRIPE_CHARGE_3USD.as_bytes()).unwrap();
         assert_eq!(cost.amount_cents, 300);
+        // x402 is now a registered rail (PAY-2): a stripe-shaped body handed to it fails
+        // on the missing x402 fields (Parse), NOT UnknownRail.
         assert!(matches!(
             extract("x402", STRIPE_CHARGE_3USD.as_bytes()),
+            Err(RailError::Parse(_))
+        ));
+        let x402 = extract("x402", X402_SETTLE_150C.as_bytes()).unwrap();
+        assert_eq!(x402.amount_cents, 150);
+        assert_eq!(x402.rail, "x402");
+        // An unknown rail still has no extractor.
+        assert!(matches!(
+            extract("paypal", STRIPE_CHARGE_3USD.as_bytes()),
             Err(RailError::UnknownRail(_))
         ));
+    }
+
+    // ── x402 / USDC rail extraction (the second rail, cross-rail summing) ──────────
+
+    /// A doc-accurate x402 settlement response (the shape the recorded fixture and a
+    /// live base-sepolia settle both return), maxAmountRequired=1500000 atomic USDC
+    /// (6 decimals) = 1.50 USDC = 150 cents.
+    const X402_SETTLE_150C: &str = r#"{
+        "rail": "x402",
+        "requirements": {
+            "scheme": "exact",
+            "network": "base-sepolia",
+            "maxAmountRequired": "1500000",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "extra": { "name": "USDC", "version": "2" }
+        },
+        "settlement": {
+            "success": true,
+            "transaction": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "network": "base-sepolia",
+            "payer": "0x857b06519E91e3A54538791bDbb0E22373e36b66"
+        }
+    }"#;
+
+    #[test]
+    fn extracts_atomic_usdc_as_cents_and_the_settlement_tx() {
+        // 1500000 atomic USDC (6 decimals) → 1.50 USDC → 150 cents; reference is the tx.
+        let cost = extract_x402(X402_SETTLE_150C.as_bytes()).unwrap();
+        assert_eq!(
+            cost.amount_cents, 150,
+            "atomic-USDC → cents: 1500000 / 10000 = 150"
+        );
+        assert_eq!(cost.rail, "x402");
+        assert!(
+            cost.reference.starts_with("0x1234567890abcdef"),
+            "the receipt names the 0x… settlement tx, got {}",
+            cost.reference
+        );
+    }
+
+    #[test]
+    fn the_x402_cost_is_the_response_amount_not_an_agent_number() {
+        // The over-cap (cross-rail cap-crosser) fixture: 600000 atomic = $0.60 — read
+        // from the RESPONSE, so an agent that under-declared cannot change it.
+        let small = X402_SETTLE_150C.replace("\"1500000\"", "\"600000\"");
+        let cost = extract_x402(small.as_bytes()).unwrap();
+        assert_eq!(cost.amount_cents, 60, "600000 / 10000 = 60 cents");
+    }
+
+    #[test]
+    fn mainnet_network_is_refused_not_mis_metered() {
+        // A mainnet network (real-money USDC) is refused — the live x402 leg needs a
+        // funded TESTNET wallet + facilitator, never real-money mainnet here.
+        let mainnet = X402_SETTLE_150C.replace("\"base-sepolia\"", "\"base\"");
+        assert!(extract_x402(mainnet.as_bytes()).is_err());
+        let eth = X402_SETTLE_150C.replace("\"base-sepolia\"", "\"ethereum\"");
+        assert!(extract_x402(eth.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn sub_cent_atomic_amount_is_refused_not_truncated() {
+        // 1500050 atomic = 1.50005 USDC = 150.005 cents — a sub-cent residue. Refused
+        // rather than silently truncated, so the metered cost equals the settle exactly.
+        let residue = X402_SETTLE_150C.replace("\"1500000\"", "\"1500050\"");
+        assert!(extract_x402(residue.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn failed_or_malformed_settlement_is_refused() {
+        // A failed on-chain settle has no metered cost.
+        let failed = X402_SETTLE_150C.replace("\"success\": true", "\"success\": false");
+        assert!(extract_x402(failed.as_bytes()).is_err());
+        // A non-0x tx hash is refused.
+        let bad_tx = X402_SETTLE_150C.replace(
+            "\"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef\"",
+            "\"not-a-tx\"",
+        );
+        assert!(extract_x402(bad_tx.as_bytes()).is_err());
+        // Missing the requirements/settlement objects entirely.
+        assert!(extract_x402(b"{\"rail\":\"x402\"}").is_err());
+        assert!(extract_x402(b"not json").is_err());
     }
 }

@@ -91,7 +91,7 @@ if printf '%s' "$RAW" | grep -qiE 'rail[=":[:space:]]*stripe' \
 fi
 
 if [ $seq_ok -eq 1 ] && [ $extract_ok -eq 1 ]; then
-    green "the x402 rail is metered into the SAME \$5 cap as Stripe: the Stripe charge (\$3.00 from amount_captured) and the x402 settlement (\$1.50 EXTRACTED from maxAmountRequired=1500000 atomic USDC → cents, tx $X402_TX…) both settled allowed and summed CROSS-RAIL to \$4.50, and the next x402 call that would reserve to \$5.10 across rails was refused usage-cap-exceeded BEFORE the facilitator settled — even though x402 alone is under budget (the moat). (LIVE x402 needs a funded USDC testnet wallet — out of hermetic scope.)"
+    green "the x402 rail is metered into the SAME \$5 cap as Stripe: the Stripe charge (\$3.00 from amount_captured) and the x402 settlement (\$1.50 EXTRACTED from maxAmountRequired=1500000 atomic USDC → cents, tx ${X402_TX}…) both settled allowed and summed CROSS-RAIL to \$4.50, and the next x402 call that would reserve to \$5.10 across rails was refused usage-cap-exceeded BEFORE the facilitator settled — even though x402 alone is under budget (the moat). (LIVE x402 needs a funded USDC testnet wallet — out of hermetic scope.)"
 fi
 
 [ -z "$R0" ] && [ -z "$R1" ] && [ -z "$OVER" ] \
