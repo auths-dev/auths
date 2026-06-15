@@ -65,12 +65,18 @@ const HARD_RULES = `Hard rules (non-negotiable, embedded because you are statele
 
 phase('Scaffold')
 const scaffold = await agent(
-  `You are the SCAFFOLD cycle for Murmur — a greenfield, FULL-STACK recurve suite. Murmur is the ` +
-  `phone-number-free messenger fully specified in ${AUTHS}/${PRD}. Read that PRD end to end, then ` +
+  `You are the SCAFFOLD-OR-RECONCILE cycle for Murmur — a FULL-STACK recurve suite. Murmur is the ` +
+  `phone-number-free messenger fully specified in ${AUTHS}/${PRD}. Read that PRD end to end (the operator ` +
+  `keeps editing it for honesty/safety — treat it as the READ-ONLY source of truth), then ` +
   `${AUTHS}/.recurve/AGENTS.md, and use ${AUTHS}/.recurve/auths-mcp.toml + ${AUTHS}/.recurve/claims/auths-mcp/ ` +
   `as the EXACT template to mirror.\n\n` +
-  `Produce a baselined, gate-green SKELETON (not the features — just enough that target + sculpt BUILD ` +
-  `and every claim is an open RED draft):\n` +
+  `**FIRST decide the mode.** If ${AUTHS}/${CFG} AND ${AUTHS}/.recurve/claims/murmur/gaps.yaml AND ` +
+  `${AUTHS}/crates/murmur-core AND ${MURMUR} already exist → RECONCILE mode: do NOT rebuild the ` +
+  `crates/app/config from scratch; reconcile the SUITE to the updated PRD per steps 4b + 5, re-baseline, ` +
+  `and confirm the gate is green. Otherwise → SCAFFOLD mode: build the skeleton (steps 1–4a). Either way, ` +
+  `finish at a green federated baseline with every claim an open RED draft.\n\n` +
+  `SCAFFOLD mode — produce a baselined, gate-green SKELETON (not the features — just enough that target + ` +
+  `sculpt BUILD and every claim is an open RED draft):\n` +
   `1. ${AUTHS}/${CFG} — a multi-tree config mirroring auths-mcp.toml: [target] tree="." (auths) building the ` +
   `   new murmur core/relay crates; [sculpts.murmur] tree="${MURMUR}" (rebuild = xcodebuild for the iOS+macOS ` +
   `   schemes, gate = the app's snapshot+contrast test scheme); [reads.relay] artifact="bin/murmur-relay" ` +
@@ -83,12 +89,30 @@ const scaffold = await agent(
   `   latest-SDK / Liquid Glass), embedding murmur-core through a uniffi FFI like auths-mobile-ffi, plus a ` +
   `   test scheme with one trivial snapshot test and one WCAG-contrast unit test so \`gate\` is runnable. ` +
   `   Must build clean under xcodebuild. \`git init\` + an initial unsigned commit.\n` +
-  `4. ${AUTHS}/.recurve/claims/murmur/ mirroring the template: gaps.yaml as DRAFT gaps drawn straight from ` +
+  `4a. ${AUTHS}/.recurve/claims/murmur/ mirroring the template: gaps.yaml as DRAFT gaps drawn straight from ` +
   `   the PRD §10 thin slice — MSG-1, MSG-2, MSG-3, MSG-4, ENC-1..6, UI-TRUST — plus APP-1 "iOS+macOS apps ` +
   `   build and launch" and DEV-1 "a message sent from the Mac arrives, authenticated, on the iPhone sim". ` +
   `   Each draft gets a probe SKETCH (exit 1 RED, "feature absent") + a note on the trap it will need. Mark ` +
   `   UI-TRUST (and any purely-visual claim) review-gated. harness/env.sh + probes/_contract.sh mirrored; ` +
-  `   bin/.gitignore.\n\n` +
+  `   bin/.gitignore.\n` +
+  `4b. RECONCILE the suite to the PRD's safety hardening — add as DRAFT + probe sketch + trap if MISSING, ` +
+  `   STRENGTHEN if present (these load-bearing claims postdate the first scaffold):\n` +
+  `   • WIT-1 (missing-surface): a FORKED KEL (two different rotations at the same sequence) is rejected, and a ` +
+  `     relay-suppressed/stale key-state is caught by the witness threshold — trap: forked/stale KEL accepted. ` +
+  `     (PRD §2 'binding mechanism' + §3.1 — the single most important correctness dependency.)\n` +
+  `   • MSG-2 strengthened: on rotation the app RE-KEYS the Signal session (never continues the old ratchet ` +
+  `     across an identity change) AND re-verifies the republished prekey bundle against the freshly-replayed ` +
+  `     current key — trap: "ratchet continued across identity change" / "stale-signer prekey accepted".\n` +
+  `   • MSG-4 strengthened / REV-1: revocation resolves from WITNESS-CORROBORATED state, not a relay's cache; ` +
+  `     the honest stale-served window is acknowledged — trap: revoked device accepted from corroborated state. ` +
+  `     (PRD §6.5 — revocation is prevention-vs-detection, not an instant global kill.)\n` +
+  `   • ENC-7 (security-tradeoff, REVIEW-GATED — never auto-close): the multi-device key lifecycle (N devices × ` +
+  `     Signal identity keys × prekey bundles; continuity across rotation AND delegation) is specified and gated ` +
+  `     on the external cryptographic audit (PRD §10) before real users.\n` +
+  `   Do NOT add provenance/deniability claims — provenance is DEFERRED (PRD §11.3).\n` +
+  `5. Record the PRD §10 EXTERNAL-AUDIT RELEASE GATE in ${AUTHS}/.recurve/REVIEW.md as a hard real-user-release ` +
+  `   blocker (the KERI↔Signal join + the multi-device key lifecycle must pass external cryptographic review ` +
+  `   before any non-demo user) — a human gate, never a probe.\n\n` +
   `Then iterate \`${PROG} validate\`, \`${PROG} baseline murmur\`, \`${PROG} matrix --gate\` until validate ` +
   `passes and the FEDERATED gate is GREEN (all drafts promoted to open RED; no BROKEN probe; ${MURMUR} builds ` +
   `and its gate scheme runs; no failed trap). Commit per-repo, unsigned, no attribution, no push.\n` +
