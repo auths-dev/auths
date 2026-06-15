@@ -35,6 +35,15 @@ pub struct Receipt {
     /// counter is CROSS-RAIL, not a per-rail silo.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rail: Option<String>,
+    /// The rail-native reference the metered cost was EXTRACTED from (e.g. a Stripe
+    /// charge id `ch_…`), present only when the cost came from the rail's RESPONSE
+    /// rather than a known transcript number. Naming it in the receipt is what proves
+    /// the settle is rail-response-authoritative: a stranger re-derives the metered
+    /// cost from the recorded response by this reference, not from an agent-declared
+    /// number (the metered-rail cost extraction, PRD §11). `None` for a call whose cost
+    /// is not extracted from a rail response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub charge_ref: Option<String>,
     /// The ceiling RESERVED for this call before the rail was touched (the
     /// pre-authorization hold). `0` for a non-metered call. The reserved-vs-settled
     /// split proves the slack (`reserved − settled-delta`) was released, not consumed.
@@ -72,6 +81,7 @@ impl Receipt {
         proof_ref: &str,
         verdict: Verdict,
         rail: Option<&str>,
+        charge_ref: Option<&str>,
         reserved_cents: u64,
         cumulative_cents: u64,
         at: DateTime<Utc>,
@@ -85,6 +95,7 @@ impl Receipt {
             proof_ref: proof_ref.to_string(),
             verdict,
             rail: rail.map(str::to_string),
+            charge_ref: charge_ref.map(str::to_string),
             reserved_cents,
             cumulative_cents,
             at,
@@ -140,6 +151,7 @@ mod tests {
             "abc123",
             Verdict::Allowed,
             None,
+            None,
             0,
             0,
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
@@ -167,6 +179,7 @@ mod tests {
             "abc123",
             Verdict::Allowed,
             Some("x402"),
+            None,
             200, // reserved a $2.00 ceiling
             450, // cross-rail settled total after this call
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
@@ -180,6 +193,36 @@ mod tests {
     }
 
     #[test]
+    fn receipt_names_the_extracted_charge_reference() {
+        // A metered call whose cost was EXTRACTED from the rail's response names the
+        // rail-native reference (a Stripe charge id) in its receipt — the evidence that
+        // the settle is rail-response-authoritative, not an agent-declared number
+        // (the metered-rail cost extraction, PRD §11).
+        let call = ToolCall {
+            tool: "paid_call".into(),
+            args: serde_json::json!({ "endpoint": "/charge" }),
+            cost_cents: 300,
+        };
+        let r = Receipt::for_call(
+            "did:keri:Eagent",
+            "did:keri:Eroot",
+            &call,
+            "abc123",
+            Verdict::Allowed,
+            Some("stripe"),
+            Some("ch_3MmlLrLkdIwHu7ix0snN0B15"),
+            300,
+            300,
+            DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+        );
+        assert_eq!(r.charge_ref.as_deref(), Some("ch_3MmlLrLkdIwHu7ix0snN0B15"));
+        // The charge id survives the canonical round-trip a stranger re-derives over.
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"charge_ref\":\"ch_3MmlLrLkdIwHu7ix0snN0B15\""));
+        assert!(json.contains("\"rail\":\"stripe\""));
+    }
+
+    #[test]
     fn receipt_digest_is_stable() {
         let r = Receipt::for_call(
             "did:keri:Eagent",
@@ -187,6 +230,7 @@ mod tests {
             &sample_call(),
             "abc123",
             Verdict::Allowed,
+            None,
             None,
             0,
             0,

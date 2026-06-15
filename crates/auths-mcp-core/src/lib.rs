@@ -33,6 +33,7 @@
 
 pub mod budget;
 pub mod gate;
+pub mod rail;
 pub mod receipt;
 pub mod session;
 
@@ -41,6 +42,7 @@ pub use budget::{
     SettledCounter,
 };
 pub use gate::{Decision, GateError, PerCallGate, ToolCall, Verdict};
+pub use rail::{ExtractedCost, RailError, extract as extract_rail_cost, extract_stripe};
 pub use receipt::{Receipt, ReceiptError};
 pub use session::Budget;
 

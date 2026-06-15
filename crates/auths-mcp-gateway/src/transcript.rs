@@ -73,6 +73,21 @@ pub struct Call {
     /// (`ceiling − actual`) is RELEASED on settle. Defaults to `cost_cents`.
     #[serde(default)]
     pub reserve_ceiling_cents: Option<u64>,
+    /// The recorded rail-response fixture the gateway EXTRACTS this call's cost from
+    /// (e.g. `stripe-charge.test.json`), resolved under `AUTHS_MCP_RAIL_FIXTURES`. When
+    /// present, the cost is NOT taken from `cost_cents` — it is read out of the rail's
+    /// own response (the documented charge amount), so an agent under-declaring the cost
+    /// cannot change what is metered (the metered-rail cost extraction, PRD §11). The
+    /// reserved ceiling and the settled actual both come from this response.
+    #[serde(default)]
+    pub response_fixture: Option<String>,
+    /// The documented response field the cost is extracted from (e.g.
+    /// `charge.amount_captured`). Carried for self-description / audit; the extractor is
+    /// dispatched by `rail`, so this names — for a reader of the transcript — exactly
+    /// which field of the recorded response is the authoritative cost.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub extract: Option<String>,
     /// The verdict this call is expected to produce (e.g. `allowed`,
     /// `outside-agent-scope`). Replay asserts the re-derived verdict matches.
     #[serde(default)]
@@ -90,6 +105,13 @@ impl Call {
     /// receipt. A non-metered call (no rail) settles on no rail.
     pub fn rail(&self) -> Option<&str> {
         self.rail.as_deref()
+    }
+
+    /// The recorded rail-response fixture this call extracts its cost from, if any. When
+    /// `Some`, the cost is rail-response-authoritative (read from the response), not the
+    /// transcript's `cost_cents`.
+    pub fn response_fixture(&self) -> Option<&str> {
+        self.response_fixture.as_deref()
     }
 }
 
