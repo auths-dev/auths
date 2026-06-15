@@ -49,6 +49,7 @@ use serde::{Deserialize, Serialize};
 pub mod address;
 pub mod envelope;
 pub mod identity;
+pub mod prekey;
 pub mod relay;
 pub mod session;
 pub mod trust;
@@ -56,6 +57,7 @@ pub mod trust;
 pub use address::Aid;
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
+pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
 pub use relay::{MailboxId, MailboxStore, RelayRequest};
 pub use session::Session;
 pub use trust::{TrustState, TrustVerdict};
@@ -289,6 +291,97 @@ pub fn deliver_once(
     })
 }
 
+/// The verdict of rooting a session in a KERI-authenticated prekey bundle and
+/// driving one message through it. Returned by [`deliver_rooted`] so the relay
+/// binary's self-test (and the harness) can assert the join held: the bundle
+/// verified against the AID's current key, X3DH agreed a session against the
+/// *verified* keys, and the delivered message authenticated as the sender — and
+/// that a wrong-key bundle would have been rejected before any DH ran.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RootedReceipt {
+    /// The AID whose KERI-signed bundle rooted the session — equal to the
+    /// recipient only because the bundle's signature verified.
+    pub rooted_aid: Aid,
+    /// The AID the delivered message authenticated as.
+    pub authenticated_sender: Aid,
+    /// The body that arrived after verify + decrypt over the rooted session.
+    pub body: String,
+}
+
+/// Drive the KERI→Signal join once, hermetically (PRD §10, the prekey-bundle
+/// claim):
+///
+///  1. the recipient publishes a prekey bundle **signed by their AID's current
+///     key** (a *distinct* Signal identity key — no signing↔DH reuse);
+///  2. the sender resolves the recipient's AID to its key via `directory` (a
+///     witnessed KEL replay in the full engine) and **verifies the bundle**
+///     against it — a wrong-key bundle is rejected here, before any DH runs;
+///  3. X3DH derives the initial session secret against the *verified* keys (both
+///     sides agree the same secret);
+///  4. the sender seals a message under that rooted session; it is
+///     stored-and-forwarded through `relay`, drained, and opened — authenticating
+///     as the sender.
+///
+/// Returns a [`RootedReceipt`] iff the bundle verified, the session agreed, and
+/// the message authenticated. Any failure to verify the bundle is an error, never
+/// a silent pass — this is the gate that closes the MITM the safety-number
+/// warning exists to catch.
+#[allow(clippy::too_many_arguments)]
+pub fn deliver_rooted(
+    sender: &Identity,
+    recipient: &Identity,
+    recipient_prekeys: &PrekeySecrets,
+    sender_x3dh_identity: [u8; 32],
+    sender_x3dh_ephemeral: [u8; 32],
+    mailbox: &MailboxId,
+    body: &str,
+    relay: &mut MailboxStore,
+    directory: &dyn Directory,
+) -> CoreResult<RootedReceipt> {
+    use x25519_dalek::{PublicKey as X25519Public, StaticSecret as X25519Secret};
+
+    // (1) The recipient publishes a bundle signed by their AID key.
+    let bundle = PrekeyBundle::publish(recipient, recipient_prekeys)?;
+
+    // (2) The sender resolves the recipient's AID → current key, then verifies the
+    // bundle against it. A wrong-key bundle is rejected here (see the adversarial
+    // test) — there is no path to X3DH without a verified bundle.
+    let recipient_key = directory
+        .resolve(recipient.aid())
+        .ok_or(CoreError::Rejected(
+            "recipient AID could not be resolved to a key",
+        ))?;
+    let rooted = bundle.verify_rooted(&recipient_key)?;
+
+    // (3) X3DH against the *verified* keys. Both sides agree the same secret.
+    let sender_id_secret = X25519Secret::from(sender_x3dh_identity);
+    let sender_eph_secret = X25519Secret::from(sender_x3dh_ephemeral);
+    let sender_session = x3dh_initiator(&sender_id_secret, &sender_eph_secret, &rooted)?;
+    let recipient_session = x3dh_responder(
+        recipient_prekeys,
+        X25519Public::from(&sender_id_secret).to_bytes(),
+        X25519Public::from(&sender_eph_secret).to_bytes(),
+    )?;
+
+    // (4) Seal under the rooted session, store-and-forward, drain, open.
+    let sender_endpoint = Endpoint::new(sender.clone(), sender_session);
+    let recipient_endpoint = Endpoint::new(recipient.clone(), recipient_session);
+    let receipt = deliver_once(
+        &sender_endpoint,
+        &recipient_endpoint,
+        mailbox,
+        body,
+        relay,
+        directory,
+    )?;
+
+    Ok(RootedReceipt {
+        rooted_aid: rooted.aid().clone(),
+        authenticated_sender: receipt.authenticated_sender,
+        body: receipt.body,
+    })
+}
+
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing
 // without exposing the secret key or session on the public API.
 #[cfg(test)]
@@ -414,6 +507,73 @@ mod tests {
                 .windows(mac.aid().as_str().len())
                 .any(|w| w == mac.aid().as_str().as_bytes())
         );
+    }
+
+    #[test]
+    fn a_session_rooted_in_a_keri_signed_bundle_delivers_authenticated() {
+        // The KERI-rooted-bundle leg: Bob publishes a bundle signed by his AID key; Alice
+        // resolves Bob's AID, verifies the bundle, runs X3DH, and sends. The
+        // message arrives authenticated as Alice over a session rooted in keys
+        // Alice *verified* belong to Bob.
+        let alice = Identity::from_seed([1u8; 32]).unwrap();
+        let bob = Identity::from_seed([2u8; 32]).unwrap();
+        let bob_prekeys = prekey::PrekeySecrets::from_seeds([0x20; 32], [0x21; 32]);
+        let dir = directory_of(&[
+            &Endpoint::new(alice.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(bob.clone(), Session::from_secret([0u8; 32])),
+        ]);
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:bob");
+
+        let receipt = deliver_rooted(
+            &alice,
+            &bob,
+            &bob_prekeys,
+            [0x10; 32],
+            [0x11; 32],
+            &mailbox,
+            "rooted in a verified bundle",
+            &mut relay,
+            &dir,
+        )
+        .unwrap();
+
+        assert_eq!(&receipt.rooted_aid, bob.aid());
+        assert_eq!(&receipt.authenticated_sender, alice.aid());
+        assert_eq!(receipt.body, "rooted in a verified bundle");
+    }
+
+    #[test]
+    fn a_wrong_key_bundle_never_roots_a_session() {
+        // Mallory publishes a bundle for Bob's AID but signs it with his own key.
+        // The directory resolves Bob's AID to *Bob's* key, so verify_rooted
+        // rejects the bundle before any DH — no session is ever rooted.
+        let bob = Identity::from_seed([2u8; 32]).unwrap();
+        let mallory = Identity::from_seed([3u8; 32]).unwrap();
+        let bob_prekeys = prekey::PrekeySecrets::from_seeds([0x20; 32], [0x21; 32]);
+        let id_key = bob_prekeys.identity_public();
+        let spk = bob_prekeys.prekey_public();
+        // A bundle claiming Bob's AID but signed by Mallory.
+        let signing = {
+            let mut b = Vec::new();
+            b.extend_from_slice(b"murmur/prekey-bundle/v1\n");
+            b.extend_from_slice(bob.aid().as_str().as_bytes());
+            b.push(b'\n');
+            b.extend_from_slice(&id_key);
+            b.extend_from_slice(&spk);
+            b
+        };
+        let forged = PrekeyBundle {
+            aid: bob.aid().clone(),
+            signal_identity_key: id_key,
+            signed_prekey: spk,
+            signature: mallory.sign(&signing).unwrap(),
+        };
+        // Verified against Bob's resolved key: rejected.
+        assert!(matches!(
+            forged.verify_rooted(bob.public_key()),
+            Err(CoreError::Rejected(_))
+        ));
     }
 
     #[test]

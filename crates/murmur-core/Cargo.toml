@@ -29,6 +29,11 @@ auths-crypto = { path = "../auths-crypto" }
 chacha20poly1305 = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"
+# X25519 Diffie-Hellman for the X3DH key agreement that roots a session in a
+# KERI-authenticated prekey bundle. The recipient's Signal identity key and
+# signed prekey are X25519 DH keys — DISTINCT from the AID's Ed25519 signing key
+# (no signing↔DH key reuse). Already in the workspace lock (auths-core uses it).
+x25519-dalek = { version = "2", features = ["static_secrets"] }
 # A fresh per-message AEAD nonce. Pure OS entropy, no PRNG state to carry.
 getrandom = "0.2"
 

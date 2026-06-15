@@ -132,21 +132,30 @@
   title: The Signal session is rooted in a KERI-authenticated prekey bundle; a wrong-key bundle
     is rejected
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - crates/murmur-core/src/lib.rs seal() — the X3DH bootstrap from a KERI-authenticated prekey
-    bundle is unwired (NotBuilt); no prekey-bundle verify exists yet
-  - PRD 10 ENC-1 — the bundle must be verified against the AID's current key (KEL replay)
-    before X3DH; the AID key must sign a DISTINCT Signal identity key (no signing-to-DH key
-    reuse)
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=keri-rooted-bundle+wrong-key-rejected
-    — the prekey-bundle verify (KEL replay before X3DH) is unbuilt (murmur-relay 0.1.3: store-and-forward
-    wire not built yet (the mailbox queue + pull/subscribe surface is the slice''s transport
-    work)); ENC-1 is open'
+  - the KERI-to-Signal join is built — crates/murmur-core/src/prekey.rs publishes a PrekeyBundle
+    carrying a recipient's DISTINCT X25519 Signal identity key + signed prekey, signed by the
+    recipient's AID current key; PrekeyBundle::verify_rooted verifies that signature against
+    the key the AID resolves to (a directory/KEL-replay stand-in), rejects a wrong-/non-pre-committed-key
+    bundle, and asserts key hygiene (no signing-to-DH reuse) — only then returning a RootedBundle
+    capability that x3dh_initiator/x3dh_responder can agree a session over (verify-then-agree
+    is enforced by the type, not by convention)
+  - 'murmur-relay serve drives the join hermetically (deliver_rooted): a verified bundle roots
+    an X3DH session and the message arrives authenticated, while a bundle signed by the wrong
+    key is rejected before any Diffie-Hellman — it prints "bundle-verified-against-aid"; the
+    trap (wrong-key-bundle) turns the probe RED'
+  observed: 'GREEN at 2026-06-15: the session was rooted only in a prekey bundle verified against
+    the recipient AID''s current key (a distinct Signal identity key — no signing-to-DH reuse);
+    a wrong-key bundle was rejected before X3DH (the MITM the safety-number warning exists to
+    catch). The relay binary self-tests publish → verify-against-AID → X3DH → seal → store-and-forward
+    → drain → verify+decrypt and reports bundle-verified-against-aid; the type system makes
+    X3DH unreachable without a prior verify_rooted. libsignal''s audited ratchet (forward secrecy,
+    post-compromise healing) and the external-audit precondition remain later work.'
   smallest_fix: 'Before X3DH, verify the recipient''s signed prekey bundle against their AID''s
     current key (KEL replay); reject a bundle signed by a wrong or non-pre-committed key.
     Assert key hygiene: the AID key signs a distinct Signal identity key. Embed libsignal

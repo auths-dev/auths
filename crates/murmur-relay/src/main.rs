@@ -24,7 +24,8 @@
 use std::process::ExitCode;
 
 use murmur_core::{
-    ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, Session, deliver_once,
+    ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle, PrekeySecrets,
+    Session, deliver_once, deliver_rooted,
 };
 
 /// What the relay was asked to do.
@@ -98,6 +99,82 @@ fn run_delivery() -> Result<String, String> {
     ))
 }
 
+/// Prove the KERI→Signal join (PRD §10, the prekey-bundle claim): a session is
+/// rooted only in a prekey bundle **verified** against the recipient's AID key,
+/// and a bundle signed by the wrong key is rejected before any X3DH runs.
+///
+/// Two assertions, both required for the proof line:
+///  * the good path — Bob publishes a bundle signed by his AID key, Alice
+///    resolves Bob's AID, verifies the bundle, runs X3DH, and her message arrives
+///    authenticated over the rooted session;
+///  * the adversarial twin — Mallory publishes a bundle for Bob's AID signed with
+///    *his own* key; verified against Bob's resolved key it is rejected, so no
+///    session is ever rooted (the MITM the safety-number warning exists to catch).
+fn run_rooted() -> Result<String, String> {
+    // Alice (the sender / initiator) and Bob (the recipient who publishes a bundle).
+    let alice = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Alice: {e}"))?;
+    let bob = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint Bob: {e}"))?;
+    // Bob's Signal DH key material — DISTINCT from his AID signing key.
+    let bob_prekeys = PrekeySecrets::from_seeds([0x31u8; 32], [0x32u8; 32]);
+
+    // The directory stands in for a witnessed KEL replay: Alice admits Bob's AID
+    // (opt-in contact, §8), which resolves to Bob's current key.
+    let mut directory = ContactDirectory::new();
+    directory.admit(alice.aid().clone(), alice.public_key().to_vec());
+    directory.admit(bob.aid().clone(), bob.public_key().to_vec());
+
+    // Good path: a verified bundle roots the session and the message authenticates.
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:bob");
+    let rooted = deliver_rooted(
+        &alice,
+        &bob,
+        &bob_prekeys,
+        [0x41u8; 32],
+        [0x42u8; 32],
+        &mailbox,
+        "rooted in a verified bundle",
+        &mut relay,
+        &directory,
+    )
+    .map_err(|e| format!("the rooted leg failed: {e}"))?;
+    if &rooted.authenticated_sender != alice.aid() {
+        return Err(format!(
+            "rooted message authenticated as {} not Alice",
+            rooted.authenticated_sender
+        ));
+    }
+
+    // Adversarial twin: Mallory publishes a bundle for Bob's AID signed with his
+    // OWN key. We mint it by publishing under Mallory's identity but stamping Bob's
+    // AID — verified against Bob's resolved key it MUST be rejected.
+    let mallory = Identity::from_seed([0x55u8; 32]).map_err(|e| format!("mint Mallory: {e}"))?;
+    let mallory_bundle = PrekeyBundle::publish(&mallory, &bob_prekeys)
+        .map_err(|e| format!("mint Mallory's bundle: {e}"))?;
+    let forged = PrekeyBundle {
+        aid: bob.aid().clone(), // claims Bob's AID …
+        signal_identity_key: mallory_bundle.signal_identity_key,
+        signed_prekey: mallory_bundle.signed_prekey,
+        signature: mallory_bundle.signature, // … but signed by Mallory
+    };
+    match forged.verify_rooted(bob.public_key()) {
+        Ok(_) => {
+            return Err(
+                "wrong-key-bundle-accepted: a bundle signed by the wrong key rooted the session"
+                    .to_string(),
+            );
+        }
+        Err(_) => { /* rejected as required */ }
+    }
+
+    Ok(format!(
+        "bundle-verified-against-aid: a session was rooted only in a prekey bundle \
+         verified against {}'s current key (a distinct Signal identity key); a \
+         wrong-key bundle was rejected before X3DH",
+        rooted.rooted_aid
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -105,16 +182,24 @@ fn main() -> ExitCode {
             println!("murmur-relay {}", murmur_core::VERSION);
             ExitCode::SUCCESS
         }
-        Mode::Serve => match run_delivery() {
-            Ok(line) => {
-                println!("murmur-relay {}: {line}", murmur_core::VERSION);
-                ExitCode::SUCCESS
+        Mode::Serve => {
+            // Each `serve` run drives every end-to-end leg the engine proves and
+            // prints one marker line per proven property — the store-and-forward
+            // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
+            // for its own marker; a leg that breaks fails the whole self-test
+            // closed.
+            let legs: [fn() -> Result<String, String>; 2] = [run_delivery, run_rooted];
+            for leg in legs {
+                match leg() {
+                    Ok(line) => println!("murmur-relay {}: {line}", murmur_core::VERSION),
+                    Err(why) => {
+                        eprintln!("murmur-relay {}: {why}", murmur_core::VERSION);
+                        return ExitCode::FAILURE;
+                    }
+                }
             }
-            Err(why) => {
-                eprintln!("murmur-relay {}: {why}", murmur_core::VERSION);
-                ExitCode::FAILURE
-            }
-        },
+            ExitCode::SUCCESS
+        }
         Mode::Usage => {
             eprintln!("usage: murmur-relay [serve|--version]");
             ExitCode::from(2)
