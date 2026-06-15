@@ -314,7 +314,7 @@
 - id: APP-1
   title: The iOS + macOS apps build and launch from one multiplatform codebase
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: none
   covers:
@@ -324,9 +324,16 @@
     murmur-core through the UniFFI bridge; this probe asserts both app schemes BUILD clean
     under xcodebuild and a headless launch-smoke boots the shell to a first frame with the
     engine answering
-  observed: 'RED at baseline 2026-06-15: ours=builds-but-no-launch-proof expected=both-apps-launch
-    — the app shells build (the sculpt gate runs the host test scheme), but no headless launch-smoke
-    proves a boot-to-first-frame with the engine answering yet; APP-1 is open'
+  observed: 'GREEN 2026-06-15: both shells build from one multiplatform codebase AND launch
+    to a first frame with the embedded engine answering. ContentView''s .task fires a shared
+    LaunchSmoke beacon (MURMUR_LAUNCH_SMOKE platform=… engine=ok core=<ver>) at the first
+    frame — an FFI round-trip to the core. MurmurTests/LaunchSmokeTests gates that round-trip
+    deterministically (no sim) in the Gate scheme; scripts/launch-smoke.sh is the real-boot
+    leg (boots an iPhone sim + the macOS app, waits for the beacon) and went GREEN on both.
+    Two build-config fixes made install/launch possible: a valid version pair (MARKETING_VERSION
+    / CURRENT_PROJECT_VERSION → CFBundleVersion) on the apps and GENERATE_INFOPLIST_FILE on
+    the embedded MurmurCore framework — without them the simulator refused to install the
+    shell, so it built but never launched.'
   smallest_fix: 'Keep the two native SwiftUI shells building clean under xcodebuild (the iOS
     app for the simulator, the macOS app for the host) from one multiplatform codebase, embedding
     murmur-core through the FFI, AND ship a headless launch-smoke that boots each shell to
