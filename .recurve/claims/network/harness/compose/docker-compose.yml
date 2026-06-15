@@ -1,0 +1,62 @@
+# Local 3-witness fixture for the witness-network conformance suite.
+#
+# Three INDEPENDENT witness nodes, distinct identities (distinct AUTHS_WITNESS_SEED
+# => distinct advertised AID), distinct host ports. This is the smallest fixture
+# that makes the threshold story real from the start: a 2-of-3 set you can kill
+# one node out of and still meet, kill two and fail closed.
+#
+# The node image is the platform's hardened witness binary, built from the
+# canonical deployment Dockerfile in the shared tree (a musl-static
+# `auths-witness`) — the suite boots what the platform ships, it does not fork a
+# node. The signing seed is INJECTED at runtime (never baked into the image),
+# exactly as a real deployment would inject it from a secret store.
+#
+# The image is built ONCE by harness/up.sh (`docker build`), not per-service:
+# three services that each declared `build:` would trigger three concurrent
+# musl compiles of the whole workspace. Here every node shares the single
+# pre-built `auths-witness:net-fixture` image and only differs by seed + port.
+
+x-witness: &witness
+  image: auths-witness:net-fixture
+  restart: "no"
+  healthcheck:
+    # The binary is distroless (no shell/curl), so health is checked from the
+    # host by the harness against the published port — not in-container.
+    disable: true
+  # Seed-injected identity (no keystore file); receipts persist to the tmpfs
+  # mounted at /data so the read-only rootfs stays read-only.
+  command: ["--bind", "0.0.0.0:3333", "--curve", "ed25519", "--persist", "/data/receipts.db"]
+  # The runtime image is distroless `nonroot` (uid/gid 65532). A bare `tmpfs: -
+  # /data` is mounted root-owned 0755, so the node can write /data/receipts.db on
+  # the FIRST `up` (Docker seeds the declared VOLUME's perms) but NOT after a
+  # `docker compose stop`/`start`, where the tmpfs is re-mounted fresh as root —
+  # the node then dies with SQLITE_CANTOPEN (code 14). Pinning the tmpfs to the
+  # node's uid/gid makes /data writable on every (re)start, so the kill-node
+  # lever's "restart recovers" half is real, not a first-boot-only fluke.
+  tmpfs:
+    - /data:uid=65532,gid=65532,mode=0700
+
+services:
+  wit1:
+    <<: *witness
+    container_name: auths-witness-net-wit1
+    environment:
+      AUTHS_WITNESS_SEED: "1111111111111111111111111111111111111111111111111111111111111111"
+    ports:
+      - "127.0.0.1:3331:3333"
+
+  wit2:
+    <<: *witness
+    container_name: auths-witness-net-wit2
+    environment:
+      AUTHS_WITNESS_SEED: "2222222222222222222222222222222222222222222222222222222222222222"
+    ports:
+      - "127.0.0.1:3332:3333"
+
+  wit3:
+    <<: *witness
+    container_name: auths-witness-net-wit3
+    environment:
+      AUTHS_WITNESS_SEED: "3333333333333333333333333333333333333333333333333333333333333333"
+    ports:
+      - "127.0.0.1:3333:3333"

@@ -1,0 +1,54 @@
+# recurve.toml — all project variability lives here. If a knob didn't need to
+# vary, it isn't here.
+
+[project]
+name = "auths-network"
+label = "suite"
+default_reads = "none"
+cycles_dir = ".recurve/claims/network/cycles"
+schema = "1"
+
+# This is an interop-style CONFORMANCE SUITE (claims + integration probes),
+# not a product repo. It drives building the feature-gated `auths-witness-node`
+# crate + `auths witness …` subcommands INSIDE the platform workspace
+# (ADJUDICATE-1, re-decided 2026-06-13). Single tree, like interop/.
+
+[target]
+tree = "../auths"           # the platform workspace; the witness-node crate is built here
+sacred = []                 # paths/resources no cycle may touch
+forbidden_strings = ["GAP-", "WIT-", "BOOT-", "recurve"]  # loop vocabulary must not leak into the tree
+
+[commit]
+policy = "unsigned-per-cycle"   # per-cycle commits = single-cycle rollback; re-sign at integration
+hooks = "run"
+
+[gate]
+traps = "required"          # every probe keeps a counterexample it must turn RED
+quality = "pre-launch"     # the constitution: .recurve/quality.md
+
+[reads.none]
+method = "none"
+
+# The probes that exercise the operator CLI read the FEATURE-ENABLED `auths`
+# build — `auths witness …` with its real node handlers compiled in
+# (`--features witness-node`). That build is DISTINCT from the lean default
+# `auths` the demos read, so the suite's rebuild builds it into its own
+# target dir (target/witness-node) and copies it to bin/auths. content-hash
+# refuses to run a `reads: cli` probe whose bin/auths drifts from that output.
+[reads.cli]
+method = "content-hash"
+artifact = "bin/auths"
+source = "target/witness-node/release/auths"   # built with --features witness-node
+
+[suites.network]
+dir = ".recurve/claims/network"
+# Build the feature-enabled artifacts the probes run, then copy bin/auths into
+# the suite. The lean default target/release/auths (read by the demos) is never
+# clobbered — the feature build lives in its own target dir.
+rebuild = "bash claims/network/harness/rebuild.sh"
+harness = []                # behavioral end-to-end checks beyond the probes
+
+[burndown]
+cap = 30   # large suite (22 drafts + wave-arming for probes); halts at no-work-left well before this
+max_consecutive_failures = 3
+runaway_net_positive_cycles = 2

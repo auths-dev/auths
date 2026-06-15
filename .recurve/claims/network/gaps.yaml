@@ -1,0 +1,366 @@
+# gaps.yaml — the LIVE ledger for the witness-network conformance suite.
+#
+# Promoted from gaps.draft.yaml as cycles author probes and baseline claims.
+# Reuses the recurve gap schema (parsed by recurvelib/model.py). Status:
+#   open    → probe expected RED  (a behavior the suite drives into existence)
+#   closed  → probe expected GREEN (a behavior now present, guarded against regression)
+#
+# Each open entry carries its REAL observed RED line (what the probe actually
+# printed, dated), never a guess — a gap without a measured red is an opinion.
+
+# ── scaffolding: greenfield bootstrap order ──
+- id: BOOT-1
+  title: 'the harness exists — 3-witness local fixture boots, oracles pinned'
+  class: staging
+  status: closed
+  severity: feature
+  reads: none
+  covers: ["BOOT-1"]
+  evidence:
+    - PRD.md §US-008, §FR-13 (the harness stands up a 3-witness local network with failure injection)
+    - ADJUDICATE-1 (single tree — the node binary is the platform's feature/witness build, not a fork)
+    - harness/versions.lock (keripy 1.3.4, the interop peers pin convention)
+  observed: >
+    GREEN 2026-06-13: `bash probes/boot-1.sh` →
+    "harness GREEN: 3 distinct witness nodes healthy (did:key:z6MktUL…
+    did:key:z6MkqGC… did:key:z6Mkg49…), kill-node lever proven, oracle
+    keripy=1.3.4 pinned and installed" (exit 0); the cloned-identity trap stays
+    RED ("ours=1-distinct oracle=3-distinct — roster is not 3 independent
+    identities", exit 1). The shared-image build is cached (auths-witness:net-
+    fixture), so harness/up.sh just boots three nodes on ports 3331/3332/3333,
+    each advertising a distinct seed-derived AID. One real (non-Docker) fix
+    landed the GREEN: the bare `tmpfs: - /data` mount was root-owned, so the
+    distroless `nonroot` (uid 65532) node could write /data/receipts.db on the
+    FIRST boot (Docker seeds the declared VOLUME's perms) but died with
+    SQLITE_CANTOPEN (code 14) after a `docker compose stop`/`start` — the tmpfs
+    re-mounts fresh as root. Pinning the tmpfs to uid=65532,gid=65532,mode=0700
+    makes /data writable on every (re)start, so the kill-node lever's "restart
+    recovers" half is real, not a first-boot fluke. Earlier baseline (RED,
+    2026-06-13): "no 3-witness fixture standing on ports 3331 3332 3333 …" — the
+    standup was absent (the keripy oracle was already present, so RED not BROKEN).
+  smallest_fix: >
+    harness/env.sh + a Docker Compose fixture booting 3 local witness nodes with
+    DISTINCT identities (distinct AUTHS_WITNESS_SEED → distinct advertised AID);
+    a kill-node failure-injection helper (stop node N, peers survive, restart
+    recovers); the keripy oracle pinned in harness/versions.lock reusing the
+    interop peers convention. The node image is the platform's hardened
+    auths-witness binary built from its canonical deployment Dockerfile — the
+    fixture boots what the platform ships, it does not fork a node.
+  probe: probes/boot-1.sh
+  unlocks: 'every later WIT-N/T probe stands on this fixture — the burndown IS the build'
+
+- id: BOOT-2
+  title: 'the skeleton builds — rebuild produces the artifacts probes read'
+  class: staging
+  status: closed
+  severity: feature
+  reads: cli
+  covers: ["BOOT-2"]
+  evidence:
+    - PRD.md §US-008, §FR-12 (suite layout, probe contract, freshness reads: keys)
+    - ADJUDICATE-1 (in-workspace feature-gated crate auths-witness-node + `auths witness …` subcommands; lean default build stays lean)
+    - WIT-B1 (the node crate composes auths-witness/auths-keri/auths-verifier), WIT-B2 (the witness-node feature is purely additive)
+  observed: >
+    RED at baseline 2026-06-13: `bash probes/boot-2.sh` →
+    "no bin/auths — the suite rebuild has not run (recurve rebuild network →
+    harness/rebuild.sh)" (exit 1). Greenfield: before this cycle the
+    [suites.network] rebuild was empty and there was no [reads.cli] freshness
+    rule, no auths-witness-node crate, and the `auths witness` surface carried
+    no operator verbs — nothing produced the feature-enabled artifact the
+    cli probes read.
+  smallest_fix: >
+    scaffold auths/crates/auths-witness-node behind a `witness-node` workspace
+    feature (composing auths-witness/auths-keri/auths-verifier, not
+    reimplementing protocol); add the `auths witness up|down|status|register|
+    logs` operator verbs to auths-cli — the clap surface compiles in always
+    (thin), the handler is cfg(feature=witness-node) real / cfg(not) a helpful
+    "install the witness build" error; wire the [suites.network] rebuild
+    (harness/rebuild.sh builds the feature-enabled auths into target/
+    witness-node and copies bin/auths) + the [reads.cli] content-hash rule so
+    cli probes refuse to run stale; keep the feature additive (default
+    `cargo tree -p auths-cli` shows no auths-witness-node).
+  probe: probes/boot-2.sh
+  unlocks: 'the freshness axis + everything later cli probes execute against the feature-enabled build'
+
+- id: BOOT-3
+  title: 'every authored probe can run — the baseline decides, never BROKEN'
+  class: staging
+  status: closed
+  severity: feature
+  reads: cli
+  covers: ["BOOT-3"]
+  evidence:
+    - PRD.md §US-008 (cycle 1 never faces a wall of BROKEN — the greenfield rule)
+    - probes/_contract.sh (the frozen contract — exit 2/timeout/crash all coerce to BROKEN)
+    - WIT-N1 (the wave's standup probe — the one whose happy path the baseline had to make measurable)
+  observed: >
+    RED at baseline 2026-06-13: `bash probes/boot-3.sh` →
+    "ours=BROKEN baseline expected=all-decide — 1 authored probe(s) could not
+    measure on the built tree (exit≠0,1): wit-n1.sh:exit=2 — fix the missing
+    env/fixture prerequisite so the baseline is RED/GREEN, never BROKEN" (exit 1).
+    The BROKEN sibling was WIT-N1: against the skeleton `auths witness up` (which
+    exited 0 and printed a health URL while standing nothing up), the WIT-N1
+    probe could not decide whether the standup capability was real or faked —
+    `bash probes/wit-n1.sh` → "exited 0 and printed http://127.0.0.1:3340/health
+    but nothing answers there … cannot decide WIT-N1 against a build whose
+    success is a lie" (exit 2 BROKEN). A baseline with a BROKEN in it is not a
+    baseline — the burndown cannot start.
+  smallest_fix: >
+    run the full authored probe set on the built tree and drive every verdict to
+    a DECISION (RED/GREEN). The fix was real: `auths witness up` now performs a
+    genuine embedded-Compose standup (bring up node + monitor, wait for the
+    health endpoint, print the URL, exit 0) and — crucially — FAILS HONESTLY
+    (non-zero, one actionable line, nothing left standing) when it cannot stand a
+    node up, instead of claiming success. With `up` no longer lying, WIT-N1
+    decides (RED here, where no node image is obtainable; GREEN where it is), so
+    the meta-probe sees zero BROKEN. boot-3.sh runs every sibling probe
+    (excluding itself + the sourced _contract.sh) and is RED if any exits ≠ 0,1.
+  probe: probes/boot-3.sh
+  unlocks: 'a clean baseline — the burndown starts on RED/GREEN, never on could-not-measure'
+
+- id: WIT-N1
+  title: 'one command, one witness — `up` reaches a healthy node or fails honestly'
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers: ["WIT-N1"]
+  evidence:
+    - PRD.md §US-001, §FR-1, §FR-2, §FR-4
+  observed: >
+    GREEN 2026-06-13: `bash probes/wit-n1.sh` → "one command stood up a healthy
+    witness: `witness up` exited 0, printed http://127.0.0.1:3340/health, the node
+    answers there, and the happy path carries zero protocol vocabulary" (exit 0);
+    the occupied-port trap is RED (exit 1). What unblocked it was the shared
+    prerequisite BOOT-1 flagged — an OBTAINABLE node image — plus two real fixes
+    in ../auths: (1) the canonical witness deployment Dockerfile was genuinely
+    broken (it added the musl target to a different toolchain than the
+    rust-toolchain.toml selects, and hardcoded x86_64 on an arm64 host → E0463
+    "can't find crate for core") and now resolves the static target from
+    TARGETARCH after the source copy, so the released image builds natively on
+    both arches; (2) the embedded standup manifest dropped a transparency-log
+    `monitor` sidecar that referenced an unshippable image and blocked the whole
+    `compose up`, and `up` now mints the node's stable signing identity at first
+    boot (OS-CSPRNG seed injected via a `.env`, never a key file baked in), so the
+    released-image node actually becomes healthy. The harness owns image
+    acquisition (harness/ensure-image.sh builds-once from the canonical
+    Dockerfile, tags auths-witness:net-fixture); `up` runs that RELEASED image
+    (`--image`), never a source build (WIT-B4 holds). Earlier baseline (RED, same
+    day): "ours=exit1 expected=exit0 — `witness up` did not complete a standup …"
+    when no node image was obtainable; `up` failed honestly then, which is the
+    adversarial half of the same claim.
+  adversarial_twin: >
+    occupied port / absent Docker fails with a one-line actionable error and
+    leaves NO partial state; file-key fallback refuses without --accept-file-key.
+  smallest_fix: >
+    `up` wraps embedded Compose (the released witness node), mints the node
+    identity at first boot, prints a health URL, exits 0 — and on a clean box
+    reaches healthy ≤ 600s. The probe drives `up` against a throwaway port/data
+    dir (with the harness having made the released image present) and asserts a
+    real node answers the printed URL with zero protocol vocabulary; on a box with
+    no engine it asserts the clean adversarial refusal instead. Trap: an `up` that
+    exits 0 on an occupied port (partial-state lie) stays RED.
+  probe: probes/wit-n1.sh
+  unlocks: 'G1 — the flywheel cost-per-turn; the first thing every partner runs'
+
+- id: WIT-N2
+  title: "receipts verify offline on a stranger's machine; tampered receipts rejected"
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers: ["WIT-N2"]
+  evidence:
+    - PRD.md §US-003 (receipts verify offline from the receipt + the witness's published identity alone; a bit-flipped receipt is rejected)
+    - 'Repo boundary (PRD §7): the offline-verify decision is protocol (must be correct for strangers) → it lives in auths-verifier; the operator/stranger CLI surface composes it (WIT-B1)'
+  observed: >
+    GREEN 2026-06-13: `NO_COLOR=1 bash probes/wit-n2.sh` → "receipts verify
+    offline on a stranger's machine: a real witness receipt + the node's
+    published identity verified with no network and no registry [provenance: live
+    node :3331 (did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S)], and a
+    bit-flipped receipt was rejected with a distinct reason — the corroboration
+    claim holds end to end" (exit 0); the forged-signature trap is RED (exit 1:
+    "rejected: this receipt does not verify against did:key:z6MktUL… — it was
+    altered or was not issued by that node"). The probe stood up the 3-witness
+    fixture, had wit1 receipt a valid inception event (a real SignedReceipt came
+    back), read the node's published did:key from /health, assembled the bundle,
+    and verified it in an isolated empty-home context (HOME+AUTHS_HOME → empty
+    dir, so no registry, no pinned witnesses), leaving the fixture standing for
+    the rest of the suite. What landed: the self-contained offline verify is now
+    in the PUBLIC verifier (auths_verifier::verify_receipt_offline) — it recovers
+    the witness's key from the published did:key (which embeds it) and checks the
+    signature over the canonical receipt bytes, returning a parsed Verified /
+    SignatureFailed / UnreadableIdentity verdict; the node crate composes it as a
+    ReceiptBundle and `auths witness verify-receipt --receipt <file>` exposes it.
+    Earlier same-day baseline (RED): "ours=exit2 expected=verified … error:
+    unrecognized subcommand 'verify-receipt'" — the receipt half existed, the
+    third-party-checks-it-alone half did not.
+  adversarial_twin: 'a bit-flipped receipt signature is rejected with a distinct reason (the forged-signature trap stays RED)'
+  smallest_fix: >
+    the self-contained offline verify in the PUBLIC verifier
+    (auths_verifier::verify_receipt_offline): recover the witness's key from its
+    published did:key (which embeds it) and check the signature over the
+    canonical receipt bytes, returning a parsed Verified / SignatureFailed /
+    UnreadableIdentity verdict. The node crate composes it as a ReceiptBundle
+    (signed receipt + published identity); `auths witness verify-receipt
+    --receipt <bundle>` exposes it — no network, no registry. A tampered receipt
+    fails closed with a distinct reason.
+  probe: probes/wit-n2.sh
+  unlocks: 'receipts are only corroboration if a third party can check them alone — the WIT-T threshold story rests on offline-checkable receipts'
+
+- id: WIT-N3
+  title: 'node serves conformant key-state notices (cross-verified vs the oracle)'
+  class: wire-mismatch
+  status: closed
+  severity: feature
+  reads: cli
+  covers: ["WIT-N3"]
+  evidence:
+    - PRD.md §US-003, §FR-3 (node serves KERI-conformant KSN at a stable endpoint; cross-verified against the keripy oracle)
+    - depends on interop IOP-L3c (KSN wire shape — owned there, referenced not duplicated; the same keripy=1.3.4 pin in harness/versions.lock)
+    - 'Repo boundary (PRD §7): the KSN wire shape + replay are protocol (must be correct for strangers) → they live in auths-keri/auths-core; the node only serves and the operator CLI only ingests (WIT-B1)'
+  observed: >
+    GREEN 2026-06-13: `NO_COLOR=1 bash probes/wit-n3.sh` → "the node serves a
+    conformant key-state notice: a live node witnessed a real inception and served
+    a KERI ksn wire record that the keripy oracle (1.3.4) reconstructs
+    byte-for-byte (node→oracle), the node ingests a notice the oracle publishes
+    (oracle→node), and a stale notice is detected as stale — IOP-L3c's wire
+    conformance now holds against the running node" (exit 0); the stale-ksn trap
+    is RED (exit 1: "rejected: stale key-state notice — KSN is stale: seq 0 <
+    last-seen 1; a verifier holding a newer state refuses to rewind"). The probe
+    stood up the 3-witness fixture, had wit1 witness a full conformant inception
+    (probes/fixtures/keri-icp.json — a real auths-signed icp), then GET
+    /witness/<prefix>/key-state and (1) reconstructed the served record inside the
+    pinned keripy oracle field-for-field (harness/ksn_oracle.py → ORACLE-OK), (2)
+    ingested a keripy-emitted notice via `auths key-state --ingest`
+    (harness/ksn_emit.py), (3) detected a stale (lower-seq) notice via
+    `--reject-stale-below`. What landed in ../auths: the witness server now RETAINS
+    the verified event body (auths-core witness storage `events` table) so it can
+    replay an identity's KEL into current key-state, and serves it at a new stable
+    endpoint GET /witness/{prefix}/key-state as a KERI KeyStateRecord (the
+    {vn,i,s,p,d,f,dt,et,kt,k,nt,n,bt,b,c,ee,di} wire shape) — built only from
+    auths_keri::KeyStateRecord::from_kel (the trust kernel, never hand-rolled);
+    auths_keri::KeyStateRecord gained sequence()/check_not_stale() and the
+    `auths key-state --ingest --reject-stale-below <hex>` flag composes it so a
+    verifier holding a newer state fails closed on a rewind. Earlier same-day
+    baseline (RED): against the pre-change node the endpoint did not exist —
+    "ours=no-ksn-endpoint expected=served-notice … the node did not serve a
+    key-state notice at /witness/<prefix>/key-state (curl exit 22)".
+  adversarial_twin: 'a stale key-state notice (a lower sequence than a newer state the verifier holds) is detected as stale, never accepted — the stale-ksn trap stays RED'
+  smallest_fix: >
+    the witness server retains verified events and serves the current key-state as
+    a KERI-conformant KeyStateRecord at a stable endpoint, replayed through the
+    platform's own from_kel (zero hand-rolled protocol); the served record
+    reconstructs byte-for-byte in the pinned keripy oracle and a keripy-published
+    record ingests on the node; a stale (lower-seq) notice is detected as stale via
+    a verifier-held last-seen sequence (auths_keri::KeyStateRecord::check_not_stale,
+    exposed as `auths key-state --ingest --reject-stale-below`).
+  probe: probes/wit-n3.sh
+  unlocks: 'thin-client key-state trust; the directory freshness column — and the running node now backs IOP-L3c'
+
+- id: WIT-N4
+  title: 'the node proves what binary it runs (signed build attestation)'
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers: ["WIT-N4"]
+  evidence:
+    - PRD.md §FR-3 (the witness node carries a signed version/build attestation — the node proves what binary it runs, dogfooding `artifact sign --ci`)
+    - 'Repo boundary (PRD §7): the attestation-signature check is protocol (must be correct for strangers) → it lives in auths-verifier; the node only self-measures + serves and the operator CLI only renders the verdict (WIT-B1)'
+    - WIT-B2 (the build surface is additive — the witness-node feature stays one-way; no core crate depends on the node crate), WIT-B4 (standup deploys the released attested binary, never a source build)
+  observed: >
+    GREEN 2026-06-14: `NO_COLOR=1 bash probes/wit-n4.sh` → "the node proves which
+    binary it runs: a live node served a signed version+digest build attestation,
+    `witness status` verified it against the node's own self-measurement of the
+    running binary, and a forged attestation (valid signature over a different
+    binary) was rejected with a distinct reason — an operator vouching for the
+    network is itself vouchable" (exit 0); the wrong-digest forged-attestation trap
+    is RED (exit 1: "rejected: the attestation is for a different binary (attested
+    296078e6…, running 7ce84d53…) — this node is not running what it attests"). The
+    probe stands up its OWN throwaway node with a build attestation the harness
+    produced over the RELEASED image's binary (extract /usr/local/bin/auths-witness
+    from the image, dogfood `auths artifact sign --ci` over it), GET /build, asserts
+    `auths witness status` verifies it, then stands a SECOND node up with an
+    attestation signed over a DIFFERENT artifact and asserts `status` refuses — the
+    forgery the claim exists to catch. What landed in ../auths: (1) the witness
+    server measures its own running binary (sha256 of /proc/self/exe at startup) and
+    serves a new BuildProof at GET /build pairing that self-measurement with the
+    signed attestation (auths-core; the server interprets nothing — 404 when no
+    attestation was configured, so a node that cannot prove its binary says so
+    plainly); (2) the offline build-attestation check is in the PUBLIC verifier
+    (auths_verifier::verify_build_attestation_offline) — two-leg, fail-closed: the
+    signature verifies against the key its self-describing did:key issuer embeds AND
+    the attested digest equals the node's self-measured running digest, so a valid
+    signature over the WRONG binary lands on DigestMismatch, never Verified; (3) the
+    node crate composes it as BuildAttestation::verify → NodeBuildVerdict and `auths
+    witness status` fetches /build and renders the verdict, failing closed on a
+    forged or absent build; (4) `auths witness up --build-attestation <path>`
+    injects the attestation into the standup compose (read-only bind + env), and the
+    auths-witness binary reads AUTHS_WITNESS_BUILD_ATTESTATION at boot. Earlier
+    baseline (RED, same day): against the pre-change node the endpoint did not exist
+    and `status` had no build leg — "ours=no-build-endpoint expected=served-proof —
+    the node did not serve a build attestation at /build (curl exit 22)".
+  adversarial_twin: 'an attestation whose digest differs from the running binary fails verification — a forged (different-binary) attestation is rejected by `status` with a distinct reason; the wrong-digest trap stays RED'
+  smallest_fix: >
+    the witness server measures its own running binary (sha256 of /proc/self/exe at
+    startup) and serves it paired with the operator's signed `auths artifact sign
+    --ci` attestation at GET /build; the offline check lives in the PUBLIC verifier
+    (auths_verifier::verify_build_attestation_offline) — fail-closed two-leg: the
+    signature verifies against the issuer's embedded key AND the attested digest
+    equals the self-measured running digest, so a valid signature over a different
+    binary fails on DigestMismatch. `auths witness status` composes it and renders
+    the verdict; `auths witness up --build-attestation` injects the attestation at
+    standup. The witness-node feature stays additive; no protocol is hand-rolled.
+  probe: probes/wit-n4.sh
+  unlocks: 'operators vouching for the network must be vouchable themselves — and standup (WIT-B4) can refuse a node whose binary does not verify'
+
+- id: WIT-N5
+  title: 'zero protocol vocabulary in the operator happy path'
+  class: friction
+  status: closed
+  severity: feature
+  reads: cli
+  covers: ["WIT-N5"]
+  evidence:
+    - PRD.md §US-001, §6 Design Considerations (operators never see the protocol's vocabulary)
+    - 'Repo boundary (PRD §7): the operator-facing surface lives in the node crate; the vocabulary rule the surface is held to is owned there too (auths-witness-node), the one place it can have a single source of truth'
+  observed: >
+    GREEN 2026-06-14: `NO_COLOR=1 bash probes/wit-n5.sh` → "the operator happy
+    path carries zero protocol vocabulary: every line `witness up|status|register|
+    logs|down` printed (attested standup included) passed a whole-word,
+    case-insensitive scan against the product's own canonical denylist (covering
+    keri/kel/ksn/said/cesr/oobi/acdc/tel/verkey/prefix/threshold and more), and
+    that denylist lives in exactly one place — the vocabulary-invisible rule is a
+    guarantee with one owner, not a hope spread across ad-hoc lists" (exit 0); the
+    jargon-leak trap is RED (exit 1: "ours=trap:kel expected=RED — the captured
+    transcript leaks protocol vocabulary (whole-word, case-insensitive); the
+    scanner caught it"). The probe stands up its OWN throwaway attested node,
+    captures every line the full operator happy path prints, and scans it against
+    the denylist EXTRACTED FROM the product source (so probe and surface cannot
+    drift). What landed in ../auths: the vocabulary-invisible rule became a single
+    source of truth — auths-witness-node/src/vocabulary.rs owns the canonical
+    `PROTOCOL_VOCABULARY` denylist (the trust kernel's wire/ceremony vocabulary an
+    operator must never see) and `scan_for_protocol_vocabulary` (whole-word,
+    case-insensitive, so benign substrings like "prefixed"/"did:key:" are not false
+    positives); the crate's own happy-path tests in lib.rs (health_url) and
+    build.rs (verdict summary) now consume it, their DIVERGENT inline jargon lists
+    deleted (quality §3/§4). Earlier baseline (RED, 2026-06-13): against the
+    pre-change tree the rule had no single owner — "ours=no-canonical-denylist
+    expected=one-owner — the product exposes no single source of truth for the
+    operator-vocabulary rule … a rule with no owner is a hope, not a guarantee"
+    (exit 1). The happy-path output itself was already clean; the cycle converted
+    that from three ad-hoc, divergent, partial (6-term) checks into one enforced,
+    full (11+ term) guarantee the probe anchors to.
+  adversarial_twin: 'any protocol term (keri, kel, ksn, said, cesr, oobi, acdc, tel, verkey, prefix, threshold, …) standing as a whole word in up/status/register/logs/down happy-path output is RED — the jargon-leak trap stays RED'
+  smallest_fix: >
+    lift the operator-vocabulary rule into one place: a canonical
+    PROTOCOL_VOCABULARY denylist + a whole-word case-insensitive
+    scan_for_protocol_vocabulary in auths-witness-node, consumed by the crate's
+    own happy-path tests (their divergent jargon copies deleted). The probe scans
+    the LIVE operator happy path against exactly that product-owned list
+    (reads:cli for the standup, reads:source for the denylist — both legitimate
+    because the claim is about output strings), so probe and surface cannot drift
+    and the green forbids precisely the words the product forbids.
+  probe: probes/wit-n5.sh
+  unlocks: 'the vocabulary-invisible rule, carried to operators — one owner, full coverage, a guard that cannot drift from the surface it protects'

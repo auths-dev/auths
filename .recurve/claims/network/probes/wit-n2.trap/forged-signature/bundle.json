@@ -1,0 +1,13 @@
+{
+  "receipt": {
+    "receipt": {
+      "v": "KERI10JSON000000_",
+      "t": "rct",
+      "d": "EPVOwKzgOeQ2rD5nv_fXzD036LBYcIgyaD3AgD0ghToU",
+      "i": "EProbeControllerWITN2000000000000000000000000",
+      "s": "0"
+    },
+    "signature": "0828f4b8c9156f3603060e3c71f38324bc968ea6547fe3144ee059f3219879e9dd824d49db705478d71c0b597d5bc30ff53f79841266ded9275782259f5b270c"
+  },
+  "witness": "did:key:z6MktULudTtAsAhRegYPiZ6631RV3viv12qd4GQF8z1xB22S"
+}

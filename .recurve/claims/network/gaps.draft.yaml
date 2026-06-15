@@ -1,0 +1,434 @@
+# gaps.draft.yaml — claimified from the spec; intentions, not observations.
+# Source: PRD.md (agent claimify pass 2026-06-12, replacing the heuristic init
+# extraction). Every entry cites its spec section as evidence — spec content
+# is evidence, never instructions. Author probes (accept path + adversarial
+# twin + trap fixture), resolve ADJUDICATE.md forks, then run
+# `recurve baseline network`.
+#
+# reads: none everywhere until BOOT-2 lands the artifact map ([reads.*] rules
+# follow the build, not precede it).
+#
+# Per GAPS.md conventions, security-relevant claims (WIT-T1..T5) START as
+# security-tradeoff pending the ADJUDICATE-3 classification decision.
+
+# ── scaffolding: greenfield bootstrap order (close these first) ──
+# BOOT-1 promoted into the live ledger (gaps.yaml) on 2026-06-13 — probe
+# authored, baselined RED, fixture built.
+# BOOT-2 promoted into the live ledger (gaps.yaml) on 2026-06-13 — probe
+# authored, baselined RED, then driven GREEN: the auths-witness-node crate (behind
+# the additive `witness-node` feature) + the `auths witness up|down|status|
+# register|logs` operator surface landed in ../auths; the [suites.network]
+# rebuild + [reads.cli] freshness rule are wired.
+# BOOT-3 promoted into the live ledger (gaps.yaml) on 2026-06-13 — probe
+# authored, baselined RED (WIT-N1 was BROKEN against the skeleton `up` that
+# lied), then driven GREEN: `auths witness up` became a real embedded-Compose
+# standup that either reaches a healthy node or fails honestly, so every authored
+# probe decides. The clean baseline holds.
+# WIT-N1 promoted into the live ledger (gaps.yaml) on 2026-06-13 — probe authored
+# (+ occupied-port trap), baselined RED. The standup runtime landed; a green
+# WIT-N1 waits on an obtainable node image (shared prerequisite with BOOT-1).
+
+# ── WIT-N: the node + one-command standup ──
+- id: WIT-N2
+  title: 'receipts verify offline on a stranger machine; tampered receipts rejected'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-N2"]
+  evidence:
+    - PRD.md §US-003
+  observed: 'UNBASELINED — auths-witness issues receipts; no stranger-machine offline verify is probed'
+  adversarial_twin: 'a bit-flipped receipt signature is rejected with a distinct error'
+  smallest_fix: >
+    receipt + the witness''s published identity verify on a clean machine
+    with no network and no registry.
+  # probe: probes/wit-n2.sh   # + probes/wit-n2.trap/<bitflip>/
+  unlocks: 'receipts are only corroboration if a third party can check them alone'
+
+# WIT-N3 promoted into the live ledger (gaps.yaml) on 2026-06-13 — probe authored
+# (+ stale-ksn trap), baselined RED (the /key-state endpoint did not exist on the
+# pre-change node), then driven GREEN: the witness server now retains verified
+# events and serves the current key-state as a KERI-conformant KeyStateRecord at
+# GET /witness/{prefix}/key-state (replayed through auths_keri's own from_kel),
+# cross-verified both directions against the pinned keripy=1.3.4 oracle, with a
+# stale-notice freshness gate (`auths key-state --ingest --reject-stale-below`).
+
+# WIT-N4 promoted into the live ledger (gaps.yaml) on 2026-06-14 — probe authored
+# (+ wrong-digest forged-attestation trap), baselined RED (the pre-change node
+# served no /build surface and `status` had no build leg), then driven GREEN: the
+# witness server now serves a signed version+digest build proof at GET /build that
+# pairs the binary's self-measurement (sha256 of /proc/self/exe at startup) with
+# the operator's `auths artifact sign --ci` attestation; `auths witness status`
+# verifies it through the PUBLIC verifier (auths_verifier::
+# verify_build_attestation_offline) — signature valid AND attested digest ==
+# self-measured — so a forged attestation (valid signature over a DIFFERENT
+# binary) is rejected. Standup injects the attestation via `auths witness up
+# --build-attestation`; the witness-node feature stays additive.
+
+# WIT-N5 promoted into the live ledger (gaps.yaml) on 2026-06-14 — probe authored
+# (+ jargon-leak trap), baselined RED (the product exposed NO single source of
+# truth for the operator-vocabulary rule — three divergent hand-maintained jargon
+# lists, none of which the probe could anchor to), then driven GREEN: the
+# vocabulary-invisible rule now lives in exactly one place (auths-witness-node's
+# vocabulary.rs — the canonical PROTOCOL_VOCABULARY denylist + a whole-word,
+# case-insensitive scan_for_protocol_vocabulary), the crate's own tests consume it
+# (their divergent copies deleted), and the WIT-N5 probe scans the LIVE operator
+# happy path (up|status|register|logs|down, attested standup included) against
+# exactly that product-owned list — so probe and surface cannot drift. The rule
+# now covers the full kernel vocabulary (keri/kel/ksn/said/cesr/oobi/acdc/tel/
+# verkey/prefix/threshold and more), not the earlier 6-term subset.
+
+# ── WIT-I: infrastructure-as-code ──
+- id: WIT-I1
+  title: 'cloud standup is one idempotent command; bad creds fail before any resource exists'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-I1"]
+  evidence:
+    - PRD.md §US-002, §FR-1
+  observed: 'UNBASELINED — no IaC modules exist'
+  adversarial_twin: 'invalid credentials abort with zero resources created (provider inventory diff)'
+  smallest_fix: >
+    `up --cloud <provider>` with embedded OpenTofu: plan→apply→boot→health,
+    re-run is a no-op. First provider only (harness budget); the rest are
+    follow-on gaps.
+  # probe: probes/wit-i1.sh   # + probes/wit-i1.trap/<bad-creds>/
+  unlocks: 'G1 cloud half; partners without spare hardware'
+
+- id: WIT-I2
+  title: 'teardown leaves nothing billable behind'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-I2"]
+  evidence:
+    - PRD.md §US-002, §FR-2
+  observed: 'UNBASELINED — no teardown path'
+  adversarial_twin: 'a manually orphaned resource is reported, not silently ignored'
+  smallest_fix: >
+    `down --cloud` destroys all resources (verified via provider inventory
+    diff); `up` after `down` succeeds cleanly.
+  # probe: probes/wit-i2.sh   # + probes/wit-i2.trap/<orphan>/
+  unlocks: 'operators trust a network they can leave'
+
+# ── WIT-D: the public directory ──
+- id: WIT-D1
+  title: 'the directory is a signed artifact verified client-side; tampering renders as failure'
+  class: missing-surface
+  status: open
+  severity: headline
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-D1"]
+  evidence:
+    - PRD.md §US-006, §FR-5, §FR-6
+  observed: 'UNBASELINED — no directory exists'
+  adversarial_twin: 'a tampered directory entry renders as a visible verification failure, never as data'
+  smallest_fix: >
+    directory = git repo of org-signed entries; the dashboard fetches,
+    verifies in-browser (WASM), and renders ONLY what verifies; hosting is
+    static.
+  # probe: probes/wit-d1.sh   # + probes/wit-d1.trap/<tampered-entry>/
+  unlocks: 'G4 — the network''s front door is proof, not assertion'
+
+- id: WIT-D2
+  title: 'registration is a signed admission, not a form'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-D2"]
+  evidence:
+    - PRD.md §US-006, §FR-5; blocked on ADJUDICATE-2 (admission policy)
+  observed: 'UNBASELINED — admission policy is an open fork; `register` is blocked on it'
+  adversarial_twin: 'an entry whose operator identity fails verification cannot be admitted'
+  smallest_fix: >
+    `register` emits a signed candidate entry (operator org identity +
+    endpoints + labels); admission per the adjudicated policy; the admission
+    itself is a signed event.
+  # probe: probes/wit-d2.sh   # + probes/wit-d2.trap/<bad-identity>/
+  unlocks: 'growth without trust-me onboarding'
+
+- id: WIT-D3
+  title: 'uptime and receipt stats are reproducible by an outside observer'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-D3"]
+  evidence:
+    - PRD.md §FR-7, §8 Success Metrics
+  observed: 'UNBASELINED — no prober exists'
+  adversarial_twin: 'a node lying about uptime disagrees with the prober, and the directory shows the prober''s number'
+  smallest_fix: >
+    open prober (this repo) emits signed results; the directory renders
+    them; the probe re-runs the prober independently and gets a consistent
+    answer.
+  # probe: probes/wit-d3.sh   # + probes/wit-d3.trap/<lying-node>/
+  unlocks: 'G6 — honesty as a rendered property'
+
+# ── WIT-T: threshold verification (platform sculpts in ../auths; class per ADJUDICATE-3) ──
+- id: WIT-T1
+  title: 'an org designates its witness set + threshold as an anchored, signed event'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-T1"]
+  evidence:
+    - PRD.md §US-004, §FR-8
+  observed: 'UNBASELINED — no witness-designation surface in the platform CLI'
+  adversarial_twin: 'receipts from a witness OUTSIDE the designated set never count toward M'
+  smallest_fix: >
+    `org witness set <ids> --threshold M` writes the designation into the
+    org''s event log; rotating the set is an anchored event at a provable
+    position.
+  # probe: probes/wit-t1.sh   # + probes/wit-t1.trap/<outsider-receipt>/
+  unlocks: 'controller-chosen trust sets — the protocol-native flywheel hook'
+
+- id: WIT-T2
+  title: 'M-of-N receipts enforced; M−1 is insufficient'
+  class: missing-surface
+  status: open
+  severity: headline
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-T2"]
+  evidence:
+    - PRD.md §US-005, §FR-8
+  observed: 'UNBASELINED — the verifier has no receipt-threshold policy'
+  adversarial_twin: 'M−1 valid receipts fail closed'
+  smallest_fix: >
+    threshold policy in the platform verifier: ordering-sensitive verdicts
+    require M valid receipts from the designated set.
+  # probe: probes/wit-t2.sh   # + probes/wit-t2.trap/<m-minus-1>/
+  unlocks: 'G3 — forged ordering requires collusion, not theft'
+
+- id: WIT-T3
+  title: 'diversity is the default — one operator''s N nodes count once'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-T3"]
+  evidence:
+    - PRD.md §FR-9
+  observed: 'UNBASELINED — no operator-distinctness rule exists'
+  adversarial_twin: 'a threshold met only by one operator''s multiple nodes fails'
+  smallest_fix: >
+    default verifier policy: receipts counting toward M must come from
+    distinct operators (by directory identity); jurisdiction-strict as an
+    optional stricter mode.
+  # probe: probes/wit-t3.sh   # + probes/wit-t3.trap/<one-operator-three-nodes>/
+  unlocks: 'the anti-oligopoly guard, default-closed'
+
+- id: WIT-T4
+  title: 'unreceipted is not invalid — distinct verdicts, explicit fail-closed degradation'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-T4"]
+  evidence:
+    - PRD.md §US-005, §FR-10
+  observed: 'UNBASELINED — no InsufficientReceipts verdict exists'
+  adversarial_twin: 'a silent downgrade — an ordering-sensitive verdict issued below threshold — is the RED line'
+  smallest_fix: >
+    distinct verdicts: InsufficientReceipts (operational) vs invalid
+    (attack); below threshold, ordering-sensitive verdicts fail closed while
+    non-ordering verdicts proceed and say so.
+  # probe: probes/wit-t4.sh   # + probes/wit-t4.trap/<silent-downgrade>/
+  unlocks: 'outages stay fixable without training users to ignore failures'
+
+- id: WIT-T5
+  title: 'the forged-ordering fixture dies under threshold — kept as the permanent trap'
+  class: security-tradeoff
+  status: open
+  severity: headline
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-T5"]
+  evidence:
+    - PRD.md §US-005, §8 Success Metrics
+    - mechanism for lost-the-laptop LTL-1/LTL-2 and verify-the-world V1 (promotion stays with THEIR review protocols)
+  observed: >
+    UNBASELINED — today a signer-stamped low anchor-seq forges "signed
+    before revocation"; with threshold policy the same fixture must fail
+    without M colluding witnesses.
+  adversarial_twin: 'this entire claim IS the adversarial fixture; it going GREEN-on-forgery is a gate failure of the highest order'
+  smallest_fix: >
+    run the forged-low-seq fixture under active threshold policy and assert
+    rejection; keep the fixture forever as the suite''s flagship trap.
+  # probe: probes/wit-t5.sh   # + probes/wit-t5.trap/<forged-low-seq>/
+  unlocks: 'the single probe that converts the flywheel from story to guarantee'
+
+- id: WIT-T6
+  title: 'threshold checking adds ≤50ms p99 to verification'
+  class: friction
+  status: open
+  severity: friction
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-T6"]
+  evidence:
+    - PRD.md §US-005, §8 Success Metrics
+  observed: 'UNBASELINED — no measurement exists'
+  adversarial_twin: 'a flapping perf gate is quarantined BROKEN, never averaged into GREEN'
+  smallest_fix: >
+    perf probe on the pinned rig (warmup, N≥1000, p99 not mean, hysteresis):
+    overhead vs no-threshold baseline ≤ 50ms.
+  # probe: probes/wit-t6.sh
+  unlocks: 'verify-on-every-request survives the corroboration upgrade'
+
+# ── WIT-O: operations & console ──
+- id: WIT-O1
+  title: 'the console is never stale-green — a dead node shows DOWN within 60s'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-O1"]
+  evidence:
+    - PRD.md §US-007, §FR-11
+  observed: 'UNBASELINED — no console exists'
+  adversarial_twin: 'a console serving cached green against a dead node is the RED line'
+  smallest_fix: >
+    operator console (/node) reads the metrics endpoint; the harness kills
+    the node and asserts DOWN renders within 60s.
+  # probe: probes/wit-o1.sh   # + probes/wit-o1.trap/<dead-node-cached-green>/
+  unlocks: 'G6 — operators can trust their own dashboard'
+
+- id: WIT-O2
+  title: 'node metrics are complete (the monitor daemon finally finishes)'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-O2"]
+  evidence:
+    - PRD.md §US-007, §7 Technical Considerations (auths-monitor is framework-only, handlers incomplete)
+    - 'WIT-N1 standup integration point (filed 2026-06-13): the WIT-N1 embedded standup manifest carried a `monitor` sidecar pinned to the TRANSPARENCY-LOG monitor image (auths-monitor — a registry/checkpoint monitor needing AUTHS_LOG_PUBLIC_KEY + a registry), which is the WRONG daemon for a single-node standup and unshippable as an image today, so it blocked the whole `compose up`. WIT-N1 dropped it; the node-health/metrics SIDECAR the standup should run is exactly this WIT-O2 collector. When WIT-O2 completes auths-monitor as the NODE collector and ships its image, re-add it to StandupRequest::compose_manifest (auths-witness-node) and assert in the WIT-O2 probe that `up` brings it up healthy alongside the witness.'
+  observed: 'UNBASELINED — auths-monitor is a 394-LoC framework with incomplete handler bodies; and the WIT-N1 standup currently has NO metrics sidecar (the mis-scoped transparency-log one was removed)'
+  adversarial_twin: 'a metric the console renders that is absent from the endpoint is RED'
+  smallest_fix: >
+    complete auths-monitor as the NODE collector: health, receipts/day,
+    identities served, key-state request rate, last-seen-by-peers —
+    Prometheus-compatible; ship its image and re-add it as the standup sidecar
+    (StandupRequest::compose_manifest) so `up` brings node + collector up together.
+  # probe: probes/wit-o2.sh
+  unlocks: 'honest directory stats now; real SLOs later (OPS-1 lineage)'
+
+- id: WIT-O3
+  title: 'unhealthy fires a webhook within N minutes, without flap-spam'
+  class: friction
+  status: open
+  severity: friction
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-O3"]
+  evidence:
+    - PRD.md §US-007
+  observed: 'UNBASELINED — no alerting exists'
+  adversarial_twin: 'a flapping node does not spam (debounce window probed)'
+  smallest_fix: >
+    webhook on unhealthy > N minutes (configurable), signed payload, probed
+    debounce.
+  # probe: probes/wit-o3.sh
+  unlocks: 'operators sleep; the SLA story starts'
+
+# ── WIT-B: the repo boundary (PRD §7 "Repo boundary") ──
+# Source-structure guards: `reads: none` greps are legitimate here because
+# the claims are about source. ../auths decides; this repo operates.
+- id: WIT-B1
+  title: 'the witness-node crate reimplements zero protocol logic'
+  class: friction
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-B1"]
+  evidence:
+    - ADJUDICATE-1 (in-workspace feature-gated crate)
+  observed: 'UNBASELINED — auths-witness-node not yet built; the guard must exist before it does'
+  adversarial_twin: 'any hand-rolled receipt / key-state / CESR / SAID parsing inside auths-witness-node (instead of calling auths-keri / auths-verifier / auths-witness) is RED'
+  smallest_fix: >
+    auths-witness-node composes the platform crates'' PUBLIC APIs only
+    (auths-witness, auths-keri, auths-verifier). Depending on those crates is
+    expected and correct — that IS the integration. What is forbidden is
+    re-implementing protocol: the moment the crate needs a protocol message the
+    platform doesn''t expose, that is a missing platform API — file the gap and
+    add the public surface, never inline the bytes in the node crate.
+  # probe: probes/wit-b1.sh
+  unlocks: 'one source of truth for protocol; the node crate is a thin composition over the trust kernel'
+
+- id: WIT-B2
+  title: 'the witness-node feature is purely additive — no core crate depends on it'
+  class: friction
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-B2"]
+  evidence:
+    - ADJUDICATE-1 (lean default; witness-node behind a cargo feature)
+  observed: 'UNBASELINED — no core crate references the node today; the guard keeps the default build lean'
+  adversarial_twin: 'a core crate (auths-keri/auths-verifier/auths-core/auths-id/auths-sdk) with a non-optional dep on auths-witness-node, OR a default `auths` build whose `cargo tree` pulls the node''s heavy deps (libgit2/HTTP server/…), is RED'
+  smallest_fix: >
+    the dependency arrow is one-way: auths-witness-node → core, never core →
+    node. The `witness-node` cargo feature is additive only; the `auths
+    witness` subcommand surface compiles in always (thin clap defs), but its
+    handler and the node crate are feature-gated, so a default build stays lean.
+  # probe: probes/wit-b2.sh   (cargo tree on default vs --features witness-node)
+  unlocks: 'the lean default install stays lean; the trust kernel stays witness-network-agnostic'
+
+- id: WIT-B3
+  title: 'the dashboard verifies only through the published verifier'
+  class: friction
+  status: open
+  severity: headline
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-B3"]
+  evidence:
+    - PRD.md §7 Repo boundary, FR-5, §6 renders-proofs rule
+  observed: 'UNBASELINED — dashboard not yet built; one verdict source of truth from day one'
+  adversarial_twin: 'verification or threshold logic implemented in dashboard code outside the published verifier package is RED — a forked verdict path is the one in the screenshot'
+  smallest_fix: >
+    the dashboard renders verdicts, never computes them: all verification
+    flows through the published WASM verifier package, so browser, FFI, and
+    CLI verdicts are one implementation.
+  # probe: probes/wit-b3.sh
+  unlocks: 'WIT-D1 stays honest — "renders proofs, not assertions" has exactly one prover'
+
+- id: WIT-B4
+  title: 'standup deploys released, attested binaries — never source builds'
+  class: missing-surface
+  status: open
+  severity: feature
+  needs_authoring: true
+  reads: none
+  covers: ["WIT-B4"]
+  evidence:
+    - PRD.md §7 Repo boundary, FR-3
+  observed: 'UNBASELINED — standup manifests not yet written; pinning discipline starts with them'
+  adversarial_twin: 'a compose/IaC path that builds the platform from source, or boots a binary whose build attestation fails to verify, is RED'
+  smallest_fix: >
+    standup manifests pin released artifact versions and verify the signed
+    build attestation before boot — operators run what the platform shipped,
+    provably (dogfoods FR-3).
+  # probe: probes/wit-b4.sh
+  unlocks: 'WIT-N4 end-to-end: the node proves what binary it runs, and standup refuses one that cannot'
