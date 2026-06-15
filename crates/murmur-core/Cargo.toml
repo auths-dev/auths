@@ -18,6 +18,19 @@ name = "murmur_core"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = { workspace = true }
+# Identity signing + verification: the AID's signing key authenticates the
+# sender. Routed through the workspace crypto crate's synchronous Ed25519
+# primitives (no async runtime in the engine), the same backend the rest of
+# auths signs with.
+auths-crypto = { path = "../auths-crypto" }
+# Real, audited AEAD + KDF for the relay-opaque envelope. chacha20poly1305 is
+# the same construction ring uses; HKDF-SHA256 derives the per-message content
+# key. Pure-Rust, already in the workspace lock — no new transitive tree.
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+# A fresh per-message AEAD nonce. Pure OS entropy, no PRNG state to carry.
+getrandom = "0.2"
 
 [lints]
 workspace = true

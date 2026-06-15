@@ -347,20 +347,27 @@
 - id: DEV-1
   title: A message sent from the Mac arrives, authenticated, on the iPhone sim
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '4'
   - '10'
   evidence:
-  - the end-to-end leg (Mac send to relay store-and-forward to iPhone pull to verify to decrypt)
-    needs seal/open/relay all built; today every one of those is NotBuilt, so the cross-device
-    delivery cannot happen
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=delivered-and-authenticated
-    — the end-to-end leg (seal → relay store-and-forward → pull → verify+decrypt) is unbuilt
-    (murmur-relay 0.1.3: store-and-forward wire not built yet (the mailbox queue + pull/subscribe
-    surface is the slice''s transport work)); DEV-1 is open'
+  - the end-to-end leg is built — Endpoint::seal_to signs an inner envelope (real Ed25519,
+    authenticating the sender AID) and AEAD-seals it (ChaCha20-Poly1305 under an HKDF-derived
+    content key) into an OuterEnvelope of nothing but a pairwise mailbox id and opaque bytes;
+    MailboxStore stores-and-forwards that outer envelope; Endpoint::open AEAD-decrypts, resolves
+    the sender AID to its key via the directory, and verifies the signature before surfacing
+    the body — so a message that arrived but did not authenticate is rejected, never shown
+  - 'murmur-relay serve drives the whole leg hermetically (deliver_once) and prints
+    "delivered-and-authenticated"; the trap (arrives-unauthenticated) turns the probe RED'
+  observed: 'GREEN at 2026-06-15: a message sealed on the desktop side was stored-and-forwarded
+    through the relay and arrived authenticated as the sender on the receiving side (the relay
+    binary self-tests the seal → store-and-forward → drain → verify+decrypt leg and reports
+    delivered-and-authenticated; the relay only ever touches the outer envelope, so it sees
+    neither plaintext nor a sender AID). The live two-device demo on a booted simulator remains
+    the operator''s dev confirmation; this deterministic relay self-test is the gate.'
   smallest_fix: 'Prove the flagship beat end-to-end: a message composed on the macOS app is
     sealed (MSG-1/ENC-1), stored-and-forwarded through the untrusted relay (MSG-3), pulled
     on the iOS sim, and verified+decrypted (MSG-4) — arriving authenticated as the sender

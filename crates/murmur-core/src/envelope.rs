@@ -29,15 +29,56 @@ impl OuterEnvelope {
     }
 }
 
-/// What the recipient verifies and decrypts after pulling the outer envelope:
-/// the authenticated sender AID and the forward-secret ciphertext the Signal
-/// session produced. SKELETON: reconstructed by [`crate::open`], which is
-/// unbuilt — this type only documents the shape.
+/// What the recipient reconstructs after AEAD-opening the outer envelope: the
+/// claimed sender AID, the message body, and the sender's signature over both.
+/// [`crate::open`] verifies the signature against the key the sender's AID
+/// resolves to *before* surfacing the body, so the `sender` here is never
+/// trusted because it was asserted — it is trusted only once the signature
+/// checks out. The whole struct is sealed inside the [`OuterEnvelope`]'s
+/// ciphertext, so the relay never sees any of these fields.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InnerEnvelope {
-    /// The real sender AID — authenticated by replaying *their* key log, never
-    /// trusted because it was asserted.
+    /// The claimed sender AID — authenticated by verifying [`signature`] against
+    /// the key this AID resolves to, never trusted because it was asserted.
+    ///
+    /// [`signature`]: InnerEnvelope::signature
     pub sender: crate::address::Aid,
-    /// The Signal-Protocol ciphertext that wraps the user's message body.
-    pub ratchet_ciphertext: Vec<u8>,
+    /// The recipient AID the body was authored for, bound into the signed bytes
+    /// so a captured inner envelope cannot be re-attributed to another
+    /// conversation.
+    pub recipient: crate::address::Aid,
+    /// The user's message body. Confidential against the relay (it only ever
+    /// holds the sealed outer ciphertext) and authenticated by `signature`.
+    pub body: String,
+    /// The sender's signature over the authenticated bytes (sender ‖ recipient ‖
+    /// body). Verifying it under the sender AID's key is what authenticates the
+    /// message; an envelope whose signature does not verify is rejected by
+    /// [`crate::open`].
+    pub signature: Vec<u8>,
+}
+
+impl InnerEnvelope {
+    /// The canonical byte string a sender signs and a recipient verifies. Binds
+    /// the sender AID, the recipient AID, and the body together so none can be
+    /// swapped after signing.
+    pub fn signing_bytes(
+        sender: &crate::address::Aid,
+        recipient: &crate::address::Aid,
+        body: &str,
+    ) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"murmur/inner/v1\n");
+        bytes.extend_from_slice(sender.as_str().as_bytes());
+        bytes.push(b'\n');
+        bytes.extend_from_slice(recipient.as_str().as_bytes());
+        bytes.push(b'\n');
+        bytes.extend_from_slice(body.as_bytes());
+        bytes
+    }
+
+    /// The signing bytes for *this* envelope — what [`crate::open`] re-derives to
+    /// verify the signature against.
+    pub fn signing_bytes_for(&self) -> Vec<u8> {
+        Self::signing_bytes(&self.sender, &self.recipient, &self.body)
+    }
 }
