@@ -25,7 +25,7 @@ use std::process::ExitCode;
 
 use murmur_core::{
     ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle, PrekeySecrets,
-    Session, deliver_forward_secret, deliver_once, deliver_rooted,
+    Session, deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only,
 };
 
 /// What the relay was asked to do.
@@ -223,6 +223,57 @@ fn run_forward_secret() -> Result<String, String> {
     ))
 }
 
+/// Prove metadata hygiene over genuine wire bytes (PRD §10, the metadata-hygiene
+/// claim): a message is sealed on each of the engine's two send paths, stored-and-
+/// forwarded through the relay, and the outer envelope is captured exactly as the
+/// relay queued it. A leakcheck-style scan over those captured bytes confirms they
+/// carry **only** the pairwise mailbox id — the message body, the sender address,
+/// the session key, and the forward-secret chain state are each found absent.
+///
+/// This is the relay-capture assertion the claim turns on: the scan runs over the
+/// literal bytes the relay forwarded, so a green report means an attacker who
+/// captured the envelope off the relay learns nothing but where to route it. A
+/// leak in either path returns an error naming what escaped, failing the leg —
+/// and the whole self-test — closed.
+fn run_routing_only() -> Result<String, String> {
+    let mac = Endpoint::new(
+        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
+        Session::from_secret([0x5au8; 32]),
+    );
+    let phone = Endpoint::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint phone identity: {e}"))?,
+        Session::from_secret([0x5au8; 32]),
+    );
+
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:phone");
+
+    let receipt = deliver_routing_only(
+        &mac,
+        phone.aid(),
+        &mailbox,
+        "the body the relay must never read",
+        &mut relay,
+    )
+    .map_err(|e| format!("the envelope leaked: {e}"))?;
+
+    // Both captures must agree on the mailbox they routed on — the one thing the
+    // relay legitimately reads.
+    if receipt.session_path.mailbox != mailbox || receipt.ratchet_path.mailbox != mailbox {
+        return Err("captured envelope routed on an unexpected mailbox".to_string());
+    }
+
+    Ok(format!(
+        "routing-only-envelope: a captured outer envelope held only the pairwise mailbox id \
+         {mbx} ({sess} + {rat} opaque wire bytes across two send paths); the message body, the \
+         sender address, the session key, and the chain state were each scanned for and found \
+         absent — the relay sees where to route and nothing more",
+        mbx = mailbox.as_str(),
+        sess = receipt.session_path.wire_len,
+        rat = receipt.ratchet_path.wire_len,
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -236,8 +287,8 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 3] =
-                [run_delivery, run_rooted, run_forward_secret];
+            let legs: [fn() -> Result<String, String>; 4] =
+                [run_delivery, run_rooted, run_forward_secret, run_routing_only];
             for leg in legs {
                 match leg() {
                     Ok(line) => println!("murmur-relay {}: {line}", murmur_core::VERSION),

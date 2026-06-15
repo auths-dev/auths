@@ -235,18 +235,26 @@
   title: Nothing but routing leaves the device in the clear — no plaintext, key, ratchet state,
     or sender AID in the relay-visible bytes
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - crates/murmur-core/src/envelope.rs OuterEnvelope — modelled to carry only a mailbox id
-    + opaque ciphertext, but seal() does not produce it, so the no-leak property is unproven
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=routing-only-envelope
-    — seal() does not yet produce the leak-free outer envelope (murmur-relay 0.1.3: store-and-forward
-    wire not built yet (the mailbox queue + pull/subscribe surface is the slice''s transport
-    work)); ENC-4 is open'
+  - crates/murmur-core/src/leakcheck.rs prove_routing_only() — captures the raw relay-visible
+    bytes (mailbox id ‖ ciphertext) of a real sealed envelope and scans them for the message
+    body, the sender AID, the session key, and the forward-secret chain state; a contiguous
+    run of any returns CoreError::Rejected naming what leaked
+  - crates/murmur-core/src/lib.rs deliver_routing_only() — proves the property over BOTH send
+    paths (Endpoint::seal_to and Ratchet::seal), capturing each envelope off the MailboxStore
+    after it was forwarded, so what is scanned is literally what the relay held
+  - crates/murmur-relay/src/main.rs run_routing_only() — the relay's serve self-test drives
+    the capture+scan on every run and prints "routing-only-envelope"; a leak fails it closed
+  observed: 'GREEN at 2026-06-15: a captured outer envelope held only the pairwise mailbox id
+    (mbx:phone) — the message body, the sender AID, the session key, and the forward-secret
+    chain state were each scanned for in the raw relay-visible bytes and found absent, across
+    both the fixed-session and ratchet send paths. The adversarial trap (an envelope smuggling
+    the sender AID into the ciphertext field) turns the probe RED. ENC-4 is closed.'
   smallest_fix: 'Guarantee the outer envelope / relay-visible bytes / logs / receipts carry
     NO plaintext, message key, ratchet state, or sender AID — only the pairwise mailbox id.
     A leakcheck-style scan AND a relay-capture assertion. Adversarial (the trap): a captured

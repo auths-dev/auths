@@ -49,6 +49,7 @@ use serde::{Deserialize, Serialize};
 pub mod address;
 pub mod envelope;
 pub mod identity;
+pub mod leakcheck;
 pub mod prekey;
 pub mod ratchet;
 pub mod relay;
@@ -58,6 +59,7 @@ pub mod trust;
 pub use address::Aid;
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
+pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
 pub use ratchet::Ratchet;
 pub use relay::{MailboxId, MailboxStore, RelayRequest};
@@ -512,6 +514,91 @@ pub fn deliver_forward_secret(
         }),
         Err(other) => Err(other),
     }
+}
+
+/// The verdict of capturing a real sealed envelope as the untrusted relay sees it
+/// and proving it leaks nothing but routing (PRD §10, the metadata-hygiene claim).
+/// Two captures are proven, one per send path the engine has — the fixed-session
+/// path ([`Endpoint::seal_to`]) and the forward-secret ratchet path
+/// ([`Ratchet::seal`]) — so a leak in either is caught. Returned by
+/// [`deliver_routing_only`] so the relay binary's self-test can assert the
+/// property held over genuine wire bytes, not merely trust the envelope's shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutingHygieneReceipt {
+    /// The routing-only report for the fixed-session ([`Endpoint::seal_to`]) path.
+    pub session_path: RoutingOnlyReport,
+    /// The routing-only report for the forward-secret ([`Ratchet::seal`]) path.
+    pub ratchet_path: RoutingOnlyReport,
+}
+
+/// Drive the metadata-hygiene proof once, hermetically (PRD §10, the
+/// metadata-hygiene claim): seal a real message on each of the engine's two send
+/// paths, store-and-forward it through `relay`, capture the outer envelope exactly
+/// as the relay queued it, and prove by a leakcheck-style scan that the
+/// relay-visible bytes carry **only** the pairwise mailbox id — no message body,
+/// no sender address, no session key, no forward-secret chain state.
+///
+///  * Fixed-session path: the sender seals via [`Endpoint::seal_to`]; the captured
+///    envelope is scanned against the plaintext, the sender AID, and the session
+///    secret.
+///  * Forward-secret path: the sender seals via a [`Ratchet`]; the captured
+///    envelope is scanned against the plaintext, the sender AID, and the live chain
+///    state.
+///
+/// Returns a [`RoutingHygieneReceipt`] iff **both** captures scan clean; if either
+/// envelope is found to carry any of the sensitive material, the scan returns
+/// [`CoreError::Rejected`] naming what leaked, so the caller fails closed. The
+/// captures are taken by draining the relay, so what is scanned is literally what
+/// the relay forwarded.
+pub fn deliver_routing_only(
+    sender: &Endpoint,
+    recipient: &Aid,
+    mailbox: &MailboxId,
+    body: &str,
+    relay: &mut MailboxStore,
+) -> CoreResult<RoutingHygieneReceipt> {
+    // ── Fixed-session path ────────────────────────────────────────────────────
+    let outer = sender.seal_to(recipient, mailbox, body)?;
+    relay.handle(&RelayRequest::Deposit(outer));
+    let captured = relay
+        .handle(&RelayRequest::Drain(mailbox.clone()))
+        .pop()
+        .ok_or(CoreError::Rejected("nothing arrived at the mailbox"))?;
+    let session_path = leakcheck::prove_routing_only(
+        &captured,
+        body.as_bytes(),
+        sender.aid().as_str(),
+        sender.session.secret_bytes(),
+        sender.session.secret_bytes(),
+    )?;
+
+    // ── Forward-secret (ratchet) path ─────────────────────────────────────────
+    // Seal the same body over a fresh sending chain seeded from the session root,
+    // capture the envelope off the relay, and scan it against the *live* chain
+    // state as well — so a ratcheted envelope is held to the same routing-only bar.
+    let mut send_chain = Ratchet::from_session(&sender.session)?;
+    let ratchet_wire = send_chain.seal(mailbox.as_str().as_bytes(), body.as_bytes())?;
+    let ratchet_outer = OuterEnvelope {
+        to_mailbox: mailbox.clone(),
+        ciphertext: ratchet_wire,
+    };
+    relay.handle(&RelayRequest::Deposit(ratchet_outer));
+    let ratchet_captured = relay
+        .handle(&RelayRequest::Drain(mailbox.clone()))
+        .pop()
+        .ok_or(CoreError::Rejected("nothing arrived at the mailbox"))?;
+    let ratchet_path = leakcheck::prove_routing_only(
+        &ratchet_captured,
+        body.as_bytes(),
+        sender.aid().as_str(),
+        sender.session.secret_bytes(),
+        send_chain.chain_state(),
+    )?;
+
+    Ok(RoutingHygieneReceipt {
+        session_path,
+        ratchet_path,
+    })
 }
 
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing

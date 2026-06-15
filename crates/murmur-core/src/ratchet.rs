@@ -121,6 +121,16 @@ impl Ratchet {
         self.counter
     }
 
+    /// The current chain-key bytes, for the metadata-hygiene self-test
+    /// ([`crate::leakcheck`]) to confirm the forward-secret chain state never
+    /// appears in the relay-visible bytes. Crate-internal on purpose: the chain
+    /// key is never exposed across the public API or the FFI — only the in-crate
+    /// leakcheck scan, which must know the secret to prove its *absence*, may read
+    /// it.
+    pub(crate) fn chain_state(&self) -> &[u8; 32] {
+        &self.chain_key
+    }
+
     /// HMAC the current chain key with `step` and return the 32-byte tag. The one
     /// failure HMAC-from-key can report is an (impossible, fixed-length) keying
     /// error, which we propagate rather than panic on.
