@@ -171,18 +171,34 @@
   title: Forward secrecy holds across our wiring — a captured ciphertext cannot be decrypted
     from a later compromised state
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - crates/murmur-core/src/lib.rs — no ratchet state exists yet; used message keys cannot
-    be zeroized because no session is built (seal/open are NotBuilt)
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=forward-secrecy-held
-    — the Double Ratchet (used-key zeroization) is unbuilt (murmur-relay 0.1.3: store-and-forward
-    wire not built yet (the mailbox queue + pull/subscribe surface is the slice''s transport
-    work)); ENC-2 is open'
+  - the forward-secret symmetric ratchet is built — crates/murmur-core/src/ratchet.rs seeds a
+    Ratchet chain from the X3DH root (a domain-separated HMAC bind) and, per message, runs the
+    Double Ratchet's symmetric-key chain step (message_key = HMAC(chain_key, 0x01); chain_key' =
+    HMAC(chain_key, 0x02)), zeroizing the spent message key on drop and the prior chain key on
+    every advance. The chain KDF is one-way, so a state holding chain_key_n cannot reproduce any
+    earlier message key — forward secrecy is a property of the chain alone, with no DH step
+    (post-compromise healing remains its own later work)
+  - 'murmur-relay serve drives the property hermetically (deliver_forward_secret): the Mac seals
+    several authenticated messages over a ratcheted session that are store-and-forwarded through
+    the relay; the first ciphertext is captured off the relay, the phone''s receiving chain is
+    advanced past it, and the advanced (compromised) state cannot decrypt the captured early
+    ciphertext — it prints "forward-secrecy-held". The trap (late-state-decrypts-old) turns the
+    probe RED'
+  observed: 'GREEN at 2026-06-15: a ciphertext captured off the relay could not be decrypted from
+    a later, compromised receiving-chain state — its per-message key had been ratcheted past and
+    the spent key zeroized; used message keys and the prior chain key are wiped on every advance.
+    The relay binary self-tests seal-N → store-and-forward → drain → open-in-order → replay the
+    captured early ciphertext against the advanced state (rejected) and reports forward-secrecy-held;
+    murmur-core unit tests cover the chain (distinct per-message keys, the counter, replay/
+    out-of-order rejection, tamper rejection). This is the symmetric half of the Double Ratchet;
+    the DH half (post-compromise healing) and embedding libsignal''s audited ratchet behind a
+    misuse-resistant wrapper remain later work, gated on the external-audit precondition.'
   smallest_fix: 'Integrate the Double Ratchet (via libsignal) so each message has forward
     secrecy and used message keys are zeroized. Adversarial (the trap): snapshot the session
     state at message N and fail to decrypt message N-k from it. TRAP probes/enc-2.trap/late-state-decrypts-old/

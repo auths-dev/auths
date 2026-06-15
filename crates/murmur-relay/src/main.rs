@@ -25,7 +25,7 @@ use std::process::ExitCode;
 
 use murmur_core::{
     ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle, PrekeySecrets,
-    Session, deliver_once, deliver_rooted,
+    Session, deliver_forward_secret, deliver_once, deliver_rooted,
 };
 
 /// What the relay was asked to do.
@@ -175,6 +175,54 @@ fn run_rooted() -> Result<String, String> {
     ))
 }
 
+/// Prove forward secrecy across our wiring (PRD §10, the forward-secrecy claim):
+/// a ciphertext
+/// captured off the relay cannot be decrypted from a *later*, compromised session
+/// state, and used message keys are zeroized.
+///
+/// The Mac seals several messages to the phone over a forward-secret ratchet;
+/// each is stored-and-forwarded through the relay. We capture the first
+/// ciphertext as an attacker would, let the phone's receiving chain advance past
+/// it by draining the rest, then take that advanced ("compromised") receiving
+/// state and prove it cannot decrypt the captured early ciphertext — its key was
+/// ratcheted forward and zeroized. A later state that *did* decrypt the earlier
+/// message would break forward secrecy and is returned as an error (the RED the
+/// trap records).
+fn run_forward_secret() -> Result<String, String> {
+    let mac = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac: {e}"))?;
+    let phone = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint phone: {e}"))?;
+
+    // The phone admits the Mac's AID (opt-in contact, §8); the directory stands in
+    // for a witnessed KEL replay so each opened message authenticates as the Mac.
+    let mut directory = ContactDirectory::new();
+    directory.admit(mac.aid().clone(), mac.public_key().to_vec());
+    directory.admit(phone.aid().clone(), phone.public_key().to_vec());
+
+    // The X3DH root the two ends agreed (established out-of-band for the self-test).
+    let root_secret = [0x5au8; 32];
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:phone");
+    let bodies = ["msg-0 (the captured one)", "msg-1", "msg-2", "msg-3"];
+
+    let receipt = deliver_forward_secret(
+        &mac,
+        &phone,
+        root_secret,
+        &mailbox,
+        &bodies,
+        &mut relay,
+        &directory,
+    )
+    .map_err(|e| format!("the forward-secret leg failed: {e}"))?;
+
+    Ok(format!(
+        "forward-secrecy-held: {} messages were store-and-forwarded over a ratcheted session; a \
+         ciphertext captured at index {} could NOT be decrypted from the later compromised state \
+         at index {} (used message keys zeroized)",
+        receipt.messages_delivered, receipt.captured_index, receipt.compromised_index
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -188,7 +236,8 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 2] = [run_delivery, run_rooted];
+            let legs: [fn() -> Result<String, String>; 3] =
+                [run_delivery, run_rooted, run_forward_secret];
             for leg in legs {
                 match leg() {
                     Ok(line) => println!("murmur-relay {}: {line}", murmur_core::VERSION),

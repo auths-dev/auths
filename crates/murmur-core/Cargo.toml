@@ -29,6 +29,15 @@ auths-crypto = { path = "../auths-crypto" }
 chacha20poly1305 = "0.10"
 hkdf = "0.12"
 sha2 = "0.10"
+# HMAC-SHA256 is the chain KDF of the forward-secret symmetric ratchet (the same
+# construction Signal's Double-Ratchet chain step uses): message_key =
+# HMAC(chain_key, 0x01), chain_key' = HMAC(chain_key, 0x02). Already in the
+# workspace lock; pinned through the workspace.
+hmac = { workspace = true }
+# Zeroize spent message keys and the prior chain key on every ratchet advance, so
+# a session state captured between messages holds no key from which an earlier
+# message could be recovered. Already a workspace dependency.
+zeroize = { workspace = true }
 # X25519 Diffie-Hellman for the X3DH key agreement that roots a session in a
 # KERI-authenticated prekey bundle. The recipient's Signal identity key and
 # signed prekey are X25519 DH keys — DISTINCT from the AID's Ed25519 signing key

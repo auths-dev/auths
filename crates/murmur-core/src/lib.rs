@@ -50,6 +50,7 @@ pub mod address;
 pub mod envelope;
 pub mod identity;
 pub mod prekey;
+pub mod ratchet;
 pub mod relay;
 pub mod session;
 pub mod trust;
@@ -58,6 +59,7 @@ pub use address::Aid;
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
+pub use ratchet::Ratchet;
 pub use relay::{MailboxId, MailboxStore, RelayRequest};
 pub use session::Session;
 pub use trust::{TrustState, TrustVerdict};
@@ -380,6 +382,136 @@ pub fn deliver_rooted(
         authenticated_sender: receipt.authenticated_sender,
         body: receipt.body,
     })
+}
+
+/// The verdict of proving forward secrecy across our wiring (PRD §10, the
+/// forward-secrecy claim):
+/// several messages were sealed over a forward-secret [`Ratchet`] and
+/// stored-and-forwarded through the relay, and a *later* receiving-chain state —
+/// the state an attacker would seize — could **not** decrypt an *earlier*
+/// captured ciphertext, because the key that sealed it was ratcheted past and
+/// zeroized. Returned by [`deliver_forward_secret`] so the relay self-test (and
+/// the harness) can assert the property held rather than merely that messages
+/// flowed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForwardSecrecyReceipt {
+    /// How many messages were driven through the ratcheted session in order.
+    pub messages_delivered: u64,
+    /// The receiving-chain message index the captured early ciphertext was sealed
+    /// at (the one a later state must fail to open).
+    pub captured_index: u64,
+    /// The receiving-chain index the "compromised" later state had advanced to
+    /// when it was made to attempt the earlier ciphertext.
+    pub compromised_index: u64,
+}
+
+/// Drive the forward-secrecy property once, hermetically (PRD §10, the
+/// forward-secrecy claim).
+///
+/// Both endpoints seed a [`Ratchet`] from the same agreed root secret (the X3DH
+/// output stands in here as a fixed root). The sender seals `bodies` in order;
+/// each is stored-and-forwarded through `relay` and opened by the receiver,
+/// advancing the receiving chain. We **capture the first ciphertext off the
+/// relay** before it is opened, let the receiving chain advance past it by
+/// processing the rest, then take the *advanced* receiving chain — the
+/// compromised later state — and prove it **cannot** decrypt the captured early
+/// ciphertext: its key was ratcheted forward and the spent key zeroized.
+///
+/// Returns a [`ForwardSecrecyReceipt`] iff every in-order message opened **and**
+/// the later state failed to open the early one. A later state that *did* manage
+/// to decrypt the early ciphertext (forward secrecy broken) is an error, never a
+/// silent pass — that is the RED the trap records.
+pub fn deliver_forward_secret(
+    sender: &Identity,
+    recipient: &Identity,
+    root_secret: [u8; 32],
+    mailbox: &MailboxId,
+    bodies: &[&str],
+    relay: &mut MailboxStore,
+    directory: &dyn Directory,
+) -> CoreResult<ForwardSecrecyReceipt> {
+    if bodies.len() < 2 {
+        return Err(CoreError::Malformed(
+            "forward-secrecy proof needs at least two messages (capture one, advance past it)"
+                .into(),
+        ));
+    }
+    let root = Session::from_secret(root_secret);
+    let mut send_chain = Ratchet::from_session(&root)?;
+    let mut recv_chain = Ratchet::from_session(&root)?;
+    let mailbox_aad = mailbox.as_str().as_bytes();
+
+    // (1) Seal every message over the sending chain and store-and-forward it. We
+    // sign+wrap the body as the inner envelope so what flows is a real
+    // authenticated message, then ratchet-seal that — the relay sees only the
+    // mailbox id and opaque ratcheted bytes.
+    let mut wires: Vec<Vec<u8>> = Vec::with_capacity(bodies.len());
+    for body in bodies {
+        let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+        let signature = sender.sign(&signing_bytes)?;
+        let inner = InnerEnvelope {
+            sender: sender.aid().clone(),
+            recipient: recipient.aid().clone(),
+            body: (*body).to_string(),
+            signature,
+        };
+        let inner_bytes = serde_json::to_vec(&inner)
+            .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
+        let ciphertext = send_chain.seal(mailbox_aad, &inner_bytes)?;
+        relay.handle(&RelayRequest::Deposit(OuterEnvelope {
+            to_mailbox: mailbox.clone(),
+            ciphertext,
+        }));
+    }
+    for env in relay.handle(&RelayRequest::Drain(mailbox.clone())) {
+        wires.push(env.ciphertext);
+    }
+    if wires.len() != bodies.len() {
+        return Err(CoreError::Rejected(
+            "not every sealed message arrived at the mailbox",
+        ));
+    }
+
+    // (2) Capture the FIRST ciphertext as the attacker would off the relay,
+    // before the receiver opens it.
+    let captured_early = wires[0].clone();
+    let captured_index = recv_chain.counter();
+
+    // (3) The receiver opens every message in order, advancing its chain past the
+    // captured one. Each open authenticates the sender — a message that decrypts
+    // but does not authenticate would be rejected, never counted.
+    let mut delivered = 0u64;
+    for wire in &wires {
+        let inner_bytes = recv_chain.open(mailbox_aad, wire)?;
+        let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
+            .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
+        let sender_key = directory
+            .resolve(&inner.sender)
+            .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
+        verify_sender(
+            &inner.sender,
+            &sender_key,
+            &inner.signing_bytes_for(),
+            &inner.signature,
+        )?;
+        delivered += 1;
+    }
+
+    // (4) The compromised later state: the receiving chain is now advanced past
+    // the captured message. Attempt the captured early ciphertext against it — it
+    // MUST fail, because the key that sealed it was ratcheted past and zeroized.
+    let compromised_index = recv_chain.counter();
+    match recv_chain.open(mailbox_aad, &captured_early) {
+        Ok(_) => Err(CoreError::Rejected(
+            "late-state-decrypts-old: a later compromised state decrypted an earlier ciphertext",
+        )),
+        Err(CoreError::Rejected(_)) => Ok(ForwardSecrecyReceipt {
+            messages_delivered: delivered,
+            captured_index,
+            compromised_index,
+        }),
+        Err(other) => Err(other),
+    }
 }
 
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing

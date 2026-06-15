@@ -57,6 +57,14 @@ impl Session {
         Session { secret }
     }
 
+    /// The raw root secret, for the forward-secret ratchet to seed its chain from
+    /// (`crate::ratchet`). Crate-internal on purpose: the bytes are never exposed
+    /// across the public API or the FFI, only consumed by the chain KDF in the
+    /// same crate.
+    pub(crate) fn secret_bytes(&self) -> &[u8; 32] {
+        &self.secret
+    }
+
     /// Derive the per-message content key for a given 96-bit message nonce via
     /// HKDF-SHA256. A distinct nonce yields a distinct key, so reusing a content
     /// key requires reusing a nonce — which the caller must never do.

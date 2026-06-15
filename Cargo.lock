@@ -4593,11 +4593,13 @@ dependencies = [
  "chacha20poly1305",
  "getrandom 0.2.17",
  "hkdf",
+ "hmac",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 2.0.18",
  "x25519-dalek",
+ "zeroize",
 ]
 
 [[package]]
