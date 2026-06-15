@@ -73,6 +73,24 @@ struct WrapArgs {
     #[arg(long = "ttl", value_name = "TTL")]
     ttl: Option<String>,
 
+    /// A downstream credential the GATEWAY custodies and injects into the wrapped
+    /// downstream (repeatable), e.g. `--custody-credential DOWNSTREAM_API_KEY=sk-…`
+    /// (PRD §12, the custody broker). The gateway holds the downstream tool's
+    /// secret and injects it into the spawned downstream's environment on the
+    /// brokered path; the agent connects with only its auths delegation and never
+    /// sees or carries this secret. An agent that bypasses the gateway reaches the
+    /// raw downstream with NO credential, so the call fails — the boundary is
+    /// unbypassable by construction for credentialed resources. The value is read
+    /// from the gateway's own config/environment, never from the agent's request,
+    /// and is never logged or echoed into receipts/stdout.
+    ///
+    /// `NAME=VALUE` injects `VALUE`; bare `NAME` adopts the value from the
+    /// gateway's own environment (so an operator can pass the secret out-of-band as
+    /// `--custody-credential DOWNSTREAM_API_KEY` with the value only in the
+    /// gateway's env, never on the agent-visible command line).
+    #[arg(long = "custody-credential", value_name = "NAME[=VALUE]")]
+    custody_credential: Vec<String>,
+
     /// The downstream MCP server command (everything after `--`).
     #[arg(last = true, value_name = "DOWNSTREAM", required = true)]
     downstream: Vec<String>,
@@ -103,10 +121,19 @@ fn main() -> ExitCode {
 /// The live proxy: speak MCP up to the agent and down to the wrapped downstream,
 /// gating each `tools/call` through `auths-mcp-core`.
 async fn run_wrap(args: WrapArgs) -> ExitCode {
+    let custody = match proxy::CustodyVault::from_specs(&args.custody_credential) {
+        Ok(v) => v,
+        Err(e) => {
+            // Never echo a credential spec back; report only the offending NAME.
+            eprintln!("auths-mcp-gateway: invalid --custody-credential: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let cfg = proxy::WrapConfig {
         scope: args.scope,
         budget: args.budget,
         ttl: args.ttl,
+        custody,
         downstream: args.downstream,
     };
     match proxy::serve(cfg).await {

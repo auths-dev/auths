@@ -175,7 +175,7 @@
   title: 'Custody / bypass-resistance: an agent cannot reach the credentialed downstream without
     going through the gateway'
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: gateway
   covers:
@@ -184,14 +184,27 @@
   - 'maps PRD §12 (the custody broker): the gateway must custody the downstream tool''s secret
     (API key / OAuth token / wallet key); the agent holds ONLY its delegation — so a bypassing
     agent has no credential for the raw downstream'
-  - crates/auths-mcp-gateway/src/proxy.rs `wrap` spawns + forwards to the downstream but holds
-    NO custodied downstream credential the agent lacks — the §12 unbypassable-by-construction
-    mechanism is not built
-  observed: 'RED at baseline 2026-06-15: ours=bypass-refused/no-custody-broker expected=bypass-refused+brokered-allowed
-    — the bypass is refused (the agent holds no downstream credential) BUT the gateway does
-    not custody a downstream credential to supply on the brokered path: the custody-broker
-    mechanism (PRD §12 — gateway holds the downstream secret, agent holds only the delegation)
-    is not built'
+  - 'BUILT: crates/auths-mcp-gateway `wrap` is now a CREDENTIAL-CUSTODY broker. A new
+    `--custody-credential NAME[=VALUE]` flag holds the downstream tool''s secret in a CustodyVault
+    sourced from the GATEWAY''s own config/environment (NAME=VALUE injects VALUE; bare NAME
+    adopts the value from the gateway''s own env, never the agent''s request). On the brokered
+    path the vault injects the secret into the spawned downstream''s environment (proxy.rs
+    CustodyVault::inject); the agent connects with only its auths delegation and never sees or
+    carries the secret. The value is never logged, never echoed into receipts/stdout (Debug is
+    redacted to NAME-only; the operator log surfaces NAMES only). Unit-tested: NAME=VALUE /
+    bare-NAME parsing, empty-NAME rejection, missing-env rejection, and Debug-redaction (the
+    secret value never appears in a derived {:?}).'
+  observed: 'GREEN at baseline 2026-06-15: custody holds — the DIRECT (no-gateway) call was
+    refused (the agent never held the downstream credential, so the credentialed downstream
+    refused it), while the SAME call THROUGH the gateway — which custodied the credential and
+    injected it into the downstream from the gateway''s own environment — reached the downstream
+    and returned its result ("downstream-data"); the boundary is unbypassable by construction
+    for credentialed resources (§12). Verified the custodied secret VALUE never appears in the
+    gateway''s combined stdout/stderr (only the variable NAME and the downstream''s own result).
+    Trap RED: a captured stream where the direct (no-gateway) bypass REACHED the credentialed
+    downstream (custody did not hold, the gateway is bypassable) is refused — the adversarial
+    twin holds. Honest limit (§12): custody makes a resource unbypassable only if it is reachable
+    SOLELY through the custodied credential; a truly public endpoint is detection-only.'
   smallest_fix: 'Make the gateway a CREDENTIAL-CUSTODY broker: it holds the downstream tool''s
     secret (e.g. injected into the wrapped downstream''s environment / request), the agent
     holds only its scoped/budgeted/revocable delegation. A direct (bypass) call from the agent
