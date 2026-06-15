@@ -1,0 +1,39 @@
+[package]
+name = "auths-mcp-core"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "Reusable per-tool-call enforcement for the bounded-agent MCP gateway: scope ⊆ parent, quantitative budget, expiry, revocation, plus signed per-call receipts. Harvested from the auths-mcp-server KERI-presentation core."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["identity", "mcp", "agent", "authorization", "delegation"]
+categories = ["authentication"]
+
+[lib]
+name = "auths_mcp_core"
+path = "src/lib.rs"
+
+[dependencies]
+# In-tree path-deps on the enforcement primitives (no cross-repo version dance).
+# The per-call gate authenticates a signed call against the agent's
+# delegator-anchored grant by replaying both KELs and running the same KEL-native
+# authorization the commit path uses (auths-verifier::verify_commit_against_kel_scoped),
+# so scope ⊆ parent (AGT-1), expiry, and revocation (OPS-1) are judged by the proven
+# verifier, never re-implemented here.
+auths-verifier = { workspace = true, features = ["native"] }
+auths-sdk = { workspace = true, features = ["backend-git"] }
+auths-crypto = { workspace = true }
+auths-keri = { workspace = true }
+auths-id = { workspace = true }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+json-canon.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,146 @@
+# gaps.yaml — the live ledger: verified observations only.
+# Entries arrive here through `baseline` (the promotion ceremony); the
+# `observed` field quotes actual dated output, never a prediction.
+
+- id: AGENT-MCP-1
+  title: The gateway brokers a real MCP tools/call end-to-end with a signed, verified per-call
+    proof
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: gateway
+  covers:
+  - gateway-broker
+  evidence:
+  - crates/auths-mcp-server/src/keri_auth.rs — reusable offline presentation verify, but its
+    transport is HTTP+Bearer, not MCP JSON-RPC, so no MCP client can connect
+  - 'BUILT: crates/auths-mcp-core (the native per-call gate — canonicalize + verify the signed
+    call against the agent''s delegator-anchored grant via auths-verifier::verify_commit_against_kel_scoped,
+    + signed receipt) and crates/auths-mcp-gateway (the real-MCP rmcp proxy `wrap` + the hermetic
+    `replay` driver). The verify is in-process (D2); rides AGT-1''s delegation-aware commit-verify
+    path, no new crypto.'
+  observed: 'GREEN at baseline 2026-06-15: the in-scope fs.read round-tripped through the gateway
+    — the agent signed the canonical tools/call, the native per-call gate authenticated it
+    against the delegator-anchored grant (verdict=allowed), the downstream result was returned,
+    and a receipt was emitted (device=agent, identity=parent-root) carrying the running total.
+    Trap RED: a proof tampered after signing is refused proof-unauthentic (reason=ssh-signature-invalid)
+    at the boundary — the downstream tool is never invoked. (Bonus, not promoted: an out-of-scope
+    fs.write is refused outside-agent-scope, capability named, from the chain alone.)'
+  smallest_fix: 'Build the real-MCP proxy (auths-mcp-gateway): speak MCP JSON-RPC (initialize/tools/list/tools/call)
+    up to the agent and down to a downstream server; on each tools/call canonicalize + sign
+    the call as an auths artifact, verify it against the agent''s delegator-anchored grant
+    via auths-mcp-core, forward only on pass, and emit a receipt.
+
+    '
+  probe: probes/agent-mcp-1.sh
+  unlocks: A live agent can be bound at a real MCP boundary at all — the floor for MCP-2..6.
+
+- id: AGENT-MCP-2
+  title: An out-of-scope tool call is refused at the boundary with the distinct OutsideAgentScope
+    verdict
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - scope-boundary
+  evidence:
+  - maps AGT-1; OutsideAgentScope already exists in auths-verifier — this wires it to tools/call
+  observed: 'RED at baseline 2026-06-15: ours=no-verdicts expected=allowed+outside-agent-scope
+    — the gateway produced no scope verdict; AGENT-MCP-2 is open (the per-call gate is not
+    built)'
+  smallest_fix: 'In auths-mcp-core''s per-call gate, map the requested tool to a capability
+    and enforce it against the agent''s delegator-anchored scope; return OutsideAgentScope
+    (naming the capability) and do NOT forward to the downstream server.
+
+    '
+  probe: probes/agent-mcp-2.sh
+  unlocks: Scope (AGT-1) holds at the MCP boundary, not only on git commits.
+
+- id: AGENT-MCP-3
+  title: A quantitative budget is un-exceedable across a session
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - budget-boundary
+  evidence:
+  - maps AGT-4 (caps at verify, auths 15bc605c) + the AGENT-CAP-1 malformed-predicate issuance
+    guard (00de275c)
+  observed: 'RED at baseline 2026-06-15: ours=no-verdicts expected=allowed+usage-cap-exceeded
+    — the gateway produced no budget verdict; AGENT-MCP-3 is open (session accounting is not
+    built)'
+  smallest_fix: 'Track cumulative usage in the gateway session and supply it to the verify
+    so the call that would cross the cap is refused UsageCapExceeded; the metered downstream
+    tool is not invoked for the refused call.
+
+    '
+  probe: probes/agent-mcp-3.sh
+  unlocks: AGT-4 quantitative caps bind a live agent's spend, not just a credential.
+
+- id: AGENT-MCP-4
+  title: Revocation is instant mid-session with no propagation window
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - revocation-boundary
+  evidence:
+  - maps OPS-1; keri_auth.rs already checks revocation on presentation — bind it per call
+  observed: 'RED at baseline 2026-06-15: ours=no-verdicts expected=allowed+revoked — the gateway
+    produced no revocation verdict; AGENT-MCP-4 is open (per-call liveness is not built)'
+  smallest_fix: 'Re-derive liveness from the KERI registry on every tools/call (reuse keri_auth''s
+    revocation check) so the first call after a revocation event is refused Revoked — no cached
+    token TTL, no introspection lag.
+
+    '
+  probe: probes/agent-mcp-4.sh
+  unlocks: OPS-1 instant kill applies to a running agent loop.
+
+- id: AGENT-MCP-5
+  title: The over-reach is a real model's decision and reproduces deterministically in CI
+  class: missing-surface
+  status: open
+  severity: feature
+  reads: gateway
+  covers:
+  - real-and-reproducible
+  evidence:
+  - the gap this whole PRD closes (maps WED — the agent wedge); live-leg evidence is out-of-band,
+    only replay is gated
+  observed: 'RED at baseline 2026-06-15: ours=no-replay expected=byte-stable-verdicts — the
+    gateway produced no replay verdict stream; AGENT-MCP-5 is open (the transcript replayer
+    is not built)'
+  smallest_fix: 'Build the live-mode tool loop (real model) + a transcript recorder/replayer;
+    the probe drives the gateway from the committed transcript (no model/network) to byte-stable
+    verdicts, and a transcript edited to drop the proof or forge a wider scope still fails
+    closed.
+
+    '
+  probe: probes/agent-mcp-5.sh
+  unlocks: The 'real agentic framework' bar the scripted demos cannot reach.
+
+- id: AGENT-MCP-6
+  title: 'Cross-org: org A''s agent is bounded by its A->B scoped introduction at org B''s
+    gateway'
+  class: missing-surface
+  status: open
+  severity: feature
+  reads: gateway
+  covers:
+  - cross-org-boundary
+  evidence:
+  - maps AGT-3 (live mutual-introduction leg, not yet built — likely PARK)
+  observed: 'RED at baseline 2026-06-15: ours=no-cross-org-verdict expected=allowed+outside-agent-scope
+    — B''s gateway produced no introduction-bounded verdict; AGENT-MCP-6 rides AGT-3''s live
+    leg (likely PARK until the mutual-introduction runtime lands)'
+  smallest_fix: 'Honor a scoped A->B introduction at B''s gateway so a call within the grant
+    passes and one exceeding it is refused at B (A cannot widen its own introduction; B never
+    trusts A''s self-asserted scope). PARK — do not stub — if the AGT-3 live introduction
+    runtime is absent.
+
+    '
+  probe: probes/agent-mcp-6.sh
+  unlocks: Stranger orgs bound each other's agents — the network leg (AGT-3).

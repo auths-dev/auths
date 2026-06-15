@@ -19,6 +19,8 @@ members = [
   "crates/auths-keri",
   "crates/auths-jwt",
   "crates/auths-mcp-server",
+  "crates/auths-mcp-core",
+  "crates/auths-mcp-gateway",
   "crates/auths-pairing-daemon",
   "crates/auths-pairing-protocol",
   "crates/auths-scim",

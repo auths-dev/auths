@@ -1,0 +1,9 @@
+{
+  "//": "AGENT-MCP-3: calls summing to <= $5 pass with a running total in each receipt; the call that would cross $5 is refused UsageCapExceeded and the metered tool is not charged. Frozen replay. PLACEHOLDER shape.",
+  "scenario": "budget",
+  "grant": { "scope": ["paid.call"], "budget": "$5.00", "ttl": "30m" },
+  "calls": [
+    { "tool": "paid_call", "args": { "q": "a" }, "cost_cents": 300, "expect": "allowed",           "cumulative_cents": 300 },
+    { "tool": "paid_call", "args": { "q": "b" }, "cost_cents": 300, "expect": "usage-cap-exceeded", "cap_cents": 500, "would_be_cents": 600 }
+  ]
+}

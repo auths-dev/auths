@@ -1,0 +1,7 @@
+# bin/ holds the suite's COPIED `auths-mcp-gateway` build artifact, staged by the
+# suite rebuild (cargo build --release -p auths-mcp-gateway, then copied here).
+# The gateway probes content-hash it against target/release/auths-mcp-gateway; it
+# is reproducible, so it is not committed. Same convention as the other suites'
+# bin/.
+*
+!.gitignore

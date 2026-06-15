@@ -1,0 +1,2 @@
+call[0] read_file: allowed (within A->B grant)
+call[1] write_file: allowed (B trusted A's self-asserted wider scope)

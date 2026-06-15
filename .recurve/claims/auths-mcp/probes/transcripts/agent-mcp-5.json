@@ -1,0 +1,10 @@
+{
+  "//": "AGENT-MCP-5: the over-reach is the model's, recorded from a live run, and replay yields byte-stable verdicts in CI with no network/model. This is the well-formed recording the probe replays twice and asserts identical output. PLACEHOLDER shape.",
+  "scenario": "replay-stability",
+  "recorded_from": "live-run-placeholder",
+  "grant": { "scope": ["fs.read"], "budget": "$5.00", "ttl": "30m" },
+  "calls": [
+    { "tool": "read_file",  "args": { "path": "README.md" }, "cost_cents": 0, "expect": "allowed" },
+    { "tool": "write_file", "args": { "path": "secrets", "content": "x" }, "cost_cents": 0, "expect": "outside-agent-scope", "capability": "fs.write" }
+  ]
+}

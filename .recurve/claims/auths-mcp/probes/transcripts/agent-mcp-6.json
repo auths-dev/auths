@@ -1,0 +1,9 @@
+{
+  "//": "AGENT-MCP-6 (STRETCH): org A's agent calls org B's gateway honoring a scoped A->B introduction. A call within the A->B grant passes at B; one exceeding it is refused at B. Rides AGT-3's live mutual-introduction leg — likely PARK if that runtime is absent. PLACEHOLDER shape.",
+  "scenario": "cross-org",
+  "introduction": { "from": "orgA", "to": "orgB", "scope": ["fs.read"] },
+  "calls": [
+    { "tool": "read_file",  "args": { "path": "README.md" }, "cost_cents": 0, "expect": "allowed" },
+    { "tool": "write_file", "args": { "path": "README.md", "content": "x" }, "cost_cents": 0, "expect": "outside-agent-scope", "capability": "fs.write" }
+  ]
+}
