@@ -565,6 +565,31 @@ counterexample) and are specified per-FR in §4 — *not* in the gap entry. IDs 
     - "LIVE-SCOPE FLAG: the live x402 rail needs a funded USDC testnet wallet (base-sepolia) — out of hermetic scope; the probe proves cost-extraction + cross-rail metering only"
   covers: [budget-boundary]
   probe: probes/agent-pay-2.sh
+
+- id: AGENT-PAY-3
+  title: "The inverted payment-mode default — REAL money is the DEFAULT (Stripe live / x402 base mainnet), TEST is a single opt-in flag; the cross-rail cap is the MANDATORY safety seatbelt; the mode is DISCLOSED so real money is never silent"
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  smallest_fix: >
+    Build the inverted payment-mode default over a CLEAN PaymentMode port/adapter (§11): (1) REAL is
+    the DEFAULT — no flag → Stripe LIVE (api.stripe.com, sk_live_… expected) + x402 on base MAINNET
+    (real USDC); TEST is a SINGLE opt-in — `--test-mode` on `auths-mcp wrap` AND `AUTHS_MCP_TEST_MODE=1`
+    for the adapter → sk_test_… / base-sepolia. (2) The cross-rail budget cap is the MANDATORY seatbelt
+    — the gateway REFUSES to wrap a payment rail without a `--budget` (fail-closed, budget-required), in
+    BOTH modes; with a `--budget` it is accepted. (3) The mode is DISCLOSED — a startup banner + a
+    `mode=real|test` field (receipt + the `wrap --show-mode` resolve+disclose dry-run). Hermetic probe
+    needs NO real money: it reads the resolve+disclose dry-run (default→mode=real, --test-mode→mode=test;
+    budget-less wrap refused budget-required in both modes), never a live charge. The docs update
+    (real-focus, test-note-at-bottom) is part of the build.
+  unlocks: "An operator can default to REAL money safely — real is the default, the cap is a mandatory seatbelt that cannot be skipped, and the mode is never silent (§11). Test mode is a single, deliberate opt-in."
+  evidence:
+    - "THE DECISION (a deliberate operator inversion, §11): real money is the DEFAULT, test is a single opt-in flag; because real is the default the cross-rail cap is the mandatory seatbelt and the mode must be disclosed"
+    - "NOT BUILT: crates/auths-mcp-gateway/src/main.rs WrapArgs has no --test-mode and no --show-mode/PaymentMode-resolution disclosure surface, and `budget: Option<String>` is OPTIONAL — a payment rail can be wrapped UNCAPPED today (the seatbelt is skippable); the wrap/replay output carries no `mode=` field (silent real money)"
+    - "hermetic over a MODE-DISCLOSURE / DRY-RUN surface (`wrap --show-mode` — resolve + disclose, never serve, never charge); expected shapes recorded under probes/fixtures/payment-mode-{real,test,cap-omitted}.expected.json — no live charge"
+  covers: [budget-boundary]
+  probe: probes/agent-pay-3.sh
 ```
 
 ---
@@ -678,6 +703,24 @@ real money); a **sub-agent handed a `$2` slice** provably cannot exceed it on ei
 **cross-rail unification + attenuation + revocation** is the point — none of it routes trust
 through a processor. The rails stay example configs over the one gateway; the core stays
 rail-agnostic.
+
+**The mode default is inverted: real money is the DEFAULT, test is a single opt-in (AGENT-PAY-3).**
+A deliberate operator inversion over a clean **PaymentMode port/adapter**: with **no flag** the gateway
+resolves to **REAL** — Stripe **live** (`api.stripe.com`, `sk_live_…`), x402 on **base mainnet** (real
+USDC); **test mode is the single opt-in** — `--test-mode` on `auths-mcp wrap` *and* `AUTHS_MCP_TEST_MODE=1`
+for the adapter → Stripe test (`sk_test_…`), x402 on **base-sepolia**. Two safety obligations follow from
+real-by-default, and both are part of this contract:
+
+- **The cap is the mandatory seatbelt.** Because real money is the default, the gateway **refuses to wrap a
+  payment rail without a `--budget`** — fail-closed, a distinct `budget-required` error, in **both** modes.
+  The cross-rail cap can never be silently skipped (the regression `cap-omitted-allowed` forbids).
+- **The mode is disclosed.** A startup **banner** plus a machine-readable **`mode=real|test`** field (on the
+  receipt and on the `wrap --show-mode` resolve-and-disclose dry-run) so an operator *always* knows whether
+  real money is live — real money is never silent (the regression `mode-not-disclosed` forbids).
+
+The hermetic probe (AGENT-PAY-3) needs **no real money**: it reads the `--show-mode` resolve-and-disclose
+dry-run (mode selection, the mandatory-cap guard, the disclosure), never a live charge. The docs update
+(real-focus, the test note at the bottom) is part of the build.
 
 **Honest scoping:** single-rail and you trust your processor → use the processor's controls. auths
 earns its place when spend is **multi-rail, multi-party, trust-minimized, or one dimension of a

@@ -1,0 +1,4 @@
+▸ wrap rail=payment scope=paid.call budget=$5.00 ttl=30m
+▸ resolved payment config: stripe endpoint=api.stripe.com key-expected=sk_live_… · x402 network=base (mainnet) asset=USDC
+▸ serving wrap proxy: brokering paid_call over the resolved rails
+▸ receipt: device=agent identity=parent-root rail=stripe charge=ch_3MmlLrLkdIwHu7ix0snN0B15 cross_rail_cumulative=$3.00

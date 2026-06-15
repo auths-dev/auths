@@ -1,0 +1,15 @@
+{
+  "//": "AGENT-PAY-3 — the DEFAULT (no flag) payment-mode disclosure surface the BUILD will provide, recorded as the reference shape the probe reads. The DECISION this claim encodes (a deliberate operator inversion): REAL money is the DEFAULT; TEST is a single opt-in flag. With NO flag, `auths-mcp wrap --show-mode …` (a dry-run that RESOLVES the PaymentMode port + DISCLOSES it, never serving the proxy and never charging) must resolve to REAL: Stripe LIVE (api.stripe.com, sk_live_… expected), x402 on base MAINNET (real USDC). The disclosure MUST carry a machine-readable `mode=real` field AND a human startup banner so an operator can never have real money live silently. Because real is the default, the budget cap is the safety seatbelt and is MANDATORY (see payment-mode-cap-omitted.expected.json). This fixture is the EXPECTED disclosure the probe asserts the resolved-mode dry-run prints; the build wires the clean PaymentMode port to emit it. No live charge — this is a mode-RESOLUTION + DISCLOSURE surface, not a payment.",
+  "surface": "auths-mcp wrap --show-mode --scope paid.call --budget '$5' -- <downstream>",
+  "mode": "real",
+  "disclosure": {
+    "mode": "real",
+    "banner": "REAL MONEY MODE — live payment rails are active (Stripe live + x402 base mainnet). Pass --test-mode for sandbox.",
+    "stripe": { "endpoint": "api.stripe.com", "key_expected": "sk_live_", "livemode": true },
+    "x402": { "network": "base", "testnet": false, "asset": "USDC" },
+    "budget_required": true,
+    "served": false,
+    "charged": false
+  },
+  "//accept": "default (no flag) → mode=real; the disclosure banner names REAL money; stripe resolves to the LIVE endpoint (api.stripe.com / sk_live_ expected) and x402 to base MAINNET. served:false + charged:false — --show-mode is a dry-run that resolves + discloses, never serves the proxy and never charges. The probe asserts the resolved-mode report discloses mode=real."
+}
