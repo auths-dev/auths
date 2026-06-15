@@ -1,9 +1,10 @@
 {
-  "//": "AGENT-MCP-3: calls summing to <= $5 pass with a running total in each receipt; the call that would cross $5 is refused UsageCapExceeded and the metered tool is not charged. Frozen replay. PLACEHOLDER shape.",
-  "scenario": "budget",
+  "//": "AGENT-MCP-3 (cross-rail, pre-auth, checkpoint-anchored — PRD §4/§9/§11/§12 D8). ONE $5 cap metered across TWO payment rails (a stripe-ish and an x402-ish downstream). The combined SETTLED total is the verifier-held monotonic counter keyed to the agent delegation; each paid call RESERVES a ceiling before the rail is touched and SETTLES the actual after, releasing the slack. The call that would reserve PAST the cap on the SECOND rail is refused usage-cap-exceeded even though a per-rail-siloed budget would each still read in-budget. Each receipt carries the running CROSS-RAIL total (with the rail it settled on). Frozen replay (PRD §7).",
+  "scenario": "budget-cross-rail",
   "grant": { "scope": ["paid.call"], "budget": "$5.00", "ttl": "30m" },
   "calls": [
-    { "tool": "paid_call", "args": { "q": "a" }, "cost_cents": 300, "expect": "allowed",           "cumulative_cents": 300 },
-    { "tool": "paid_call", "args": { "q": "b" }, "cost_cents": 300, "expect": "usage-cap-exceeded", "cap_cents": 500, "would_be_cents": 600 }
+    { "tool": "paid_call", "rail": "stripe", "args": { "q": "a" }, "cost_cents": 300, "reserve_ceiling_cents": 300, "expect": "allowed",            "cross_rail_cumulative_cents": 300 },
+    { "tool": "paid_call", "rail": "x402",   "args": { "q": "b" }, "cost_cents": 150, "reserve_ceiling_cents": 200, "expect": "allowed",            "cross_rail_cumulative_cents": 450, "//slack": "reserved a $2.00 ceiling, settled $1.50 — the $0.50 slack is RELEASED, not permanently consumed" },
+    { "tool": "paid_call", "rail": "x402",   "args": { "q": "c" }, "cost_cents": 60,  "reserve_ceiling_cents": 60,  "expect": "usage-cap-exceeded", "cap_cents": 500, "would_be_cross_rail_cents": 510, "x402_rail_only_cents": 150, "//moat": "this call reserves to $5.10 ACROSS rails; a per-rail-siloed x402 budget reads only $1.50 spent and would WAVE IT THROUGH — the cross-rail counter refuses before the rail is touched, and the metered downstream is NOT charged" }
   ]
 }

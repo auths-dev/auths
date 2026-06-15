@@ -57,28 +57,6 @@
   probe: probes/agent-mcp-2.sh
   unlocks: Scope (AGT-1) holds at the MCP boundary, not only on git commits.
 
-- id: AGENT-MCP-3
-  title: A quantitative budget is un-exceedable across a session
-  class: missing-surface
-  status: open
-  severity: headline
-  reads: gateway
-  covers:
-  - budget-boundary
-  evidence:
-  - maps AGT-4 (caps at verify, auths 15bc605c) + the AGENT-CAP-1 malformed-predicate issuance
-    guard (00de275c)
-  observed: 'RED at baseline 2026-06-15: ours=no-verdicts expected=allowed+usage-cap-exceeded
-    — the gateway produced no budget verdict; AGENT-MCP-3 is open (session accounting is not
-    built)'
-  smallest_fix: 'Track cumulative usage in the gateway session and supply it to the verify
-    so the call that would cross the cap is refused UsageCapExceeded; the metered downstream
-    tool is not invoked for the refused call.
-
-    '
-  probe: probes/agent-mcp-3.sh
-  unlocks: AGT-4 quantitative caps bind a live agent's spend, not just a credential.
-
 - id: AGENT-MCP-4
   title: Revocation is instant mid-session with no propagation window
   class: missing-surface
@@ -144,3 +122,81 @@
     '
   probe: probes/agent-mcp-6.sh
   unlocks: Stranger orgs bound each other's agents — the network leg (AGT-3).
+
+- id: AGENT-MCP-3
+  title: One cross-rail quantitative budget is un-exceedable across a session (pre-auth, checkpoint-anchored)
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - budget-boundary
+  evidence:
+  - maps AGT-4 (caps at verify, auths 15bc605c; verifier-held high-water ledger usage_ledger.rs)
+    + AGENT-CAP-1 malformed-predicate guard (00de275c)
+  - 'the scaffold wired a gateway-held SessionLedger (crates/auths-mcp-core/src/session.rs)
+    which D8 SUPERSEDES: the cap must be the verifier-held monotonic SETTLED counter keyed
+    to the agent delegation, not a gateway-side per-session tally'
+  observed: 'RED at baseline 2026-06-15: ours=no-cross-rail-attribution no-reserve/settle
+    expected=cross-rail-settled-counter+pre-auth+checkpoint — the budget is metered by a single
+    undifferentiated counter (the gateway-held SessionLedger), not the verifier-held monotonic
+    SETTLED counter keyed to the agent delegation with transient RESERVED holds + checkpoint-anchoring
+    (D8); the cross-rail/pre-auth/checkpoint engine is not built'
+  smallest_fix: 'Enforce ONE cap across rails by pre-authorization against a single monotonic
+    SETTLED counter keyed to the AGENT DELEGATION (reuse AGT-4''s verifier-held high-water
+    ledger usage_ledger.rs; rollback-protected → UsageCounterRolledBack) plus a transient
+    set of RESERVED holds — NOT the gateway-held SessionLedger, which D8 supersedes. `available
+    = cap − settled − Σ(active holds)`. Before each paid call RESERVE the cost (or a ceiling,
+    for metered calls) — refusing UsageCapExceeded BEFORE the rail is touched if it would
+    exceed available — let it proceed, then on the response SETTLE the actual into the monotonic
+    total and RELEASE the slack (a hold expires if its call never returns). Sum spend ACROSS
+    rails into the one settled counter (a per-rail-siloed budget would miss the cross-rail
+    cross-over). Checkpoint-anchor the settled total''s digest periodically (NO per-call chain
+    write, NO log growth) so it is tamper-evident and offline-verifiable; carry the running
+    cross-rail total (and the rail it settled on) in each receipt. FAILURE BOUND: on a counter-integrity
+    failure, max UNCAUGHT overspend ≤ one checkpoint interval — detection is not reversal
+    (§12); on a detected rollback/mismatch halt+revoke+alarm. Steer AWAY from the gateway-held
+    SessionLedger tally.
+
+    '
+  probe: probes/agent-mcp-3.sh
+  unlocks: AGT-4 caps bind a live agent's CROSS-RAIL spend, not just one credential; max uncaught
+    overspend bounded by the checkpoint interval (§12).
+
+- id: AGENT-MCP-7
+  title: 'Custody / bypass-resistance: an agent cannot reach the credentialed downstream without
+    going through the gateway'
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - custody-boundary
+  evidence:
+  - 'maps PRD §12 (the custody broker): the gateway must custody the downstream tool''s secret
+    (API key / OAuth token / wallet key); the agent holds ONLY its delegation — so a bypassing
+    agent has no credential for the raw downstream'
+  - crates/auths-mcp-gateway/src/proxy.rs `wrap` spawns + forwards to the downstream but holds
+    NO custodied downstream credential the agent lacks — the §12 unbypassable-by-construction
+    mechanism is not built
+  observed: 'RED at baseline 2026-06-15: ours=bypass-refused/no-custody-broker expected=bypass-refused+brokered-allowed
+    — the bypass is refused (the agent holds no downstream credential) BUT the gateway does
+    not custody a downstream credential to supply on the brokered path: the custody-broker
+    mechanism (PRD §12 — gateway holds the downstream secret, agent holds only the delegation)
+    is not built'
+  smallest_fix: 'Make the gateway a CREDENTIAL-CUSTODY broker: it holds the downstream tool''s
+    secret (e.g. injected into the wrapped downstream''s environment / request), the agent
+    holds only its scoped/budgeted/revocable delegation. A direct (bypass) call from the agent
+    to the raw credentialed downstream fails (no credential); the same call through the gateway,
+    which supplies the custodied credential, succeeds. Add a custody surface to `wrap` (hold
+    a downstream credential the agent never sees) and prove the split hermetically: a downstream
+    stub that requires a credential present only in the gateway''s environment — direct attempt
+    refused, via-gateway allowed. Honest limit (§12): custody makes a resource unbypassable
+    only if it is reachable SOLELY through the custodied credential; a truly public endpoint
+    is detection-only.
+
+    '
+  probe: probes/agent-mcp-7.sh
+  unlocks: 'Prevention is unbypassable by construction (§12) — the ''API key in an env var''
+    majority flips into the strongest pitch: the gateway takes the ambient key out of the
+    agent''s hands.'

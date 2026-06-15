@@ -87,18 +87,48 @@ transcript_path() {
 # gateway_replay <transcript> — drive the gateway in replay mode over the frozen
 # transcript and echo its stdout (the per-call verdict stream). Returns the exit
 # code so a fail-closed (RED) gateway is observable to the caller.
+#
+# The replay BUILDS a throwaway delegation chain in the sandbox registry on every
+# invocation (the `id create` org root etc.), which is NOT idempotent — a second
+# drive against the same sandbox fails "Identity already exists". So a probe that
+# needs more than one verdict must drive ONCE and parse the whole stream (see
+# `gateway_verdicts` / `verdict_for`), never call the gateway per call-index.
 gateway_replay() {
     local transcript="$1"
     "$GATEWAY_BIN" replay --transcript "$transcript" 2>&1
 }
 
-# verdict_for <transcript> <call-index> — drive the gateway and extract the
-# machine-readable verdict for the Nth call (0-based). Echoes e.g. allowed,
-# outside-agent-scope, usage-cap-exceeded, revoked. Empty if the gateway produced
-# no verdict (the greenfield RED state).
+# gateway_verdicts <transcript> — drive the gateway ONCE and echo the ordered,
+# one-per-call canonical verdict stream (one code per line, in call order). The
+# drive is cached on disk under the sandbox (LAB_DIR), so repeated reads — even
+# from separate `$(…)` command-substitution subshells, where a shell variable
+# would not survive — never re-drive (and so never trip the non-idempotent chain
+# build above). Empty if the gateway produced no verdict (the greenfield RED state).
+#
+# Keys on the ONE canonical per-call verdict line the gateway prints — the machine
+# line `  verdict=<code>` (replay.rs). The gateway prints the verdict token several
+# times per call (the human `call[N] … → <verdict>` line, the canonical `verdict=`
+# line, AND again inside `receipt_json`'s `"verdict":…`), so a blanket token grep
+# over all stdout mis-indexes — call 1 would read the second occurrence of call 0's
+# verdict. Anchoring on the canonical `^  verdict=` line yields exactly one token
+# per call, in order.
+gateway_verdicts() {
+    local transcript="$1"
+    local cache_root="${LAB_DIR:-${TMPDIR:-/tmp}}"
+    local tag; tag="$(printf '%s' "$transcript" | tr -c 'A-Za-z0-9' '_')"
+    local cache="$cache_root/.verdicts-$tag"
+    if [ ! -f "$cache" ]; then
+        gateway_replay "$transcript" 2>/dev/null \
+            | sed -n 's/^  verdict=\([a-z-]\{1,\}\).*/\1/p' > "$cache" 2>/dev/null
+    fi
+    cat "$cache" 2>/dev/null
+}
+
+# verdict_for <transcript> <call-index> — the canonical verdict for the Nth call
+# (0-based). Reads the single-drive cache so a probe can ask for several indices
+# without re-driving the gateway.
 verdict_for() {
     local transcript="$1" idx="$2"
-    gateway_replay "$transcript" 2>/dev/null \
-        | grep -oE '(allowed|outside-agent-scope|usage-cap-exceeded|agent-expired|revoked)' \
+    gateway_verdicts "$transcript" \
         | sed -n "$((idx + 1))p"
 }
