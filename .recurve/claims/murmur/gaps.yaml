@@ -128,20 +128,33 @@
   title: A delegated device (the Mac) sends authenticated as the same root identity; revoking
     it stops the next message
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - 'crates/murmur-core/src/lib.rs open() NotBuilt(''open: sender-AID KEL replay + ratchet-decrypt'')
-    — the verify that would resolve a delegated device to its root AID is unwired'
-  - the delegated-device chain primitives live in auths-id (delegation.rs incept/rotate);
-    murmur does not yet drive them through the envelope
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=device-as-root+revoked-rejected
-    — the sender-AID KEL replay (delegated-device resolve + revocation) is unbuilt (murmur-relay
-    0.1.3: store-and-forward wire not built yet (the mailbox queue + pull/subscribe surface
-    is the slice''s transport work)); MSG-4 is open'
+  - 'the delegated-device chain is built — crates/murmur-core/src/delegation.rs models a
+    DelegatedDevice (its own signing key + the root AID it sends as), a DelegationAnchor (the
+    root''s signature over root-AID ‖ device-AID ‖ device-key, the iPhone anchoring the Mac''s
+    delegated inception), a DeviceRevocation (the root''s signature clawing a device back),
+    and a DelegationState (the witness-corroborated KEL-replay stand-in carrying the root key,
+    the admitted anchors, and the revocations). resolve_device_to_root() resolves a device to
+    the SAME root AID iff the device is anchored, its key matches the anchored key, and it is
+    not revoked — a forged anchor/revocation is rejected at admission against the root key'
+  - 'murmur-relay serve drives the leg hermetically (prove_delegated_device): the root anchors
+    the Mac; the Mac seals a message stored-and-forwarded through the relay; the contact opens
+    it (authenticating the Mac''s own signature) and resolves the Mac to the root AID
+    (device=Mac, identity=root); the root then revokes the Mac and its NEXT message — still
+    decrypting, still carrying a valid device signature — is rejected on resolve (clawback from
+    the chain), never surfaced. it prints "device-as-root + revoked-rejected"; the trap
+    (revoked-device-accepted) turns the probe RED'
+  observed: 'GREEN at 2026-06-16: a delegated device verified as the same root identity, and
+    its next message after revocation was rejected — clawback from the chain (murmur-relay
+    0.1.3 device-as-root + revoked-rejected). The adversarial twin — a revoked device whose
+    message still verified as the root — turns probes/msg-4.trap/revoked-device-accepted/ RED.
+    The honest stale-served window (a contact who re-resolves from a relay cache rather than
+    witness-corroborated state still has a window) is carried by RVK-1, not this claim.'
   smallest_fix: 'Resolve a delegated device to its root: open() must verify a message from
     a delegated device (the Mac) as the SAME root AID (device=Mac, identity=root), and after
     the root revokes that device its next message must FAIL to verify for every contact. Adversarial

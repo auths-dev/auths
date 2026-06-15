@@ -24,10 +24,10 @@
 use std::process::ExitCode;
 
 use murmur_core::{
-    Aid, ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle,
-    PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once, deliver_rooted,
-    deliver_routing_only, hold_relay_boundary, prove_addressed, prove_relay_queue, prove_vetted,
-    verified_rotation_rekey,
+    Aid, ContactDirectory, DelegatedDevice, Endpoint, Identity, MailboxId, MailboxStore,
+    PrekeyBundle, PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once,
+    deliver_rooted, deliver_routing_only, hold_relay_boundary, prove_addressed,
+    prove_delegated_device, prove_relay_queue, prove_vetted, verified_rotation_rekey,
 };
 
 /// What the relay was asked to do.
@@ -538,6 +538,66 @@ fn run_continuation() -> Result<String, String> {
     ))
 }
 
+/// Prove the multi-device leg (PRD §10, the multi-device claim): a **delegated device**
+/// (the Mac) sends a message that authenticates as the **same root identity** the
+/// phone holds, and after the root **revokes** that device its next message is
+/// rejected — clawback from the chain.
+///
+/// The phone holds the root identity; the Mac mints its own key and names the root
+/// as delegator; a contact is the peer it messages. The root anchors the Mac (a
+/// signed delegation the contact admits on the root's own signature); the Mac sends
+/// a message that the contact opens and resolves to the **root** AID
+/// (`device = Mac, identity = root`). The root then revokes the Mac; the Mac's next
+/// message still decrypts and its own signature still verifies, but resolving it
+/// against the revoked delegation state rejects it — never surfaced.
+///
+/// The output line carries the markers a reader greps for — `device-as-root` (the
+/// Mac's message authenticated as the root) and `revoked-rejected` (the revoked
+/// Mac's next message was clawed back). A revoked device still accepted as the root
+/// (the adversarial twin) fails the leg closed.
+fn run_delegated_device() -> Result<String, String> {
+    // The phone holds the root identity; the Mac is a delegated device under it.
+    let root = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint root identity: {e}"))?;
+    let mac = DelegatedDevice::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint device identity: {e}"))?,
+        root.aid().clone(),
+    );
+    // The contact the delegated device messages (opt-in contact, §8).
+    let contact =
+        Identity::from_seed([0x33u8; 32]).map_err(|e| format!("mint contact identity: {e}"))?;
+
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:contact");
+
+    let receipt = prove_delegated_device(
+        &root,
+        &mac,
+        &contact,
+        [0x5au8; 32],
+        &mailbox,
+        ["sent from the Mac", "sent after I lost the Mac"],
+        &mut relay,
+    )
+    .map_err(|e| format!("the multi-device leg failed: {e}"))?;
+
+    if &receipt.authenticated_root != root.aid() {
+        return Err(format!(
+            "the delegated device authenticated as {} not the root",
+            receipt.authenticated_root
+        ));
+    }
+
+    Ok(format!(
+        "device-as-root + revoked-rejected: a message from the delegated device {dev} \
+         authenticated as the SAME root identity {root} (device and identity are not the same \
+         AID); after the root revoked that device, its next message still decrypted and carried a \
+         valid device signature but was rejected on resolve — clawed back from the chain, never \
+         surfaced",
+        dev = receipt.device_aid.as_str(),
+        root = receipt.authenticated_root.as_str(),
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -551,7 +611,7 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 9] = [
+            let legs: [fn() -> Result<String, String>; 10] = [
                 run_addressed,
                 run_delivery,
                 run_rooted,
@@ -561,6 +621,7 @@ fn main() -> ExitCode {
                 run_relay_boundary,
                 run_vetted,
                 run_continuation,
+                run_delegated_device,
             ];
             for leg in legs {
                 match leg() {

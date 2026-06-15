@@ -47,6 +47,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod address;
+pub mod delegation;
 pub mod envelope;
 pub mod identity;
 pub mod leakcheck;
@@ -60,6 +61,9 @@ pub mod trust;
 pub mod vetted;
 
 pub use address::Aid;
+pub use delegation::{
+    DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation,
+};
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
 pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
@@ -1024,6 +1028,138 @@ pub fn prove_addressed(
     })
 }
 
+/// The verdict of driving the multi-device leg (PRD §10, the multi-device claim): a
+/// **delegated device** (the Mac) sends a message that authenticates as the **same
+/// root identity** the phone holds, and after the root **revokes** that device its
+/// next message is **rejected** — clawback from the chain. Returned by
+/// [`prove_delegated_device`] so the relay binary's self-test (and the harness) can
+/// assert both halves held: device-as-root before revocation, revoked-rejected
+/// after.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DelegatedDeviceReceipt {
+    /// The device AID that sent the message (the Mac's own sub-identity).
+    pub device_aid: Aid,
+    /// The **root** AID the delegated device's message authenticated as — equal to
+    /// the root only because the root's delegation anchor verified and the device
+    /// was not revoked.
+    pub authenticated_root: Aid,
+    /// The body the contact recovered from the delegated device's message before
+    /// the revocation.
+    pub body: String,
+}
+
+/// Drive the multi-device leg once, hermetically (PRD §4, §6.2, §6.5, the
+/// multi-device claim): a delegated device sends as the root identity, and revoking it stops its
+/// next message.
+///
+/// `root` is the root identity (the iPhone); `device` is a delegated device (the
+/// Mac) that mints its own key and names `root` as delegator; `contact` is the peer
+/// the device messages. The session secret is established out-of-band for the
+/// self-test (the X3DH that derives it is the encryption layer's own work).
+///
+///  1. The root **anchors** the device — it signs `(root AID ‖ device AID ‖ device
+///     key)`. The contact resolves the root's delegation key-state (a witnessed-KEL
+///     replay stand-in, [`DelegationState`]) and admits the device on that anchor;
+///     a forged anchor never enters the state.
+///  2. **device-as-root:** the device seals a message and stores-and-forwards it
+///     through `relay`; the contact drains and opens it (authenticating the
+///     *device's own* signature), then resolves the device to its root via the
+///     delegation state — the message authenticates as the **root** AID
+///     (`device = Mac, identity = root`).
+///  3. The root **revokes** the device (a signed revocation the contact records on
+///     its key-state).
+///  4. **revoked-rejected:** the device seals a *next* message and stores-and-
+///     forwards it; it still decrypts and the device's own signature still verifies,
+///     but resolving it against the now-revoked delegation state **rejects** it —
+///     the message is dropped, never surfaced. A revoked device whose message was
+///     still surfaced as the root would be an error (the RED the trap records).
+///
+/// Returns a [`DelegatedDeviceReceipt`] iff the device authenticated as the root
+/// before revocation **and** its next message was rejected after. Any failure — a
+/// device that never resolved to the root, or a revoked device still accepted — is
+/// an error, never a silent pass.
+pub fn prove_delegated_device(
+    root: &Identity,
+    device: &DelegatedDevice,
+    contact: &Identity,
+    session_secret: [u8; 32],
+    mailbox: &MailboxId,
+    bodies: [&str; 2],
+    relay: &mut MailboxStore,
+) -> CoreResult<DelegatedDeviceReceipt> {
+    let [body, next_body] = bodies;
+    if device.root_aid() != root.aid() {
+        return Err(CoreError::Malformed(
+            "the delegated device names a different root than the one driving the leg".into(),
+        ));
+    }
+    // The contact's directory binds the *device's own* AID to the device key (it
+    // resolves whoever signed the inner envelope); the delegation state maps that
+    // device to its root. Two layers: the device key authenticates the bytes, the
+    // root anchor authenticates the *identity* those bytes count as.
+    let mut directory = ContactDirectory::new();
+    directory.admit(device.device_aid().clone(), device.device_key().to_vec());
+    directory.admit(contact.aid().clone(), contact.public_key().to_vec());
+
+    // (1) The root anchors the device; the contact admits it on the root's verified
+    // anchor (a forged anchor is rejected at admission).
+    let anchor = DelegationAnchor::issue(root, device)?;
+    let mut delegation = DelegationState::for_root(root);
+    delegation.admit_device(anchor)?;
+
+    // Both ends seal/open over the same out-of-band session (the device sends, the
+    // contact receives).
+    let device_endpoint = Endpoint::new(device.identity().clone(), Session::from_secret(session_secret));
+    let contact_endpoint = Endpoint::new(contact.clone(), Session::from_secret(session_secret));
+
+    // (2) device-as-root: the device sends; the contact opens (authenticating the
+    // device's own signature) and resolves the device to its root.
+    let outer = device_endpoint.seal_to(contact.aid(), mailbox, body)?;
+    relay.handle(&RelayRequest::Deposit(outer));
+    let pulled = relay
+        .handle(&RelayRequest::Drain(mailbox.clone()))
+        .pop()
+        .ok_or(CoreError::Rejected("nothing arrived at the mailbox"))?;
+    let message = contact_endpoint.open(&pulled, &directory)?;
+    // The opened message authenticated the *device's* key; resolve that device to the
+    // root it sends as. Before revocation this yields the root AID.
+    let authenticated_root =
+        delegation.resolve_device_to_root(&message.from, device.device_key())?;
+    if &authenticated_root != root.aid() {
+        return Err(CoreError::Rejected(
+            "a delegated device's message did not authenticate as the root identity",
+        ));
+    }
+
+    // (3) The root revokes the device (lost-the-laptop). Revocation is a signed root
+    // event the contact records on its delegation key-state.
+    let revocation = DeviceRevocation::issue(root, device.device_aid())?;
+    delegation.revoke_device(revocation)?;
+
+    // (4) revoked-rejected: the device sends again; it still decrypts and its own
+    // signature still verifies, but resolving it against the revoked state rejects
+    // it — clawback from the chain. A revoked device whose message still resolved to
+    // the root would break the claim.
+    let next_outer = device_endpoint.seal_to(contact.aid(), mailbox, next_body)?;
+    relay.handle(&RelayRequest::Deposit(next_outer));
+    let next_pulled = relay
+        .handle(&RelayRequest::Drain(mailbox.clone()))
+        .pop()
+        .ok_or(CoreError::Rejected("nothing arrived at the mailbox"))?;
+    let next_message = contact_endpoint.open(&next_pulled, &directory)?;
+    match delegation.resolve_device_to_root(&next_message.from, device.device_key()) {
+        Ok(_) => Err(CoreError::Rejected(
+            "revoked-device-accepted: a revoked device's message still authenticated as the root",
+        )),
+        Err(CoreError::Rejected(_)) => Ok(DelegatedDeviceReceipt {
+            device_aid: device.device_aid().clone(),
+            authenticated_root,
+            body: message.body,
+        }),
+        Err(other) => Err(other),
+    }
+}
+
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing
 // without exposing the secret key or session on the public API.
 #[cfg(test)]
@@ -1056,6 +1192,61 @@ mod tests {
     #[test]
     fn version_is_nonempty() {
         assert!(!VERSION.is_empty());
+    }
+
+    #[test]
+    fn a_delegated_device_sends_as_the_root_and_is_clawed_back_when_revoked() {
+        // The phone holds the root identity; the Mac is a delegated device that mints
+        // its own key and sends as the root. A contact verifies a message from the Mac
+        // as the *root*; after the root revokes the Mac, the Mac's next message is
+        // rejected — clawback from the chain.
+        let root = Identity::from_seed([0x01u8; 32]).unwrap();
+        let mac = DelegatedDevice::new(
+            Identity::from_seed([0x02u8; 32]).unwrap(),
+            root.aid().clone(),
+        );
+        let contact = Identity::from_seed([0x03u8; 32]).unwrap();
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:contact");
+
+        let receipt = prove_delegated_device(
+            &root,
+            &mac,
+            &contact,
+            [0x5au8; 32],
+            &mailbox,
+            ["sent from the Mac", "sent after I lost the Mac"],
+            &mut relay,
+        )
+        .unwrap();
+
+        // The Mac authenticated as the root identity, not as its own device AID.
+        assert_eq!(&receipt.authenticated_root, root.aid());
+        assert_eq!(&receipt.device_aid, mac.device_aid());
+        assert_ne!(&receipt.device_aid, root.aid());
+        assert_eq!(receipt.body, "sent from the Mac");
+    }
+
+    #[test]
+    fn a_revoked_device_that_still_authenticated_as_the_root_is_an_error() {
+        // The trap, exercised in-process: if resolve_device_to_root ever accepted a
+        // revoked device, prove_delegated_device must surface it as an error rather
+        // than a receipt. We assert the post-revocation resolve genuinely rejects, so
+        // the only path to a receipt is a real clawback.
+        let root = Identity::from_seed([0x01u8; 32]).unwrap();
+        let mac = DelegatedDevice::new(
+            Identity::from_seed([0x02u8; 32]).unwrap(),
+            root.aid().clone(),
+        );
+        let anchor = DelegationAnchor::issue(&root, &mac).unwrap();
+        let mut state = DelegationState::for_root(&root);
+        state.admit_device(anchor).unwrap();
+        let revocation = DeviceRevocation::issue(&root, mac.device_aid()).unwrap();
+        state.revoke_device(revocation).unwrap();
+        assert!(matches!(
+            state.resolve_device_to_root(mac.device_aid(), mac.device_key()),
+            Err(CoreError::Rejected(_))
+        ));
     }
 
     #[test]
