@@ -1,0 +1,6 @@
+# bin/ holds the suite's COPIED `murmur-relay` build artifact, staged by the
+# suite rebuild (cargo build --release -p murmur-relay, then copied here). The
+# relay probes content-hash it against target/release/murmur-relay; it is
+# reproducible, so it is not committed. Same convention as the other suites' bin/.
+*
+!.gitignore

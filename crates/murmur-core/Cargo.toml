@@ -1,0 +1,23 @@
+[package]
+name = "murmur-core"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "Murmur core: the phone-number-free messenger's identity/transport/ratchet glue — an AID-addressed, KERI-rooted envelope over untrusted store-and-forward relays."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["identity", "messaging", "keri", "signal", "relay"]
+categories = ["authentication", "cryptography"]
+
+[lib]
+name = "murmur_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

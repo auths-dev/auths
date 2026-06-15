@@ -1,0 +1,22 @@
+[package]
+name = "murmur-relay"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "Murmur relay: an untrusted store-and-forward mailbox for AID-addressed ciphertext — it sees an opaque mailbox id and opaque bytes, never plaintext, never a phone number."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["messaging", "relay", "store-and-forward"]
+categories = ["network-programming"]
+
+[[bin]]
+name = "murmur-relay"
+path = "src/main.rs"
+
+[dependencies]
+murmur-core = { path = "../murmur-core", version = "0.1.3" }
+
+[lints]
+workspace = true
