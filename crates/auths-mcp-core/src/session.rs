@@ -1,11 +1,15 @@
-//! Session budget accounting — where the authoritative cumulative-spend counter
-//! lives (gateway-held ledger v0, per PRD §5 Build item 4 / Open Q2). The gate
-//! reads `spent` and supplies it to the verify so the call that would cross the
-//! cap is refused `UsageCapExceeded` before the metered tool is invoked.
+//! Budget parsing for an agent's session.
 //!
-//! The counter is wired and advanced on every allowed call so the receipt carries
-//! an honest running total; the quantitative-cap refusal (`UsageCapExceeded`) is a
-//! thin predicate over this ledger.
+//! This module once held the authoritative cumulative-spend counter as a
+//! gateway-held, in-RAM per-session tally (`SessionLedger`, budget v0). **D8
+//! supersedes that tally**: the authoritative cross-rail counter is now the
+//! verifier-held monotonic SETTLED high-water keyed to the agent delegation, plus a
+//! transient set of RESERVED holds — see [`crate::budget`] ([`crate::budget::
+//! CrossRailBudget`]). The gateway no longer meters the paid path against an
+//! undifferentiated RAM tally; it pre-authorizes against the durable cross-rail
+//! engine. What remains here is the budget *parser* (`$5.00` → `Cents(500)`), which
+//! the gateway uses to read the cap off the grant before opening the cross-rail
+//! budget at that cap.
 
 /// A quantitative budget on an agent's session (maps AGT-4). Either a spend cap in
 /// cents or a call-count cap — the boolean-scope incumbents cannot express either.
@@ -35,6 +39,16 @@ impl Budget {
         // Permissive default: a budget we cannot read does not block MCP-1.
         Budget::Cents(u64::MAX)
     }
+
+    /// The cap expressed in cents — the value the cross-rail budget is opened at. A
+    /// call cap reports its count directly (the cross-rail engine is for the metered,
+    /// cents-denominated path; the call-cap path is non-metered and reserves nothing).
+    pub fn cap_cents(&self) -> u64 {
+        match self {
+            Budget::Cents(c) => *c,
+            Budget::Calls(c) => *c,
+        }
+    }
 }
 
 /// Parse a dollar string like `5`, `5.00`, `4.99` into integer cents.
@@ -60,55 +74,6 @@ fn parse_dollars_to_cents(s: &str) -> Result<u64, ()> {
     }
 }
 
-/// The gateway-held running ledger for one agent session. The authoritative
-/// counter the gate consults on every call; anchored TEL increments are the
-/// hardened follow-up (Open Q2).
-#[derive(Debug, Clone)]
-pub struct SessionLedger {
-    pub budget: Budget,
-    /// Cumulative cents spent so far this session.
-    pub spent_cents: u64,
-    /// Cumulative brokered-call count so far this session.
-    pub call_count: u64,
-}
-
-impl SessionLedger {
-    /// Open a fresh ledger for a session under the given budget.
-    pub fn open(budget: Budget) -> Self {
-        Self {
-            budget,
-            spent_cents: 0,
-            call_count: 0,
-        }
-    }
-
-    /// Would charging `cost_cents` keep this session inside its budget?
-    ///
-    /// The quantitative-cap predicate the verify reads: `spent + cost ≤ cap` for a
-    /// monetary cap, or `count + 1 ≤ cap` for a call cap.
-    pub fn would_stay_within(&self, cost_cents: u64) -> bool {
-        match self.budget {
-            Budget::Cents(cap) => self.spent_cents.saturating_add(cost_cents) <= cap,
-            Budget::Calls(cap) => self.call_count.saturating_add(1) <= cap,
-        }
-    }
-
-    /// The budget cap expressed in cents, for the `UsageCapExceeded` verdict
-    /// (a call cap reports its count cap directly).
-    pub fn cap_cents(&self) -> u64 {
-        match self.budget {
-            Budget::Cents(cap) => cap,
-            Budget::Calls(cap) => cap,
-        }
-    }
-
-    /// Commit an allowed call's cost to the running total.
-    pub fn charge(&mut self, cost_cents: u64) {
-        self.spent_cents = self.spent_cents.saturating_add(cost_cents);
-        self.call_count = self.call_count.saturating_add(1);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,12 +87,8 @@ mod tests {
     }
 
     #[test]
-    fn ledger_charges_and_bounds() {
-        let mut l = SessionLedger::open(Budget::Cents(500));
-        assert!(l.would_stay_within(300));
-        l.charge(300);
-        assert_eq!(l.spent_cents, 300);
-        assert!(l.would_stay_within(200));
-        assert!(!l.would_stay_within(300));
+    fn cap_cents_reads_the_bound() {
+        assert_eq!(Budget::parse("$5.00").cap_cents(), 500);
+        assert_eq!(Budget::parse("20calls").cap_cents(), 20);
     }
 }

@@ -53,16 +53,44 @@ pub enum Step {
 pub struct Call {
     /// The downstream tool name (e.g. `read_file`).
     pub tool: String,
+    /// The payment rail this metered call settles on (e.g. `stripe`, `x402`). One
+    /// `$5` cap is metered across BOTH rails into a single cross-rail counter (D8);
+    /// a per-rail-siloed budget would miss the cross-over. Non-metered calls omit it.
+    #[serde(default)]
+    pub rail: Option<String>,
     /// The call arguments.
     #[serde(default)]
     pub args: serde_json::Value,
     /// The metered cost in cents this call would incur (0 for non-metered tools).
+    /// For a metered call this is the *actual* the rail reports on the response —
+    /// what gets SETTLED into the monotonic counter after the call returns.
     #[serde(default)]
     pub cost_cents: u64,
+    /// The ceiling RESERVED before the rail is touched (the pre-authorization hold,
+    /// D8). For a known-cost call this equals `cost_cents`; for a metered call whose
+    /// final cost is bounded but not yet known it is the ceiling. The reservation is
+    /// what `available = cap − settled − Σ(holds)` is checked against; the slack
+    /// (`ceiling − actual`) is RELEASED on settle. Defaults to `cost_cents`.
+    #[serde(default)]
+    pub reserve_ceiling_cents: Option<u64>,
     /// The verdict this call is expected to produce (e.g. `allowed`,
     /// `outside-agent-scope`). Replay asserts the re-derived verdict matches.
     #[serde(default)]
     pub expect: Option<String>,
+}
+
+impl Call {
+    /// The ceiling this call reserves before the rail is touched — the metered
+    /// `reserve_ceiling_cents` if present, else the known `cost_cents`.
+    pub fn reserve_ceiling(&self) -> u64 {
+        self.reserve_ceiling_cents.unwrap_or(self.cost_cents)
+    }
+
+    /// The rail this metered call settles on, for the cross-rail attribution in the
+    /// receipt. A non-metered call (no rail) settles on no rail.
+    pub fn rail(&self) -> Option<&str> {
+        self.rail.as_deref()
+    }
 }
 
 impl Transcript {

@@ -31,13 +31,18 @@
 //! A forged or tampered proof yields a non-`Valid` verdict, so the gateway refuses
 //! the call before the downstream tool is ever invoked.
 
+pub mod budget;
 pub mod gate;
 pub mod receipt;
 pub mod session;
 
+pub use budget::{
+    BudgetError, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds, SettleOutcome,
+    SettledCounter,
+};
 pub use gate::{Decision, GateError, PerCallGate, ToolCall, Verdict};
 pub use receipt::{Receipt, ReceiptError};
-pub use session::{Budget, SessionLedger};
+pub use session::Budget;
 
 /// A capability string a downstream tool maps to (e.g. `fs.read`, `fs.write`,
 /// `github.comment`). The gate enforces that the capability a `tools/call`

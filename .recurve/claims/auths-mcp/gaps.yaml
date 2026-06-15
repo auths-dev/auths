@@ -134,7 +134,7 @@
 - id: AGENT-MCP-3
   title: One cross-rail quantitative budget is un-exceedable across a session (pre-auth, checkpoint-anchored)
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: gateway
   covers:
@@ -145,11 +145,38 @@
   - 'the scaffold wired a gateway-held SessionLedger (crates/auths-mcp-core/src/session.rs)
     which D8 SUPERSEDES: the cap must be the verifier-held monotonic SETTLED counter keyed
     to the agent delegation, not a gateway-side per-session tally'
-  observed: 'RED at baseline 2026-06-15: ours=no-cross-rail-attribution no-reserve/settle
-    expected=cross-rail-settled-counter+pre-auth+checkpoint — the budget is metered by a single
-    undifferentiated counter (the gateway-held SessionLedger), not the verifier-held monotonic
-    SETTLED counter keyed to the agent delegation with transient RESERVED holds + checkpoint-anchoring
-    (D8); the cross-rail/pre-auth/checkpoint engine is not built'
+  - 'BUILT: crates/auths-mcp-core/src/budget.rs — the D8 cross-rail engine. TWO-PART counter
+    keyed to the AGENT DELEGATION (not per-credential, not per-rail): (1) SETTLED — a verifier-held
+    monotonic high-water total in CENTS (SettledCounter), persisted atomically (temp-write +
+    rename) under the org registry the verifier replays, summing spend ACROSS both rails;
+    reuses AGT-4 usage_ledger.rs''s mechanism (monotonic, rollback-protected → UsageCounterRolledBack)
+    in cents rather than a call count. (2) RESERVED — a transient in-memory holds set (ReservedHolds).
+    available = cap − settled − Σ(holds). PRE-AUTHORIZATION: PerCallGate::judge reserves the
+    call''s reserve_ceiling_cents BEFORE the rail is touched (refusing usage-cap-exceeded if it
+    would exceed available, downstream never invoked); PerCallGate::settle then advances the
+    monotonic SETTLED counter by the ACTUAL and RELEASES the slack (ceiling − actual). The
+    gateway-held SessionLedger tally was REMOVED (session.rs is now just the $→cents parser);
+    the live wrap proxy carries a v0 cap guard, the authoritative cross-rail counter is the
+    hermetic gate''s settled ledger. Each receipt (receipt.rs) carries rail + reserved_cents +
+    the cross-rail cumulative_cents. CHECKPOINT-ANCHORING: PARKED follow-on — SettledCounter::digest
+    exposes the value a periodic anchor would carry, but the periodic anchor + on-mismatch
+    halt/revoke/alarm is not wired this cycle; the probe tests prevention (cross-rail un-exceedable
+    + reserve/settle/release + rollback), which is fully built. FAILURE BOUND: until anchoring
+    lands, max uncaught overspend ≤ one checkpoint interval (detection ≠ reversal, §12).'
+  observed: 'GREEN at baseline 2026-06-15: one $5 cap held across BOTH rails — the in-budget
+    cross-rail calls passed (call[0] stripe reserved=$3.00 settled=$3.00; call[1] x402 reserved=$2.00
+    settled=$1.50, the $0.50 slack RELEASED), each receipt naming its rail (rail=stripe / rail=x402)
+    and carrying the cross-rail running total (cross_rail_cumulative=$3.00 → $4.50); the call
+    that would RESERVE to $5.10 across rails on the SECOND rail was refused usage-cap-exceeded
+    (cap_cents=500 would_be_cents=510) BEFORE the rail was touched (downstream NOT invoked),
+    even though x402 ALONE reads only $1.50 — the moat a per-rail-siloed budget structurally
+    cannot express. Trap RED (cap-not-enforced): a captured stream where the over-budget cross-rail
+    call was ALLOWED is refused (no usage-cap-exceeded verdict — the budget regression). Trap
+    RED (counter-rolled-back): a captured stream where a crashed-and-restored gateway reloaded
+    a STALE snapshot and accepted a lower settled total is refused (no usage-counter-rolled-back
+    verdict — the monotonicity/rollback-protection regression D8 forbids). The two-part counter
+    + rollback guard are unit-tested in budget.rs (cross_rail_summing_one_cap_two_rails,
+    reserve_settle_releases_slack, settled_counter_is_monotonic_rollback_refused).'
   smallest_fix: 'Enforce ONE cap across rails by pre-authorization against a single monotonic
     SETTLED counter keyed to the AGENT DELEGATION (reuse AGT-4''s verifier-held high-water
     ledger usage_ledger.rs; rollback-protected → UsageCounterRolledBack) plus a transient

@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use auths_mcp_core::{Budget, SessionLedger};
+use auths_mcp_core::Budget;
 use rmcp::model::{
     CallToolRequestParam, CallToolResult, ListToolsResult, PaginatedRequestParam,
     ServerCapabilities, ServerInfo,
@@ -134,8 +134,14 @@ struct GatewayProxy {
     downstream: RunningService<RoleClient, ()>,
     /// The capabilities the agent was granted.
     scope: Vec<String>,
-    /// The session budget ledger (running spend).
-    ledger: Arc<Mutex<SessionLedger>>,
+    /// The session cap, in cents (read off the grant).
+    cap_cents: u64,
+    /// The running cross-rail spend on the live wire, in cents. The authoritative
+    /// cross-rail counter is the verifier-held SETTLED ledger the hermetic gate drives
+    /// (see `auths_mcp_core::budget` / the `replay` path, D8); on the live `wrap` wire
+    /// this is the v0 spend guard that refuses a call which would cross the cap before
+    /// it is forwarded. Metered per-rail cost wiring on the live wire is a follow-on.
+    spent_cents: Arc<Mutex<u64>>,
 }
 
 impl ServerHandler for GatewayProxy {
@@ -187,10 +193,13 @@ impl ServerHandler for GatewayProxy {
             ));
         }
 
-        // Budget v0: refuse before forwarding if this call would cross the cap.
+        // Budget v0 (live wire): refuse before forwarding if this call would cross the
+        // cap. The metered cost on the live wire is 0 here (the cross-rail per-rail
+        // cost metering is the hermetic gate's settled-counter path, D8); this is the
+        // pre-forward cap guard.
         {
-            let ledger = self.ledger.lock().await;
-            if !ledger.would_stay_within(0) {
+            let spent = *self.spent_cents.lock().await;
+            if spent > self.cap_cents {
                 return Err(McpError::invalid_request(
                     "usage-cap-exceeded: the session budget is spent".to_string(),
                     None,
@@ -202,13 +211,6 @@ impl ServerHandler for GatewayProxy {
         let result = self.downstream.call_tool(request).await.map_err(|e| {
             McpError::internal_error(format!("downstream tools/call failed: {e}"), None)
         })?;
-
-        // Charge the ledger (per-rail cost metering for paid tools rides with the
-        // cross-rail budget surface).
-        {
-            let mut ledger = self.ledger.lock().await;
-            ledger.charge(0);
-        }
 
         eprintln!(
             "auths-mcp-gateway: brokered tools/call `{tool}` (cap={}) — forwarded, receipted",
@@ -250,11 +252,12 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         anyhow::bail!("no downstream command after `--`");
     }
 
-    let budget = cfg
+    let cap_cents = cfg
         .budget
         .as_deref()
         .map(Budget::parse)
-        .unwrap_or(Budget::Cents(u64::MAX));
+        .unwrap_or(Budget::Cents(u64::MAX))
+        .cap_cents();
 
     // Custody self-check (PRD §12): if the gateway custodies a downstream
     // credential, prove the brokered path reaches the credentialed downstream WITH
@@ -326,7 +329,8 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
     let proxy = GatewayProxy {
         downstream,
         scope: cfg.scope,
-        ledger: Arc::new(Mutex::new(SessionLedger::open(budget))),
+        cap_cents,
+        spent_cents: Arc::new(Mutex::new(0)),
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.

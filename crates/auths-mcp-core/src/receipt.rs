@@ -30,7 +30,19 @@ pub struct Receipt {
     pub proof_ref: String,
     /// The gate's verdict for this call.
     pub verdict: Verdict,
-    /// Cumulative session spend (cents) after this call — the running total.
+    /// The payment rail this metered call settled on (cross-rail attribution, D8) —
+    /// `None` for a non-metered call. The receipt naming its rail is what proves the
+    /// counter is CROSS-RAIL, not a per-rail silo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail: Option<String>,
+    /// The ceiling RESERVED for this call before the rail was touched (the
+    /// pre-authorization hold). `0` for a non-metered call. The reserved-vs-settled
+    /// split proves the slack (`reserved − settled-delta`) was released, not consumed.
+    #[serde(default)]
+    pub reserved_cents: u64,
+    /// Cumulative CROSS-RAIL SETTLED spend (cents) after this call — the running total
+    /// summed across all rails (the verifier-held monotonic counter). This is the
+    /// `cross_rail_cumulative` the receipt reports.
     pub cumulative_cents: u64,
     /// When the call was judged.
     pub at: DateTime<Utc>,
@@ -52,12 +64,15 @@ impl Receipt {
     /// agent's signed-call proof (`proof_ref` — the git commit `auths verify`
     /// accepts, device=agent, identity=parent-root); this records that decision
     /// with the running total and binds it to the canonical action.
+    #[allow(clippy::too_many_arguments)]
     pub fn for_call(
         device: &str,
         identity: &str,
         call: &ToolCall,
         proof_ref: &str,
         verdict: Verdict,
+        rail: Option<&str>,
+        reserved_cents: u64,
         cumulative_cents: u64,
         at: DateTime<Utc>,
     ) -> Self {
@@ -69,6 +84,8 @@ impl Receipt {
             action_hash,
             proof_ref: proof_ref.to_string(),
             verdict,
+            rail: rail.map(str::to_string),
+            reserved_cents,
             cumulative_cents,
             at,
         }
@@ -122,6 +139,8 @@ mod tests {
             &sample_call(),
             "abc123",
             Verdict::Allowed,
+            None,
+            0,
             0,
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         );
@@ -133,6 +152,34 @@ mod tests {
     }
 
     #[test]
+    fn receipt_carries_rail_and_reserved_split() {
+        // A metered paid call's receipt names its rail and carries the reserved-vs-
+        // settled split — the cross-rail attribution + slack-release evidence (D8).
+        let call = ToolCall {
+            tool: "paid_call".into(),
+            args: serde_json::json!({ "q": "b" }),
+            cost_cents: 150,
+        };
+        let r = Receipt::for_call(
+            "did:keri:Eagent",
+            "did:keri:Eroot",
+            &call,
+            "abc123",
+            Verdict::Allowed,
+            Some("x402"),
+            200, // reserved a $2.00 ceiling
+            450, // cross-rail settled total after this call
+            DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
+        );
+        assert_eq!(r.rail.as_deref(), Some("x402"));
+        assert_eq!(r.reserved_cents, 200);
+        assert_eq!(r.cumulative_cents, 450);
+        // The rail survives the canonical round-trip the verifier re-derives over.
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"rail\":\"x402\""));
+    }
+
+    #[test]
     fn receipt_digest_is_stable() {
         let r = Receipt::for_call(
             "did:keri:Eagent",
@@ -140,6 +187,8 @@ mod tests {
             &sample_call(),
             "abc123",
             Verdict::Allowed,
+            None,
+            0,
             0,
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         );

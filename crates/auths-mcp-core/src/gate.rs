@@ -15,7 +15,7 @@ use auths_verifier::CommitVerdict;
 use chrono::{DateTime, Utc};
 
 use crate::Capability;
-use crate::session::SessionLedger;
+use crate::budget::{CrossRailBudget, Hold, ReserveOutcome};
 
 /// A serialized MCP `tools/call` the gate judges. The canonical bytes (tool name
 /// + sorted args) are what gets signed as the auths artifact.
@@ -62,8 +62,18 @@ pub enum Verdict {
     /// The requested capability lies outside the agent's delegator-anchored scope
     /// (maps AGT-1). Carries the offending capability.
     OutsideAgentScope { capability: Capability },
-    /// The call would cross the session budget cap (maps AGT-4).
+    /// The call would cross the session budget cap (maps AGT-4). For the cross-rail
+    /// budget (D8) this is the reservation refusal: `settled + Σ(holds) + ceiling`
+    /// would exceed the cap, refused BEFORE the rail is touched.
     UsageCapExceeded { cap_cents: u64, would_be_cents: u64 },
+    /// A settle presented a cumulative SETTLED total *below* the verifier-held
+    /// monotonic high-water — a replayed/stale total (e.g. a crashed-and-restored
+    /// gateway that reloaded a stale snapshot). Refused so the counter cannot roll
+    /// back (the D8 monotonicity guard; maps AGT-4's `UsageCounterRolledBack`).
+    UsageCounterRolledBack {
+        presented_cents: u64,
+        high_water_cents: u64,
+    },
     /// The grant is past its anchored expiry at the injected `now`.
     AgentExpired,
     /// The grant was revoked — liveness re-derived from the chain (maps OPS-1).
@@ -82,6 +92,7 @@ impl Verdict {
             Verdict::Allowed => "allowed",
             Verdict::OutsideAgentScope { .. } => "outside-agent-scope",
             Verdict::UsageCapExceeded { .. } => "usage-cap-exceeded",
+            Verdict::UsageCounterRolledBack { .. } => "usage-counter-rolled-back",
             Verdict::AgentExpired => "agent-expired",
             Verdict::Revoked => "revoked",
             Verdict::ProofUnauthentic { .. } => "proof-unauthentic",
@@ -109,12 +120,24 @@ impl Verdict {
     }
 }
 
-/// One gate decision: the verdict plus the cumulative spend after this call (for
-/// the receipt's running total).
+/// One gate decision for a paid call: the verdict, the running cross-rail total, and
+/// — when the call was authorized — the pre-authorization [`Hold`] the caller must
+/// SETTLE (with the actual cost) once the downstream returns, plus the rail it
+/// settles on. A refused call carries no hold (the rail is never touched).
 #[derive(Debug, Clone)]
 pub struct Decision {
+    /// The fail-closed verdict for this call.
     pub verdict: Verdict,
+    /// The running cross-rail SETTLED total this call's receipt reports (the durable
+    /// counter the moment the decision was made, before this call settles).
     pub cumulative_cents: u64,
+    /// The reserved ceiling the pre-authorization took (0 for a non-paid/refused call).
+    pub reserved_cents: u64,
+    /// The pre-authorization hold to settle after the downstream returns — `Some` only
+    /// when the call was authorized (reserved). `None` for a refused or non-paid call.
+    pub hold: Option<Hold>,
+    /// The payment rail this paid call settles on (cross-rail attribution).
+    pub rail: Option<String>,
 }
 
 impl Decision {
@@ -175,7 +198,9 @@ impl PerCallGate {
         })
     }
 
-    /// Judge one `tools/call`, given the bytes of the agent's signed proof.
+    /// Judge one `tools/call`, given the bytes of the agent's signed proof, the rail
+    /// it would settle on, the ceiling it reserves, and the cross-rail budget it
+    /// PRE-AUTHORIZES against.
     ///
     /// `signed_proof` is the raw git-commit object the agent produced over the
     /// canonical call (with the `Auths-Scope` trailer naming the exercised
@@ -186,17 +211,27 @@ impl PerCallGate {
     ///    proof against the agent's and delegator's KELs at `now`; a non-`Valid`
     ///    verdict is a fail-closed [`Verdict`] (scope/expiry/revocation) or, for
     ///    anything else, [`Verdict::ProofUnauthentic`];
-    /// 2. **budget** — only when the proof authenticated, `ledger.spent + cost ≤
-    ///    cap`, else [`Verdict::UsageCapExceeded`].
+    /// 2. **budget (pre-authorization, D8)** — only when the proof authenticated AND
+    ///    the call is metered (`reserve_ceiling > 0`), RESERVE the ceiling against the
+    ///    cross-rail budget's `available = cap − settled − Σ(holds)` BEFORE the rail is
+    ///    touched. A reservation that would cross the cap is refused
+    ///    [`Verdict::UsageCapExceeded`] and **no hold is taken** (the metered
+    ///    downstream is never invoked). On success the verdict is [`Verdict::Allowed`]
+    ///    and the [`Decision`] carries the [`Hold`] the caller SETTLES after the
+    ///    downstream returns (advancing the monotonic SETTLED counter by the *actual*
+    ///    and releasing the slack).
     ///
-    /// Returns the verdict plus the cumulative spend *if this call were allowed*
-    /// (the receipt's running total); the gateway charges the ledger on `Allowed`.
+    /// The cap-crossing refusal is computed against the ONE cross-rail counter, so a
+    /// call that would exceed the cap across rails is refused even when a per-rail silo
+    /// would still read in-budget. The settle (and its monotonic rollback guard) is the
+    /// caller's post-downstream step ([`PerCallGate::settle`]).
     pub async fn judge(
         &self,
-        call: &ToolCall,
+        rail: Option<&str>,
+        reserve_ceiling_cents: u64,
         signed_proof: &[u8],
         now: DateTime<Utc>,
-        ledger: &SessionLedger,
+        budget: &mut CrossRailBudget,
     ) -> Result<Decision, GateError> {
         let pinned_roots = vec![self.delegator_did.clone()];
         let provider = auths_crypto::default_provider();
@@ -211,35 +246,95 @@ impl PerCallGate {
         )
         .await;
 
-        let verdict = Verdict::from_commit_verdict(&commit_verdict);
+        let auth_verdict = Verdict::from_commit_verdict(&commit_verdict);
+        let settled = budget
+            .settled_cents()
+            .map_err(|e| GateError::Registry(format!("settled counter: {e}")))?;
 
-        // Budget is the second gate, applied only to an authenticated, in-scope,
-        // live call. The quantitative-cap enforcement is wired here over the session
-        // ledger (the cross-rail budget product surface builds on this counter).
-        let (verdict, cumulative) = if matches!(verdict, Verdict::Allowed) {
-            if ledger.would_stay_within(call.cost_cents) {
-                (
-                    Verdict::Allowed,
-                    ledger.spent_cents.saturating_add(call.cost_cents),
-                )
-            } else {
-                (
-                    Verdict::UsageCapExceeded {
-                        cap_cents: ledger.cap_cents(),
-                        would_be_cents: ledger.spent_cents.saturating_add(call.cost_cents),
-                    },
-                    ledger.spent_cents,
-                )
+        // The running cross-rail total the receipt reports is the durable SETTLED
+        // counter (summed across all rails) at decision time. A refused or non-paid
+        // call leaves it unchanged.
+        if !matches!(auth_verdict, Verdict::Allowed) {
+            return Ok(Decision {
+                verdict: auth_verdict,
+                cumulative_cents: settled,
+                reserved_cents: 0,
+                hold: None,
+                rail: rail.map(str::to_string),
+            });
+        }
+
+        // Authenticated + in-scope + live. Pre-authorize the spend: a metered call
+        // RESERVES its ceiling against the cross-rail budget BEFORE the rail is touched.
+        if reserve_ceiling_cents == 0 {
+            // Non-metered (e.g. fs.read): no reservation, nothing to settle.
+            return Ok(Decision {
+                verdict: Verdict::Allowed,
+                cumulative_cents: settled,
+                reserved_cents: 0,
+                hold: None,
+                rail: rail.map(str::to_string),
+            });
+        }
+
+        let outcome = budget
+            .reserve(reserve_ceiling_cents)
+            .map_err(|e| GateError::Registry(format!("reserve: {e}")))?;
+        match outcome {
+            ReserveOutcome::Reserved { hold, .. } => Ok(Decision {
+                verdict: Verdict::Allowed,
+                cumulative_cents: settled,
+                reserved_cents: reserve_ceiling_cents,
+                hold: Some(hold),
+                rail: rail.map(str::to_string),
+            }),
+            ReserveOutcome::Refused {
+                cap_cents,
+                would_be_cents,
+            } => Ok(Decision {
+                verdict: Verdict::UsageCapExceeded {
+                    cap_cents,
+                    would_be_cents,
+                },
+                cumulative_cents: settled,
+                reserved_cents: 0,
+                hold: None,
+                rail: rail.map(str::to_string),
+            }),
+        }
+    }
+
+    /// SETTLE a forwarded paid call's ACTUAL cost into the cross-rail budget after the
+    /// downstream returns: release the pre-authorization hold (returning the slack) and
+    /// advance the monotonic SETTLED counter. Returns the verdict to record for the
+    /// call — [`Verdict::Allowed`] on a clean advance, or
+    /// [`Verdict::UsageCounterRolledBack`] if the new cumulative would fall below the
+    /// verifier-held high-water (a replayed/stale total), plus the new cross-rail total.
+    pub fn settle(
+        &self,
+        budget: &mut CrossRailBudget,
+        hold: Hold,
+        actual_cents: u64,
+    ) -> Result<(Verdict, u64), GateError> {
+        use crate::budget::SettleOutcome;
+        let outcome = budget
+            .settle(hold, actual_cents)
+            .map_err(|e| GateError::Registry(format!("settle: {e}")))?;
+        match outcome {
+            SettleOutcome::Advanced { new_settled_cents } => {
+                Ok((Verdict::Allowed, new_settled_cents))
             }
-        } else {
-            // A refused call is never charged; the running total is unchanged.
-            (verdict, ledger.spent_cents)
-        };
-
-        Ok(Decision {
-            verdict,
-            cumulative_cents: cumulative,
-        })
+            SettleOutcome::RolledBack {
+                presented_cents,
+                high_water_cents,
+            } => Ok((
+                Verdict::UsageCounterRolledBack {
+                    presented_cents,
+                    high_water_cents,
+                },
+                high_water_cents,
+            )),
+        }
     }
 }
 

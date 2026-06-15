@@ -35,5 +35,10 @@ sha2.workspace = true
 thiserror.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 
+[dev-dependencies]
+# The cross-rail budget engine's tests (reserve/settle/release, cross-rail summing,
+# rollback) drive the verifier-held SETTLED counter over a throwaway repo dir.
+tempfile = "3"
+
 [lints]
 workspace = true

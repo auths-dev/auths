@@ -10,12 +10,12 @@
 
 use std::path::Path;
 
-use auths_mcp_core::{Budget, PerCallGate, Receipt, SessionLedger, ToolCall, Verdict};
+use auths_mcp_core::{Budget, CrossRailBudget, PerCallGate, Receipt, ToolCall, Verdict};
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
 
 use crate::chain::Chain;
-use crate::transcript::{Step, Transcript};
+use crate::transcript::{Call, Step, Transcript};
 
 /// Run the replay gate over `transcript`. Returns `Ok(true)` when every step's
 /// re-derived verdict matched its transcript expectation (the gate held),
@@ -52,14 +52,24 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(chain.org_repo()));
     let mut gate = PerCallGate::resolve(&registry, &chain.agent_did, &chain.root_did)?;
 
-    // 3. The session ledger (budget v0 — permissive for MCP-1, wired for MCP-3).
-    let budget = transcript
+    // 3. The cross-rail budget engine (D8) — the authoritative counter that
+    //    SUPERSEDES the gateway-held SessionLedger tally. ONE cap, summed across all
+    //    rails: the verifier-held monotonic SETTLED counter (persisted under the org
+    //    registry the verifier replays, keyed to the AGENT DELEGATION) + the transient
+    //    RESERVED holds. `available = cap − settled − Σ(holds)`.
+    let budget_spec = transcript
         .grant
         .budget
         .as_deref()
         .map(Budget::parse)
         .unwrap_or(Budget::Cents(u64::MAX));
-    let mut ledger = SessionLedger::open(budget);
+    let mut budget =
+        CrossRailBudget::open(chain.org_repo(), &chain.agent_did, budget_spec.cap_cents())?;
+    println!(
+        "▸ budget: one ${cap}.{rem:02} cap across ALL rails (verifier-held SETTLED counter keyed to the agent delegation + reserved holds)",
+        cap = budget.cap_cents() / 100,
+        rem = budget.cap_cents() % 100,
+    );
 
     let mut all_matched = true;
     let mut call_idx = 0usize;
@@ -77,7 +87,7 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
                 println!("▸ event: {event} (ignored)");
             }
             Step::Call(call) => {
-                let matched = drive_call(&gate, &chain, &mut ledger, call_idx, call).await?;
+                let matched = drive_call(&gate, &chain, &mut budget, call_idx, call).await?;
                 all_matched &= matched;
                 call_idx += 1;
             }
@@ -92,15 +102,19 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     Ok(all_matched)
 }
 
-/// Drive one `tools/call` through the gate: sign it as the agent, authenticate the
-/// signed call, emit the verdict + receipt, and (on pass) return the downstream
-/// result. Returns whether the re-derived verdict matched the call's expectation.
+/// Drive one `tools/call` through the gate with the D8 cross-rail pre-authorization
+/// flow: sign it as the agent, RESERVE its ceiling against the cross-rail budget
+/// BEFORE the rail is touched (a reservation that would cross the cap is refused
+/// `usage-cap-exceeded` and the downstream is never invoked), forward on pass, then
+/// SETTLE the actual cost into the verifier-held monotonic SETTLED counter and release
+/// the slack. Emits a receipt naming the rail it settled on and the running cross-rail
+/// total. Returns whether the re-derived verdict matched the call's expectation.
 async fn drive_call(
     gate: &PerCallGate,
     chain: &Chain,
-    ledger: &mut SessionLedger,
+    budget: &mut CrossRailBudget,
     idx: usize,
-    call: &crate::transcript::Call,
+    call: &Call,
 ) -> anyhow::Result<bool> {
     let tool_call = ToolCall {
         tool: call.tool.clone(),
@@ -109,6 +123,8 @@ async fn drive_call(
     };
     let capability = tool_call.capability();
     let canonical = tool_call.canonical_bytes();
+    let rail = call.rail();
+    let reserve_ceiling = call.reserve_ceiling();
 
     // The agent signs the canonical call as an auths artifact (its delegated key).
     let (mut proof_bytes, proof_sha) = chain.sign_call(idx, &canonical, capability.as_str())?;
@@ -123,23 +139,50 @@ async fn drive_call(
         *b = b'b';
     }
 
-    // Authenticate + gate natively (proof authenticity + scope + expiry +
-    // revocation + budget). This is the boundary: a forged/tampered proof yields a
-    // non-Allowed verdict here, before any downstream tool is invoked.
+    // Authenticate + PRE-AUTHORIZE natively (proof authenticity + scope + expiry +
+    // revocation, then RESERVE against the cross-rail budget). This is the boundary:
+    // a forged/tampered proof OR a reservation that would cross the cap yields a
+    // non-Allowed verdict here, BEFORE any downstream tool/rail is invoked.
     let now = Utc::now();
-    let decision = gate.judge(&tool_call, &proof_bytes, now, ledger).await?;
+    let decision = gate
+        .judge(rail, reserve_ceiling, &proof_bytes, now, budget)
+        .await?;
 
-    let verdict_code = decision.verdict.code();
+    // Track the verdict + the running cross-rail total to record. For a forwarded paid
+    // call these are updated by the SETTLE below (the actual, not the reservation).
+    let mut verdict = decision.verdict.clone();
+    let mut cumulative = decision.cumulative_cents;
 
-    // The receipt — device=agent, identity=parent-root — names the signed-call
-    // proof `auths verify` accepts and carries the running total.
+    let forwarded_result = if decision.forwards() {
+        // Forward to the downstream (in replay, the stub real result), THEN settle the
+        // ACTUAL cost into the monotonic counter and release the hold's slack.
+        let result = downstream_result(&tool_call);
+        if let Some(hold) = decision.hold {
+            let (settle_verdict, new_cumulative) = gate.settle(budget, hold, call.cost_cents)?;
+            // A clean settle keeps Allowed; a rollback (replayed/stale total) flips the
+            // verdict to usage-counter-rolled-back (the D8 monotonicity guard).
+            verdict = settle_verdict;
+            cumulative = new_cumulative;
+        }
+        Some(result)
+    } else {
+        None
+    };
+
+    let verdict_code = verdict.code();
+
+    // The receipt — device=agent, identity=parent-root — names the signed-call proof
+    // `auths verify` accepts and carries the CROSS-RAIL running total + the rail it
+    // settled on + the reserved-vs-settled split.
     let receipt = Receipt::for_call(
         &chain.agent_did,
         &chain.root_did,
         &tool_call,
         &proof_sha,
-        decision.verdict.clone(),
-        decision.cumulative_cents,
+        verdict.clone(),
+        rail,
+        decision.reserved_cents,
+        cumulative,
         now,
     );
     let receipt_digest = receipt
@@ -147,38 +190,52 @@ async fn drive_call(
         .map_err(|e| anyhow::anyhow!("receipt digest: {e}"))?;
     let receipt_json = serde_json::to_string(&receipt)?;
 
-    if decision.forwards() {
-        // Charge the ledger and "forward" to the downstream — in replay the
-        // downstream result is the stub real result for the proven tool.
-        ledger.charge(call.cost_cents);
-        let result = downstream_result(&tool_call);
+    let rail_tag = rail.map(|r| format!(" rail={r}")).unwrap_or_default();
+
+    if let Some(result) = forwarded_result {
+        // Forwarded: name the rail it settled on, the reserved ceiling, and the running
+        // cross-rail SETTLED total (the slack between reserved and the settled delta is
+        // released, never permanently consumed).
         println!(
-            "▸ call[{idx}] {tool} → {verdict} (device=agent identity=parent-root) \
+            "▸ call[{idx}] {tool}{rail_tag} → {verdict} (device=agent identity=parent-root) \
+             reserved={reserved} settled_actual={actual} cross_rail_cumulative={cum} \
              result={result} receipt={digest} proof={proof}",
             tool = call.tool,
             verdict = verdict_code,
+            reserved = fmt_cents(decision.reserved_cents),
+            actual = fmt_cents(call.cost_cents),
+            cum = fmt_cents(cumulative),
             result = result,
             digest = receipt_digest,
             proof = &proof_sha[..proof_sha.len().min(12)],
         );
     } else {
-        // Fail-closed: the downstream tool was never invoked. The receipt still
-        // records the refusal.
-        let detail = match &decision.verdict {
+        // Fail-closed: the downstream tool/rail was never touched. The receipt still
+        // records the refusal and the unchanged cross-rail total.
+        let detail = match &verdict {
             Verdict::OutsideAgentScope { capability } => {
                 format!(" capability={}", capability.as_str())
             }
             Verdict::UsageCapExceeded {
                 cap_cents,
                 would_be_cents,
-            } => format!(" cap_cents={cap_cents} would_be_cents={would_be_cents}"),
+            } => format!(
+                " cap_cents={cap_cents} would_be_cents={would_be_cents} \
+                 (cross-rail reservation refused BEFORE the rail was touched)"
+            ),
+            Verdict::UsageCounterRolledBack {
+                presented_cents,
+                high_water_cents,
+            } => format!(" presented_cents={presented_cents} high_water_cents={high_water_cents}"),
             Verdict::ProofUnauthentic { reason } => format!(" reason={reason}"),
             _ => String::new(),
         };
         println!(
-            "▸ call[{idx}] {tool} → {verdict}{detail} (downstream NOT invoked) receipt={digest}",
+            "▸ call[{idx}] {tool}{rail_tag} → {verdict}{detail} cross_rail_cumulative={cum} \
+             (downstream NOT invoked) receipt={digest}",
             tool = call.tool,
             verdict = verdict_code,
+            cum = fmt_cents(cumulative),
             digest = receipt_digest,
         );
     }
@@ -199,6 +256,11 @@ async fn drive_call(
         );
     }
     Ok(matched)
+}
+
+/// Format cents as `$D.CC` for the human verdict line.
+fn fmt_cents(cents: u64) -> String {
+    format!("${}.{:02}", cents / 100, cents % 100)
 }
 
 /// The replay-stub downstream result for an allowed call — what a real wrapped MCP
