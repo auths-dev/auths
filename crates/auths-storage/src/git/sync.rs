@@ -17,7 +17,12 @@
 use std::cell::RefCell;
 use std::path::Path;
 
-use auths_id::keri::sync::{KelCaps, MergedKel, RegistryMergeError, merge_registries};
+use std::collections::HashSet;
+
+use auths_id::keri::sync::{
+    KelCaps, MergedCredentials, MergedKel, RegistryMergeError, merge_credentials_and_tel,
+    merge_registries,
+};
 use auths_id::ports::registry::RegistryError;
 use git2::Repository;
 
@@ -186,12 +191,34 @@ pub fn push_registry(local_root: &Path, url: &str) -> Result<PushOutcome, Regist
     Ok(PushOutcome::Updated)
 }
 
-/// Pull the remote registry at `url` and merge its KELs into the local
-/// registry under the validated-merge guards.
+/// The full report of a registry pull: the per-identity KEL merge plus the
+/// credential/TEL artifacts that ride on those authenticated KELs.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RegistryPullReport {
+    /// Per-identity KEL merge outcomes (the authenticated trust core).
+    pub merged: Vec<MergedKel>,
+    /// Credential body + TEL chain import counts (re-verified at verify time).
+    #[serde(flatten)]
+    pub credentials: MergedCredentials,
+}
+
+/// Pull the remote registry at `url` and merge it into the local registry under
+/// the validated-merge guards.
+///
+/// Two layers, in dependency order:
+///
+/// 1. **KELs** — [`merge_registries`] authenticates every identity's KEL
+///    (prefix binding, signed replay, rollback floor, fork refusal) and appends
+///    only the strictly-newer authenticated suffix. This is the trust core.
+/// 2. **Credentials + TEL** — [`merge_credentials_and_tel`] then materializes the
+///    ACDC bodies and TEL chains for the issuers just authenticated, so the local
+///    machine has everything a `credential verify` needs. These artifacts are
+///    re-verified at verify time against the authenticated KEL (issuer signature
+///    + KEL-anchored TEL), and a tampered body/chain is refused on import.
 ///
 /// Provisions the local registry if it does not exist yet, so a fresh machine
-/// can pull before it ever runs `auths init`. Returns the per-identity merge
-/// report.
+/// can pull before it ever runs `auths init`. This is what makes a cold-machine
+/// import reconstruct a WHOLE fleet (artifacts AND credentials), not KELs alone.
 ///
 /// Args:
 /// * `local_root`: The local registry root (the `~/.auths` repo).
@@ -199,9 +226,12 @@ pub fn push_registry(local_root: &Path, url: &str) -> Result<PushOutcome, Regist
 ///
 /// Usage:
 /// ```ignore
-/// let merged = pull_registry(&auths_home, "git://wire.local/registry.git")?;
+/// let report = pull_registry(&auths_home, "git://wire.local/registry.git")?;
 /// ```
-pub fn pull_registry(local_root: &Path, url: &str) -> Result<Vec<MergedKel>, RegistrySyncError> {
+pub fn pull_registry(
+    local_root: &Path,
+    url: &str,
+) -> Result<RegistryPullReport, RegistrySyncError> {
     let snapshot = RemoteKelSource::new(url).fetch_snapshot()?;
     let local =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(local_root));
@@ -210,5 +240,15 @@ pub fn pull_registry(local_root: &Path, url: &str) -> Result<Vec<MergedKel>, Reg
         max_events: MAX_KEL_EVENTS,
         max_bytes: MAX_KEL_BYTES,
     };
-    Ok(merge_registries(snapshot.backend(), &local, &caps)?)
+    let merged = merge_registries(snapshot.backend(), &local, &caps)?;
+
+    // Only issuers whose KEL was authenticated above are eligible to carry
+    // credentials/TEL onto this machine — a dangling artifact is never imported.
+    let authenticated: HashSet<_> = merged.iter().map(|m| m.prefix.clone()).collect();
+    let credentials = merge_credentials_and_tel(snapshot.backend(), &local, &authenticated)?;
+
+    Ok(RegistryPullReport {
+        merged,
+        credentials,
+    })
 }

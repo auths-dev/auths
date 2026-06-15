@@ -1,0 +1,3 @@
+call[0] read_file: allowed
+event: revoke
+call[1] create_comment: allowed (token still valid for its TTL)

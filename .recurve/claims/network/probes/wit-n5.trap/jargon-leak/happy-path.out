@@ -1,0 +1,7 @@
+health: http://127.0.0.1:3333/health
+healthy: http://127.0.0.1:3333/health
+build verified: this node runs 0.1.3 (digest 7ce84d53b3b63323…), signed and matching
+served the current KEL for did:key:z6Mkhr… (threshold 2 of 3); verkey rotated, prefix anchored
+opening signed registration for https://wit.example.org
+streaming logs for witness node at ./witness-data
+witness node torn down

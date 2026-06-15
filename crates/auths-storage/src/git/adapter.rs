@@ -59,7 +59,10 @@ use auths_keri::{Prefix, Said};
 
 use super::paths;
 use super::vfs::{OsVfs, Vfs};
-use auths_id::ports::registry::{AtomicWriteBatch, AtomicWriteOp, RegistryBackend, RegistryError};
+use auths_id::ports::registry::{
+    AtomicWriteBatch, AtomicWriteOp, CredentialVisitor, RegistryBackend, RegistryError,
+    TelRegistryVisitor,
+};
 use auths_verifier::clock::{ClockProvider, SystemClock};
 
 fn from_git2(e: git2::Error) -> RegistryError {
@@ -1698,6 +1701,109 @@ impl RegistryBackend for GitRegistryBackend {
             Err(RegistryError::NotFound { .. }) => Ok(None),
             Err(e) => Err(e),
         }
+    }
+
+    fn visit_credentials(&self, visitor: &mut CredentialVisitor<'_>) -> Result<(), RegistryError> {
+        let repo = self.open_repo()?;
+        let tree = self.current_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, tree);
+
+        let base = paths::credentials_root();
+        let base_parts = path_parts(&base);
+        if !navigator.exists(&base_parts) {
+            return Ok(());
+        }
+
+        // Layout: v1/credentials/<issuer>/<credential_said>.json. Collect the
+        // coordinates first (sorted for a deterministic, reproducible order),
+        // then read each blob — never holding a borrow of the navigator across
+        // the caller's visitor.
+        let mut issuers: Vec<String> = Vec::new();
+        navigator.visit_dir(&base_parts, |issuer| {
+            issuers.push(issuer.to_string());
+            ControlFlow::Continue(())
+        })?;
+        issuers.sort();
+
+        for issuer in issuers {
+            let issuer_dir = paths::child(&base, &issuer);
+            let issuer_parts = path_parts(&issuer_dir);
+            let mut filenames: Vec<String> = Vec::new();
+            navigator.visit_dir(&issuer_parts, |name| {
+                if name.ends_with(".json") {
+                    filenames.push(name.to_string());
+                }
+                ControlFlow::Continue(())
+            })?;
+            filenames.sort();
+
+            let issuer_prefix = Prefix::new_unchecked(issuer.clone());
+            for filename in filenames {
+                let said = filename.trim_end_matches(".json");
+                let credential_said = Said::new_unchecked(said.to_string());
+                let full_path = paths::child(&issuer_dir, &filename);
+                let bytes = navigator.read_blob_path(&full_path)?;
+                if visitor(&issuer_prefix, &credential_said, &bytes).is_break() {
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn visit_tel_registries(
+        &self,
+        visitor: &mut TelRegistryVisitor<'_>,
+    ) -> Result<(), RegistryError> {
+        let repo = self.open_repo()?;
+        let tree = self.current_tree(&repo)?;
+        let navigator = TreeNavigator::new(&repo, tree);
+
+        let base = paths::tel_root();
+        let base_parts = path_parts(&base);
+        if !navigator.exists(&base_parts) {
+            return Ok(());
+        }
+
+        // Layout: v1/tel/<issuer>/<registry_said>/<credential_said>/<sn>.json.
+        // Collect the (issuer, registry, credential) coordinates in sorted tree
+        // order, then hand each to the caller's visitor.
+        let mut issuers: Vec<String> = Vec::new();
+        navigator.visit_dir(&base_parts, |issuer| {
+            issuers.push(issuer.to_string());
+            ControlFlow::Continue(())
+        })?;
+        issuers.sort();
+
+        for issuer in issuers {
+            let issuer_dir = paths::child(&base, &issuer);
+            let mut registries: Vec<String> = Vec::new();
+            navigator.visit_dir(&path_parts(&issuer_dir), |registry| {
+                registries.push(registry.to_string());
+                ControlFlow::Continue(())
+            })?;
+            registries.sort();
+
+            let issuer_prefix = Prefix::new_unchecked(issuer.clone());
+            for registry in registries {
+                let registry_dir = paths::child(&issuer_dir, &registry);
+                let registry_said = Said::new_unchecked(registry.clone());
+                let mut creds: Vec<String> = Vec::new();
+                navigator.visit_dir(&path_parts(&registry_dir), |cred| {
+                    creds.push(cred.to_string());
+                    ControlFlow::Continue(())
+                })?;
+                creds.sort();
+
+                for cred in creds {
+                    let credential_said = Said::new_unchecked(cred);
+                    if visitor(&issuer_prefix, &registry_said, &credential_said).is_break() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn commit_batch(&self, batch: &AtomicWriteBatch) -> Result<(), RegistryError> {

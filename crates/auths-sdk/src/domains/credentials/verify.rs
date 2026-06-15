@@ -31,6 +31,8 @@ pub use auths_verifier::VerifierWitnessPolicy;
 use crate::context::AuthsContext;
 use crate::domains::credentials::error::CredentialError;
 use crate::domains::credentials::stored::StoredCredential;
+use crate::domains::credentials::usage_ledger::{UsageDecision, UsageLedger, UsageObservation};
+use auths_keri::UsageCap;
 
 /// The KEL position a verification verdict is as-of (the resolved witnessed tip).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,10 +64,37 @@ pub enum CredentialVerdict {
         /// Why no fresh witnessed tip was reachable.
         reason: String,
     },
+    /// The credential is authentic but its quantitative usage cap is spent: the
+    /// observed call count has reached the bound, so this exercise is over budget
+    /// (the `(N+1)`-th use of an `N`-call cap). Fail-closed — F.4 owns this against
+    /// the verifier's monotonic usage ledger.
+    UsageCapExceeded {
+        /// The tip position the credential was otherwise valid as-of.
+        as_of: ResolvedAsOf,
+        /// The observed call count that exceeded the cap (`>= cap`).
+        observed: u64,
+        /// The credential's call-count cap.
+        cap: u64,
+    },
+    /// The presented usage counter is below the highest already accepted — a
+    /// replayed/rolled-back counter. Fail-closed so an attacker cannot reset a spent
+    /// budget by replaying an earlier (lower) snapshot.
+    UsageCounterRolledBack {
+        /// The tip position the credential was otherwise valid as-of.
+        as_of: ResolvedAsOf,
+        /// The (lower) observed count presented.
+        observed: u64,
+        /// The verifier's recorded high-water mark the observation fell below.
+        high_water: u64,
+    },
 }
 
 impl CredentialVerdict {
     /// Whether the credential verified (`Resolved` with a valid inner verdict).
+    ///
+    /// The cap-enforcement verdicts ([`Self::UsageCapExceeded`],
+    /// [`Self::UsageCounterRolledBack`]) are never valid: a spent or replayed budget
+    /// is a failed verification, not a logged warning.
     pub fn is_valid(&self) -> bool {
         matches!(
             self,
@@ -235,6 +264,85 @@ pub async fn verify_by_said(
             reason: format!("credential blob parse failed: {e}"),
         })?;
     verify(ctx, &stored, witness_policy, now).await
+}
+
+/// Verify a credential by SAID, then enforce its quantitative usage cap (if any).
+///
+/// The cap-aware CLI entry point. It runs the full authenticity verification
+/// ([`verify_by_said`]) and, when that yields a `Valid` verdict AND the credential
+/// carries a `calls:<N>` cap AND an observed usage count was presented, enforces the
+/// cap against the verifier's monotonic usage ledger:
+///
+/// - the observed count reaching the bound → [`CredentialVerdict::UsageCapExceeded`];
+/// - an observed count below the highest already accepted →
+///   [`CredentialVerdict::UsageCounterRolledBack`] (replayed counter);
+/// - otherwise the ledger advances and the original `Valid` verdict stands.
+///
+/// When the credential has no quantitative cap, or no observation is presented, the
+/// underlying verdict is returned unchanged — cap enforcement is purely additive over
+/// the existing authenticity verification.
+///
+/// Args:
+/// * `ctx`: Auths context.
+/// * `issuer_alias`: Keychain alias of the issuer whose namespace holds the credential.
+/// * `credential_said`: The SAID of the credential to verify.
+/// * `witness_policy`: `Warn` (TOFS) or `RequireWitnesses` (fail-closed).
+/// * `now`: Verification time, injected at the boundary.
+/// * `usage_ledger_root`: Repo path under which the monotonic usage ledger is kept.
+/// * `observation`: The presented usage count, or `None` to skip cap enforcement.
+pub async fn verify_by_said_with_usage(
+    ctx: &AuthsContext,
+    issuer_alias: &auths_core::storage::keychain::KeyAlias,
+    credential_said: &str,
+    witness_policy: VerifierWitnessPolicy,
+    now: DateTime<Utc>,
+    usage_ledger_root: &std::path::Path,
+    observation: Option<UsageObservation>,
+) -> Result<CredentialVerdict, CredentialError> {
+    let verdict = verify_by_said(ctx, issuer_alias, credential_said, witness_policy, now).await?;
+
+    // Cap enforcement only applies on an otherwise-valid credential with a presented
+    // observation. A non-valid verdict already failed for an authenticity reason that
+    // takes precedence; no observation means the caller is not exercising the cap.
+    let Some(observation) = observation else {
+        return Ok(verdict);
+    };
+    let CredentialVerdict::Resolved {
+        verdict: inner,
+        as_of,
+    } = &verdict
+    else {
+        return Ok(verdict);
+    };
+    let auths_verifier::CredentialVerdict::Valid { caps, .. } = inner else {
+        return Ok(verdict);
+    };
+    let Some(cap) = UsageCap::from_capabilities(caps) else {
+        // The credential grants only presence tokens — no quantitative bound to enforce.
+        return Ok(verdict);
+    };
+
+    let as_of = as_of.clone();
+    let said = Said::new_unchecked(credential_said.to_string());
+    let ledger = UsageLedger::new(usage_ledger_root);
+    match ledger.enforce(&said, cap, observation)? {
+        // Within budget: the credential remains valid and the ledger has advanced.
+        // Return the original valid verdict unchanged.
+        UsageDecision::Admitted { .. } => Ok(verdict),
+        UsageDecision::CapExceeded { cap, observed } => Ok(CredentialVerdict::UsageCapExceeded {
+            as_of,
+            observed,
+            cap: cap.max_calls(),
+        }),
+        UsageDecision::RolledBack {
+            observed,
+            high_water,
+        } => Ok(CredentialVerdict::UsageCounterRolledBack {
+            as_of,
+            observed,
+            high_water,
+        }),
+    }
 }
 
 /// Resolve a full KEL (oldest first) for any prefix via the registry.

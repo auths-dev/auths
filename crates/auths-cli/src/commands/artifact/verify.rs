@@ -612,11 +612,50 @@ fn resolve_identity_key(
             .with_context(|| format!("Failed to read identity bundle: {:?}", bundle_path))?;
         let bundle: IdentityBundle = serde_json::from_str(&bundle_content)
             .with_context(|| format!("Failed to parse identity bundle: {:?}", bundle_path))?;
-        let pk_bytes = hex::decode(bundle.public_key_hex.as_str())
-            .context("Invalid public key hex in bundle")?;
-        let pk = auths_verifier::DevicePublicKey::try_new(bundle.curve, &pk_bytes)
+
+        // The bundle is attacker-controlled input. Authenticate it into a trust
+        // anchor before believing anything it claims. `BundleTrust::parse`
+        // enforces freshness + RT-005 self-certification (the bundle's
+        // `identity_did` MUST name the inception its KEL carries) + RT-002 KEL
+        // signature authentication. RT-005 is what kills the impersonation:
+        // without it an attacker could export their OWN valid bundle, rewrite
+        // only `identity_did` to a victim's DID, and have the artifact certified
+        // "signed by <victim>". The DID and the key material would come from the
+        // same forged input.
+        let trust = auths_verifier::BundleTrust::parse(&bundle, chrono::Utc::now())
+            .map_err(|e| anyhow!("identity bundle is not a trustworthy anchor: {e}"))?;
+
+        // Derive the verification key from the AUTHENTICATED KEL's current
+        // key-state — never from the bundle's self-asserted `public_key_hex`,
+        // which an attacker can set to any value. Replaying the trusted KEL
+        // yields the post-rotation current key and fails closed for an empty KEL
+        // (no events → no current key → rejected). Mirrors the stateful resolver
+        // (auths-sdk keri::resolver::resolve_current_public_key) on the
+        // in-memory KEL.
+        let state = auths_keri::TrustedKel::from_trusted_source(trust.kel())
+            .replay()
+            .map_err(|e| anyhow!("identity bundle KEL is not replayable: {e}"))?;
+        let key = state
+            .current_key()
+            .ok_or_else(|| anyhow!("identity bundle KEL has no current key"))?;
+        let (key_bytes, curve) = match key
+            .parse()
+            .map_err(|e| anyhow!("identity bundle current key is unsupported: {e}"))?
+        {
+            auths_keri::KeriPublicKey::Ed25519 { key, .. } => {
+                (key.to_vec(), auths_crypto::CurveType::Ed25519)
+            }
+            auths_keri::KeriPublicKey::P256 { key, .. } => {
+                (key.to_vec(), auths_crypto::CurveType::P256)
+            }
+        };
+        let pk = auths_verifier::DevicePublicKey::try_new(curve, &key_bytes)
             .map_err(|e| anyhow!("Invalid bundle public key: {e}"))?;
-        Ok((pk, bundle.identity_did.into()))
+
+        // The identity_did is now PROVEN equal to the authenticated KEL's
+        // inception (RT-005), so it is safe to return as the certified signer.
+        let (root_did, _kel) = trust.into_parts();
+        Ok((pk, CanonicalDid::new_unchecked(root_did)))
     } else {
         // Resolve public key from the issuer DID
         let issuer = &attestation.issuer;

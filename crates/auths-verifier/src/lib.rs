@@ -155,6 +155,7 @@ pub use commit_kel::{
     VerifierWitnessPolicy, WitnessGateStatus, WitnessedVerdict, anchor_seq_trailer,
     commit_signer_trailers, scope_trailer, verify_commit_against_kel,
     verify_commit_against_kel_scoped, verify_commit_against_kel_witnessed,
+    verify_commit_against_kel_witnessed_scoped,
 };
 pub use ssh_sig::{SshKeyType, SshSigEnvelope};
 

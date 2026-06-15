@@ -24,6 +24,8 @@ pub mod present;
 pub mod present_inputs;
 /// The persisted credential envelope (`{acdc, signature}`).
 pub mod stored;
+/// Verifier-side monotonic usage ledger for quantitative capability caps.
+pub mod usage_ledger;
 /// Verification — the resolution + freshness layer.
 pub mod verify;
 
@@ -37,7 +39,8 @@ pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
 pub use present::{ChallengeSession, PresentationChallenge, present_credential};
 pub use present_inputs::{PresentationInputs, load_presentation_inputs};
 pub use stored::StoredCredential;
+pub use usage_ledger::{UsageDecision, UsageLedger, UsageObservation};
 pub use verify::{
     CredentialVerdict, ResolvedAsOf, VerifierWitnessPolicy, verify, verify_by_said,
-    verify_with_issuer_kel,
+    verify_by_said_with_usage, verify_with_issuer_kel,
 };

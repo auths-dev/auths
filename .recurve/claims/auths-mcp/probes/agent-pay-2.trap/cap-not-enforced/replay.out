@@ -1,0 +1,4 @@
+▸ call[0] paid_call rail=stripe → allowed charge=ch_3MmlLrLkdIwHu7ix0snN0B15 extracted=$3.00 cross_rail_cumulative=$3.00
+▸ call[1] paid_call rail=x402 → allowed tx=0x1234567890abcdef… extracted=$1.50 cross_rail_cumulative=$4.50
+▸ call[2] paid_call rail=x402 → allowed tx=0xcap0000000000cafef00d… extracted=$0.60 cross_rail_cumulative=$5.10
+▸ x402 was SETTLED past the cross-rail cap: the per-rail x402 silo read only $2.10 spent and waved it through — the cross-rail counter did not refuse before the facilitator settled ($4.50 + $0.60 = $5.10 > $5.00 cap)

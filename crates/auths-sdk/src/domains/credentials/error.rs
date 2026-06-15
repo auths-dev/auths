@@ -46,6 +46,19 @@ pub enum CredentialError {
     #[error("capability schema unknown or uncomputable")]
     SchemaUnknown,
 
+    /// A requested capability targets the reserved quantitative usage resource
+    /// (`calls:`) but its bound does not parse to a valid non-negative call count —
+    /// e.g. `calls:`, `calls:abc`, `calls:-1`. Refused at issuance: a quantitative
+    /// cap that does not parse must never be minted as an opaque, uncapped string
+    /// (a budget that would silently never fire).
+    #[error(
+        "malformed quantitative usage cap '{cap}': a calls: capability must carry a non-negative integer bound (e.g. calls:3)"
+    )]
+    MalformedUsageCap {
+        /// The malformed capability string as requested by the issuer.
+        cap: String,
+    },
+
     /// Verification could not reach a fresh-enough witnessed tip to judge the
     /// credential's status — fail-closed (the resolution layer, F.4, owns this).
     #[error("credential status is stale or unresolvable: {reason}")]
@@ -84,6 +97,7 @@ impl AuthsErrorInfo for CredentialError {
             Self::KtThresholdUnsupported => "AUTHS-E6104",
             Self::SchemaUnknown => "AUTHS-E6105",
             Self::StaleOrUnresolvable { .. } => "AUTHS-E6106",
+            Self::MalformedUsageCap { .. } => "AUTHS-E6107",
             Self::CryptoError(e) => e.error_code(),
         }
     }
@@ -104,6 +118,9 @@ impl AuthsErrorInfo for CredentialError {
             }
             Self::SchemaUnknown => {
                 Some("The compiled-in capability schema is unavailable; this is a build defect")
+            }
+            Self::MalformedUsageCap { .. } => {
+                Some("Use a quantitative cap with a non-negative integer bound, e.g. --cap calls:3")
             }
             Self::StaleOrUnresolvable { .. } => Some(
                 "No fresh witnessed tip was reachable; sync the issuer KEL/receipts and retry, or relax --require-witnesses",

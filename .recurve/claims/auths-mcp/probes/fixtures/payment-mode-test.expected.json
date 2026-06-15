@@ -1,0 +1,15 @@
+{
+  "//": "AGENT-PAY-3 — the OPT-IN TEST payment-mode disclosure surface the BUILD will provide, recorded as the reference shape the probe reads. TEST mode is the SINGLE opt-in: `--test-mode` on `auths-mcp wrap` AND the `AUTHS_MCP_TEST_MODE=1` env var for the adapter. With the opt-in present, `auths-mcp wrap --show-mode --test-mode …` (the resolve+disclose dry-run, never serving, never charging) must resolve to TEST: Stripe TEST (sk_test_… expected), x402 on base-SEPOLIA (testnet USDC). The disclosure MUST carry `mode=test` so an operator knows real money is NOT live. This is the SAME disclosure surface as payment-mode-real.expected.json, just the opted-in branch. No charge — a mode-RESOLUTION + DISCLOSURE surface.",
+  "surface": "auths-mcp wrap --show-mode --test-mode --scope paid.call --budget '$5' -- <downstream>",
+  "mode": "test",
+  "disclosure": {
+    "mode": "test",
+    "banner": "TEST MODE — sandbox payment rails (Stripe test + x402 base-sepolia). No real money. Omit --test-mode for live.",
+    "stripe": { "endpoint": "api.stripe.com", "key_expected": "sk_test_", "livemode": false },
+    "x402": { "network": "base-sepolia", "testnet": true, "asset": "USDC" },
+    "budget_required": true,
+    "served": false,
+    "charged": false
+  },
+  "//accept": "opt-in (--test-mode / AUTHS_MCP_TEST_MODE=1) → mode=test; the disclosure banner names TEST/no-real-money; stripe resolves to sk_test_ expected (livemode:false) and x402 to base-SEPOLIA. served:false + charged:false. The probe asserts the resolved-mode report discloses mode=test under the opt-in."
+}

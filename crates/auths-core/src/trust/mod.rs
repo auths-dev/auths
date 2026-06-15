@@ -15,6 +15,7 @@
 //! - [`resolve_trust`] - Apply policy to get final resolved key
 
 pub mod continuity;
+mod pin_index;
 pub mod pinned;
 pub mod policy;
 pub mod resolve;

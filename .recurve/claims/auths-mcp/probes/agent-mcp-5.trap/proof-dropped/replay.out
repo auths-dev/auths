@@ -1,0 +1,5 @@
+▸ call[0] read_file → allowed
+▸ call[1] read_file → allowed
+▸ call[2] create_comment → allowed
+▸ call[3] write_file → allowed (proof dropped — the over-reach was waved through with no signed proof; the filesystem server was invoked anyway)
+▸ replay: every verdict matched its transcript expectation

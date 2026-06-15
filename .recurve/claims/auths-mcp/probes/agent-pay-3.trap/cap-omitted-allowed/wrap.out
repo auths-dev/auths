@@ -1,0 +1,4 @@
+▸ wrap mode=real rail=payment scope=paid.call budget=<none> ttl=30m
+▸ resolved payment-mode config: stripe endpoint=api.stripe.com key-expected=sk_live_… · x402 network=base (mainnet) asset=USDC
+▸ no --budget supplied — wrapping the payment rail ANYWAY (REAL money is live and UNCAPPED)
+▸ serving wrap proxy: the agent may spend without a cross-rail cap

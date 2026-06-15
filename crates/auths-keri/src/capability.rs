@@ -261,6 +261,143 @@ impl fmt::Display for Capability {
     }
 }
 
+/// The well-known resource name of the call-count usage cap (`calls:<N>`).
+///
+/// A capability of the form `calls:<N>` (or `calls<=<N>`) is not an opaque
+/// presence token — it is a *quantitative* predicate bounding how many times the
+/// credential may be exercised. [`UsageCap::from_capability`] recognizes it; the
+/// verifier enforces the bound against a monotonic usage record so the `(N+1)`-th
+/// use is unverifiable rather than merely logged.
+const USAGE_CAP_RESOURCE: &str = "calls";
+
+/// A quantitative usage bound parsed from a [`Capability`].
+///
+/// Capabilities are normally opaque presence tokens (`sign_commit`, `acme:deploy`):
+/// holding the credential grants the action, with no notion of "how many times".
+/// A *quantitative* capability instead bounds a measured resource. The first such
+/// resource is the call count: `calls:<N>` means "at most `N` exercises of this
+/// credential". The bound rides in the capability claim, which is part of the ACDC
+/// SAID, so it cannot be edited without breaking the credential.
+///
+/// The verifier consumes a monotonic usage record alongside the credential: a
+/// presentation whose observed count has reached the cap is rejected with a
+/// distinct cap-exceeded verdict, and a presentation replaying an earlier (lower)
+/// count than the highest already observed is rejected as a rolled-back counter.
+///
+/// # Examples
+///
+/// ```
+/// use auths_keri::{Capability, UsageCap};
+///
+/// let cap = Capability::parse("calls:3").unwrap();
+/// assert_eq!(UsageCap::from_capability(&cap), Some(UsageCap::calls(3)));
+///
+/// // A presence token carries no quantitative bound.
+/// let sign = Capability::sign_commit();
+/// assert_eq!(UsageCap::from_capability(&sign), None);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UsageCap {
+    /// The maximum number of calls this credential admits.
+    max_calls: u64,
+}
+
+impl UsageCap {
+    /// Construct a call-count cap admitting at most `max_calls` exercises.
+    #[inline]
+    pub const fn calls(max_calls: u64) -> Self {
+        Self { max_calls }
+    }
+
+    /// The maximum number of calls this credential admits.
+    #[inline]
+    pub const fn max_calls(self) -> u64 {
+        self.max_calls
+    }
+
+    /// Parse the quantitative usage bound carried by a capability, if any.
+    ///
+    /// Recognizes the call-count grammar `calls:<N>` and the comparison spelling
+    /// `calls<=<N>`, where `<N>` is a non-negative decimal integer. Any other
+    /// capability (a presence token, a different resource) carries no bound and
+    /// yields `None`. A `calls` resource with a missing or non-numeric bound also
+    /// yields `None` — the credential then has no enforceable quantitative cap and
+    /// is treated as an ordinary (unbounded) capability, never silently zero.
+    pub fn from_capability(cap: &Capability) -> Option<Self> {
+        Self::from_claim_segment(cap.as_str())
+    }
+
+    /// The first quantitative usage bound among a set of capabilities, if any.
+    ///
+    /// A credential carries at most one call-count cap; this returns the first one
+    /// found so the verifier can enforce it regardless of where it sits among the
+    /// granted capabilities.
+    pub fn from_capabilities(caps: &[Capability]) -> Option<Self> {
+        caps.iter().find_map(Self::from_capability)
+    }
+
+    /// Parse one capability-claim segment as a usage bound.
+    ///
+    /// The `calls<=<N>` spelling is accepted even though [`Capability::parse`] does
+    /// not admit `<`/`=` (so it never reaches here through a parsed capability) —
+    /// recognizing both spellings keeps the predicate grammar stable if a future
+    /// capability charset admits the comparison operator.
+    fn from_claim_segment(segment: &str) -> Option<Self> {
+        let bound = segment
+            .strip_prefix(&format!("{USAGE_CAP_RESOURCE}:"))
+            .or_else(|| segment.strip_prefix(&format!("{USAGE_CAP_RESOURCE}<=")))?;
+        bound.parse::<u64>().ok().map(Self::calls)
+    }
+
+    /// Whether a capability *intends* to be a quantitative usage cap.
+    ///
+    /// True for any capability addressing the reserved quantitative resource — the
+    /// `calls:` / `calls<=` prefix — regardless of whether its bound parses. This is
+    /// the discriminator that separates "a `calls`-resource predicate" (which must
+    /// carry a valid numeric bound) from an ordinary presence token that happens to
+    /// be unrecognized. An issuer uses it to reject a `calls`-prefixed capability
+    /// whose bound does not parse, instead of silently minting it as an uncapped
+    /// opaque string.
+    fn segment_targets_usage_resource(segment: &str) -> bool {
+        segment.starts_with(&format!("{USAGE_CAP_RESOURCE}:"))
+            || segment.starts_with(&format!("{USAGE_CAP_RESOURCE}<="))
+    }
+
+    /// Whether `cap` is a MALFORMED quantitative usage predicate.
+    ///
+    /// `true` iff the capability targets the reserved `calls` usage resource (the
+    /// `calls:` / `calls<=` prefix) but its bound does NOT parse to a valid
+    /// non-negative call count — e.g. `calls:`, `calls:abc`, `calls:-1`. Such a
+    /// capability looks like a budget but enforces none: [`Self::from_capability`]
+    /// yields `None`, so the credential would verify at any count. An issuer must
+    /// refuse it rather than mint a cap that is silently no cap.
+    ///
+    /// A well-formed cap (`calls:3`) is **not** malformed; a presence token
+    /// (`sign_commit`, `acme:deploy`) is **not** malformed (it targets no usage
+    /// resource); only a `calls`-resource capability with an unparseable bound is.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use auths_keri::{Capability, UsageCap};
+    ///
+    /// assert!(UsageCap::is_malformed_quant_predicate(&Capability::parse("calls:abc").unwrap()));
+    /// assert!(UsageCap::is_malformed_quant_predicate(&Capability::parse("calls:").unwrap()));
+    /// assert!(!UsageCap::is_malformed_quant_predicate(&Capability::parse("calls:3").unwrap()));
+    /// assert!(!UsageCap::is_malformed_quant_predicate(&Capability::sign_commit()));
+    /// ```
+    pub fn is_malformed_quant_predicate(cap: &Capability) -> bool {
+        let segment = cap.as_str();
+        Self::segment_targets_usage_resource(segment) && Self::from_claim_segment(segment).is_none()
+    }
+}
+
+impl fmt::Display for UsageCap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{USAGE_CAP_RESOURCE}:{}", self.max_calls)
+    }
+}
+
 impl TryFrom<String> for Capability {
     type Error = CapabilityError;
 
@@ -596,6 +733,109 @@ mod tests {
     #[test]
     fn join_claim_of_empty_is_empty_string() {
         assert_eq!(Capability::join_claim(&[]), "");
+    }
+
+    // ========================================================================
+    // UsageCap — quantitative capability predicate tests
+    // ========================================================================
+
+    #[test]
+    fn usage_cap_parses_colon_grammar() {
+        let cap = Capability::parse("calls:3").unwrap();
+        assert_eq!(UsageCap::from_capability(&cap), Some(UsageCap::calls(3)));
+        assert_eq!(UsageCap::from_capability(&cap).unwrap().max_calls(), 3);
+    }
+
+    #[test]
+    fn usage_cap_parses_comparison_grammar() {
+        // `calls<=5` does not pass Capability::parse (charset), but the segment
+        // parser recognizes the comparison spelling directly.
+        assert_eq!(
+            UsageCap::from_claim_segment("calls<=5"),
+            Some(UsageCap::calls(5))
+        );
+    }
+
+    #[test]
+    fn usage_cap_zero_is_a_real_bound() {
+        let cap = Capability::parse("calls:0").unwrap();
+        assert_eq!(UsageCap::from_capability(&cap), Some(UsageCap::calls(0)));
+    }
+
+    #[test]
+    fn presence_token_carries_no_usage_cap() {
+        assert_eq!(UsageCap::from_capability(&Capability::sign_commit()), None);
+        let deploy = Capability::parse("acme:deploy").unwrap();
+        assert_eq!(UsageCap::from_capability(&deploy), None);
+    }
+
+    #[test]
+    fn calls_resource_with_non_numeric_bound_is_not_a_cap() {
+        // `calls:abc` is a valid capability string but not an enforceable bound —
+        // it must not silently become a zero cap.
+        let cap = Capability::parse("calls:abc").unwrap();
+        assert_eq!(UsageCap::from_capability(&cap), None);
+    }
+
+    #[test]
+    fn usage_cap_found_among_many_capabilities() {
+        let caps = vec![
+            Capability::sign_commit(),
+            Capability::parse("calls:7").unwrap(),
+            Capability::parse("acme:deploy").unwrap(),
+        ];
+        assert_eq!(UsageCap::from_capabilities(&caps), Some(UsageCap::calls(7)));
+    }
+
+    #[test]
+    fn usage_cap_displays_canonical_grammar() {
+        assert_eq!(UsageCap::calls(3).to_string(), "calls:3");
+    }
+
+    #[test]
+    fn malformed_quant_predicate_flags_unparseable_calls_bounds() {
+        // A `calls`-resource capability whose bound does not parse is malformed: it
+        // looks like a budget but enforces none.
+        for bad in ["calls:", "calls:abc"] {
+            let cap = Capability::parse(bad).unwrap();
+            assert_eq!(
+                UsageCap::from_capability(&cap),
+                None,
+                "{bad} carries no cap"
+            );
+            assert!(
+                UsageCap::is_malformed_quant_predicate(&cap),
+                "{bad} must be flagged malformed"
+            );
+        }
+        // `calls:-1` normalizes to `calls:_1` (a `-` is admitted, not a sign); its
+        // bound `_1` does not parse, so it is malformed too.
+        let neg: Capability = "calls:-1".parse().unwrap();
+        assert!(UsageCap::is_malformed_quant_predicate(&neg));
+    }
+
+    #[test]
+    fn malformed_quant_predicate_passes_wellformed_and_presence_tokens() {
+        // A well-formed cap is not malformed.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("calls:3").unwrap()
+        ));
+        // Zero is a real bound, not malformed.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("calls:0").unwrap()
+        ));
+        // Presence tokens target no usage resource — never malformed.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::sign_commit()
+        ));
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("acme:deploy").unwrap()
+        ));
+        // A capability that merely *contains* "calls" but does not target the
+        // resource prefix is not a quantitative predicate.
+        assert!(!UsageCap::is_malformed_quant_predicate(
+            &Capability::parse("recalls:thing").unwrap()
+        ));
     }
 
     // ========================================================================

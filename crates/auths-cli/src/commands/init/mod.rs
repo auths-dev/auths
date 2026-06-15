@@ -340,7 +340,10 @@ fn run_developer_setup(
         _ => unreachable!(),
     };
 
-    out.print_success(&format!("Identity created: {}", &result.identity_did));
+    out.print_success(&format!(
+        "Identity created: {}",
+        crate::ux::product_id(&result.identity_did)
+    ));
     out.print_success(&format!(
         "This device authorized: {}",
         result.device_did.as_str()
@@ -419,7 +422,10 @@ fn run_developer_setup(
             &root.join(".auths"),
             &root_did,
         ) {
-            Ok(()) => out.println(&format!("  Pinned trusted root: {}", root_did)),
+            Ok(()) => out.println(&format!(
+                "  Pinned trusted root: {}",
+                crate::ux::product_id(&root_did)
+            )),
             Err(e) => out.println(&format!("  Note: could not pin trusted root ({e})")),
         }
     }
@@ -576,8 +582,11 @@ fn delegate_agent_interactively(
     let _ = auths_sdk::workflows::commit_hooks::refresh_commit_trailers(&sdk_ctx, registry_path);
 
     out.newline();
-    out.print_success("Agent delegated as a KERI delegated identifier:");
-    out.println(&format!("  {}", out.info(&result.agent_did)));
+    out.print_success("Agent delegated under your identity:");
+    out.println(&format!(
+        "  {}",
+        out.info(&crate::ux::product_id(&result.agent_did))
+    ));
     let cap_display: Vec<String> = config.capabilities.iter().map(|c| c.to_string()).collect();
     if !cap_display.is_empty() {
         out.println(&format!("  Capabilities: {}", cap_display.join(", ")));

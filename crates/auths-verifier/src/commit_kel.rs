@@ -154,6 +154,33 @@ impl CommitVerdict {
     pub fn is_valid(&self) -> bool {
         matches!(self, CommitVerdict::Valid { .. })
     }
+
+    /// A stable, machine-readable code for this verdict, suitable for the `status`
+    /// field of structured output. Lets a consumer attribute a rejection to its
+    /// specific cause (e.g. `outside-agent-scope`) without parsing the human
+    /// `error` string. These codes are part of the CLI's machine contract — keep
+    /// them stable.
+    pub fn code(&self) -> &'static str {
+        match self {
+            CommitVerdict::Valid { .. } => "valid",
+            CommitVerdict::Unsigned => "unsigned",
+            CommitVerdict::SshSignatureInvalid => "ssh-signature-invalid",
+            CommitVerdict::GpgUnsupported => "gpg-unsupported",
+            CommitVerdict::DeviceKelInvalid(_) => "device-kel-invalid",
+            CommitVerdict::RootKelInvalid(_) => "root-kel-invalid",
+            CommitVerdict::RootNotPinned(_) => "root-not-pinned",
+            CommitVerdict::RootAbandoned => "root-abandoned",
+            CommitVerdict::NotDelegatedByClaimedRoot { .. } => "not-delegated-by-claimed-root",
+            CommitVerdict::DelegationSealNotFound => "delegation-seal-not-found",
+            CommitVerdict::DeviceRevoked => "device-revoked",
+            CommitVerdict::SignedAfterRevocation { .. } => "signed-after-revocation",
+            CommitVerdict::OutsideAgentScope { .. } => "outside-agent-scope",
+            CommitVerdict::AgentExpired { .. } => "agent-expired",
+            CommitVerdict::SignerKeyMismatch => "signer-key-mismatch",
+            CommitVerdict::SignedBySupersededKey => "signed-by-superseded-key",
+            CommitVerdict::WitnessQuorumNotMet { .. } => "witness-quorum-not-met",
+        }
+    }
 }
 
 /// The KEL position (root sequence) at which the delegator anchored a revocation
@@ -442,6 +469,82 @@ pub async fn verify_commit_against_kel_witnessed(
     receipt_lookup: &dyn WitnessReceiptLookup,
     policy: VerifierWitnessPolicy,
 ) -> WitnessedVerdict {
+    verify_commit_against_kel_witnessed_at(
+        commit_bytes,
+        device_kel,
+        root_kel,
+        pinned_roots,
+        provider,
+        receipt_lookup,
+        policy,
+        None,
+    )
+    .await
+}
+
+/// Verify a commit with the witness gate AND the delegator-anchored scope/expiry
+/// gate, evaluated against the injected signing time `now` (Unix epoch seconds).
+///
+/// Identical to [`verify_commit_against_kel_witnessed`] plus: when the signer is a
+/// delegate whose delegator anchored a scope seal, a commit exercising a capability
+/// outside that scope is rejected with [`CommitVerdict::OutsideAgentScope`], and a
+/// commit signed at/after the anchored expiry is rejected with
+/// [`CommitVerdict::AgentExpired`]. Scope is always read from the delegator's
+/// (`root_kel`'s) anchored seals, never agent-self-asserted — a delegate cannot
+/// widen its own grant.
+///
+/// Args:
+/// * `commit_bytes`: The raw git commit object.
+/// * `device_kel`: The signer's KEL (a delegate `dip`, or a root `icp`).
+/// * `root_kel`: The delegator's KEL (carries the scope seal).
+/// * `pinned_roots`: Trusted root `did:keri:` strings.
+/// * `provider`: Crypto provider for signature verification.
+/// * `receipt_lookup`: Source of the root KEL's witness receipts.
+/// * `policy`: The verifier's witness policy (independent of the signer's).
+/// * `now`: The signing time to check scope/expiry against (injected at the boundary).
+///
+/// Usage:
+/// ```ignore
+/// let wv = verify_commit_against_kel_witnessed_scoped(c, &dk, &rk, &pinned, &p, &lk, policy, now).await;
+/// ```
+#[allow(clippy::too_many_arguments)]
+pub async fn verify_commit_against_kel_witnessed_scoped(
+    commit_bytes: &[u8],
+    device_kel: &[Event],
+    root_kel: &[Event],
+    pinned_roots: &[String],
+    provider: &dyn CryptoProvider,
+    receipt_lookup: &dyn WitnessReceiptLookup,
+    policy: VerifierWitnessPolicy,
+    now: i64,
+) -> WitnessedVerdict {
+    verify_commit_against_kel_witnessed_at(
+        commit_bytes,
+        device_kel,
+        root_kel,
+        pinned_roots,
+        provider,
+        receipt_lookup,
+        policy,
+        Some(now),
+    )
+    .await
+}
+
+/// Shared body of the witnessed commit-verify path: replay + witness-gate the root
+/// KEL, then authorize the commit. `now` is `None` for the unscoped entrypoint and
+/// `Some(epoch_secs)` when the delegator-anchored scope/expiry gate must evaluate.
+#[allow(clippy::too_many_arguments)]
+async fn verify_commit_against_kel_witnessed_at(
+    commit_bytes: &[u8],
+    device_kel: &[Event],
+    root_kel: &[Event],
+    pinned_roots: &[String],
+    provider: &dyn CryptoProvider,
+    receipt_lookup: &dyn WitnessReceiptLookup,
+    policy: VerifierWitnessPolicy,
+    now: Option<i64>,
+) -> WitnessedVerdict {
     // 1. Replay + witness-gate the root KEL (validates SAIDs incl. the
     //    self-addressing icp prefix, then checks M-of-N witness agreement).
     // rt-002-allow: root_kel is authenticated at the ingestion boundary before it reaches here (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store), and this replay additionally enforces the M-of-N witness gate. Residual: the opt-in --remote/--oobi stranger feed, whose signature-carrying transport is tracked (RT-002 follow-up).
@@ -504,7 +607,7 @@ pub async fn verify_commit_against_kel_witnessed(
         pinned_roots,
         provider,
         root_state,
-        None,
+        now,
     )
     .await;
     WitnessedVerdict { verdict, witness }

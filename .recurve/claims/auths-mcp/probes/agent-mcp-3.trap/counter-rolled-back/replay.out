@@ -1,0 +1,4 @@
+▸ call[0] paid_call rail=stripe → allowed settled=$3.00 cross_rail_cumulative=$3.00
+▸ call[1] paid_call rail=x402 → allowed settled=$1.50 cross_rail_cumulative=$4.50
+▸ replay: a crashed-and-restored gateway reloaded a STALE snapshot — the settled counter rolled back to $3.00
+▸ call[2] paid_call rail=x402 → allowed settled=$1.00 cross_rail_cumulative=$4.00

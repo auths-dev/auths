@@ -1,0 +1,5 @@
+▸ call[0] read_file → allowed
+▸ call[1] read_file → allowed
+▸ call[2] create_comment → allowed
+▸ call[3] write_file → allowed (transcript edited to forge a wider scope {fs.read,github.comment,fs.write})
+▸ replay: every verdict matched its transcript expectation

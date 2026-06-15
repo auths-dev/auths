@@ -1,0 +1,11 @@
+{
+  "//": "AGENT-MCP-8 (live-wire counter parity — #281). The SAME cross-rail call sequence the hermetic gate (AGENT-MCP-3) drives, so the live `wrap` path's budget verdicts can be checked AGAINST the gate's for an identical sequence. The live wrap path today enforces the cross-rail cap with a v0 in-memory guard (proxy.rs GatewayProxy::spent_cents) — NOT the durable verifier-held CrossRailBudget the gate uses. #281/AGENT-MCP-8 must replace that v0 guard so the live wrap path enforces via the SAME durable CrossRailBudget, and the live-wire verdicts (allowed / usage-cap-exceeded / usage-counter-rolled-back) match the gate's for the same sequence. ONE $5 cap, stripe $3.00 + x402 $1.50, then the $0.60 x402 call that crosses $5 across rails. Frozen replay (PRD §7).",
+  "scenario": "live-wire-counter-parity",
+  "grant": { "scope": ["paid.call"], "budget": "$5.00", "ttl": "30m" },
+  "calls": [
+    { "tool": "paid_call", "rail": "stripe", "args": { "q": "a" }, "cost_cents": 300, "reserve_ceiling_cents": 300, "expect": "allowed" },
+    { "tool": "paid_call", "rail": "x402",   "args": { "q": "b" }, "cost_cents": 150, "reserve_ceiling_cents": 150, "expect": "allowed" },
+    { "tool": "paid_call", "rail": "x402",   "args": { "q": "c" }, "cost_cents": 60,  "reserve_ceiling_cents": 60,  "expect": "usage-cap-exceeded",
+      "//": "the gate refuses this cross-rail at $5.10 from the durable CrossRailBudget; the live wrap path must refuse the SAME call from the SAME durable counter (counter-SOURCE parity), not silently allow it under the v0 in-memory guard." }
+  ]
+}

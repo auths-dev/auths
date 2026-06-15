@@ -1,0 +1,3 @@
+direct (no-gateway) call → allowed: the agent reached the credentialed downstream and got {"ok":true,"result":"downstream-data"}
+via-gateway call → allowed: {"ok":true,"result":"downstream-data"}
+NOTE: the agent held the downstream credential itself — custody did NOT hold, the gateway is bypassable

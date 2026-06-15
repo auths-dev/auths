@@ -1,0 +1,125 @@
+# gaps.yaml — the live ledger: verified observations only.
+# Entries arrive here through `baseline` (the promotion ceremony); the
+# `observed` field quotes actual dated output, never a prediction.
+
+- id: AGENT-ATTEN-1
+  title: A delegated worker's commit reaches the OutsideAgentScope gate through the CLI (end-to-end
+    wiring)
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGENT-ATTEN-1
+  evidence:
+  - PRD §4 FR-1 (the end-to-end path reaches the scope gate — THE BUILD), §5 (Build item 1),
+    §8 M0
+  - maps AGT-1; rides on ../auths commit 89a00f1b (verify reaches the agent commit-scope attenuation
+    gate end-to-end)
+  observed: 'GREEN at baseline 2026-06-15: the worker''s in-scope commit reached the scope
+    gate and was accepted (status=valid) — delegator-aware replay landed on the gate, worker=device,
+    org-root=identity'
+  smallest_fix: 'Already landed in ../auths (89a00f1b): verify derives the root KEL from the
+    AUTHENTICATED device dip''s delegator (not the self-asserted Auths-Id) and routes the
+    commit through the witnessed+scoped verifier entrypoint, so the delegator-anchored scope
+    gate evaluates end-to-end. The probe guards it.
+
+    '
+  probe: probes/agent-atten-1.sh
+
+- id: AGENT-ATTEN-2
+  title: A broadened mid-chain commit is rejected with the distinct OutsideAgentScope verdict
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGENT-ATTEN-2
+  evidence:
+  - PRD §4 FR-2 (a broadened mid-chain claim is rejected with a distinct verdict), §2 (the
+    property), §8 M2
+  - maps AGT-1; OutsideAgentScope verdict code `outside-agent-scope` (auths-verifier/src/commit_kel.rs)
+  observed: 'GREEN at baseline 2026-06-15: valid signature, still rejected: the beyond-scope
+    (admin) commit is refused as outside-agent-scope while the in-scope (sign_commit) twin
+    verifies — a distinct containment verdict, not a signature failure'
+  smallest_fix: 'Landed in ../auths (89a00f1b): a commit claiming a capability outside the
+    agent''s delegator-anchored scope returns CommitVerdict::OutsideAgentScope { signer_did,
+    capability } with a stable status code. The probe guards both halves.
+
+    '
+  probe: probes/agent-atten-2.sh
+
+- id: AGENT-ATTEN-3
+  title: A mid-chain key-holder cannot self-widen (subset rule at issuance + delegator-anchored
+    seal at verify)
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers:
+  - AGENT-ATTEN-3
+  evidence:
+  - PRD §4 FR-3 (a mid-chain key-holder cannot self-widen), §3 G3, §8 M3
+  - 'maps AGT-1; subset rule at issuance: auths-sdk/src/domains/agents/delegation.rs (enforce_scope_subset)'
+  observed: 'GREEN at 2026-06-15: the manager (holding anchored {sign_commit}) delegated a
+    SUBSET sub-worker {sign_commit} (exit 0, agent minted) but the {sign_commit,deploy} over-grant
+    was REFUSED at issuance (exit 1, no agent minted) — a key-holder cannot mint authority
+    it was never given; the legitimate narrow still succeeds, so the subset rule does not over-reject'
+  smallest_fix: 'Landed: enforce_scope_subset now resolves the DELEGATOR from the signing key
+    (root_alias → its own did:keri via key_storage.load_key) and reads the scope seal anchored
+    FOR that delegator (keyed by the delegator''s own prefix), instead of keying the read by
+    the loaded root prefix. A top-level root still reads no self-seal → unrestricted (prior
+    behavior, and scope_cannot_exceed_delegator stays green), but a scoped mid-chain delegate
+    now reads the {sign_commit} its delegator anchored for it and an over-grant is refused at
+    issuance. Defense-in-depth: the verify-time gate (ATTEN-2) already contains any over-claim;
+    this hardens issuance so the broader agent is never minted. The probe guards both the
+    subset-accept and the over-grant-refuse halves.
+
+    '
+  probe: probes/agent-atten-3.sh
+
+- id: AGENT-ATTEN-4
+  title: A worker cannot borrow a sibling org's authority (root is the authenticated delegator,
+    not the self-asserted Auths-Id)
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers:
+  - AGENT-ATTEN-4
+  evidence:
+  - PRD §4 FR-4 (a worker acting for a sibling org is rejected — wrong-root), §2, §8 M4
+  - 'maps AGT-1; root-from-dip derivation: auths-cli/src/commands/verify_commit.rs'
+  observed: 'GREEN at baseline 2026-06-15: the verdict is attributed to the authenticated
+    worker dip (did:keri:EL650y_Tse5l4hFmVXDPjJlfkPUr4hcy_VDDsOaRlVZm), so the judged root
+    is derived from that dip — a worker cannot repoint Auths-Id to borrow a sibling org''s
+    authority'
+  smallest_fix: 'Landed in ../auths (89a00f1b): the verifier derives the root from the authenticated
+    device dip''s delegator (Event::delegator()), never the self-asserted Auths-Id trailer,
+    so an agent cannot repoint Auths-Id to borrow a sibling root. The probe guards the derivation.
+
+    '
+  probe: probes/agent-atten-4.sh
+
+- id: AGENT-ATTEN-5
+  title: Anchored expiry is enforced end-to-end when a signing time is injected
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers:
+  - AGENT-ATTEN-5
+  evidence:
+  - PRD §4 FR-5 (expiry enforced at verify when a signing time is injected), §5 (Build item
+    2), §8 M5
+  - maps AGT-1; AgentExpired verdict via the witnessed+scoped verify path with now injected
+    at the boundary
+  observed: 'GREEN at baseline 2026-06-15: a commit signed after the worker''s anchored expiry
+    is rejected agent-expired — the witnessed verify path injects the signing time and the
+    delegator-anchored expiry gate fires'
+  smallest_fix: 'Landed in ../auths (89a00f1b): the witnessed verify entrypoint injects the
+    signing `now` at the boundary so the delegator-anchored expiry gate evaluates and returns
+    AgentExpired. The probe guards pre-expiry accept + post-expiry reject.
+
+    '
+  probe: probes/agent-atten-5.sh

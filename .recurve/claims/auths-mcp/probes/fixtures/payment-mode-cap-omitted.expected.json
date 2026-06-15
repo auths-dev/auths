@@ -1,0 +1,14 @@
+{
+  "//": "AGENT-PAY-3 — the MANDATORY-CAP (the seatbelt) expected shape the BUILD will provide. Because REAL money is now the DEFAULT, the budget cap is the safety seatbelt and MUST be mandatory: the gateway MUST REFUSE to wrap a payment rail without a `--budget`, in BOTH modes (real AND test) — fail-closed. This is the critical safety contract. A payment-rail `wrap` WITH a `--budget` is accepted; WITHOUT a `--budget` it is REFUSED with a distinct fail-closed error before the proxy is served and before any rail is touched. The regression this forbids is `cap-omitted-allowed` (a payment rail wrapped with NO --budget that was ALLOWED — the seatbelt was skippable). This fixture records the EXPECTED refusal the probe asserts; the build adds the mandatory-cap guard to the wrap path.",
+  "surface": "auths-mcp wrap --show-mode --scope paid.call -- <downstream>   (NO --budget)",
+  "refused": true,
+  "error": "budget-required",
+  "disclosure": {
+    "refused": true,
+    "reason": "budget-required",
+    "message": "refusing to wrap a payment rail without a --budget: real money is the default and the cross-rail cap is mandatory (the safety seatbelt). Pass --budget '$N', or --test-mode for sandbox rails (still requires --budget).",
+    "served": false,
+    "charged": false
+  },
+  "//accept": "a payment-rail wrap WITHOUT --budget is REFUSED (error=budget-required, fail-closed, served:false, charged:false) in BOTH real and test mode; a wrap WITH --budget is accepted. The seatbelt cannot be skipped."
+}

@@ -1,0 +1,3 @@
+▸ gate (hermetic, durable CrossRailBudget): call[2] paid_call rail=x402 → usage-cap-exceeded (cap_cents=500 would_be_cents=510)
+▸ live wrap (v0 in-memory guard, proxy.rs spent_cents): call[2] paid_call rail=x402 → allowed (forwarded, receipted)
+▸ DIVERGENCE: the live wrap path ALLOWED a call the hermetic gate REFUSED for the same sequence — the v0 in-memory guard does not enforce the durable cross-rail counter (#281). Live allows what the gate refuses.

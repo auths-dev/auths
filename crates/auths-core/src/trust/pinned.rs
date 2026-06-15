@@ -11,6 +11,7 @@ use auths_verifier::PublicKeyHex;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use super::pin_index::PinIndex;
 use crate::error::TrustError;
 
 /// A pinned identity root — what we trusted and when.
@@ -122,9 +123,27 @@ impl PinnedIdentityStore {
     }
 
     /// Look up a pinned identity by DID.
+    ///
+    /// Backed by a persistent sidecar index ([`PinIndex`]) so a single-DID
+    /// lookup is `O(log n)` in the registry size instead of re-parsing the whole
+    /// store (`O(n)`). The index is a pure accelerator: it only ever yields a
+    /// candidate byte span, which is confirmed by reading and parsing the entry
+    /// from the canonical store before it is returned. If the index path errors
+    /// for any reason, the lookup falls back to the authoritative full scan, so
+    /// correctness never depends on the sidecar.
     pub fn lookup(&self, did: &str) -> Result<Option<PinnedIdentity>, TrustError> {
+        use super::pin_index::IndexLookup;
         let _lock = self.lock()?;
-        Ok(self.read_all()?.into_iter().find(|e| e.did == did))
+        let index = PinIndex::for_store(&self.path);
+        match index.lookup(&self.path, did) {
+            Ok(IndexLookup::Resolved(found)) => Ok(found),
+            // Small store, or any index-path failure: use the authoritative
+            // scan — the sidecar can never make a present pin disappear or
+            // invent one, so correctness never depends on it.
+            Ok(IndexLookup::NotApplicable) | Err(_) => {
+                Ok(self.read_all()?.into_iter().find(|e| e.did == did))
+            }
+        }
     }
 
     /// Pin a new identity.
@@ -221,6 +240,10 @@ impl PinnedIdentityStore {
             file.sync_all()?;
         }
         fs::rename(&tmp, &self.path)?;
+        // The sidecar index now points at the previous store layout — drop it so
+        // the next reader rebuilds rather than trusting a fingerprint race on a
+        // same-length, same-mtime rewrite.
+        PinIndex::for_store(&self.path).invalidate();
         Ok(())
     }
 

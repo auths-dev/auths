@@ -1,0 +1,3 @@
+▸ call[0] paid_call rail=stripe → allowed cross_rail_cumulative=$3.00
+▸ call[1] paid_call rail=x402 → allowed cross_rail_cumulative=$4.50
+▸ call[2] paid_call rail=x402 → allowed cross_rail_cumulative=$5.10

@@ -1,0 +1,19 @@
+# Pin every oracle this suite's probes compare against, exactly:
+# <oracle-name> <exact-version>
+#
+# Convention reused from interop/peers/versions.lock: a peer upgrade is a
+# reviewable change to this file, never a mystery failure. The witness network
+# suite's conformance oracle is the canonical KERI reference implementation —
+# the same one the interop suite pins — so a key-state notice or receipt served
+# by a node here is checked against an implementation we do not control.
+
+native:
+  keripy:
+    # Canonical KERI reference impl (Python). The witness nodes' receipts and
+    # key-state notices are cross-verified against THIS version. `kli` is its CLI.
+    # Identical pin to interop/peers/versions.lock — one oracle, one version,
+    # across both conformance suites (no skew between interop and network).
+    package: keri
+    version: "1.3.4"
+    provenance: "pip (pyenv) — python3 -c 'import keri; print(keri.__version__)'"
+    role: "primary oracle (receipts, key-state notices)"

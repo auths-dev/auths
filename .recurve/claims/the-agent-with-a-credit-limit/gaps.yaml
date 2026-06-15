@@ -1,0 +1,153 @@
+# gaps.yaml — the live ledger: verified observations only.
+# Entries arrive here through `baseline` (the promotion ceremony); the
+# `observed` field quotes actual dated output, never a prediction.
+
+- id: AGENT-CAP-1
+  title: A credential carries a quantitative cap predicate, and a malformed one is refused
+    at issuance
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGT-4
+  evidence:
+  - PRD §4 FR-1 (a credential can carry a quantitative cap predicate; a malformed/non-monotone
+    predicate is refused at issuance), §5 (MUST BUILD item 1), §8 (issuance refuses bad predicates)
+  - auths/crates/auths-keri/src/capability.rs
+  - auths/crates/auths-sdk/src/domains/credentials/issue.rs
+  observed: 'GREEN at baseline 2026-06-15: calls:3 issues, verifies, and enforces (cap_exceeded
+    at the bound), while the malformed calls:abc predicate is REFUSED at issuance (exit 1,
+    no credential minted) — a quantitative cap that does not parse cannot be silently accepted
+    as an opaque, uncapped string'
+  smallest_fix: 'at issuance, a capability targeting the reserved calls usage resource must
+    parse to a valid UsageCap or be refused; a non-numeric/missing/negative bound is rejected
+    loudly instead of minted as an uncapped opaque string.
+
+    '
+  probe: probes/agent-cap-1.sh
+  unlocks: the budget lives in the credential, not in app code — and a budget that does not
+    parse is never silently no budget
+
+- id: AGENT-CAP-2
+  title: The usage count is a verifier-held fact, not the app's private number
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGT-4
+  evidence:
+  - PRD §4 FR-2 (within-cap presentations bind to a signed counter; an unsigned/unanchored
+    count is not a usage fact), §3 G2, §5 (MUST BUILD item 2)
+  - auths/crates/auths-sdk/src/domains/credentials/usage_ledger.rs
+  observed: 'GREEN at baseline 2026-06-15: the verifier holds the count as its own fact (a
+    recorded high-water mark of 2 refuses a replayed lower count = usage_counter_rolled_back),
+    while a claimed count (999999) presented against a presence-only credential is NOT honored
+    as a usage fact (verify=valid with and without it) — only a real calls: cap binds enforcement,
+    never a bare integer'
+  smallest_fix: 'the cap is enforced against the verifier''s own monotonic record (keyed by
+    the credential SAID), so a presenter cannot lower the count, and a count carries weight
+    only for a credential that actually bears a quantitative cap.
+
+    '
+  probe: probes/agent-cap-2.sh
+  unlocks: spend is a verifiable fact, not the app's private number
+
+- id: AGENT-CAP-3
+  title: Within-cap presentations verify (authorized spend keeps working)
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers:
+  - AGT-4
+  evidence:
+  - PRD §4 FR-2 (calls 1..N verify and the executor runs N times), §7 (Act 1), §8 (calls 1..N
+    verify)
+  - auths/crates/auths-sdk/src/domains/credentials/verify.rs
+  observed: 'GREEN at baseline 2026-06-15: all three within-cap counts (0,1,2 under calls:3)
+    verified valid and advanced the ledger, while a within-cap count against a forged/unanchored
+    credential did NOT verify (status=none) — authorized spend works, but a count is only
+    honored for an authentic credential'
+  smallest_fix: 'the three within-budget counts verify and advance the monotonic record; cap
+    enforcement runs only after the credential''s authenticity verify, so a forged credential
+    never reaches the admit path.
+
+    '
+  probe: probes/agent-cap-3.sh
+  unlocks: authorized spend keeps working under the new enforcement
+
+- id: AGENT-CAP-4
+  title: The (N+1)th over-cap presentation is unverifiable with a distinct verdict
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGT-4
+  evidence:
+  - PRD §4 FR-3 (the (N+1)th over-cap presentation fails verification with a distinct verdict),
+    §2 (the property), §7 (Act 2), §8 (call N+1 fails verification with a distinct verdict)
+  - auths/crates/auths-sdk/src/domains/credentials/verify.rs
+  observed: 'GREEN at baseline 2026-06-15: the 4th over-cap presentation (calls_used=3 against
+    calls:3) is unverifiable with the DISTINCT cap_exceeded verdict (not valid, not a generic
+    invalid); it stays cap_exceeded on re-run, and under-claiming a lower count is refused
+    (usage_counter_rolled_back) — exceeding the limit is unverifiable, and cannot be coerced
+    to valid'
+  smallest_fix: 'the over-cap count returns the distinct cap_exceeded verdict (not valid,
+    not a generic invalid); it stays fail-closed across re-runs, and under-claiming a lower
+    count is caught as a rolled-back counter.
+
+    '
+  probe: probes/agent-cap-4.sh
+  unlocks: '''we configured a limit'' becomes ''exceeding the limit is unverifiable'''
+
+- id: AGENT-CAP-5
+  title: A replayed earlier counter state is rejected (freshness/monotonicity)
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGT-4
+  evidence:
+  - PRD §4 FR-4 (a replayed earlier counter state is rejected even when internally valid),
+    §3 G4, §7 (Act 3), §8 (replayed counter rejected)
+  - auths/crates/auths-sdk/src/domains/credentials/usage_ledger.rs
+  observed: 'GREEN at baseline 2026-06-15: the count=1 state verified valid on first presentation,
+    but after the high-water mark advanced to 2 the SAME count=1 replay is refused usage_counter_rolled_back
+    (a distinct verdict, not valid) — freshness is enforced against the latest recorded state,
+    so an internally-valid earlier counter cannot rewind spend to re-open budget'
+  smallest_fix: 'monotonicity is enforced against the verifier''s latest recorded high-water
+    mark, so a once-valid earlier counter replayed after the mark advanced is refused with
+    the distinct usage_counter_rolled_back verdict.
+
+    '
+  probe: probes/agent-cap-5.sh
+  unlocks: an agent cannot rewind its own spend to buy more budget
+
+- id: AGENT-CAP-6
+  title: The cap is enforced by the verifier, not the app (bypass-proof, per-authority)
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers:
+  - AGT-4
+  evidence:
+  - PRD §4 FR-5 (the cap binds to identity, not the app; routing to a second tool does not
+    bypass), §7 (Act 4 / FR-5), §8 (cap binds to the verifier, not the app)
+  - auths/crates/auths-sdk/src/domains/credentials/usage_ledger.rs
+  observed: 'GREEN at baseline 2026-06-15: with NO app-level spend check, the verifier alone
+    fail-closes (counts 0,1,2 valid; count=3 cap_exceeded), and routing the over-cap call
+    through a SECOND verify/tool on the same credential is STILL cap_exceeded — the counter
+    is per-credential-authority (keyed by SAID), not per-route, so a sibling endpoint cannot
+    bypass the budget'
+  smallest_fix: 'enforcement lives in the verifier''s resolution layer, keyed by the credential
+    SAID, so there is no app spend-check to disable and a sibling endpoint shares the one
+    per-authority counter — it cannot mint fresh budget.
+
+    '
+  probe: probes/agent-cap-6.sh
+  unlocks: the underwriter trusts a proof, not the operator's plumbing

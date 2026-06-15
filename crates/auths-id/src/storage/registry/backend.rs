@@ -482,6 +482,16 @@ impl RegistryError {
     }
 }
 
+/// Visitor over stored ACDC credential blobs: `(issuer, credential_said, bytes)`.
+///
+/// Aliased to keep the [`RegistryBackend::visit_credentials`] signature readable.
+pub type CredentialVisitor<'a> = dyn FnMut(&Prefix, &Said, &[u8]) -> ControlFlow<()> + 'a;
+
+/// Visitor over persisted TEL coordinates: `(issuer, registry_said, credential_said)`.
+///
+/// Aliased to keep the [`RegistryBackend::visit_tel_registries`] signature readable.
+pub type TelRegistryVisitor<'a> = dyn FnMut(&Prefix, &Said, &Said) -> ControlFlow<()> + 'a;
+
 /// Trait for registry storage backends.
 ///
 /// This trait defines operations for storing and retrieving:
@@ -500,6 +510,8 @@ impl RegistryError {
 /// The registry is a cache/index, not a source of truth. New methods should
 /// only be added if they are essential for indexing or retrieval operations.
 pub trait RegistryBackend: Send + Sync {
+    // (visitor closure aliases for the credential/TEL enumeration surface live
+    // at module scope below — see `CredentialVisitor` / `TelRegistryVisitor`.)
     // =========================================================================
     // KEL Operations
     // =========================================================================
@@ -957,6 +969,50 @@ pub trait RegistryBackend: Send + Sync {
         })
     }
 
+    /// Visit every stored ACDC credential blob, in `(issuer, credential)` order.
+    ///
+    /// Calls `visitor` with each credential's `(issuer, credential_said,
+    /// credential_bytes)`. Return `ControlFlow::Break(())` to stop early. A
+    /// registry holding no credentials visits nothing and returns `Ok(())`.
+    ///
+    /// This is the enumeration half of the credential surface (the keyed reader
+    /// is [`load_credential`]): tooling that must reconstruct a whole fleet on a
+    /// cold machine (`registry pull`) has no way to know the credential SAIDs in
+    /// advance, so it walks them here.
+    ///
+    /// # Arguments
+    ///
+    /// * `visitor` - Callback invoked for each credential blob.
+    fn visit_credentials(&self, _visitor: &mut CredentialVisitor<'_>) -> Result<(), RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "visit_credentials",
+        })
+    }
+
+    /// Visit every persisted TEL registry coordinate, in tree order.
+    ///
+    /// Calls `visitor` with each `(issuer, registry_said, credential_said)`
+    /// directory that holds TEL events — including the registry's own `vcp`
+    /// slot, where `credential_said == registry_said`. Return
+    /// `ControlFlow::Break(())` to stop early. A registry holding no TEL visits
+    /// nothing and returns `Ok(())`.
+    ///
+    /// Pairs with [`visit_tel_events`] (which streams one coordinate's events):
+    /// enumeration tooling (`registry pull`) discovers the coordinates here, then
+    /// reads each one's events to copy them onto the cold machine.
+    ///
+    /// # Arguments
+    ///
+    /// * `visitor` - Callback invoked for each TEL coordinate.
+    fn visit_tel_registries(
+        &self,
+        _visitor: &mut TelRegistryVisitor<'_>,
+    ) -> Result<(), RegistryError> {
+        Err(RegistryError::NotImplemented {
+            method: "visit_tel_registries",
+        })
+    }
+
     // =========================================================================
     // Atomic Batch Writes (FROZEN-TRAIT EXCEPTION)
     //
@@ -1146,6 +1202,17 @@ impl<T: RegistryBackend + ?Sized> RegistryBackend for Arc<T> {
         credential_said: &Said,
     ) -> Result<Option<Vec<u8>>, RegistryError> {
         (**self).load_credential(issuer, credential_said)
+    }
+
+    fn visit_credentials(&self, visitor: &mut CredentialVisitor<'_>) -> Result<(), RegistryError> {
+        (**self).visit_credentials(visitor)
+    }
+
+    fn visit_tel_registries(
+        &self,
+        visitor: &mut TelRegistryVisitor<'_>,
+    ) -> Result<(), RegistryError> {
+        (**self).visit_tel_registries(visitor)
     }
 
     fn commit_batch(&self, batch: &AtomicWriteBatch) -> Result<(), RegistryError> {

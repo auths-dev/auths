@@ -152,4 +152,7 @@ jnkn.db
 .mcp.json
 .chunkhound.json
 .worktrees/
-.recurve/
+# Track the recurve loop (config, PRDs, claims, probes, docs); ignore only
+# run-state and built binaries.
+.recurve/state/
+.recurve/**/bin/

@@ -1,0 +1,10 @@
+{
+  "//": "AGENT-MCP-4: calls before revocation pass; the parent revokes mid-session; the VERY NEXT tools/call is refused Revoked — liveness re-derived from the chain each call, no token-TTL/introspection lag. Frozen replay. PLACEHOLDER shape.",
+  "scenario": "killswitch",
+  "grant": { "scope": ["fs.read", "github.comment"], "budget": "$5.00", "ttl": "30m" },
+  "calls": [
+    { "tool": "read_file",     "args": { "path": "README.md" }, "cost_cents": 0, "expect": "allowed" },
+    { "event": "revoke" },
+    { "tool": "create_comment", "args": { "body": "hi" }, "cost_cents": 0, "expect": "revoked" }
+  ]
+}

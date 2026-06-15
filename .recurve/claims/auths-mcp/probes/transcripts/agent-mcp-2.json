@@ -1,0 +1,9 @@
+{
+  "//": "AGENT-MCP-2: the in-scope fs.read passes; the model's fs.write is refused OutsideAgentScope (valid signature, well-formed envelope, downstream never touched). Frozen replay. PLACEHOLDER shape.",
+  "scenario": "scope",
+  "grant": { "scope": ["fs.read"], "budget": "$5.00", "ttl": "30m" },
+  "calls": [
+    { "tool": "read_file",  "args": { "path": "README.md" }, "cost_cents": 0, "expect": "allowed" },
+    { "tool": "write_file", "args": { "path": "README.md", "content": "x" }, "cost_cents": 0, "expect": "outside-agent-scope", "capability": "fs.write" }
+  ]
+}

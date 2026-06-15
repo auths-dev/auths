@@ -1,0 +1,23 @@
+{
+  "//": "AGENT-PAY-2 (over-cap, CROSS-RAIL) — a RECORDED x402/USDC settlement RESPONSE for a call that, ON TOP of $4.50 already settled across the Stripe + x402 rails, would push the ONE cross-rail cap past $5. The moat (PRD §11): this x402 amount ($0.60) read in a per-rail x402 silo is tiny, but summed into the cross-rail counter it crosses the cap. The reservation must refuse usage-cap-exceeded BEFORE the x402 facilitator settles. x402 SettlementResponse shape (coinbase/x402 v1 spec); network=base-sepolia (testnet). 600000 atomic USDC (6 decimals) = 0.60 USDC = 60 cents.",
+  "rail": "x402",
+  "requirements": {
+    "scheme": "exact",
+    "network": "base-sepolia",
+    "maxAmountRequired": "600000",
+    "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "payTo": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+    "resource": "https://api.example.com/metered-tool",
+    "description": "One metered x402 tool call (the cross-rail cap-crosser)",
+    "mimeType": "application/json",
+    "maxTimeoutSeconds": 60,
+    "extra": { "name": "USDC", "version": "2" }
+  },
+  "settlement": {
+    "success": true,
+    "transaction": "0xcap0000000000cafef00d000000000000000000000000000000000000000000",
+    "network": "base-sepolia",
+    "payer": "0x857b06519E91e3A54538791bDbb0E22373e36b66"
+  },
+  "//defense": "600000 atomic USDC = 60 cents; with $4.50 already cross-rail-settled, reserving this would be $5.10 across rails > $5 cap → must refuse usage-cap-exceeded BEFORE the x402 facilitator settles. If this settlement appears as success:true metered into the receipt, the cross-rail cap was not enforced before the rail — the cap-not-enforced / cross-rail regression."
+}

@@ -14,7 +14,10 @@ pub(crate) fn display_developer_result(
         out.print_heading("Your identity is ready!");
     }
     out.newline();
-    out.println(&format!("  Identity: {}", out.info(&result.identity_did)));
+    out.println(&format!(
+        "  Identity: {}",
+        out.info(&crate::ux::product_id(&result.identity_did))
+    ));
     out.println(&format!("  Key name: {}", out.info(&result.key_alias)));
     if let Some(registry) = registered {
         out.println(&format!("  Registry: {}", out.info(registry)));
@@ -73,7 +76,10 @@ pub(crate) fn display_agent_result(out: &Output, result: &auths_sdk::result::Age
         .as_ref()
         .map(|d| d.to_string())
         .unwrap_or_else(|| "<pending>".to_string());
-    out.println(&format!("  Identity: {}", out.info(&did_display)));
+    out.println(&format!(
+        "  Identity: {}",
+        out.info(&crate::ux::product_id(&did_display))
+    ));
     let cap_display: Vec<String> = result.capabilities.iter().map(|c| c.to_string()).collect();
     out.println(&format!("  Capabilities: {}", cap_display.join(", ")));
     out.newline();
@@ -95,7 +101,7 @@ pub(crate) fn display_agent_dry_run(
     }
     out.newline();
     out.print_info(
-        "An agent is a KERI delegated identifier — after `auths init`, create one with \
+        "An agent is a delegated identity under your root — after `auths init`, create one with \
          `auths id agent add`.",
     );
     out.print_info("TOML config that would be generated:");
