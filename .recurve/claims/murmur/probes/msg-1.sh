@@ -29,14 +29,30 @@ fi
 
 relay_ready || broken "no staged bin/murmur-relay — run the suite rebuild first"
 
-# Drive the engine seam through the relay binary. In the skeleton the seal/bind
-# path is unbuilt, so the relay's serve (its only behavioral surface today) fails
-# closed — there is no authenticated, number-free message to observe yet.
+# Drive the engine seam through the relay binary. The floor leg (`run_addressed`)
+# seals a message addressed to an AID's pairwise mailbox, authenticated as the
+# sender AID, scans the message + both envelopes for any number/email, and rejects
+# a forgery claiming an uncontrolled AID — emitting one marker line. We assert on
+# THAT line so the floor's own claim is judged, not another leg's device narration.
+#
+# GREEN requires: serve exits 0; the floor marker `aid-authenticated-number-free`
+# is present and says `authenticated`; and, independently, the floor line carries
+# no actual phone number or email ADDRESS. The AIDs in the line are `did:keri:` /
+# `did:webs:` identifiers — addresses by construction, whose hex can contain a long
+# digit run by chance — so they are MASKED out before the scan, exactly as the
+# engine masks them. We then look for a real telco *shape*, not an English word: a
+# run of 7+ digits (a dialable number) or a `local@domain.tld` email address. A
+# leak of either turns the probe RED. Until the bind is built, serve fails closed
+# and the marker is absent.
 OUT="$(relay_serve)"; RC=$?
+FLOOR_LINE="$(printf '%s\n' "$OUT" | grep -E 'aid-authenticated-number-free' | head -1)"
+# Mask the AID strings (addresses, not numbers) before the leak scan.
+FLOOR_SCAN="$(printf '%s' "$FLOOR_LINE" | sed -E 's#did:(keri|webs):[A-Za-z0-9._:-]+# #g')"
 
 if [ $RC -eq 0 ] \
-   && printf '%s' "$OUT" | grep -qiE 'authenticated' \
-   && ! printf '%s' "$OUT" | grep -qiE '[0-9]{10}|@|phone|e-?mail'; then
+   && [ -n "$FLOOR_LINE" ] \
+   && printf '%s' "$FLOOR_LINE" | grep -qiE 'authenticated' \
+   && ! printf '%s' "$FLOOR_SCAN" | grep -qE '[0-9]{7,}|[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}'; then
     green "a message was authenticated by its sender AID and addressed to a pairwise mailbox — no phone number or email in the flow"
 fi
 

@@ -6,21 +6,27 @@
   title: A message is addressed to, and authenticated by, an AID — no phone number or email
     anywhere in the flow
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - 'crates/murmur-core/src/lib.rs seal() fails closed CoreError::NotBuilt(''seal: KERI prekey
-    bind + Signal ratchet + relay envelope'') — the KERI-bind that authenticates the sender
-    AID is unwired'
+  - 'crates/murmur-core/src/lib.rs prove_addressed() — seals a message addressed to the recipient
+    AID''s pairwise mailbox, authenticated as the sender AID via Endpoint::seal_to/open (the
+    signature verifies under the key the AID resolves to), proves it number-free, and rejects
+    a forgery claiming an uncontrolled AID with CoreError::Rejected'
+  - 'crates/murmur-core/src/number_free.rs prove_number_free() — scans the serialized Message
+    and both envelopes and rejects any dialable number or email shape; AID strings are masked
+    (a self-certifying identifier is an address, never a number), so a did:keri hex digit-run
+    never false-trips while a number in the body still does'
   - crates/murmur-core/src/address.rs Aid — the address is a did:keri / did:webs string; no
     phone-number or email field exists in Message, by construction
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=aid-authenticated+number-free
-    — the KERI bind that authenticates the sender AID is unbuilt (murmur-relay 0.1.3: store-and-forward
-    wire not built yet (the mailbox queue + pull/subscribe surface is the slice''s transport
-    work)); MSG-1 is open'
+  observed: 'GREEN 2026-06-16: ours=aid-authenticated+number-free expected=aid-authenticated+number-free
+    — the relay self-test floor leg (murmur-relay run_addressed) seals a message addressed to
+    a recipient AID via a pairwise mailbox, authenticated as the sender AID, scans the message
+    and both envelopes free of any telco identifier, and rejects a forgery claiming an AID the
+    sender does not control; trap msg-1.trap/unauthenticated turns the probe RED. MSG-1 closed'
   smallest_fix: 'Bind the sender: seal() must KERI-authenticate the sender AID (sign the Signal
     identity key with the AID''s current KERI key) and address the OuterEnvelope to the recipient
     AID''s pairwise mailbox — with NO phone number or email anywhere in Message or the envelope.

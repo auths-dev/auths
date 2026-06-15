@@ -50,6 +50,7 @@ pub mod address;
 pub mod envelope;
 pub mod identity;
 pub mod leakcheck;
+pub mod number_free;
 pub mod prekey;
 pub mod ratchet;
 pub mod relay;
@@ -61,6 +62,7 @@ pub use address::Aid;
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
 pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
+pub use number_free::{NumberFreeReport, prove_number_free};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
 pub use ratchet::Ratchet;
 pub use relay::{DepositOutcome, MailboxId, MailboxStore, RelayRequest};
@@ -727,6 +729,133 @@ pub fn hold_relay_boundary(
     })
 }
 
+/// The verdict of the floor claim (PRD §10, the addressing claim): a message was *addressed to*
+/// an AID's pairwise mailbox and *authenticated by* the sender's AID, the whole
+/// flow carried no phone number or email, and a message claiming an AID the sender
+/// does not control was rejected. Returned by [`prove_addressed`] so the relay
+/// binary's self-test (and the harness) can assert the floor holds rather than
+/// merely that a message flowed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressedReceipt {
+    /// The recipient AID the message was addressed to — the destination, in place
+    /// of a phone number.
+    pub addressed_to: Aid,
+    /// The sender AID the message authenticated as — equal to the sender only
+    /// because the signature verified.
+    pub authenticated_as: Aid,
+    /// The pairwise mailbox the relay routed on — a per-contact handle carrying no
+    /// AID and no number.
+    pub mailbox: MailboxId,
+    /// The number-free report over the message and both envelopes: each serialized
+    /// form was scanned and found free of a phone number or an email.
+    pub number_free: NumberFreeReport,
+}
+
+/// Drive the floor claim once, hermetically (PRD §10, the addressing claim): prove a message can
+/// be *addressed to* and *authenticated by* an AID at all, with **no phone number
+/// or email anywhere in the flow**, and that the adversarial twin is rejected.
+///
+///  1. `sender` seals `body` for `recipient`, addressed to `mailbox`; the message
+///     is stored-and-forwarded through `relay`, drained, and opened — it must
+///     **authenticate as the sender** (the signature verifies under the key the
+///     sender's AID resolves to), not merely arrive.
+///  2. The fully-formed [`Message`] and both envelopes are scanned by
+///     [`prove_number_free`]: a phone number or an email anywhere in any serialized
+///     form fails the leg closed. The addresses are AIDs, so a clean scan means the
+///     destination and the identity were both carried as `did:keri:` / `did:webs:`
+///     identifiers, never a number.
+///  3. The adversarial twin: a forged inner envelope claiming the sender's AID but
+///     signed by an *uncontrolled* key (`impostor`) is presented to the recipient.
+///     It decrypts but does **not** verify under the claimed AID's key, so it is
+///     [`CoreError::Rejected`] — never surfaced as authentic. A forged message that
+///     *opened* would mean an uncontrolled AID was accepted, and is returned as an
+///     error (the RED the trap records).
+///
+/// Returns an [`AddressedReceipt`] iff the message authenticated, scanned
+/// number-free, and the impostor was rejected. Any property that fails to hold is
+/// an error, never a silent pass.
+pub fn prove_addressed(
+    sender: &Endpoint,
+    recipient: &Endpoint,
+    impostor: &Endpoint,
+    mailbox: &MailboxId,
+    body: &str,
+    relay: &mut MailboxStore,
+    directory: &dyn Directory,
+) -> CoreResult<AddressedReceipt> {
+    // (1) Seal, store-and-forward, drain, open — the message must authenticate as
+    // the sender, not merely arrive.
+    let receipt = deliver_once(sender, recipient, mailbox, body, relay, directory)?;
+    if &receipt.authenticated_sender != sender.aid() {
+        return Err(CoreError::Rejected(
+            "the delivered message did not authenticate as the addressing sender",
+        ));
+    }
+
+    // Reconstruct the message and the inner envelope exactly as they crossed the
+    // engine, so the number-free scan runs over the real forms (the same signing
+    // bytes the recipient verified).
+    let message = Message {
+        to: receipt.recipient.clone(),
+        from: receipt.authenticated_sender.clone(),
+        body: receipt.body.clone(),
+    };
+    let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+    let inner = InnerEnvelope {
+        sender: sender.aid().clone(),
+        recipient: recipient.aid().clone(),
+        body: body.to_string(),
+        signature: sender.identity.sign(&signing_bytes)?,
+    };
+    let outer = sender.seal_to(recipient.aid(), mailbox, body)?;
+
+    // (2) No phone number or email anywhere — the message, the inner envelope, the
+    // outer envelope.
+    let number_free = number_free::prove_number_free(&message, &inner, &outer)?;
+
+    // (3) Adversarial twin: a message claiming the sender's AID but signed by an
+    // uncontrolled key must be rejected, never accepted as authentic. The forgery
+    // is sealed under the *recipient's* session so the AEAD opens — the message
+    // genuinely arrives and decrypts, and is caught at the **authentication** gate
+    // (the impostor's signature does not verify under the sender AID's key), not
+    // merely bounced by a wrong key. This is the worst case the floor must hold.
+    let forged_inner = InnerEnvelope {
+        sender: sender.aid().clone(),
+        recipient: recipient.aid().clone(),
+        body: body.to_string(),
+        // signed by the impostor, who does NOT control the sender's AID
+        signature: impostor.identity.sign(&signing_bytes)?,
+    };
+    let forged_bytes = serde_json::to_vec(&forged_inner)
+        .map_err(|e| CoreError::Malformed(format!("serialize forged inner: {e}")))?;
+    let forged_nonce = session::fresh_nonce()?;
+    let forged_ciphertext =
+        recipient
+            .session
+            .seal(forged_nonce, mailbox.as_str().as_bytes(), &forged_bytes)?;
+    let forged_outer = OuterEnvelope {
+        to_mailbox: mailbox.clone(),
+        ciphertext: forged_ciphertext,
+    };
+    match recipient.open(&forged_outer, directory) {
+        Ok(_) => {
+            return Err(CoreError::Rejected(
+                "uncontrolled-aid-accepted: a message claiming an AID the sender does not control \
+                 was surfaced as authentic",
+            ));
+        }
+        Err(CoreError::Rejected(_)) => { /* rejected as required */ }
+        Err(other) => return Err(other),
+    }
+
+    Ok(AddressedReceipt {
+        addressed_to: receipt.recipient,
+        authenticated_as: receipt.authenticated_sender,
+        mailbox: mailbox.clone(),
+        number_free,
+    })
+}
+
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing
 // without exposing the secret key or session on the public API.
 #[cfg(test)]
@@ -944,6 +1073,62 @@ mod tests {
         assert_eq!(receipt.copies_delivered, 1);
         assert_eq!(receipt.mailbox, mailbox);
         assert_eq!(receipt.routing_only.mailbox, mailbox);
+    }
+
+    #[test]
+    fn a_message_is_addressed_to_and_authenticated_by_an_aid_number_free() {
+        // The floor: a message addressed to an AID's pairwise mailbox, authenticated
+        // as the sender AID, with no phone number or email anywhere — and a forgery
+        // claiming the sender's AID is rejected.
+        let secret = [0x5au8; 32];
+        let mac = endpoint(1, secret);
+        let phone = endpoint(2, secret);
+        let impostor = endpoint(3, secret);
+        let dir = directory_of(&[&mac, &phone]); // the impostor is NOT admitted-as-Mac
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:pairwise");
+
+        let receipt = prove_addressed(
+            &mac,
+            &phone,
+            &impostor,
+            &mailbox,
+            "see you at the usual place",
+            &mut relay,
+            &dir,
+        )
+        .unwrap();
+
+        assert_eq!(&receipt.addressed_to, phone.aid());
+        assert_eq!(&receipt.authenticated_as, mac.aid());
+        assert!(receipt.addressed_to.as_str().starts_with("did:keri:"));
+        assert!(receipt.authenticated_as.as_str().starts_with("did:keri:"));
+        assert_eq!(receipt.number_free.forms_scanned, 3);
+    }
+
+    #[test]
+    fn a_message_carrying_a_phone_number_is_rejected_by_the_floor() {
+        // A body that smuggles a dialable number must fail the number-free scan —
+        // the floor proves the *absence*, it does not merely narrate it.
+        let secret = [0x5au8; 32];
+        let mac = endpoint(1, secret);
+        let phone = endpoint(2, secret);
+        let impostor = endpoint(3, secret);
+        let dir = directory_of(&[&mac, &phone]);
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:pairwise");
+
+        let err = prove_addressed(
+            &mac,
+            &phone,
+            &impostor,
+            &mailbox,
+            "call me at +1 415-555-0123",
+            &mut relay,
+            &dir,
+        )
+        .unwrap_err();
+        assert!(matches!(err, CoreError::Rejected(_)));
     }
 
     #[test]

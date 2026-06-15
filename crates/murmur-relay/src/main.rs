@@ -26,7 +26,7 @@ use std::process::ExitCode;
 use murmur_core::{
     ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle, PrekeySecrets,
     Session, deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only,
-    hold_relay_boundary, prove_vetted,
+    hold_relay_boundary, prove_addressed, prove_vetted,
 };
 
 /// What the relay was asked to do.
@@ -45,6 +45,79 @@ fn parse(args: &[String]) -> Mode {
         Some("serve") | None => Mode::Serve,
         _ => Mode::Usage,
     }
+}
+
+/// Prove the floor claim (PRD §10, the addressing claim): a message is *addressed to* and
+/// *authenticated by* an AID, with **no phone number or email anywhere in the
+/// flow**, and a message claiming an AID the sender does not control is rejected.
+///
+/// A "desktop" endpoint seals a message for a "handset" endpoint, addressed to a
+/// pairwise mailbox; it is stored-and-forwarded through the relay, drained, and
+/// opened — authenticating as the desktop. The fully-formed message and both
+/// envelopes are then scanned and found free of any dialable number or email
+/// address (the addresses are `did:keri:` AIDs, not numbers). Finally an impostor
+/// who does not control the desktop's AID forges a message claiming it; verified
+/// against the desktop's resolved key it is rejected, never surfaced as authentic.
+///
+/// The output line carries the marker a reader greps for — `aid-authenticated`
+/// over a number-free flow — and is itself written without any number- or
+/// email-shaped token, because the claim under test is precisely that none belongs
+/// in the flow.
+fn run_addressed() -> Result<String, String> {
+    let session_secret = [0x5au8; 32];
+    let desktop = Endpoint::new(
+        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint desktop identity: {e}"))?,
+        Session::from_secret(session_secret),
+    );
+    let handset = Endpoint::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
+        Session::from_secret(session_secret),
+    );
+    // The impostor holds a key it controls — but NOT the desktop's AID key. It is
+    // never admitted into the directory as the desktop.
+    let impostor = Endpoint::new(
+        Identity::from_seed([0x33u8; 32]).map_err(|e| format!("mint impostor identity: {e}"))?,
+        Session::from_secret(session_secret),
+    );
+
+    // The handset admits the desktop's AID (opt-in contact, §8); the directory
+    // stands in for a witnessed key-log replay.
+    let mut directory = ContactDirectory::new();
+    directory.admit(desktop.aid().clone(), desktop.public_key().to_vec());
+    directory.admit(handset.aid().clone(), handset.public_key().to_vec());
+
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:pairwise-handle");
+
+    let receipt = prove_addressed(
+        &desktop,
+        &handset,
+        &impostor,
+        &mailbox,
+        "see you at the usual place",
+        &mut relay,
+        &directory,
+    )
+    .map_err(|e| format!("the floor leg failed: {e}"))?;
+
+    if &receipt.authenticated_as != desktop.aid() {
+        return Err(format!(
+            "addressed message authenticated as {} not the desktop",
+            receipt.authenticated_as
+        ));
+    }
+
+    Ok(format!(
+        "aid-authenticated-number-free: a message was addressed to the recipient AID {to} via the \
+         pairwise mailbox {mbx} and authenticated as the sender AID {from} — the message and both \
+         envelopes were scanned and held only self-certifying identifiers ({scanned} forms scanned \
+         clean, no telco identifier of any kind); a forgery claiming an AID the sender does not \
+         control was rejected",
+        to = receipt.addressed_to.as_str(),
+        from = receipt.authenticated_as.as_str(),
+        mbx = receipt.mailbox.as_str(),
+        scanned = receipt.number_free.forms_scanned,
+    ))
 }
 
 /// Drive one message all the way through the leg: a "Mac" endpoint seals a
@@ -363,7 +436,8 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 6] = [
+            let legs: [fn() -> Result<String, String>; 7] = [
+                run_addressed,
                 run_delivery,
                 run_rooted,
                 run_forward_secret,
