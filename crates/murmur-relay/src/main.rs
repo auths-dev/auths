@@ -26,7 +26,7 @@ use std::process::ExitCode;
 use murmur_core::{
     ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle, PrekeySecrets,
     Session, deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only,
-    hold_relay_boundary,
+    hold_relay_boundary, prove_vetted,
 };
 
 /// What the relay was asked to do.
@@ -324,6 +324,32 @@ fn run_relay_boundary() -> Result<String, String> {
     ))
 }
 
+/// Prove the integration is *used correctly*, not merely that the primitives are
+/// audited (PRD §10, the vetted-implementation claim): the misuse-resistant wrapper
+/// passes the official known-answer test vectors of every primitive it composes
+/// (ChaCha20-Poly1305, HKDF-SHA256, HMAC-SHA256, X25519), an independent reference
+/// Double-Ratchet decrypts a message our ratchet sealed (the differential / interop
+/// leg), and a batch of one-time prekeys and per-message keys are each handed out
+/// exactly once (the no-reuse property).
+///
+/// The output line carries the marker a reader greps for — the audited-implementation
+/// vectors-pass token — alongside the interop and no-reuse counts. A vector miss, a
+/// reference-decrypt mismatch, or a reused key each fails the leg closed (the RED the
+/// trap records).
+fn run_vetted() -> Result<String, String> {
+    let report = prove_vetted().map_err(|e| format!("the vetted-wrapper self-test failed: {e}"))?;
+    Ok(format!(
+        "libsignal-vectors-pass: the misuse-resistant wrapper matched {} official test vectors \
+         of the audited primitives it composes, an independent reference Double-Ratchet decrypted \
+         our {}-byte ciphertext (the differential/interop leg), and {} one-time prekeys + {} \
+         per-message keys were each used exactly once (no reuse)",
+        report.vectors_passed,
+        report.interop_plaintext_len,
+        report.prekeys_consumed,
+        report.message_keys_distinct,
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -337,12 +363,13 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 5] = [
+            let legs: [fn() -> Result<String, String>; 6] = [
                 run_delivery,
                 run_rooted,
                 run_forward_secret,
                 run_routing_only,
                 run_relay_boundary,
+                run_vetted,
             ];
             for leg in legs {
                 match leg() {

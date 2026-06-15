@@ -98,6 +98,36 @@ impl Session {
         Ok(out)
     }
 
+    /// Seal `plaintext` under an AEAD content key supplied **directly** (rather than
+    /// derived from a session secret via [`content_key`](Self::content_key)), binding
+    /// `aad` and prepending `nonce`. This is the same ChaCha20-Poly1305 framing
+    /// [`seal`](Self::seal) uses, exposed so the vetted-wrapper self-test
+    /// ([`crate::vetted`]) can drive the engine's own AEAD path with the published
+    /// key/nonce/aad/plaintext of an official test vector and compare the bytes. It
+    /// is crate-internal on purpose: callers establish keys through the session, not
+    /// by handing one in.
+    pub(crate) fn seal_with_key(
+        key_bytes: &[u8; 32],
+        nonce: [u8; 12],
+        aad: &[u8],
+        plaintext: &[u8],
+    ) -> CoreResult<Vec<u8>> {
+        let cipher = ChaCha20Poly1305::new(Key::from_slice(key_bytes));
+        let ct = cipher
+            .encrypt(
+                Nonce::from_slice(&nonce),
+                Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
+            .map_err(|_| CoreError::Malformed("AEAD seal failed".into()))?;
+        let mut out = Vec::with_capacity(12 + ct.len());
+        out.extend_from_slice(&nonce);
+        out.extend_from_slice(&ct);
+        Ok(out)
+    }
+
     /// Open a sealed blob (message nonce ‖ ciphertext) under the same `aad`. A
     /// tampered ciphertext, a wrong session secret, or a mismatched AAD all fail
     /// the AEAD tag and are rejected — the relay gets no decryption oracle.

@@ -55,6 +55,7 @@ pub mod ratchet;
 pub mod relay;
 pub mod session;
 pub mod trust;
+pub mod vetted;
 
 pub use address::Aid;
 pub use envelope::{InnerEnvelope, OuterEnvelope};
@@ -65,6 +66,7 @@ pub use ratchet::Ratchet;
 pub use relay::{DepositOutcome, MailboxId, MailboxStore, RelayRequest};
 pub use session::Session;
 pub use trust::{TrustState, TrustVerdict};
+pub use vetted::{OneTimePrekeyJar, VettedReport, prove_vetted};
 
 /// The crate's error type. `NotBuilt` names a seam that is specified but not yet
 /// wired, so a caller — and a probe — can tell "absent" apart from "broke".

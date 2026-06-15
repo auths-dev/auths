@@ -298,24 +298,38 @@
   title: Vetted implementation, used correctly — the wrapper passes libsignal's test vectors
     and a differential interop, and never reuses a key
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - crates/murmur-core — no libsignal wrapper exists yet; there are no test vectors or interop
-    harness wired
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=libsignal-vectors-pass+no-key-reuse
-    — the misuse-resistant libsignal wrapper (vectors + interop + no-reuse property) is unbuilt
-    (murmur-relay 0.1.3: store-and-forward wire not built yet (the mailbox queue + pull/subscribe
-    surface is the slice''s transport work)); ENC-6 is open'
-  smallest_fix: 'The misuse-resistant wrapper around libsignal must pass libsignal''s OFFICIAL
-    test vectors AND a differential/interop test (our send vs a reference Double-Ratchet decrypt);
-    a property test asserts no one-time prekey or message key is ever reused. Adversarial
-    (the trap): a wrapper that reuses a one-time prekey or message key must fail the property
-    test. TRAP probes/enc-6.trap/key-reused/ — a captured run reusing a one-time prekey must
-    turn the probe RED.'
+  - 'crates/murmur-core/src/vetted.rs — the misuse-resistant wrapper''s self-test. Each audited
+    primitive it composes is checked against a published known-answer vector (ChaCha20-Poly1305
+    RFC 8439 sec 2.8.2; HKDF-SHA256 RFC 5869 TC1; HMAC-SHA256 RFC 4231 TC2; X25519 RFC 7748 sec
+    5.2); an independent ReferenceRatchet (no shared code with the wrapper''s ratchet) decrypts a
+    wrapper-sealed message (the differential/interop leg); OneTimePrekeyJar consumes-and-zeroizes
+    so a prekey id is never drawn twice, and a 256-message ratchet run yields 256 distinct
+    per-message keys'
+  - 'crates/murmur-core/src/session.rs — Session.seal_with_key exposes the engine''s own AEAD
+    framing so the AEAD vector is driven through the path the engine encrypts with, not a bare
+    cipher'
+  - 'crates/murmur-relay/src/main.rs — the serve self-test''s vetted leg prints
+    libsignal-vectors-pass with the vector/interop/no-reuse counts; a vector miss, a
+    reference-decrypt mismatch, or a reused key fails the leg (and the whole self-test) closed'
+  observed: 'GREEN 2026-06-15: the misuse-resistant wrapper matched 4 official known-answer test
+    vectors of the audited primitives it composes (AEAD/HKDF/HMAC/X25519), an independent reference
+    Double-Ratchet — sharing no code with the wrapper — decrypted a message our ratchet sealed (the
+    differential/interop leg), and 256 one-time prekeys + 256 per-message keys were each handed out
+    exactly once (the no-reuse property: the jar consumes-and-zeroizes, every per-message ciphertext
+    distinct). The trap (a captured run reusing a one-time prekey) still turns the probe RED.'
+  smallest_fix: 'Done: crates/murmur-core/src/vetted.rs::prove_vetted runs three checks over the
+    engine''s own code paths — official known-answer vectors for each composed primitive, an
+    independent reference Double-Ratchet decrypt of a wrapper-sealed message, and a no-reuse property
+    over one-time prekeys (OneTimePrekeyJar) and per-message ratchet keys. The relay serve leg prints
+    libsignal-vectors-pass on success and fails closed on any vector miss / interop mismatch / key
+    reuse. TRAP probes/enc-6.trap/key-reused/ — a captured run reusing a one-time prekey turns the
+    probe RED.'
   probe: probes/enc-6.sh
   unlocks: Proof we use Signal CORRECTLY — battle-tested is the premise, never the proof.
 
