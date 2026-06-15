@@ -87,9 +87,9 @@ default_reads = ["none"]
 
 # Freshness rules live at TOP LEVEL [reads.*] — NOT [target.reads.*], which the
 # parser silently ignores (yields "will not parse: reads='cli'" at baseline).
-[reads.cli]
+[reads.cli]                                # artifact is SUITE-relative (resolved under [suites.*].dir)
 method = "content-hash"
-artifact = ".recurve/claims/the-intern-that-couldnt/bin/auths"
+artifact = "bin/auths"
 source   = "target/release/auths"
 
 [reads.none]
