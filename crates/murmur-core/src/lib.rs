@@ -54,6 +54,7 @@ pub mod number_free;
 pub mod prekey;
 pub mod ratchet;
 pub mod relay;
+pub mod rotation;
 pub mod session;
 pub mod trust;
 pub mod vetted;
@@ -66,6 +67,10 @@ pub use number_free::{NumberFreeReport, prove_number_free};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
 pub use ratchet::Ratchet;
 pub use relay::{DepositOutcome, MailboxId, MailboxStore, RelayRequest};
+pub use rotation::{
+    KeyState, RotationRekeyReceipt, compute_next_commitment, verified_rotation_rekey,
+    verify_continuation,
+};
 pub use session::Session;
 pub use trust::{TrustState, TrustVerdict};
 pub use vetted::{OneTimePrekeyJar, VettedReport, prove_vetted};

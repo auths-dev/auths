@@ -24,9 +24,10 @@
 use std::process::ExitCode;
 
 use murmur_core::{
-    ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle, PrekeySecrets,
-    Session, deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only,
-    hold_relay_boundary, prove_addressed, prove_vetted,
+    Aid, ContactDirectory, Endpoint, Identity, MailboxId, MailboxStore, PrekeyBundle,
+    PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once, deliver_rooted,
+    deliver_routing_only, hold_relay_boundary, prove_addressed, prove_vetted,
+    verified_rotation_rekey,
 };
 
 /// What the relay was asked to do.
@@ -423,6 +424,65 @@ fn run_vetted() -> Result<String, String> {
     ))
 }
 
+/// Prove the headline win (PRD §10, the verified-continuation claim with the
+/// §2 binding mechanism): a contact's pre-committed key rotation verifies as a
+/// *continuation of the same identity*, the Signal session is re-keyed
+/// deterministically against the freshly-replayed key-state (the old ratchet is
+/// never continued across the change), the republished prekey bundle is re-verified
+/// against the new current key (a stale-signer bundle is rejected), and a
+/// *substituted* key the prior state never pre-committed to is **warned, not
+/// re-pinned**.
+///
+/// A contact under one stable AID rotates from a prior signing key to the key it
+/// had pre-committed. The beat checks the rotation against the prior commitment,
+/// re-keys, and re-verifies; the adversarial twin (a substituted key) must surface
+/// the non-continuation warning. The output line carries the markers a reader greps
+/// for — `verified-continuation`, `session-rekeyed`, `prekey-reverified` — so a
+/// regression in any of the three fails the whole self-test closed.
+fn run_continuation() -> Result<String, String> {
+    // The contact's stable AID — the inception SAID, unchanged across the rotation.
+    let stable_aid = Aid::new("did:keri:contact-stable-aid");
+    // The prior signing key and the pre-committed key it rotates to (different keys —
+    // that is what a rotation is), both bound to the same stable AID.
+    let prior = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint prior key: {e}"))?;
+    let rotated = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint rotated key: {e}"))?;
+    // The contact's republished prekey secrets (DISTINCT from the AID signing key).
+    let rotated_prekeys = PrekeySecrets::from_seeds([0x31u8; 32], [0x32u8; 32]);
+
+    let receipt = verified_rotation_rekey(
+        &stable_aid,
+        &prior,
+        &rotated,
+        [0x5au8; 32], // the prior session's root, established before the rotation
+        &rotated_prekeys,
+        [0x41u8; 32], // our (initiator) Signal identity secret for the re-key X3DH
+        [0x42u8; 32], // our fresh ephemeral for the re-key X3DH
+    )
+    .map_err(|e| format!("the continuation beat failed: {e}"))?;
+
+    if receipt.continuation != TrustState::VerifiedContinuation {
+        return Err("the pre-committed rotation did not verify as a continuation".to_string());
+    }
+    if receipt.substituted != TrustState::NonContinuationWarning {
+        return Err("a substituted key was re-pinned instead of warned".to_string());
+    }
+    if !receipt.session_was_rekeyed() {
+        return Err(
+            "ratchet-continued-across-identity-change: the session was not re-keyed".to_string(),
+        );
+    }
+
+    Ok(format!(
+        "verified-continuation + session-rekeyed + prekey-reverified: a pre-committed rotation of \
+         {aid} verified as a continuation of the same identity; the Signal session was re-keyed \
+         against the freshly-replayed key-state (the old ratchet was not continued across the \
+         change) and the republished prekey was re-verified against the fresh current key (a \
+         stale-signer bundle was rejected); a substituted key the prior state never pre-committed \
+         to was warned, not re-pinned",
+        aid = receipt.aid.as_str(),
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -436,7 +496,7 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 7] = [
+            let legs: [fn() -> Result<String, String>; 8] = [
                 run_addressed,
                 run_delivery,
                 run_rooted,
@@ -444,6 +504,7 @@ fn main() -> ExitCode {
                 run_routing_only,
                 run_relay_boundary,
                 run_vetted,
+                run_continuation,
             ];
             for leg in legs {
                 match leg() {

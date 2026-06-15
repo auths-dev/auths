@@ -38,24 +38,65 @@ pub struct TrustVerdict {
 }
 
 /// Evaluate the trust state for a contact given the prior and current key-state.
-/// SKELETON: the pre-rotation commitment check (`verify_commitment` over a
-/// replayed KEL) is not wired here yet, so this fails closed — the UI never
-/// claims "verified" without the replay.
-pub fn evaluate(_prior_keystate: &str, _current_keystate: &str) -> crate::CoreResult<TrustVerdict> {
-    Err(crate::CoreError::NotBuilt(
-        "trust: KEL replay + pre-rotation commitment check",
-    ))
+///
+/// Each argument is a JSON-encoded [`crate::rotation::KeyState`] — the shape a KEL
+/// replay yields (the stable AID, the current key it resolves to, and the
+/// pre-rotation commitment to the next key). The verdict is decided by the
+/// pre-rotation commitment check ([`crate::rotation::verify_continuation`]): a
+/// rotation whose new key the prior state pre-committed to is a
+/// [`TrustState::VerifiedContinuation`]; a substituted key the prior state never
+/// pre-committed to is a [`TrustState::NonContinuationWarning`], **never** a soft
+/// re-pin. A malformed key-state is rejected — the UI never claims "verified"
+/// without a key-state it could replay.
+pub fn evaluate(prior_keystate: &str, current_keystate: &str) -> crate::CoreResult<TrustVerdict> {
+    let prior: crate::rotation::KeyState = serde_json::from_str(prior_keystate)
+        .map_err(|e| crate::CoreError::Malformed(format!("parse prior key-state: {e}")))?;
+    let current: crate::rotation::KeyState = serde_json::from_str(current_keystate)
+        .map_err(|e| crate::CoreError::Malformed(format!("parse current key-state: {e}")))?;
+    Ok(crate::rotation::verify_continuation(&prior, &current))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::address::Aid;
+    use crate::identity::Identity;
+    use crate::rotation::KeyState;
+
+    fn keystate_json(aid: &Aid, current: &Identity, next_public_key: &[u8]) -> String {
+        serde_json::to_string(&KeyState::new(aid.clone(), current, next_public_key)).unwrap()
+    }
 
     #[test]
-    fn evaluate_is_honestly_unbuilt() {
+    fn evaluate_surfaces_a_verified_continuation_for_a_pre_committed_rotation() {
+        let aid = Aid::new("did:keri:stable");
+        let prior_key = Identity::from_seed([1u8; 32]).unwrap();
+        let rotated_key = Identity::from_seed([2u8; 32]).unwrap();
+        let prior = keystate_json(&aid, &prior_key, rotated_key.public_key());
+        let current = keystate_json(&aid, &rotated_key, rotated_key.public_key());
+        let verdict = evaluate(&prior, &current).unwrap();
+        assert_eq!(verdict.state, TrustState::VerifiedContinuation);
+    }
+
+    #[test]
+    fn evaluate_warns_on_a_substituted_key_rather_than_re_pinning() {
+        let aid = Aid::new("did:keri:stable");
+        let prior_key = Identity::from_seed([1u8; 32]).unwrap();
+        let rotated_key = Identity::from_seed([2u8; 32]).unwrap();
+        let substitute = Identity::from_seed([9u8; 32]).unwrap();
+        // The prior state pre-committed to the rotated key, but the substitute is a
+        // key it never pre-committed to.
+        let prior = keystate_json(&aid, &prior_key, rotated_key.public_key());
+        let current = keystate_json(&aid, &substitute, substitute.public_key());
+        let verdict = evaluate(&prior, &current).unwrap();
+        assert_eq!(verdict.state, TrustState::NonContinuationWarning);
+    }
+
+    #[test]
+    fn evaluate_rejects_a_malformed_key_state() {
         assert!(matches!(
-            evaluate("prior", "current"),
-            Err(crate::CoreError::NotBuilt(_))
+            evaluate("not json", "also not json"),
+            Err(crate::CoreError::Malformed(_))
         ));
     }
 }

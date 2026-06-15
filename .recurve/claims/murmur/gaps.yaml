@@ -42,25 +42,36 @@
   title: A contact's key rotation verifies as a pre-committed continuation of the same identity;
     a substituted key is rejected
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '10'
   evidence:
-  - 'crates/murmur-core/src/trust.rs evaluate() fails closed NotBuilt(''trust: KEL replay
-    + pre-rotation commitment check'') — the pre-rotation verify that turns a rotation into
-    a verified continuation is unwired'
-  - crates/murmur-core/src/trust.rs TrustState — the three states (Verified, VerifiedContinuation,
-    NonContinuationWarning) are modelled but never produced by a real replay
-  - 'STRENGTHENED (PRD §2 binding mechanism) — the verdict alone is not enough: on a verified
-    rotation the app must RE-KEY the Signal session (never continue the old ratchet across an
-    identity change) and re-verify the republished prekey bundle against the freshly-replayed
-    current key; neither the re-key nor the prekey re-verify is wired yet'
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=verified-continuation+rekeyed+prekey-reverified+substituted-rejected
-    — the KEL replay + pre-rotation commitment check + the on-rotation Signal re-key and prekey
-    re-verify are unbuilt (murmur-relay 0.1.3: store-and-forward wire not built yet (the mailbox
-    queue + pull/subscribe surface is the slice''s transport work)); MSG-2 is open'
+  - 'crates/murmur-core/src/rotation.rs — KeyState carries the stable AID + the current key +
+    the pre-rotation commitment to the next key; verify_continuation(prior, current) runs the
+    commitment check (the revealed current key must hash to the prior state''s next_commitment)
+    and yields VerifiedContinuation for a pre-committed rotation, NonContinuationWarning for a
+    substituted key — never a soft re-pin'
+  - 'crates/murmur-core/src/rotation.rs verified_rotation_rekey() drives the §2 binding mechanism:
+    on a verified continuation it re-keys the Signal session by re-running X3DH against the
+    freshly-replayed key-state (asserting the re-keyed root differs from the prior session''s —
+    the old ratchet is NOT continued across the change) and re-verifies the republished prekey
+    bundle against the new current key (a stale-signer bundle signed by the superseded key is
+    rejected)'
+  - 'crates/murmur-core/src/trust.rs evaluate() now decodes two KeyState snapshots and returns
+    the verify_continuation verdict — the three TrustStates are produced by a real commitment
+    check, not modelled-but-never-produced'
+  - 'crates/murmur-relay/src/main.rs run_continuation() self-test prints the markers the probe
+    greps for — verified-continuation + session-rekeyed + prekey-reverified — and fails the
+    serve closed if the substituted-key twin is re-pinned, the session is not re-keyed, or a
+    stale-signer prekey is accepted'
+  observed: 'GREEN at 2026-06-16: a pre-committed rotation verified as a continuation of the same
+    identity; the Signal session was re-keyed against the freshly-replayed key-state (the old
+    ratchet was not continued across the change) and the republished prekey was re-verified
+    against the fresh current key; a substituted key the prior state never pre-committed to was
+    warned (NonContinuationWarning), not re-pinned. Probe GREEN, trap probes/msg-2.trap/substituted-key/
+    still RED (substituted/stale-signer acceptance turns it RED), federated gate OK, leakcheck clean'
   smallest_fix: 'Wire evaluate() to replay the contact''s KEL and run the pre-rotation commitment
     check (verify the new key was pre-committed by the prior key-state): a pre-committed rotation
     yields VerifiedContinuation; a substituted (not-pre-committed) key yields NonContinuationWarning,
