@@ -88,7 +88,7 @@
 - id: AGENT-MCP-5
   title: The over-reach is a real model's decision and reproduces deterministically in CI
   class: missing-surface
-  status: open
+  status: closed
   severity: feature
   reads: gateway
   covers:
@@ -96,9 +96,35 @@
   evidence:
   - the gap this whole PRD closes (maps WED — the agent wedge); live-leg evidence is out-of-band,
     only replay is gated
-  observed: 'RED at baseline 2026-06-15: ours=no-replay expected=byte-stable-verdicts — the
-    gateway produced no replay verdict stream; AGENT-MCP-5 is open (the transcript replayer
-    is not built)'
+  - 'BUILT: the gated property is the HERMETIC replay (D7) — the live model run is evidence-only,
+    never gated. (1) A realistic FROZEN transcript (probes/transcripts/agent-mcp-5.json): a
+    representative agent tool-loop — three in-bounds calls (read_file, read_file, create_comment
+    under grant {fs.read, github.comment}) then the model''s EMERGENT out-of-bounds write_file.
+    Replaced the PLACEHOLDER-shape fixture. (2) probes/agent-mcp-5.sh rewritten to drive the
+    gateway TWICE in SEPARATE fresh sandboxes (the chain build is not idempotent) and assert the
+    canonical per-call verdict stream is BYTE-IDENTICAL across the two independent drives (the
+    receipt wall-clock + per-run delegation keys are not the verdict, so byte-stability is tested
+    over the verdict stream, not the timestamps), the in-bounds calls pass, and the emergent
+    write is refused outside-agent-scope. (3) TWO trap fixtures: forged-wider and proof-dropped —
+    both a transcript edited to forge a wider scope AND one with the proof dropped must still fail
+    closed (verified against the real gateway: a per-call write claim over a read-only seal →
+    outside-agent-scope; a byte-flipped proof → proof-unauthentic, downstream never invoked). (4)
+    The LIVE-mode harness lives in the auths-mcp wrapper repo (examples/live/record.py): a real
+    Anthropic (Claude) API tool-loop that records a real run into the same transcript schema —
+    evidence-only, never gated (D7). No API key in this environment, so the live recording is
+    DEFERRED as out-of-band evidence: record.py exits 3 and writes nothing rather than faking a
+    run or stubbing a model.'
+  observed: 'GREEN at baseline 2026-06-15: replay over the frozen transcript is byte-stable across
+    two INDEPENDENT drives (verdict-stream sha256 4741de2953ba identical on both runs — the
+    byte-stability claim, confirmed by running the probe twice), the 3 in-bounds calls passed, and
+    the agent''s emergent out-of-bounds write was refused outside-agent-scope (the filesystem
+    downstream never touched) — deterministic in CI with no model/network. Trap RED (forged-wider):
+    a captured stream where the over-bounds write was ALLOWED under a forged wider scope is refused
+    (no fail-closed verdict — the adversarial replay guard regressed). Trap RED (proof-dropped): a
+    captured stream where the over-reach was waved through with no signed proof is refused. The
+    live recording was DEFERRED (no ANTHROPIC_API_KEY in this environment): the live harness
+    (auths-mcp examples/live/record.py) is built and exits 3 without faking a run — per D7 the live
+    leg is believability evidence attached out-of-band, never the gate.'
   smallest_fix: 'Build the live-mode tool loop (real model) + a transcript recorder/replayer;
     the probe drives the gateway from the committed transcript (no model/network) to byte-stable
     verdicts, and a transcript edited to drop the proof or forge a wider scope still fails
@@ -121,7 +147,8 @@
   - maps AGT-3 (live mutual-introduction leg, not yet built — likely PARK)
   observed: 'RED at baseline 2026-06-15: ours=no-cross-org-verdict expected=allowed+outside-agent-scope
     — B''s gateway produced no introduction-bounded verdict; AGENT-MCP-6 rides AGT-3''s live
-    leg (likely PARK until the mutual-introduction runtime lands)'
+    leg (likely PARK until the mutual-introduction runtime lands). PARKED on the AGT-3 live
+    leg — tracked by #279.'
   smallest_fix: 'Honor a scoped A->B introduction at B''s gateway so a call within the grant
     passes and one exceeding it is refused at B (A cannot widen its own introduction; B never
     trusts A''s self-asserted scope). PARK — do not stub — if the AGT-3 live introduction
