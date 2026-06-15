@@ -33,6 +33,7 @@
 
 pub mod budget;
 pub mod gate;
+pub mod paymode;
 pub mod rail;
 pub mod receipt;
 pub mod session;
@@ -42,6 +43,10 @@ pub use budget::{
     SettledCounter,
 };
 pub use gate::{Decision, GateError, PerCallGate, ToolCall, Verdict};
+pub use paymode::{
+    BudgetRequired, ModeDisclosure, PaymentMode, StripeRail, TEST_MODE_ENV, X402Rail,
+    env_opts_into_test, require_budget,
+};
 pub use rail::{ExtractedCost, RailError, extract as extract_rail_cost, extract_stripe};
 pub use receipt::{Receipt, ReceiptError};
 pub use session::Budget;

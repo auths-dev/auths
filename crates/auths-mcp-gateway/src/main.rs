@@ -81,6 +81,28 @@ struct WrapArgs {
     #[arg(long = "ttl", value_name = "TTL")]
     ttl: Option<String>,
 
+    /// Opt into SANDBOX payment rails (Stripe test `sk_test_…`, x402 `base-sepolia`).
+    ///
+    /// Real money is the DEFAULT: with no flag the gateway resolves to live Stripe
+    /// (`api.stripe.com`, an `sk_live_…` key) and x402 on base mainnet (real USDC).
+    /// This single flag is the deliberate opt-in to sandbox rails so no real money is
+    /// spent; `AUTHS_MCP_TEST_MODE=1` is its environment twin. The mode is always
+    /// disclosed (a `mode=real|test` banner at startup) so live rails are never silent.
+    #[arg(long = "test-mode")]
+    test_mode: bool,
+
+    /// Resolve the payment mode and DISCLOSE it, then exit — a dry run that touches no
+    /// rail and charges nothing.
+    ///
+    /// Prints which mode the operator's switches resolve to (`mode=real` by default,
+    /// `mode=test` under `--test-mode`), the resolved Stripe/x402 rails, and the
+    /// startup banner — then exits without serving the proxy. Use it to confirm
+    /// whether real money would be live before wrapping for real. The mandatory-cap
+    /// seatbelt still applies: a payment-rail wrap with no `--budget` is refused here
+    /// too, in both modes.
+    #[arg(long = "show-mode")]
+    show_mode: bool,
+
     /// The agent delegation identifier (`did:keri:…`) the durable cross-rail counter is
     /// keyed to — the verifier-held SETTLED counter sums every rail's spend for THIS
     /// delegation. Optional: when the live-agent harness has not yet bound the agent's
@@ -151,6 +173,8 @@ async fn run_wrap(args: WrapArgs) -> ExitCode {
         agent_delegation: args.agent_delegation,
         custody,
         downstream: args.downstream,
+        test_mode: args.test_mode,
+        show_mode: args.show_mode,
     };
     match proxy::serve(cfg).await {
         Ok(()) => ExitCode::SUCCESS,

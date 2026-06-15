@@ -532,7 +532,7 @@
     budget cap is the MANDATORY safety seatbelt; and the mode is DISCLOSED so real money is
     never silent
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: gateway
   covers:
@@ -562,9 +562,20 @@
     modes); the `mode=real|test` disclosure (a startup banner + a receipt/dry-run field). The docs
     update (real-focus, the test note at the bottom — the walkthrough + provider docs in the
     auths-mcp wrapper repo) is also part of the build, not this ARM.'
-  observed: 'RED at baseline 2026-06-15 (correct — the inverted default / clean PaymentMode port /
-    mandatory-cap / disclosure are not built, this claim is contract-only ARM): driving the staged
-    gateway, `wrap --show-mode --scope paid.call --budget ''$5'' -- <stub>` is rejected by clap
+  observed: 'GREEN — promoted closed: the inverted payment-mode default is built over a clean
+    PaymentMode port (crates/auths-mcp-core/src/paymode.rs). With NO flag the gateway resolves to
+    REAL and discloses `mode=real` (Stripe LIVE api.stripe.com/sk_live_…, x402 base MAINNET) — real
+    money is the default; `--test-mode` (or its env twin AUTHS_MCP_TEST_MODE=1) is the single opt-in
+    and discloses `mode=test` (sk_test_… / base-sepolia). The cross-rail budget cap is the MANDATORY
+    seatbelt: a payment-rail wrap with NO --budget is refused `budget-required` fail-closed in BOTH
+    modes (auths-mcp-core::require_budget, enforced on the wrap path in proxy.rs before any rail or
+    downstream is touched). The mode is DISCLOSED via a startup banner + a machine `mode=…` line; the
+    `wrap --show-mode` resolve-and-disclose dry-run prints the resolved rails and exits served:false
+    charged:false. probe agent-pay-3.sh GREEN; both traps (cap-omitted-allowed, mode-not-disclosed)
+    still RED (they discriminate); matrix --gate green fleet-wide (zero regressions/broken/stale,
+    11/11 traps RED, leakcheck clean) with MCP-1..5/7/8 + PAY-1/2 still GREEN and MCP-6 untouched.
+    Prior baseline (RED, contract-only ARM 2026-06-15): driving the staged
+    gateway, `wrap --show-mode --scope paid.call --budget ''$5'' -- <stub>` was rejected by clap
     ("unexpected argument ''--show-mode'' found") — there is no PaymentMode-resolution disclosure
     surface, so neither the default→mode=real (Stripe LIVE / base mainnet) nor the --test-mode→mode=test
     (sk_test_ / base-sepolia) disclosure is present; `--budget` is `Option<String>` (optional), so a

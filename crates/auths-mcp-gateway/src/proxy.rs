@@ -22,7 +22,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use auths_mcp_core::budget::{CrossRailBudget, ReserveOutcome, SettleOutcome};
-use auths_mcp_core::{Budget, Capability};
+use auths_mcp_core::{
+    Budget, Capability, PaymentMode, TEST_MODE_ENV, env_opts_into_test, require_budget,
+};
 use rmcp::model::{
     CallToolRequestParam, CallToolResult, ListToolsResult, PaginatedRequestParam,
     ServerCapabilities, ServerInfo,
@@ -132,6 +134,23 @@ pub struct WrapConfig {
     pub custody: CustodyVault,
     /// The downstream MCP server command (everything after `--`).
     pub downstream: Vec<String>,
+    /// Opt into SANDBOX payment rails. Real money is the default; this single flag
+    /// (or `AUTHS_MCP_TEST_MODE=1`) is the deliberate opt-in to test rails.
+    pub test_mode: bool,
+    /// Resolve the payment mode, disclose it, and exit — a dry run that touches no
+    /// rail and charges nothing.
+    pub show_mode: bool,
+}
+
+impl WrapConfig {
+    /// Whether this session grants a payment capability — i.e. it wraps a rail that
+    /// can spend (`paid.call`). The mandatory-cap seatbelt and the mode disclosure
+    /// apply exactly to these sessions.
+    fn wraps_payment_rail(&self) -> bool {
+        self.scope
+            .iter()
+            .any(|cap| Capability::for_tool(cap).as_str() == "paid.call")
+    }
 }
 
 /// The repo path the verifier holds the durable cross-rail counter under (the same
@@ -505,11 +524,79 @@ async fn brokered_custody_check(
         .map_err(|e| anyhow::anyhow!("spawn downstream `{}`: {e}", downstream.join(" ")))
 }
 
+/// Resolve the payment mode and DISCLOSE it before any rail is touched — the safety
+/// surface for a real-money-by-default gateway.
+///
+/// Two properties this enforces, in BOTH modes:
+///
+/// * **The cap is mandatory.** A payment-rail wrap with no `--budget` is refused
+///   fail-closed (`budget-required`) before anything is served or charged — real
+///   money is the default, so the cross-rail cap is the seatbelt and cannot be
+///   skipped. A non-payment wrap needs no budget.
+/// * **The mode is disclosed.** The resolved mode (`mode=real` by default, `mode=test`
+///   under the single `--test-mode` / `AUTHS_MCP_TEST_MODE=1` opt-in), the resolved
+///   Stripe/x402 rails, and the human banner are surfaced so live rails are never
+///   silent.
+///
+/// Returns `Ok(true)` when the caller should STOP after disclosure — either because
+/// `--show-mode` requested a resolve-and-disclose dry run (served:false, charged:false)
+/// or there is nothing more to do. Returns `Ok(false)` to continue serving the proxy.
+/// Returns `Err` on the fail-closed budget refusal.
+fn disclose_payment_mode(cfg: &WrapConfig) -> anyhow::Result<bool> {
+    let wraps_payment = cfg.wraps_payment_rail();
+    // The single opt-in to sandbox rails: the `--test-mode` flag OR its environment
+    // twin `AUTHS_MCP_TEST_MODE`. The env var is read here at the I/O boundary (the
+    // gateway's own environment, never an agent request); the truthy rule lives in the
+    // core port. Absent both, the mode resolves to REAL — real money is the default.
+    let env_test = env_opts_into_test(std::env::var(TEST_MODE_ENV).ok().as_deref());
+    let mode = PaymentMode::resolve(cfg.test_mode || env_test);
+    let disclosure = mode.disclosure();
+
+    // Disclose the mode FIRST so the operator always sees whether real money is live,
+    // even on the refusal path below.
+    if wraps_payment || cfg.show_mode {
+        eprintln!("auths-mcp-gateway: {}", disclosure.banner);
+        eprintln!(
+            "auths-mcp-gateway: resolved payment mode — {}",
+            disclosure.machine_line()
+        );
+    }
+
+    // The mandatory cap (the seatbelt): a payment rail must carry a --budget, in BOTH
+    // modes, fail-closed. Refuse BEFORE serving or touching any rail.
+    if let Err(refusal) = require_budget(wraps_payment, cfg.budget.as_deref()) {
+        anyhow::bail!(
+            "{refusal} (mode={}, served:false, charged:false)",
+            mode.token()
+        );
+    }
+
+    // The resolve-and-disclose dry run stops here: it never serves the proxy and never
+    // charges. served:false, charged:false.
+    if cfg.show_mode {
+        println!(
+            "auths-mcp-gateway: --show-mode resolved {} (served:false, charged:false) — \
+             no proxy was served and no rail was touched",
+            disclosure.machine_line()
+        );
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
 /// Serve the wrap proxy: connect down to the wrapped downstream, then serve MCP up
 /// to the agent over stdio, brokering each call. Returns when the agent disconnects.
 pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
     if cfg.downstream.is_empty() {
         anyhow::bail!("no downstream command after `--`");
+    }
+
+    // Resolve + disclose the payment mode and enforce the mandatory cap BEFORE any
+    // rail or downstream is touched. A --show-mode dry run discloses and returns here
+    // (served:false, charged:false); a budget-less payment-rail wrap is refused here.
+    if disclose_payment_mode(&cfg)? {
+        return Ok(());
     }
 
     let cap_cents = cfg
