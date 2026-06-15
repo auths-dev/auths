@@ -8,11 +8,16 @@
 > first and quiet, the way the app should feel. (It also pairs with the design language below:
 > Liquid Glass is calm and recessive, and so is a murmur.)
 >
-> **Status.** The build is the **thinnest end-to-end slice** that proves the claims (§10) on
-> **two real devices** — send from the Mac, watch it arrive authenticated on the iPhone. This is
-> the most viscerally legible expression of "identity you own": a messenger where *you* are the
-> address, with no number behind it. We build it because it's the flagship that makes the whole
-> identity layer click the moment someone holds it.
+> **Status — this is a *proof of thesis*, not a shippable product.** The build proves the claims
+> (§10) — MSG-1..4 + ENC-1..6 — on **two real devices** (send from the Mac, watch it arrive
+> authenticated on the iPhone). That proof is genuinely thin *because* it deliberately skips the
+> messenger itself: push, relay-at-scale, prekey lifecycle, multi-device history sync, groups,
+> media. Those aren't post-slice polish — they're a multi-year, security-critical build (§11), a
+> different order of magnitude. We keep the two honest and separate: **the proof is achievable,
+> demoable, and fundable; shipping to real users is a much larger undertaking, gated on §10's
+> external-audit precondition.** It's still the most viscerally legible expression of "identity
+> you own" — a messenger where *you* are the address, no number behind it — which is exactly why
+> it's worth proving on real hardware before committing to the product.
 
 ---
 
@@ -28,14 +33,38 @@ strength. It is the soft spot.
 ## 2. Thesis
 
 **Use a self-certifying identifier (an AID) as the address.** Your address becomes a
-cryptographic identifier you own outright — no number, no email, no provider. The encryption
-protocol stays the same class as Signal's; only the identity root changes.
+cryptographic identifier you own outright — no number, no email, and no provider that *owns your
+identity* (a default witness/relay path still handles discovery and delivery — disclosed and
+swappable, §3.1). The encryption protocol stays the same class as Signal's; only the identity
+root changes.
 
-The headline win is one a key-pinning model cannot match: **pre-rotation makes a key change
-*verifiable*.** When a contact re-installs or rotates keys, the new key was pre-committed and
-is authorized by the prior key state — so the app shows a *verified, pre-committed
-continuation of the same identity* instead of a scary, unverifiable safety-number warning.
-Identity continuity *across* key changes is exactly what KERI provides and Signal does not.
+The headline win: **pre-rotation makes a *benign* key change verifiable.** When a contact
+re-installs or does a planned rotation, the new key was pre-committed by the prior key state — so
+the app shows a *verified, pre-committed continuation of the same identity* instead of the scary,
+unverifiable safety-number warning Signal fires on **every** change. Since benign reinstalls are
+the overwhelmingly common case, this kills the alarm-fatigue that trains Signal users to ignore
+the warning — a real, defensible UX win — and it defeats a current-key-*only* compromise outright
+(an attacker holding the signing key but not the secured next key cannot rotate at all).
+
+**The honest boundary (up front, because a security-savvy reader will probe it).** Pre-rotation
+makes a rotation *authorized*, not *trustworthy*. If an attacker fully compromises a device — both
+its current key **and** its pre-committed next key — they can produce a valid "verified
+continuation" to a key they now control, and the badge would reassure; Signal's warning *does*
+fire in exactly that case. So Murmur is **not** strictly louder than Signal on compromise: it
+trades "warns on everything, including benign reinstalls" for "verifies any properly pre-committed
+continuation, including a post-theft one." Full device compromise is handled by **guardian
+recovery + revocation** (§9, §11.1) — out-of-band, with a revocation-race window — **not** by the
+continuity badge. The wedge is "no false alarms + verifiable benign continuity," not
+"unconditionally safer than a warning."
+
+**The binding mechanism (so this isn't just prose).** On a rotation the app must **re-key the
+Signal session deterministically** — tear down and re-establish X3DH against the freshly-replayed
+key-state, never continue the old ratchet across an identity change — and **re-verify the
+republished prekey bundle against the new current key** (accepting a bundle whose signer you
+didn't re-check is the dangerous bug). Benign-continuity's integrity also depends on the **witness
+threshold**: the app must reject a **forked KEL** (two different rotations at the same sequence),
+or a malicious relay can serve a stale/forked key-state to suppress or fake a rotation — so the
+launch-centralization asterisk (§3.1) is load-bearing here, not cosmetic.
 
 ## 3. Architecture — three layers, cleanly split
 
@@ -126,6 +155,17 @@ bootstrapped **out-of-band** — a QR, an OOBI link, or a DNS-anchored **did:web
 never a mandatory one). After first contact, the KEL's endpoint records carry everything. That
 out-of-band handoff is the cost of having no phone-directory — and exactly why there is nothing to
 enumerate or hijack.
+
+**The "no provider" asterisk — who runs the witnesses and relays?** "No provider" is precise about
+**identity control**: you hold your keys, your KEL is yours, and no one can impersonate you or
+lock you out of your AID. It is **not** a claim that no server touches *discovery* or *delivery*.
+At launch Murmur operates the default **witness set** (which receipts your KEL and serves
+resolution) and the default **relay** (store-and-forward) — so on day one we are the resolver,
+witness, and relay operator on the default path. That's a real, disclosed centralization, and the
+escape hatch is the identity-portability superpower (§11.3): witnesses and relays are **named in
+your own signed KEL and swappable** — federate or self-host them and keep every contact, because
+your identity never depended on ours. The honest one-liner: *no provider for who you are; a
+Murmur-operated default path for discovery and delivery, federatable over time.*
 
 ## 4. The apps — native iOS + macOS (and the testbed)
 
@@ -301,9 +341,12 @@ sequenceDiagram
 - **They reinstall / rotate keys.** Their new key was pre-committed at the prior step, so your app
   shows a **verified, pre-committed continuation of the same person** — not a scary safety-number
   warning (the headline win, §2).
-- **You lose the Mac.** Revoke it from the iPhone: the root rotates the delegation, and the lost
-  device's next message fails to verify for *every* contact at once — clawback from the chain, not
-  a best-effort logout.
+- **You lose the Mac.** Revoke it from the iPhone: the root rotates the delegation, and the revoked
+  device stops verifying as you. The honest bound (same lesson the agent-gateway learned —
+  prevention vs detection, witness-dependent): revocation is only as fast as each contact
+  **re-resolves** your key-state, and only safe if they get **witness-corroborated** state rather
+  than a relay's stale cache — an offline contact, or one served stale state, still has a window.
+  It's clawback from the chain, not an instant global kill, and not a best-effort server logout.
 
 ### 6.6 Where auths does the work (the map)
 
@@ -356,8 +399,13 @@ is the SwiftUI shell, the Signal ratchet, and the relay — *not* the identity e
   (permissionless). So Murmur brings its own, and the simplest answer wins: **opt-in contact** —
   you can't message me unless I admit your AID. A spammer can mint a million AIDs and reach no
   one. Reputation, proof-of-work on first contact, and witness-gated rate limits are in reserve
-  if we ever want them, but opt-in alone dissolves the problem. This is ours to define — and
-  that's the moat.
+  if we ever want them, but opt-in alone dissolves the problem **for 1:1**. This is ours to
+  define — and that's the moat. **The honest caveat: opt-in is a 1:1 defense.** Groups reopen the
+  vector — the moment someone can **add you to a group**, or a **group-invite link leaks or is
+  enumerable**, a spammer reaches you without your per-AID admission, and a group is an amplifier.
+  Group-invite abuse is its own unsolved surface, handled at the membership layer (§11.3's
+  group-as-AID governance — admits are signed events you can gate, and you can leave), **not** by
+  1:1 opt-in. Name it; don't let "opt-in dissolves spam" imply groups are covered.
 
   > **On biometrics.** The tempting fix — require a biometric at account creation — helps
   > with one thing and not the thing you'd hope: biometrics give **liveness, not uniqueness**,
@@ -402,11 +450,16 @@ seamless multi-device, guardian recovery. A non-technical person gets it instant
 can hold it: *send from your Mac, and it arrives verified as you on your phone, with no number
 anywhere.*
 
-**The wedge is real and ours alone.** Nobody else can show *verifiable* key continuity —
-pre-rotation is a KERI property a key-pinning model structurally cannot match. "No phone number"
-is the headline everyone gets immediately; "your contact's key change is *verified*, not a scary
-warning" is the thing they didn't know they wanted until they see it. That's a feature with no
-competitor, on the most personal surface there is.
+**The wedge is real — stated honestly.** "No phone number" is the headline everyone gets
+immediately. The subtler win is **verifiable benign continuity**: pre-rotation proves a reinstall
+or planned rotation is a pre-committed continuation, so Murmur doesn't fire Signal's cry-wolf
+"safety number changed" alarm on the common, harmless case — the alarm users are trained to
+ignore. That's a genuine edge a key-pinning model can't offer, and it defeats a current-key-only
+leak outright. What it is **not** is "unconditionally safer than a warning": a full device
+compromise can still forge a green continuation (§2), which is why recovery and revocation — not
+the badge — carry the compromise case. The honest version is still a strong wedge, and it's the
+one that survives scrutiny from the exact security-savvy crowd who decides whether a new messenger
+is credible.
 
 **And the wedge widens past the slice.** Three more features fall out of self-certifying identity
 that no incumbent can ship without rebuilding their foundation — each both a differentiator *and*
@@ -421,12 +474,13 @@ the answer to a real user need (full set in §11):
   KEL events — "who's in, who added whom, when" is cryptographically auditable, with no server
   deciding and no silent member-injection.
 
-**The plan — ship the thinnest end-to-end slice as native iOS + macOS apps, beautifully.** Prove
-the claims (§10) on two real devices, with the ratchet integrated properly, an opt-in contact
-model, and Liquid Glass making it feel effortless. The two apps are the point: they let us
-*show*, not tell. Messaging is the most intimate, highest-frequency surface a person touches —
-own identity there and you own the relationship. We start with the slice that makes people lean
-in, and build out from a wedge no incumbent can copy.
+**The plan — prove the thesis on two real devices first.** Build the proof (§10): MSG-1..4 +
+ENC-1..6, native iOS + macOS, the ratchet integrated properly, opt-in contact, and Liquid Glass
+making it feel effortless. The two apps are the point — they let us *show*, not tell, that the
+identity wedge works on hardware a person can hold. That is the achievable, demoable, fundable
+milestone. Turning the proof into a messenger real users live in is the **much larger** build in
+§11, and it is explicitly gated on an external audit of the encryption join (§10). We're
+deliberate about which we're doing: **prove first, and don't market the proof as the product.**
 
 ## 10. Claim sketch (the thinnest provable slice)
 
@@ -483,11 +537,33 @@ A green encryption gate means we proved the **integration** is tight — any lea
 tampered / replayed / mis-signed message, is RED. "Signal is battle-tested" is the premise here,
 never the proof.
 
+### Release gate — external cryptographic audit (non-negotiable, blocks real users)
+
+A green ENC gate is necessary but **not sufficient** to put this in front of a single real user
+who believes it's private. ENC-1..6 are written by the same people who wrote the wiring; on the
+most adversarial surface there is, self-tests are a floor, not an audit — and consumer messaging
+is precisely where "we tested it ourselves" has burned people. So one precondition **gates any
+real-user release** (a hard blocker, not "someday"):
+
+> **The KERI↔Signal join and the multi-device key lifecycle get an external cryptographic review
+> before any non-demo user.**
+
+The review must cover not just the *static* join (the AID key signs a distinct Signal identity
+key; no signing↔DH reuse) but the **combinatorial multi-device state machine** where the subtle
+break hides: N delegated devices, each with its own Signal identity key and prekey bundles, and a
+continuity story that must hold across **rotation and delegation simultaneously**. Until that
+review passes, the build stays a **proof on demo/internal devices only** (§0). The cost of
+rounding up here isn't a weak demo — it's someone trusting a channel with a hole in the part we
+built.
+
 ## 11. Product surface & roadmap (beyond the thin slice)
 
-§10 proves the identity *core*; this section is the messenger *around* it — kept explicitly
-**post-slice** so we never blur what we prove first. Ship the slice — but design these stances
-**now**, because four of them decide whether "no phone number" survives contact with a real user.
+§10 proves the identity *core*; this section is **the actual cost of turning that proof into a
+messenger real users live in** — a *different order of magnitude* than the proof (multi-year,
+security-critical: push, relay-at-scale, prekey lifecycle, sync, groups, media). It's kept
+explicitly **post-slice** so we never blur "proved the thesis" with "shipped a product." Design
+the stances below **now**, though — four of them decide whether "no phone number" survives contact
+with a real user.
 
 ### 11.1 Existential gaps — name the stance before the slice ships
 
@@ -495,10 +571,21 @@ Not "later." Without a stance, the no-phone-number story breaks on day one.
 
 | Gap | Stance (direction, not full design) |
 | --- | --- |
-| **Recovery — you lose *all* devices** | **Guardian / social recovery** (native KERI M-of-N multisig): choose N guardians, any M rotate you back. Promoted to a flagship (§9) — the scariest gap and our best differentiator are the *same* feature. Pre-rotation alone is **not** recovery: to rotate you need a live key, so losing every device must have a social path back. |
+| **Recovery — you lose *all* devices** | **Guardian / social recovery** (native KERI M-of-N multisig): choose N guardians, any M rotate you back. Promoted to a flagship (§9) — the scariest gap and our best differentiator are the *same* feature. Pre-rotation alone is **not** recovery: to rotate you need a live key, so losing every device must have a social path back. **Threat model (say it):** this trades "the telco can SIM-swap you" for "M of your guardians can be social-engineered or can collude" — a *social-engineered guardian is the new SIM-swap*, and M colluding guardians can **steal** you, not just restore you (3-of-5 ≠ 2-of-3; the threshold is a real decision, and guardians should be **notified** of a recovery they co-sign so quiet collusion is visible). Better trust distribution, not the elimination of trust. Guardian designation is anchored in your KEL (a relay can't lie about who they are), and recovery and device-revocation are the **same event class** — a rotation that changes who can sign. |
 | **Push notifications** | "No phone number" does **not** remove APNs. Use **content-less push + fetch** — the push says only "you have mail," the app pulls ciphertext from the relay — so the notifier never learns a stable AID↔device-token link. Token/notifier separation is a named design item, not hand-waved. |
-| **Multi-device sync & history** | Each delegated device has its own keys/sessions. New messages **fan out** to each device's prekeys; a **newly-paired device gets history via an encrypted device-to-device transfer over the existing pairing channel** (§6.2), never from the relay. |
+| **Multi-device sync & history** | Each delegated device has its own keys/sessions. New messages **fan out** to each device's prekeys (the per-device Sender-Keys problem Signal/WhatsApp both had to solve); a **newly-paired device gets history via an encrypted device-to-device transfer over the existing pairing channel** (§6.2), never from the relay. **Honest bound:** if the *only* device holding history is the one you lost, recovery returns your **identity, not your history** — guardians restore who you are, not what you said. |
 | **Discovery — the empty-room problem** | No number + opt-in contact = you can't be found and open to an empty list. Answer with **invite links** (an OOBI link you DM/post), **did:webs handles** for those who *want* to be findable, **QR-in-person**, and a designed **contact-request handshake** (the "admit your AID" flow, today only referenced). |
+
+**Threat model — say what's protected and what isn't.** Murmur protects message **content** and
+the **identity↔phone-number link** (there is no number, and the relay sees only ciphertext + a
+pairwise mailbox id). It does **not** claim metadata-resistance against a **global passive
+adversary** or against **Apple**: content-less push still routes through **APNs**, so Apple sees
+device-token↔delivery-timing for every message, and the AID↔token unlinkability assumes the relay
+and the push notifier **don't collude** — which, while we operate both at launch, is a "trust us,"
+not a proof. The privacy-maximalist segment this targets will assume the strong version unless we
+disclaim it: **we protect you against the relay and the network, not against the platform's push
+layer.** Closing that gap (notifier/relay separation, a third-party notifier) is roadmap, not a
+launch claim.
 
 ### 11.2 Table stakes — the surface, each with a privacy stance
 
@@ -525,9 +612,9 @@ KERI. ★ = promoted into "why we win" (§9).
 | ★ **Guardian / social recovery** | Recovery is native delegated multisig — M-of-N co-signers rotate you back. |
 | ★ **Identity portability (own, don't rent)** | The AID is a `did:keri` we don't own; relays/witnesses swap without losing contacts. |
 | ★ **Verifiable group governance** | A group *is* an AID; adds/removes are signed KEL events — tamper-evident membership. |
-| **Per-device identity + instant revocation** | Each device is a delegated AID; kill one as a chain event — no identity re-key, no re-verifying with contacts. |
+| **Per-device identity + chain-based revocation** | Each device is a delegated AID; revoke one as a signed chain event every contact sees on re-resolve — no identity re-key, no re-verifying with contacts. (Bound: only as fast as contacts re-resolve, and witness-corroborated; an offline / stale-served contact still has a window — §6.5.) |
 | **Verified accounts, no central blue-check** | `did:webs` anchors an AID to a DNS domain you control — self-serve verified business/official accounts, killing impersonation with no Murmur-as-authority. |
-| **Provable provenance + signed forwards** | Every identity signs natively: a forwarded message proves "this came from Alice" third-hand — opens journalism / legal / enterprise-compliance verticals. |
+| **Provable provenance + signed forwards** *(deferred — but the safety rule binds now)* | Every identity signs natively, so a message can carry a detached signature verifiable third-hand against the signer's **historical KEL** ("this came from Alice," portable, after the fact — impossible behind a phone number, which has no third-party-resolvable key history). **Non-negotiable design rule, even with the product deferred:** the Double Ratchet is *deliberately deniable* — it authenticates to the recipient but lets no one prove to a third party who sent what, which protects a source as much as it proves authenticity. Provenance is the **inversion** of that, so it must be an **explicit, per-message, opt-in signing act layered *above* the ratchet — never the default envelope.** Signing by default would silently strip deniability from every private message and detonate the thesis; and the UI must make "this is **permanently, publicly attributable** to you" unmistakable before you attach it (a UI-TRUST-class guardrail). The verticals (journalism / legal / compliance / verified accounts) are real but **out of scope for now** — §9 keeps the consumer proof first. |
 | **Delegated agent / bot messaging** | A scoped, revocable sub-identity for an agent — the exact auths-mcp bounded-delegation pattern — wires Murmur into the broader agent platform. |
 
 ### 11.4 Two product decisions to force now
