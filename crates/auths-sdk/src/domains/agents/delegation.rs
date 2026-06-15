@@ -122,9 +122,11 @@ pub fn add_scoped(
     )
     .map_err(AgentError::CryptoError)?;
 
-    // Subset rule: the agent's scope can only narrow the delegator's own scope. The
-    // delegator is the root here; if it carries no scope seal it is unrestricted.
-    enforce_scope_subset(ctx, &root_prefix, scope)?;
+    // Subset rule: the agent's scope can only narrow the scope the DELEGATOR itself
+    // holds. The delegator is whoever's key signs this delegation (`root_alias`),
+    // which may be the loaded root OR a scoped mid-chain delegate signing on the same
+    // registry — its granted scope is anchored by ITS delegator, never self-asserted.
+    enforce_scope_subset(ctx, &root_prefix, root_alias, scope)?;
 
     let agent = incept_delegated_device(
         Arc::clone(&ctx.registry),
@@ -270,20 +272,50 @@ fn collect_kel(ctx: &AuthsContext, prefix: &auths_id::keri::types::Prefix) -> Ve
     events
 }
 
-/// Enforce that `requested` capabilities are a subset of the delegator's own scope.
-/// If the delegator (root) carries no scope seal it is unrestricted — any scope is
-/// allowed. Reuses the salvaged capability-subset rule.
+/// Enforce that `requested` capabilities are a subset of the scope the DELEGATOR
+/// itself holds.
+///
+/// The delegator is whoever's key signs this delegation — `root_alias` — which is
+/// not necessarily the loaded root identity (`root_prefix`). A scoped mid-chain
+/// delegate (e.g. a manager holding `{sign_commit}`) signs on the same registry and
+/// must only be able to *narrow*. Its granted scope is anchored by ITS delegator in
+/// the registry's KEL, keyed by the delegate's OWN prefix — never by `root_prefix`,
+/// and never self-asserted from its own KEL. We therefore resolve the signing key's
+/// identity and read the scope seal anchored *for that identity*:
+///
+/// * the loaded root signing for itself → no seal keyed by the root prefix exists →
+///   unrestricted (a top-level root grants any scope), preserving prior behavior; and
+/// * a scoped delegate signing → the seal its delegator anchored *for it* is found,
+///   so an over-grant beyond what the delegate holds is refused at issuance.
+///
+/// If the resolved delegator carries no anchored scope seal it is unrestricted.
+/// Reuses the salvaged capability-subset rule.
 fn enforce_scope_subset(
     ctx: &AuthsContext,
     root_prefix: &auths_id::keri::types::Prefix,
+    root_alias: &KeyAlias,
     requested: &[Capability],
 ) -> Result<(), AgentError> {
     if requested.is_empty() {
         return Ok(());
     }
+    // The actual delegator is the identity that owns the signing key, not the loaded
+    // root: a scoped mid-chain delegate cannot read its OWN (unrestricted-looking)
+    // KEL as the authority for what it may hand out.
+    let (delegator_did, _role, _key) = ctx
+        .key_storage
+        .load_key(root_alias)
+        .map_err(AgentError::CryptoError)?;
+    let delegator_prefix =
+        parse_did_keri(delegator_did.as_str()).map_err(|e| AgentError::IdentityNotFound {
+            did: format!("invalid delegator did:keri for alias {root_alias}: {e}"),
+        })?;
+    // Scope seals are anchored on the registry's KEL by the party that delegated each
+    // agent; the delegator's own grant is keyed by ITS prefix. Read from the loaded
+    // root KEL (where this registry anchors every delegation), keyed by the delegator.
     let root_kel = collect_kel(ctx, root_prefix);
-    let Some(delegator_scope) = read_agent_scope(&root_kel, root_prefix) else {
-        return Ok(()); // delegator is unrestricted
+    let Some(delegator_scope) = read_agent_scope(&root_kel, &delegator_prefix) else {
+        return Ok(()); // delegator holds no anchored scope seal → unrestricted
     };
     validate_delegation_constraints(
         &DelegatorScope {

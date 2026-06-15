@@ -41,22 +41,32 @@ flowchart LR
 ```bash
 cd /Users/bordumb/workspace/repositories/auths-base/auths
 
-# 1. Scaffold + claimify the PRD into a suite (single-tree config emitted).
-recurve init --from-prd .recurve/prds/agent_demos/the-intern-that-couldnt.md \
-             --suite the-intern-that-couldnt
+# 1. Set up the suite MANUALLY. `recurve init` REFUSES on an existing home
+#    ("a recurve project exists — init never overwrites"), so it cannot add a
+#    suite here. Give each demo its OWN config file (because [sculpts.*] is
+#    config-level and federates on every gate — one shared recurve.toml would
+#    gate every demo on every cycle). Copy the PROVEN, working template:
+#       .recurve/the-intern-that-couldnt.toml   (this demo, already green)
+#    → .recurve/<new-suite>.toml, and create .recurve/claims/<new-suite>/
+#      with probes/, harness/env.sh, bin/.gitignore, and gaps.draft.yaml
+#      (the PRD §9 claim sketch). Select it later with `recurve --config <file>`.
+#    (A future `recurve init --kind demo` should template all of this.)
 
-# 2. Wire the cross-repo config — edit .recurve/recurve.toml (see the block below):
-#    set [target] tree = "."  (the auths platform)
-#    add [sculpts.the-intern-that-couldnt] tree = "../auths-demos/the-intern-that-couldnt"
+# 2. Wire the cross-repo config in that per-demo .toml (see the block below):
+#    [target] tree = "."  (the auths platform) ; freshness in TOP-LEVEL [reads.*]
+#    [sculpts.<demo>] tree = "../auths-demos/<demo>" (rebuild/gate are tree-relative)
 
 # 3. Human review: skim the draft claims, answer .recurve/ADJUDICATE.md,
 #    author probes + traps (accept path + adversarial twin).
 
+# NB: every command below takes --config <the per-demo .toml> (it is not the
+#     default recurve.toml). Export it once: CFG=.recurve/the-intern-that-couldnt.toml
+
 # 4. Baseline (RED drafts → open, GREEN-with-trap → closed).
-recurve baseline the-intern-that-couldnt
+recurve --config "$CFG" baseline the-intern-that-couldnt
 
 # 5. Preflight — must be green before any loop.
-recurve validate && recurve matrix --gate
+recurve --config "$CFG" validate && recurve --config "$CFG" matrix --gate
 
 # 6. Burn it down (the generated workflow: sculpt auths → build the demo →
 #    federated gate → per-repo commits → promote).
@@ -71,19 +81,27 @@ recurve validate && recurve matrix --gate
 [target]                                   # the PLATFORM — built, read, sculpted
 tree = "."
 rebuild = "cargo build --release -p auths-cli"
+default_reads = ["none"]
 # forbidden_strings is optional: baseline ("recurve", "GAP-") + this suite's
 # claim prefixes are auto-excluded; leakcheck (default ON) enforces it.
 
-[target.reads.cli]
+# Freshness rules live at TOP LEVEL [reads.*] — NOT [target.reads.*], which the
+# parser silently ignores (yields "will not parse: reads='cli'" at baseline).
+[reads.cli]
 method = "content-hash"
 artifact = ".recurve/claims/the-intern-that-couldnt/bin/auths"
 source   = "target/release/auths"
 
+[reads.none]
+method = "none"
+
 [sculpts.the-intern-that-couldnt]          # the runnable DEMO, in the other repo
 tree   = "../auths-demos/the-intern-that-couldnt"
 branch = "demo/the-intern-that-couldnt"    # its commits land here
-rebuild = "the-intern-that-couldnt/scripts/build.sh"   # if it builds an app
-gate    = "the-intern-that-couldnt/run.sh --check"     # the demo runs end-to-end → federated
+# rebuild + gate run with cwd = the SCULPT TREE, so paths are RELATIVE to it
+# (do NOT prefix with the demo dir name — that double-paths and fails).
+rebuild = "./scripts/build.sh"                  # stages bin via STAGE_BIN_DIR=../../auths/...
+gate    = "DEMO_AUTO=1 ./run.sh --check"        # the demo runs end-to-end → federated
 
 [suites.the-intern-that-couldnt]
 dir = ".recurve/claims/the-intern-that-couldnt"
