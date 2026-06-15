@@ -39,16 +39,19 @@
   title: An out-of-scope tool call is refused at the boundary with the distinct OutsideAgentScope
     verdict
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: gateway
   covers:
   - scope-boundary
   evidence:
   - maps AGT-1; OutsideAgentScope already exists in auths-verifier — this wires it to tools/call
-  observed: 'RED at baseline 2026-06-15: ours=no-verdicts expected=allowed+outside-agent-scope
-    — the gateway produced no scope verdict; AGENT-MCP-2 is open (the per-call gate is not
-    built)'
+  observed: 'GREEN at baseline 2026-06-15: the in-scope fs.read passed and the model''s fs.write
+    was refused outside-agent-scope (capability named, downstream never called) — a distinct
+    containment verdict, not a signature failure. The engine enforces it natively via
+    auths-verifier::verify_commit_against_kel_scoped; the MCP-1 re-arm fixed verdict_for, which
+    revealed the boundary was already GREEN end-to-end. Trap RED: a stream where the out-of-scope
+    write is allowed (no outside-agent-scope verdict) is refused — the adversarial twin holds.'
   smallest_fix: 'In auths-mcp-core''s per-call gate, map the requested tool to a capability
     and enforce it against the agent''s delegator-anchored scope; return OutsideAgentScope
     (naming the capability) and do NOT forward to the downstream server.
@@ -60,15 +63,20 @@
 - id: AGENT-MCP-4
   title: Revocation is instant mid-session with no propagation window
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: gateway
   covers:
   - revocation-boundary
   evidence:
   - maps OPS-1; keri_auth.rs already checks revocation on presentation — bind it per call
-  observed: 'RED at baseline 2026-06-15: ours=no-verdicts expected=allowed+revoked — the gateway
-    produced no revocation verdict; AGENT-MCP-4 is open (per-call liveness is not built)'
+  observed: 'GREEN at baseline 2026-06-15: the pre-revocation call passed and the very next call
+    after revocation was refused revoked — liveness re-derived from the chain per call, no
+    TTL/introspection lag. The engine enforces it natively via
+    auths-verifier::verify_commit_against_kel_scoped; the MCP-1 re-arm fixed verdict_for, which
+    revealed per-call liveness was already GREEN end-to-end. Trap RED: a stream where the
+    post-revocation call is still allowed (a reopened propagation window) is refused — the
+    adversarial twin holds.'
   smallest_fix: 'Re-derive liveness from the KERI registry on every tools/call (reuse keri_auth''s
     revocation check) so the first call after a revocation event is refused Revoked — no cached
     token TTL, no introspection lag.
