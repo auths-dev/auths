@@ -1,0 +1,21 @@
+{
+  "//": "AGENT-PAY-1 (Stripe-test rail metered — PRD §4 AGENT-PAY/§11). ONE $5 cap. A paid call over the STRIPE rail whose cost is NOT pre-supplied as cost_cents — it must be EXTRACTED by the gateway from the recorded Stripe TEST-MODE charge response (probes/fixtures/stripe-charge.test.json: amount_captured=300 → $3.00). The second call's response (stripe-charge-overcap.test.json: amount_captured=600 → $6.00) ALONE exceeds the cap: the reservation must refuse usage-cap-exceeded BEFORE Stripe is invoked (the real defense — bound, don't build; PRD §11). The receipt must name the charge id (ch_…) it metered, proving cost-EXTRACTION from the rail response, not a transcript number. Frozen replay (PRD §7).",
+  "scenario": "pay-stripe-metered",
+  "grant": { "scope": ["paid.call"], "budget": "$5.00", "ttl": "30m" },
+  "calls": [
+    {
+      "tool": "paid_call", "rail": "stripe", "args": { "endpoint": "/charge" },
+      "response_fixture": "stripe-charge.test.json",
+      "extract": "charge.amount_captured",
+      "expect": "allowed",
+      "//": "$3.00 extracted from the recorded Stripe charge response settles in-budget; receipt must name charge=ch_3MmlLrLkdIwHu7ix0snN0B15 + rail=stripe + the extracted $3.00."
+    },
+    {
+      "tool": "paid_call", "rail": "stripe", "args": { "endpoint": "/charge" },
+      "response_fixture": "stripe-charge-overcap.test.json",
+      "extract": "charge.amount_captured",
+      "expect": "usage-cap-exceeded",
+      "//": "$6.00 extracted ALONE exceeds the $5 cap → the reservation refuses usage-cap-exceeded BEFORE Stripe is invoked (the metered downstream is NOT charged). A gateway that read a transcript cost_cents instead of extracting from the response would also need the value, which is deliberately NOT supplied here."
+    }
+  ]
+}

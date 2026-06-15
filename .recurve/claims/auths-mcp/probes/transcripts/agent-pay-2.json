@@ -1,0 +1,30 @@
+{
+  "//": "AGENT-PAY-2 (x402 rail metered, CROSS-RAIL — PRD §4 AGENT-PAY/§11). The SAME ONE $5 cap as PAY-1, now spanning the Stripe rail AND the x402/USDC rail. Cost is NOT pre-supplied — it must be EXTRACTED: $3.00 from the Stripe charge response (stripe-charge.test.json: amount_captured=300), $1.50 from the x402 settlement (x402-settlement.testnet.json: maxAmountRequired=1500000 atomic USDC → 150 cents). The third call's x402 settlement (x402-settlement-overcap.testnet.json: 600000 atomic = 60 cents) is tiny in an x402-only silo but, summed CROSS-RAIL onto $4.50, would reserve to $5.10 > $5 → refused usage-cap-exceeded BEFORE the x402 facilitator settles (the moat a per-rail silo cannot express). Each receipt names the rail's settlement id (ch_… / tx 0x…) it metered, proving cost-EXTRACTION + cross-rail summing. NOTE: the LIVE x402 leg needs a FUNDED USDC TESTNET WALLET (out of hermetic scope) — this probe proves cost-extraction + cross-rail metering ONLY. Frozen replay (PRD §7).",
+  "scenario": "pay-x402-cross-rail-metered",
+  "grant": { "scope": ["paid.call"], "budget": "$5.00", "ttl": "30m" },
+  "calls": [
+    {
+      "tool": "paid_call", "rail": "stripe", "args": { "endpoint": "/charge" },
+      "response_fixture": "stripe-charge.test.json",
+      "extract": "charge.amount_captured",
+      "expect": "allowed",
+      "//": "$3.00 extracted from the Stripe response; cross-rail settled total → $3.00."
+    },
+    {
+      "tool": "paid_call", "rail": "x402", "args": { "endpoint": "/metered-tool" },
+      "response_fixture": "x402-settlement.testnet.json",
+      "extract": "requirements.maxAmountRequired",
+      "asset_decimals": 6,
+      "expect": "allowed",
+      "//": "$1.50 extracted from the x402 settlement (1500000 atomic USDC / 1e6 → 1.50 USDC → 150 cents) metered into the SAME cap; cross-rail settled total → $4.50; receipt names tx 0x1234… + rail=x402."
+    },
+    {
+      "tool": "paid_call", "rail": "x402", "args": { "endpoint": "/metered-tool" },
+      "response_fixture": "x402-settlement-overcap.testnet.json",
+      "extract": "requirements.maxAmountRequired",
+      "asset_decimals": 6,
+      "expect": "usage-cap-exceeded",
+      "//": "$0.60 extracted (600000 atomic) — x402 ALONE is only $2.10, but cross-rail this would reserve to $5.10 > $5 → refused usage-cap-exceeded BEFORE the x402 facilitator settles. The per-rail-siloed x402 budget would WAVE IT THROUGH; the cross-rail counter refuses it."
+    }
+  ]
+}

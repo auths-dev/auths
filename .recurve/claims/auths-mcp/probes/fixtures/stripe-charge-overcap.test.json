@@ -1,0 +1,23 @@
+{
+  "//": "AGENT-PAY-1 (over-cap) — a RECORDED Stripe TEST-MODE charge RESPONSE whose `amount_captured` ($6.00) ALONE exceeds the $5 cap. The real defense: the reservation must refuse usage-cap-exceeded BEFORE Stripe is invoked, so this response is the EVIDENCE of the regression the trap forbids (a charge that was let through past the cap). Doc-accurate Stripe Charge shape (docs.stripe.com/api/charges/object); livemode:false (test mode).",
+  "rail": "stripe",
+  "charge": {
+    "id": "ch_3OvercapLkdIwHu7ix9xZ9zzz",
+    "object": "charge",
+    "amount": 600,
+    "amount_captured": 600,
+    "amount_refunded": 0,
+    "currency": "usd",
+    "captured": true,
+    "paid": true,
+    "status": "succeeded",
+    "livemode": false,
+    "created": 1679090999,
+    "balance_transaction": "txn_3OvercapLkdIwHu7ix0capZZ",
+    "payment_method_details": {
+      "card": { "brand": "visa", "last4": "4242", "funding": "credit", "network": "visa", "country": "US" },
+      "type": "card"
+    }
+  },
+  "//defense": "$6.00 amount_captured > $5.00 cap → the cross-rail reservation must refuse usage-cap-exceeded BEFORE Stripe is touched. If this charge ever appears as `captured:true` settled into the receipt, the cap was not enforced before the rail — the cap-not-enforced regression."
+}

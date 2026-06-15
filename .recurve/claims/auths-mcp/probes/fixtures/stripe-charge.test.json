@@ -1,0 +1,31 @@
+{
+  "//": "AGENT-PAY-1 — a RECORDED Stripe TEST-MODE charge RESPONSE, authored tightly against Stripe's documented Charge object shape (docs.stripe.com/api/charges/object). This is the byte the gateway must EXTRACT the charge amount FROM: the cost it reserves/settles against the cross-rail cap is `amount_captured` (cents), NOT a number pre-supplied in the transcript. `livemode:false` marks this as a test-mode charge (no real money). The gateway is bound-not-build (PRD §11): it never charges Stripe — it reads this response shape (what Stripe's agent-toolkit MCP server returns) and meters the captured amount. rail=stripe.",
+  "rail": "stripe",
+  "charge": {
+    "id": "ch_3MmlLrLkdIwHu7ix0snN0B15",
+    "object": "charge",
+    "amount": 300,
+    "amount_captured": 300,
+    "amount_refunded": 0,
+    "currency": "usd",
+    "captured": true,
+    "paid": true,
+    "status": "succeeded",
+    "livemode": false,
+    "created": 1679090539,
+    "balance_transaction": "txn_3MmlLrLkdIwHu7ix0uke3Ezy",
+    "payment_method_details": {
+      "card": {
+        "brand": "visa",
+        "last4": "4242",
+        "exp_month": 3,
+        "exp_year": 2026,
+        "funding": "credit",
+        "network": "visa",
+        "country": "US"
+      },
+      "type": "card"
+    }
+  },
+  "//extract": "the amount the cross-rail counter meters is `charge.amount_captured` = 300 cents ($3.00); the receipt must name the charge id `ch_3MmlLrLkdIwHu7ix0snN0B15` so a stranger can re-derive the metered cost from the recorded rail response (NOT from a transcript-supplied cost_cents)."
+}

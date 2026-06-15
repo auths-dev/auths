@@ -275,3 +275,132 @@
   unlocks: 'Prevention is unbypassable by construction (§12) — the ''API key in an env var''
     majority flips into the strongest pitch: the gateway takes the ambient key out of the
     agent''s hands.'
+
+- id: AGENT-MCP-8
+  title: Live-wire counter parity — the live wrap path enforces the cross-rail budget via
+    the durable CrossRailBudget, matching the hermetic gate
+  class: wire-mismatch
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - budget-boundary
+  evidence:
+  - 'maps #281 (live-wire parity): crates/auths-mcp-gateway/src/proxy.rs — GatewayProxy::spent_cents
+    is a v0 in-memory per-session cap guard (meters nothing per rail), NOT the durable verifier-held
+    CrossRailBudget the hermetic replay gate drives (crates/auths-mcp-core/src/budget.rs);
+    the live wrap path can therefore allow a cross-rail call the gate refuses'
+  - the per-call cryptographic proof on the live MCP wire rides with the live-agent harness
+    (proxy.rs module docs), so the FULL live-wire verdict match is evidence-only (deferred);
+    this claim GATES the counter-SOURCE parity — that the live wrap path enforces from the
+    SAME durable cross-rail counter as the gate — and discloses the rest as evidence (per
+    the arming contract; do not fake the live MCP session)
+  observed: 'RED at baseline 2026-06-15: ours=wire-not-on-durable-counter expected=live-wire-on-durable-cross-rail-counter
+    — the live wrap path still enforces the cap with the v0 in-memory guard (proxy.rs spent_cents),
+    NOT the durable verifier-held CrossRailBudget the gate uses; #281/AGENT-MCP-8 (wire the
+    durable counter into wrap so live-wire verdicts match the hermetic gate) is not built'
+  smallest_fix: 'Replace the v0 in-memory guard (proxy.rs GatewayProxy::spent_cents) with
+    the durable verifier-held CrossRailBudget (crates/auths-mcp-core/src/budget.rs) on the
+    live `wrap` path so the live wire enforces the cross-rail cap from the SAME counter the
+    hermetic gate uses (reserve before forwarding, settle the actual after, keyed to the agent
+    delegation, summed across rails). Live-wire budget verdicts (allowed / usage-cap-exceeded
+    / usage-counter-rolled-back) must then match the gate''s for the same call sequence. Surface
+    on `wrap` that the budget is the durable cross-rail counter. If the live wrap MCP session
+    cannot be driven fully hermetically, gate the counter-SOURCE parity (the live wrap references
+    the durable counter, the v0 spent_cents tally is gone) and keep the full live-wire verdict
+    match as out-of-band evidence — do NOT fake it.
+
+    '
+  probe: probes/agent-mcp-8.sh
+  unlocks: The live wire cannot allow what the gate refuses (#281) — the durable cross-rail
+    counter (D8) binds the agent on the real MCP wire, not only in replay.
+
+- id: AGENT-PAY-1
+  title: The Stripe-test rail is metered — the gateway extracts the charge amount from a Stripe-test
+    charge response and reserves/settles it against the cross-rail cap
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - budget-boundary
+  evidence:
+  - 'maps PRD §11 (bound, don''t build — the rails are wrapped downstream MCP servers, the
+    core meters a this-call-costs-X signal): crates/auths-mcp-core + the replay path meter
+    a pre-supplied cost_cents from the transcript, but there is NO extraction of the charge
+    amount from a recorded Stripe charge RESPONSE (no parse of amount_captured / currency
+    / charge id) — the gateway-side Stripe-charge extraction + the near-pluggable Stripe adapter
+    are not built'
+  - 'the hermetic probe drives the gateway over a RECORDED Stripe TEST-MODE charge response
+    fixture (probes/fixtures/stripe-charge.test.json) authored TIGHTLY against Stripe''s documented
+    Charge object shape (docs.stripe.com/api/charges/object: amount_captured, currency, captured,
+    status, livemode:false, balance_transaction) — no live Stripe call'
+  observed: 'RED at baseline 2026-06-15: ours=verdict-seq(got allowed/allowed) no-charge-extraction(charge-id/rail=stripe
+    absent from receipts) expected=stripe-charge-extracted+metered+cap-enforced — the gateway
+    does not EXTRACT the charge amount from the recorded Stripe TEST-MODE response (amount_captured)
+    and meter it against the cross-rail cap; the gateway-side Stripe-charge extraction + the
+    near-pluggable Stripe adapter (PRD §11) are not built'
+  smallest_fix: 'Build the gateway-side Stripe-charge cost extraction: given a Stripe-test
+    charge RESPONSE (the shape Stripe''s agent-toolkit MCP server returns), extract the charge
+    amount (charge.amount_captured, in cents) and RESERVE/SETTLE it against the cross-rail
+    CrossRailBudget (D8). Accept: an in-budget charge settles + is metered — the amount in
+    the receipt, rail=stripe, the charge id (ch_…) named so a stranger re-derives the metered
+    cost FROM the recorded rail response (not a transcript number). The real defense (PRD
+    §11): the reservation refuses usage-cap-exceeded BEFORE Stripe is invoked, so an over-cap
+    charge is never charged. auths-mcp-core holds ZERO payment code — Stripe stays a wrapped
+    downstream; the core meters the extracted cost only. The near-pluggable Stripe adapter
+    (read the response, hand the cost to the gate) is the burndown''s build; a live Stripe-test
+    charge is evidence-only, deferred until keys (D7).
+
+    '
+  probe: probes/agent-pay-1.sh
+  unlocks: AGT-4/D8 caps bind a real payment rail (Stripe-test) at the MCP boundary — the
+    first rail of the cross-rail credit-limit flagship (PRD §11).
+
+- id: AGENT-PAY-2
+  title: The x402/USDC rail is metered into the SAME cross-rail cap as Stripe (cross-rail
+    summing, testnet-flagged) — the gateway extracts the x402 amount and sums it cross-rail
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: gateway
+  covers:
+  - budget-boundary
+  evidence:
+  - 'maps PRD §11 (the cross-rail moat: one cap across Stripe AND x402, enforced at the boundary):
+    there is NO extraction of the paid amount from a recorded x402 settlement RESPONSE (no
+    parse of the SettlementResponse / PaymentRequirements maxAmountRequired, no atomic-USDC→cents
+    conversion) and no summing of the extracted x402 cost CROSS-RAIL into the same CrossRailBudget
+    the Stripe rail meters into — the x402 cost extraction + the testnet-flagged x402 adapter
+    + cross-rail summing are not built'
+  - 'the hermetic probe drives the gateway over a RECORDED x402 settlement response fixture
+    (probes/fixtures/x402-settlement.testnet.json) authored against the x402 SettlementResponse
+    + PaymentRequirements shapes (coinbase/x402 specs/x402-specification-v1.md §5.1/§5.3:
+    scheme=exact, network=base-sepolia, maxAmountRequired in atomic USDC 6-decimal units,
+    the canonical base-sepolia USDC asset, the settlement tx) — no live x402 call'
+  - 'LIVE-SCOPE FLAG: the LIVE x402 rail needs a FUNDED USDC TESTNET WALLET (base-sepolia)
+    to settle on-chain — OUT OF HERMETIC SCOPE. The hermetic probe proves COST-EXTRACTION
+    (atomic-USDC→cents) + CROSS-RAIL METERING ONLY; the funded-wallet live leg is evidence-only,
+    deferred (D7-style)'
+  observed: 'RED at baseline 2026-06-15: ours=verdict-seq(got allowed/allowed/allowed) no-x402-extraction(stripe-charge/x402-tx
+    absent or rail unattributed) expected=x402-amount-extracted(atomic-USDC→cents)+cross-rail-summed+cap-enforced
+    — the gateway does not EXTRACT the x402 amount from the recorded settlement response and
+    meter it CROSS-RAIL into the same cap as Stripe; the x402 cost extraction + the testnet-flagged
+    x402 adapter + cross-rail summing (PRD §11) are not built. (LIVE x402 also needs a funded
+    USDC testnet wallet — out of hermetic scope.)'
+  smallest_fix: 'Build the gateway-side x402 cost extraction: given a recorded x402/USDC settlement
+    RESPONSE, extract the paid amount (the x402 SettlementResponse / PaymentRequirements maxAmountRequired,
+    atomic USDC at 6 decimals → cents) and RESERVE/SETTLE it into the SAME cross-rail CrossRailBudget
+    (D8) the Stripe rail (AGENT-PAY-1) meters into — so a call that would reserve PAST the
+    cap ACROSS rails is refused usage-cap-exceeded BEFORE the x402 facilitator settles, even
+    when a per-rail-siloed x402 budget reads in-budget (the moat). Accept: an in-budget x402
+    call settles + is metered cross-rail — the amount in the receipt, rail=x402, the settlement
+    tx (0x…) named. SMALLEST_FIX/OBSERVED FLAG: the LIVE x402 leg additionally needs a FUNDED
+    USDC TESTNET WALLET (out of hermetic scope) — the hermetic probe proves cost-extraction
+    + cross-rail metering only; the testnet-flagged x402 adapter + the funded-wallet live
+    settle are the burndown''s build, evidence-only, deferred until the wallet + keys (D7).
+
+    '
+  probe: probes/agent-pay-2.sh
+  unlocks: ONE cap binds a live agent's CROSS-RAIL spend across Stripe AND x402 (PRD §11)
+    — the credit-limit flagship's moat a per-rail processor budget cannot express.

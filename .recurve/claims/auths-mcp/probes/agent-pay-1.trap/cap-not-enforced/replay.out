@@ -1,0 +1,3 @@
+▸ call[0] paid_call rail=stripe → allowed charge=ch_3MmlLrLkdIwHu7ix0snN0B15 extracted=$3.00 cross_rail_cumulative=$3.00
+▸ call[1] paid_call rail=stripe → allowed charge=ch_3OvercapLkdIwHu7ix9xZ9zzz extracted=$6.00 cross_rail_cumulative=$9.00
+▸ stripe was CHARGED past the cap: amount_captured=600 settled even though $3.00 + $6.00 = $9.00 > $5.00 cap — the reservation did not refuse before the rail was invoked

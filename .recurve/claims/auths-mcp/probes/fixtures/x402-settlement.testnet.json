@@ -1,0 +1,23 @@
+{
+  "//": "AGENT-PAY-2 — a RECORDED x402/USDC settlement RESPONSE, authored against the x402 SettlementResponse + PaymentRequirements shapes (coinbase/x402 specs/x402-specification-v1.md §5.1/§5.3). The gateway must EXTRACT the paid amount FROM this response and meter it into the SAME cross-rail cap as the Stripe rail (cross-rail summing). USDC has 6 decimals, so x402 amounts are ATOMIC units: the `requirements.maxAmountRequired` here is 1500000 atomic = 1.50 USDC = 150 cents — the extraction must convert atomic-USDC→cents, NOT read a transcript-supplied cost_cents. network=base-sepolia marks this as TESTNET (no mainnet money).",
+  "rail": "x402",
+  "requirements": {
+    "scheme": "exact",
+    "network": "base-sepolia",
+    "maxAmountRequired": "1500000",
+    "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "payTo": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+    "resource": "https://api.example.com/metered-tool",
+    "description": "One metered x402 tool call",
+    "mimeType": "application/json",
+    "maxTimeoutSeconds": 60,
+    "extra": { "name": "USDC", "version": "2" }
+  },
+  "settlement": {
+    "success": true,
+    "transaction": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+    "network": "base-sepolia",
+    "payer": "0x857b06519E91e3A54538791bDbb0E22373e36b66"
+  },
+  "//extract": "the amount the cross-rail counter meters = maxAmountRequired (1500000 atomic USDC, 6 decimals) → 1.50 USDC → 150 cents; the receipt must name the settlement tx 0x1234… so a stranger re-derives the metered cost from the recorded rail response (NOT a transcript cost_cents). asset is the canonical base-sepolia USDC contract."
+}
