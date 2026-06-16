@@ -47,6 +47,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod address;
+pub mod channel;
 pub mod corroboration;
 pub mod delegation;
 pub mod dh_ratchet;
@@ -55,6 +56,8 @@ pub mod identity;
 pub mod kel;
 pub mod leakcheck;
 pub mod number_free;
+#[cfg(feature = "olm")]
+pub mod olm_backend;
 pub mod prekey;
 pub mod ratchet;
 pub mod relay;
@@ -64,6 +67,9 @@ pub mod trust;
 pub mod vetted;
 
 pub use address::Aid;
+pub use channel::{RatchetChannel, SecureChannel};
+#[cfg(feature = "olm")]
+pub use olm_backend::{OlmChannel, OlmIdentity, OlmPrekeyBundle, OlmRootedBundle};
 pub use corroboration::{CorroboratedState, Provenance, RevocationResolution, provenance_token};
 pub use delegation::{DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation};
 pub use dh_ratchet::{DhRatchet, DhStep};

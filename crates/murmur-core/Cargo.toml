@@ -45,6 +45,19 @@ zeroize = { workspace = true }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 # A fresh per-message AEAD nonce. Pure OS entropy, no PRNG state to carry.
 getrandom = "0.2"
+# The audited Olm/Megolm Double Ratchet (Matrix), Apache-2.0, Least-Authority-
+# audited, pure Rust. Optional: behind the `olm` feature it provides an alternate
+# message-encryption backend (an audited library ratchet) that the engine can use
+# in place of the in-tree ratchet, joined to the same KERI-rooted prekey bundle.
+# version_2 sessions (full, untruncated MAC) need `experimental-session-config`.
+vodozemac = { version = "0.10", optional = true, features = ["experimental-session-config"] }
+
+[features]
+default = []
+# Use the audited Olm library ratchet as the message-encryption backend, joined to
+# the KERI identity root. Off by default; the in-tree ratchet remains the default
+# until parity is proven and the join is externally audited.
+olm = ["dep:vodozemac"]
 
 [lints]
 workspace = true
