@@ -74,7 +74,7 @@ pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
 pub use number_free::{NumberFreeReport, prove_number_free};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
 pub use ratchet::Ratchet;
-pub use relay::{DepositOutcome, MailboxId, MailboxStore, RelayRequest};
+pub use relay::{DepositOutcome, MailboxId, MailboxStore, RelayLimits, RelayRequest};
 pub use rotation::{
     KeyState, RotationRekeyReceipt, compute_next_commitment, verified_rotation_rekey,
     verify_continuation,
