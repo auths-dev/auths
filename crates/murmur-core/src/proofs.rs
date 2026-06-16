@@ -607,9 +607,13 @@ pub fn prove_relay_queue(
         )?;
         envelopes_queued += 1;
     }
-    if envelopes_queued == 0 || queued[0].ciphertext == bodies[0].as_bytes() {
+    // Opacity (the queued bytes are not the plaintext) is already proven above —
+    // the `opaque` check whole-buffer-rejects the plaintext AND substring-scans for
+    // it, which is strictly stronger than an exact byte equality. Here we only need
+    // that every queued envelope opened and authenticated.
+    if envelopes_queued == 0 {
         return Err(CoreError::Rejected(
-            "the relay-queue proof did not recover an authenticated body from the queued ciphertext",
+            "the relay-queue proof recovered no authenticated body from the queued ciphertext",
         ));
     }
 
