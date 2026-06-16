@@ -249,7 +249,12 @@ fn derive_root(dh_outputs: [&[u8; 32]; 3]) -> CoreResult<Session> {
     for dh in dh_outputs {
         ikm.extend_from_slice(dh);
     }
-    let hk = Hkdf::<Sha256>::new(None, &ikm);
+    // L16: pass an EXPLICIT all-zeros salt rather than `None`. Per RFC 5869 the two
+    // are identical (an absent salt is defined as a string of `HashLen` zero
+    // bytes), so this is no behavior change — and `X3DH_ROOT_INFO` already
+    // domain-separates the output. Spelling the salt out makes the construction
+    // unambiguous to a reviewer instead of relying on the implicit default.
+    let hk = Hkdf::<Sha256>::new(Some(&[0u8; 32]), &ikm);
     let mut secret = [0u8; 32];
     hk.expand(X3DH_ROOT_INFO, &mut secret)
         .map_err(|_| CoreError::Malformed("X3DH root-key derivation failed".into()))?;
@@ -321,7 +326,11 @@ mod tests {
             signed_prekey,
             // signed by Mallory, not Bob
             signature: mallory
-                .sign(&bundle_signing_bytes(bob.aid(), &identity_key, &signed_prekey))
+                .sign(&bundle_signing_bytes(
+                    bob.aid(),
+                    &identity_key,
+                    &signed_prekey,
+                ))
                 .unwrap(),
         };
         assert!(matches!(
@@ -407,7 +416,11 @@ mod tests {
 
         // Both sides land on the same root secret: Alice seals, Bob opens.
         let sealed = alice_session
-            .seal(crate::session::fresh_nonce().unwrap(), b"mbx", b"rooted hello")
+            .seal(
+                crate::session::fresh_nonce().unwrap(),
+                b"mbx",
+                b"rooted hello",
+            )
             .unwrap();
         assert_eq!(bob_session.open(&sealed, b"mbx").unwrap(), b"rooted hello");
     }

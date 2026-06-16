@@ -145,11 +145,24 @@ impl Ratchet {
     }
 
     /// Overwrite the chain key with its successor, zeroizing the old bytes first
-    /// so the prior chain key cannot be recovered from memory after the advance.
-    fn replace_chain_key(&mut self, next: [u8; 32]) {
+    /// so the prior chain key cannot be recovered from memory after the advance,
+    /// and advance the counter.
+    ///
+    /// The counter is advanced with `checked_add` (L13): a `u64` wrap would make
+    /// two messages share an index — a forward-secrecy / replay violation — so an
+    /// exhausted chain is refused (`Rejected`), never wrapped. (Practically
+    /// unreachable in real time, but a wrap here is always a bug.) The chain key is
+    /// only replaced once the counter has safely advanced, so a refusal leaves the
+    /// ratchet unchanged.
+    fn replace_chain_key(&mut self, next: [u8; 32]) -> CoreResult<()> {
+        let advanced = self
+            .counter
+            .checked_add(1)
+            .ok_or(CoreError::Rejected("ratchet counter exhausted"))?;
         self.chain_key.zeroize();
         self.chain_key = next;
-        self.counter += 1;
+        self.counter = advanced;
+        Ok(())
     }
 
     /// Advance the chain one step: derive this message's key, ratchet the chain
@@ -159,7 +172,7 @@ impl Ratchet {
         let index = self.counter;
         let message_key = MessageKey(self.kdf(MESSAGE_KEY_STEP)?);
         let next_chain = self.kdf(CHAIN_STEP)?;
-        self.replace_chain_key(next_chain);
+        self.replace_chain_key(next_chain)?;
         Ok((index, message_key))
     }
 
@@ -212,6 +225,15 @@ impl Ratchet {
         let inner = Session::from_secret(key.0);
         inner.open(sealed, aad)
         // `key` and `inner`'s secret are dropped here — zeroized.
+    }
+}
+
+#[cfg(test)]
+impl Ratchet {
+    /// Force the counter to a value, so a test can drive the chain to the brink of
+    /// `u64::MAX` without sealing 2^64 messages. Test-only.
+    fn set_counter_for_test(&mut self, counter: u64) {
+        self.counter = counter;
     }
 }
 
@@ -311,5 +333,23 @@ mod tests {
             recv.open(b"mbx", &wire),
             Err(CoreError::Rejected(_))
         ));
+    }
+
+    #[test]
+    fn an_exhausted_counter_is_rejected_not_wrapped() {
+        // L13 regression: a chain at u64::MAX must refuse to seal rather than wrap
+        // the counter (which would collide two messages onto one index). The last
+        // index (u64::MAX) still produces a message; the NEXT advance has no index
+        // to move to and is Rejected, leaving the chain unchanged.
+        let (mut send, _recv) = pair();
+        send.set_counter_for_test(u64::MAX);
+        // Sealing AT u64::MAX advances the counter via checked_add(1) -> overflow,
+        // so this very seal is refused: there is no safe successor index.
+        assert!(matches!(
+            send.seal(b"mbx", b"one too many"),
+            Err(CoreError::Rejected(_))
+        ));
+        // The chain did not wrap — the counter is untouched.
+        assert_eq!(send.counter(), u64::MAX);
     }
 }

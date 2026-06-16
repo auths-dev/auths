@@ -136,6 +136,18 @@ pub fn verify_continuation(prior: &KeyState, current: &KeyState) -> TrustVerdict
                 .to_string(),
         };
     }
+    // M9: a "rotation" to the SAME key is not a rotation. A key pre-committed to
+    // itself would otherwise hash to the prior commitment and pass the check below,
+    // so guard it here — inside the public function — so it is correct regardless
+    // of caller path (this is `pub` and reachable standalone via `trust::evaluate`).
+    if prior.current_key == current.current_key {
+        return TrustVerdict {
+            state: TrustState::NonContinuationWarning,
+            reason: "the new key is identical to the prior key — a rotation must change the key, \
+                     not re-present the same one"
+                .to_string(),
+        };
+    }
     let revealed = compute_next_commitment(&current.current_key);
     if revealed == prior.next_commitment {
         TrustVerdict {
@@ -459,6 +471,27 @@ mod tests {
         assert_eq!(receipt.continuation, TrustState::VerifiedContinuation);
         assert_eq!(receipt.substituted, TrustState::NonContinuationWarning);
         assert!(receipt.session_was_rekeyed());
+    }
+
+    #[test]
+    fn a_same_key_rotation_pre_committed_to_itself_is_warned_not_verified() {
+        // M9 regression: a "rotation" whose new key equals the prior key — even if
+        // the prior state pre-committed to that same key (so the commitment hash
+        // matches) — is NOT a verified continuation. verify_continuation catches it
+        // standalone, regardless of the verified_rotation_rekey path.
+        let key = identity(1);
+        let aid = stable_aid();
+        // The prior state pre-commits to its OWN current key, then "rotates" to it.
+        let prior_state = KeyState::new(aid.clone(), &key, key.public_key());
+        let same_state = KeyState::new(aid.clone(), &key, key.public_key());
+        // Sanity: without the M9 guard, the commitment would match (the key was
+        // pre-committed to itself) — so the same-key check is what rejects it.
+        assert_eq!(
+            compute_next_commitment(&same_state.current_key),
+            prior_state.next_commitment
+        );
+        let v = verify_continuation(&prior_state, &same_state);
+        assert_eq!(v.state, TrustState::NonContinuationWarning);
     }
 
     #[test]
