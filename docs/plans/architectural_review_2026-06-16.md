@@ -144,4 +144,22 @@ behind a green gate.
 - **P4** — `.recurve/claims/murmur/cycles/*/plan.md`+`outcome.md` — gitignore/prune the prose journals
   (keep `record.json`); 38 files → ~13.
 
+## Execution tracker
+
+Acting on the "simplify now" + "prune" findings (the debt ledger is recorded, deferred to M6 /
+workspace). Each box ticked when its commit lands; ground truth = `recurve … matrix --gate` GREEN.
+
+- [x] **Fix 1 (Theme 1) — extract the proof harness** out of `murmur-core`'s public API into a
+      `#[cfg(any(feature="proofs", test))] mod proofs`; `murmur-relay` enables the feature. lib.rs
+      2,296 → 889 lines. _(the one refactor)_ — `d86e7a7f`, gate GREEN.
+- [x] **Fix 2 (Theme 3 / P3) — drop `RatchetChannel`** (keep the `SecureChannel` trait + `OlmChannel`).
+      — `f440fc5c`.
+- [x] **Fix 3 (P1/P2) — untrack `crates/murmur-ffi/generated/`** (build output; gitignore + regenerate).
+      — `ab3dae9e`.
+- [x] **Fix 4 (P4) — untrack the cycle prose journals** (28 `cycles/**/{plan,outcome}.md`; kept
+      `record.json`); `recurve validate` green. — `dbc8dbd2`.
+
+Deferred (debt, not this pass): D1/Theme 2 (two KERI joins → M6 cutover), D2 (`thiserror` v1+v2 →
+workspace), D4 (`vetted.rs` re-point → M6), Theme 5 (vodozemac tree → leave).
+
 Reviewed through: 88cd4f4a2118aceb92a329673e3a8a4ba3694963
