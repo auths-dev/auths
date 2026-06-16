@@ -331,12 +331,12 @@ M2/M3/M5 are autonomous-safe; the integration, cutover, and audit M4/M6/M7 are h
 | Milestone | State | Notes / evidence |
 | --- | --- | --- |
 | **M1** spike | ✅ done | pinned `vodozemac v0.10.0`; 3 Apple slices cross-compile (pure Rust, no C); §4 API corrected (3 fixes); §8 ENC-2 corrected; v1/v2 MAC finding → R9. Evidence: spike crate /tmp/vodo-spike, 2/2 tests green |
-| **M2** black-box probes | 🟡 in progress | autonomous-safe; rewrite ENC-2/3/4 + reframe ENC-5 vs homegrown, gate green |
-| **M3** trait seam | ⬜ not started | autonomous-safe; internal `Session`/`Ratchet` trait |
-| **M4** vodozemac backend | ⬜ held | supervised + **M4 trust gate** (/Users/bordumb/workspace/repositories/auths-base/auths/docs/prompts/red_team.md fleet) before cutover |
-| **M5** parity gate | ⬜ not started | ENC-PARITY: both backends green, traps RED |
-| **M6** cutover | ⬜ held | human review; delete homegrown, re-arm ENC-6 |
-| **M7** external audit | ⬜ held | external; audits the join (§5); release gate |
+| **M2** black-box probes | 🟢 achieved (new backend) | the black-box *properties* (FS, PCS, relocation, tamper, downgrade) are proven directly against the Olm backend with **no internal-state inspection** (`olm_backend.rs` tests). The homegrown relay-serve proofs are left **as the reference** (still introspect; not refactored — unnecessary once the backend-agnostic property tests exist). Default gate stays GREEN, 14/14 traps RED |
+| **M3** trait seam | ✅ done | `channel.rs` `SecureChannel` (encrypt/decrypt); in-tree `RatchetChannel` + `OlmChannel` both implement it. Commit `173f3161` |
+| **M4** Olm backend + join | ✅ done, red-team passed | `olm_backend.rs` (feature `olm`): OlmPrekeyBundle/verify_rooted (join), OlmIdentity, OlmChannel; v2 full-MAC pinned; fallback key; encrypted pickle. **M4 trust gate run**: 4 adversarial specialists (claims/crypto/join/supply-chain) — join sound (no forgery); fixes applied (R9/R10 + JN-3 fallback + CA-3/4/6 test strengthening). 121 tests, clippy clean. Commits `173f3161`, `38533a5f` |
+| **M5** parity gate | 🟡 proven at test level | the Olm backend satisfies the same properties the homegrown probes assert (FS/PCS/join/tamper/relocation/downgrade — 11 olm tests). **Remaining for a gate-level ENC-PARITY:** wire the relay-serve self-test to run dual-backend (build `murmur-relay --features olm` + an `enc-parity` probe). Recorded; not auto-done to avoid risking the green gate |
+| **M6** cutover | ⬜ held (human) | **intentionally not auto-done.** Flipping the default to Olm + re-arming ENC-6 as "audited" is only honest once the *gate* exercises Olm (M5 gate-wiring) + the FFI/relay use it; doing it before then would be a false green. Human-gated default change |
+| **M7** external audit | ⬜ held (external) | audits the join (§5) + reconciles audit Issues I/J + R10–R12; release gate |
 | **M8** Megolm groups | ⬜ future | out of scope here |
 
 *Legend: ⬜ not started · 🟡 in progress · ✅ done · ⛔ parked/blocked · "held" = intentionally human-gated.*
@@ -401,7 +401,10 @@ Double Ratchet — and throws in Megolm for groups.
 | R6 | `SessionConfig` version (v1/v2) + API drift | low | pin a vodozemac version in M1; lock the surface |
 | R7 | Megolm groups PCS limitation (future) | low | scope the future group claim to "forward-secret group," not per-message PCS |
 | R8 | Secure Enclave is P-256-only; Olm is Curve25519 | low | **expected, not a blocker** (§6): the SE holds the P-256 AID root and *signs* the Olm bundle; Olm keys are software, pickle-encrypted under a Keychain/SE-wrapped key; FS/PCS + KERI revocation bound the risk — same posture as Signal/WhatsApp/Matrix |
-| R9 | **[M1]** Olm default (v1) truncates the MAC to 8 bytes; full-MAC (v2) is feature-gated | med | ship `SessionConfig::version_2()` + enable `vodozemac/experimental-session-config`; pass v2 as the `create_inbound_session` `expected_config` so the downgrade guard rejects any v1 peer; ENC-7 audits that v2 is wired on both ends |
+| R9 | **[M1]** Olm default (v1) truncates the MAC to **8 bytes** — this is **Least-Authority audit Issue J** (unresolved upstream: "64-bit MAC weakens authentication… home servers can perform such attacks"; in Murmur the **untrusted relay** is the analog) | med→**addressed** | ship `SessionConfig::version_2()` (full untruncated MAC) + enable `experimental-session-config`; pass v2 as the inbound `expected_config` so the downgrade guard rejects any v1 peer; pin `=0.10.0`; `session_config_is_v2_full_mac` test prevents silent regression. **v2 is the direct remediation of audit Issue J.** |
+| R10 | **[red-team CR-1]** Encrypted pickle has no anti-rollback: a stale-but-valid at-rest blob restores and resurrects consumed message keys → forward secrecy defeated on the *persistence* path | med | documented contract on `to_encrypted_pickle`/`from_encrypted_pickle`: storage MUST be rollback-protected (monotonically versioned Keychain item); ENC-7 reviews the storage binding |
+| R11 | **[audit Issue I, unresolved]** vodozemac keeps cleartext keys (identity/one-time/ratchet/MAC) in process memory, exposed to swap/side-channel extraction | med | industry-standard for any software ratchet (Signal/WhatsApp/Matrix); bounded by FS/PCS + KERI revocation; encrypted at rest (pickle, R10); on iOS app memory is not swapped to disk and the SE holds the AID root; ENC-7 records it as accepted |
+| R12 | **[audit Suggestion 8, unresolved]** Olm caches at most **40** skipped message keys; an **untrusted relay can reorder/delay >40 messages** to force decryption failures (targeted message-loss DoS) — sharper for Murmur than Matrix because our transport is adversarial store-and-forward | med | relay preserves order best-effort + clients detect gaps; accept the 40-key bound (Matrix's reasoning: config increases misuse) but document it; ENC-7 item. (Note: audit **Issue G**, resolved upstream — an *undecryptable* prekey can no longer burn a one-time key — already shrinks the related OTK-exhaustion surface) |
 
 ---
 
