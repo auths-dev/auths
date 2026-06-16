@@ -303,6 +303,24 @@ human-in-the-loop.
 *(Recurve's role is the trust boundary stated at the top of this section: the gate + the refactors
 M2/M3/M5 are autonomous-safe; the integration, cutover, and audit M4/M6/M7 are human-led.)*
 
+### 9.1 Status — living ledger (update + commit per milestone)
+
+> The durable record of *where we are*. Post-compaction, recover the **plan** from §9 and the **place**
+> from here + the recurve `gaps.yaml` claim state + per-milestone commits. Never leave progress in chat.
+
+| Milestone | State | Notes / evidence |
+| --- | --- | --- |
+| **M1** spike | 🟡 in progress | pin vodozemac version, cross-compile 4 Apple slices, confirm/correct §4 API map (findings → §4) |
+| **M2** black-box probes | ⬜ not started | autonomous-safe; rewrite ENC-2/3/4 + reframe ENC-5 vs homegrown, gate green |
+| **M3** trait seam | ⬜ not started | autonomous-safe; internal `Session`/`Ratchet` trait |
+| **M4** vodozemac backend | ⬜ held | supervised + **M4 trust gate** (red-team fleet) before cutover |
+| **M5** parity gate | ⬜ not started | ENC-PARITY: both backends green, traps RED |
+| **M6** cutover | ⬜ held | human review; delete homegrown, re-arm ENC-6 |
+| **M7** external audit | ⬜ held | external; audits the join (§5); release gate |
+| **M8** Megolm groups | ⬜ future | out of scope here |
+
+*Legend: ⬜ not started · 🟡 in progress · ✅ done · ⛔ parked/blocked · "held" = intentionally human-gated.*
+
 ---
 
 ## 10. Practicalities & dependency footprint
