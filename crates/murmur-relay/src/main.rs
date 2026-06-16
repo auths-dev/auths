@@ -27,8 +27,8 @@ use murmur_core::{
     Aid, ContactDirectory, DelegatedDevice, Endpoint, Identity, MailboxId, MailboxStore,
     PrekeyBundle, PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once,
     deliver_rooted, deliver_routing_only, hold_relay_boundary, prove_addressed,
-    prove_delegated_device, prove_relay_queue, prove_revocation_corroborated, prove_vetted,
-    prove_witnessed_keystate, verified_rotation_rekey,
+    prove_delegated_device, prove_post_compromise_healing, prove_relay_queue,
+    prove_revocation_corroborated, prove_vetted, prove_witnessed_keystate, verified_rotation_rekey,
 };
 
 /// What the relay was asked to do.
@@ -296,6 +296,72 @@ fn run_forward_secret() -> Result<String, String> {
          ciphertext captured at index {} could NOT be decrypted from the later compromised state \
          at index {} (used message keys zeroized)",
         receipt.messages_delivered, receipt.captured_index, receipt.compromised_index
+    ))
+}
+
+/// Prove post-compromise healing across our wiring (PRD §10, the
+/// post-compromise-security claim): after a simulated full state compromise, the
+/// next DH ratchet step restores confidentiality — the attacker is locked back
+/// out.
+///
+/// The Mac and the handset seed a DH ratchet from the same agreed root. We
+/// snapshot the full pre-step state an attacker would seize, then the Mac takes a
+/// DH ratchet step (a fresh ephemeral key, a fresh DH output mixed into the root)
+/// and the handset follows it. The Mac seals several messages on the post-step
+/// (healed) chain; each is store-and-forwarded through the relay and opened by the
+/// handset, authenticated as the Mac. Finally the attacker's compromised pre-step
+/// state is made to attempt the captured post-step ciphertext — it MUST fail,
+/// because the healed chain was seeded from a new root that depends on a key minted
+/// after the compromise. An attacker who could still decrypt after the step (the
+/// adversarial twin) fails the leg closed (the RED the trap records).
+///
+/// The output line carries the marker a reader greps for — `post-compromise-healed`
+/// — alongside the step index and the count of healed messages.
+fn run_post_compromise_healing() -> Result<String, String> {
+    let mac = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac: {e}"))?;
+    let handset = Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset: {e}"))?;
+
+    // The handset admits the Mac's AID (opt-in contact, §8); the directory stands in
+    // for a witnessed KEL replay so each healed message authenticates as the Mac.
+    let mut directory = ContactDirectory::new();
+    directory.admit(mac.aid().clone(), mac.public_key().to_vec());
+    directory.admit(handset.aid().clone(), handset.public_key().to_vec());
+
+    // The X3DH root the two ends agreed (established out-of-band for the self-test).
+    let root_secret = [0x5au8; 32];
+    let mut relay = MailboxStore::new();
+    let mailbox = MailboxId::new("mbx:handset");
+    let bodies = ["after the compromise", "still healed", "and still locked out"];
+
+    let receipt = prove_post_compromise_healing(
+        &mac,
+        &handset,
+        root_secret,
+        [0x10u8; 32], // the Mac's initial X25519 ratchet key
+        [0x20u8; 32], // the handset's initial X25519 ratchet key
+        [0x11u8; 32], // the Mac's FRESH ratchet key, minted for the healing step
+        &mailbox,
+        &bodies,
+        &mut relay,
+        &directory,
+    )
+    .map_err(|e| format!("the post-compromise leg failed: {e}"))?;
+
+    if !receipt.attacker_locked_out {
+        return Err(
+            "not-healed: the compromised state was not locked out after the ratchet step"
+                .to_string(),
+        );
+    }
+
+    Ok(format!(
+        "post-compromise-healed: an attacker who seized the full session state could read the \
+         traffic of the moment, but the next DH ratchet step (turn {step}) mixed in fresh entropy \
+         it never held; {n} messages sealed on the post-step chain were store-and-forwarded \
+         through the relay and arrived authenticated on the handset, and the compromised pre-step \
+         state could NOT decrypt them — confidentiality recovered, the attacker locked back out",
+        step = receipt.healed_at_step,
+        n = receipt.healed_messages_delivered,
     ))
 }
 
@@ -703,11 +769,12 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 12] = [
+            let legs: [fn() -> Result<String, String>; 13] = [
                 run_addressed,
                 run_delivery,
                 run_rooted,
                 run_forward_secret,
+                run_post_compromise_healing,
                 run_relay_queue,
                 run_routing_only,
                 run_relay_boundary,

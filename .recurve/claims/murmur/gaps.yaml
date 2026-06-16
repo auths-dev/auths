@@ -248,18 +248,41 @@
   title: Post-compromise healing — after a simulated state compromise the next DH ratchet
     step restores confidentiality
   class: missing-surface
-  status: open
+  status: closed
   severity: feature
   reads: relay
   covers:
   - '10'
   evidence:
-  - crates/murmur-core/src/lib.rs — no DH ratchet step exists yet; there is no session to
-    heal
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=post-compromise-healed
-    — the DH ratchet step is unbuilt (murmur-relay 0.1.3: store-and-forward wire not built
-    yet (the mailbox queue + pull/subscribe surface is the slice''s transport work)); ENC-3
-    is open'
+  - the DH (asymmetric) ratchet is built — crates/murmur-core/src/dh_ratchet.rs holds a
+    DhRatchet of a root key plus an X25519 ratchet key pair. A DH ratchet step (ratchet_send)
+    mints a fresh ephemeral key pair and mixes a fresh DH(new_priv, peer_pub) into the root via
+    HKDF-SHA256 (the Signal KDF_RK — old root salts the KDF, fresh DH output is the IKM),
+    advancing the root and seeding a fresh forward-secret symmetric chain; the peer follows with
+    ratchet_receive (DH(my_priv, peer_new_pub)) to land on the same new root. The old root is
+    zeroized on every advance. The new root depends on a private key minted AFTER a compromise,
+    so an attacker holding only the prior root cannot follow — that asymmetry is the healing
+  - 'murmur-relay serve drives the property hermetically (prove_post_compromise_healing): both
+    ends seed a DhRatchet from the same agreed root; the full pre-step root is snapshotted as the
+    attacker would seize it; the Mac takes a DH ratchet step and the handset follows; messages
+    sealed on the post-step chain are store-and-forwarded through the relay and arrive
+    authenticated as the Mac; finally the compromised pre-step root is run as a symmetric chain
+    against the captured post-step ciphertext and CANNOT open it — it prints
+    "post-compromise-healed". The trap (no-healing) turns the probe RED'
+  observed: 'GREEN at 2026-06-16: after a simulated full state compromise (the attacker holds the
+    live root key and can read the traffic of the moment), the next DH ratchet step mixed in a
+    fresh DH output the attacker never held; messages sealed on the post-step chain delivered
+    authenticated to the legitimate peer, who followed the step, while the compromised pre-step
+    state — which can only run the symmetric chain off the old root — could NOT decrypt them. The
+    relay binary self-tests seed-DH → snapshot-the-compromise → DH-step (send/receive) →
+    seal-N-on-the-healed-chain → store-and-forward → open-authenticated → replay the captured
+    post-step ciphertext against the compromised state (rejected) and reports
+    post-compromise-healed; murmur-core unit tests cover the DH step (both sides land on the same
+    chain, the root advances away from the compromised value, an attacker with only the old root
+    cannot derive the healed chain, the new root depends on the fresh DH output not the old root
+    alone). This composes the asymmetric half with the existing symmetric Ratchet (ENC-2) into the
+    full Double Ratchet; embedding libsignal''s audited ratchet behind a misuse-resistant wrapper
+    remains its own work, gated on the external-audit precondition (ENC-7).'
   smallest_fix: 'Wire the DH ratchet so that after a simulated state compromise the next ratchet
     step locks the attacker back out (post-compromise security). Adversarial (the trap): a
     run where the attacker remains able to decrypt AFTER a ratchet step must fail. TRAP probes/enc-3.trap/no-healing/

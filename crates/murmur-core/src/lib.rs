@@ -49,6 +49,7 @@ use serde::{Deserialize, Serialize};
 pub mod address;
 pub mod corroboration;
 pub mod delegation;
+pub mod dh_ratchet;
 pub mod envelope;
 pub mod identity;
 pub mod kel;
@@ -65,6 +66,7 @@ pub mod vetted;
 pub use address::Aid;
 pub use corroboration::{CorroboratedState, Provenance, RevocationResolution, provenance_token};
 pub use delegation::{DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation};
+pub use dh_ratchet::{DhRatchet, DhStep};
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
 pub use kel::{Kel, KelEvent, WitnessPolicy, WitnessReceipt};
@@ -529,6 +531,186 @@ pub fn deliver_forward_secret(
         }),
         Err(other) => Err(other),
     }
+}
+
+/// The verdict of proving **post-compromise healing** across our wiring (PRD §10,
+/// the post-compromise-security claim): an attacker who seized the full session
+/// state at some instant could read the traffic of the moment, but the next DH
+/// ratchet step mixed in fresh entropy the attacker never held, so a message
+/// sealed on the **post-step** chain could not be opened from the compromised
+/// state — confidentiality recovered, the attacker locked back out. Returned by
+/// [`prove_post_compromise_healing`] so the relay self-test (and the harness) can
+/// assert the property held rather than merely that messages flowed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PostCompromiseReceipt {
+    /// The DH ratchet step index at which the healing step was taken (the turn that
+    /// injected fresh entropy past the compromise).
+    pub healed_at_step: u64,
+    /// How many messages sealed on the post-step (healed) chain were store-and-
+    /// forwarded through the relay and opened by the legitimate peer.
+    pub healed_messages_delivered: u64,
+    /// Confirmation that the attacker, holding the compromised pre-step state, could
+    /// **not** open the healed traffic — the post-compromise-security property.
+    pub attacker_locked_out: bool,
+}
+
+/// Drive the post-compromise-healing property once, hermetically (PRD §10, the
+/// post-compromise-security claim): after a simulated **full state compromise**,
+/// the next DH ratchet step restores confidentiality.
+///
+/// The forward-secrecy leg ([`deliver_forward_secret`]) proves a *later* state
+/// can't reopen an *earlier* ciphertext. This is its dual and its complement: it
+/// proves an *earlier compromised* state can't open *later* (post-step) traffic —
+/// the conversation **heals** from a compromise instead of staying broken forever.
+///
+///  1. Both ends seed a [`dh_ratchet::DhRatchet`] from the same agreed root (the
+///     X3DH output stands in here as a fixed root) and their own X25519 ratchet
+///     keys.
+///  2. **The compromise:** we snapshot the full pre-step state an attacker would
+///     seize — the live root key — exactly as it stands before the healing turn.
+///     (At this instant the attacker can derive the current symmetric chain off the
+///     root, so it genuinely reads the traffic of the moment — that is what makes
+///     the recovery non-trivial.)
+///  3. **The healing step:** the sender takes a DH ratchet step ([`DhRatchet::ratchet_send`])
+///     — a fresh ephemeral key pair, a fresh DH output mixed into the root — and
+///     the receiver follows it ([`DhRatchet::ratchet_receive`]). Both land on the
+///     same *new* root and a fresh chain. The sender seals `bodies` on the new
+///     chain; each is stored-and-forwarded through `relay`, drained, opened, and
+///     **authenticated as the sender**.
+///  4. **The lock-out:** we take the attacker's compromised pre-step root and have
+///     them run the only thing it lets them — the symmetric chain off that old root
+///     — against the captured post-step ciphertext. It MUST fail: the healed chain
+///     was seeded from the new root, which depends on a private key minted after
+///     the compromise. The attacker is locked out.
+///
+/// Returns a [`PostCompromiseReceipt`] iff the healed traffic delivered **and** the
+/// compromised state failed to open it. An attacker who *could* still open the
+/// post-step ciphertext (healing did not happen) is an error, never a silent pass —
+/// that is the RED the trap records.
+#[allow(clippy::too_many_arguments)]
+pub fn prove_post_compromise_healing(
+    sender: &Identity,
+    recipient: &Identity,
+    root_secret: [u8; 32],
+    sender_ratchet_seed: [u8; 32],
+    recipient_ratchet_seed: [u8; 32],
+    fresh_ratchet_seed: [u8; 32],
+    mailbox: &MailboxId,
+    bodies: &[&str],
+    relay: &mut MailboxStore,
+    directory: &dyn Directory,
+) -> CoreResult<PostCompromiseReceipt> {
+    use x25519_dalek::StaticSecret as X25519Secret;
+
+    if bodies.is_empty() {
+        return Err(CoreError::Malformed(
+            "the post-compromise proof needs at least one message to seal on the healed chain"
+                .into(),
+        ));
+    }
+
+    // (1) Both ends seed a DH ratchet from the same agreed root and their own
+    // X25519 ratchet keys.
+    let mut sender_dh =
+        DhRatchet::from_root(root_secret, X25519Secret::from(sender_ratchet_seed));
+    let mut recipient_dh =
+        DhRatchet::from_root(root_secret, X25519Secret::from(recipient_ratchet_seed));
+    let mailbox_aad = mailbox.as_str().as_bytes();
+
+    // (2) The compromise: snapshot the full pre-step state the attacker seizes — the
+    // live root key, before the healing turn. The attacker who holds this can run the
+    // symmetric chain off it (it reads the traffic of the moment); the test is whether
+    // it can follow *past* the next DH step.
+    let compromised_root = *sender_dh.root_state();
+
+    // (3) The healing step: the sender takes a DH ratchet step (fresh ephemeral, fresh
+    // DH output mixed into the root); the receiver follows it. Both land on the same
+    // new root and a fresh chain.
+    let (step, mut healed_send) =
+        sender_dh.ratchet_send(&recipient_dh.public_key(), X25519Secret::from(fresh_ratchet_seed))?;
+    let mut healed_recv = recipient_dh.ratchet_receive(&step.public_key)?;
+    let healed_at_step = sender_dh.steps();
+
+    // The root must actually have advanced away from the compromised value, or there
+    // is nothing to heal.
+    if sender_dh.root_state() == &compromised_root {
+        return Err(CoreError::Rejected(
+            "no-healing: the DH ratchet step did not advance the root past the compromise",
+        ));
+    }
+
+    // Seal each body on the post-step (healed) chain into an authenticated inner
+    // envelope and store-and-forward it. The relay only ever sees the outer envelope.
+    for body in bodies {
+        let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+        let signature = sender.sign(&signing_bytes)?;
+        let inner = InnerEnvelope {
+            sender: sender.aid().clone(),
+            recipient: recipient.aid().clone(),
+            body: (*body).to_string(),
+            signature,
+        };
+        let inner_bytes = serde_json::to_vec(&inner)
+            .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
+        let ciphertext = healed_send.seal(mailbox_aad, &inner_bytes)?;
+        relay.handle(&RelayRequest::Deposit(OuterEnvelope {
+            to_mailbox: mailbox.clone(),
+            ciphertext,
+        }));
+    }
+    let queued = relay.handle(&RelayRequest::Drain(mailbox.clone()));
+    if queued.len() != bodies.len() {
+        return Err(CoreError::Rejected(
+            "not every healed message arrived at the mailbox",
+        ));
+    }
+
+    // Capture the first post-step ciphertext as the attacker would off the relay,
+    // before the legitimate receiver opens it.
+    let captured_healed = queued[0].ciphertext.clone();
+
+    // The legitimate receiver — who followed the DH step — opens every post-step
+    // message in order and authenticates the sender.
+    let mut healed_delivered = 0u64;
+    for env in &queued {
+        let inner_bytes = healed_recv.open(mailbox_aad, &env.ciphertext)?;
+        let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
+            .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
+        let sender_key = directory
+            .resolve(&inner.sender)
+            .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
+        verify_sender(
+            &inner.sender,
+            &sender_key,
+            &inner.signing_bytes_for(),
+            &inner.signature,
+        )?;
+        healed_delivered += 1;
+    }
+
+    // (4) The lock-out: the attacker holds only the compromised pre-step root. The
+    // only thing it lets them do is run the symmetric chain off that old root — there
+    // is no fresh DH output to mix, because they hold neither party's new private key.
+    // That chain is seeded from the *old* root, not the healed one, so it MUST fail to
+    // open the post-step ciphertext. An attacker who still opened it would mean the
+    // compromise was permanent — healing did not happen.
+    let mut attacker_chain = Ratchet::from_session(&Session::from_secret(compromised_root))?;
+    let attacker_locked_out = match attacker_chain.open(mailbox_aad, &captured_healed) {
+        Ok(_) => {
+            return Err(CoreError::Rejected(
+                "no-healing: the compromised pre-step state still decrypted post-step traffic — \
+                 the attacker was not locked out",
+            ));
+        }
+        Err(CoreError::Rejected(_)) => true,
+        Err(other) => return Err(other),
+    };
+
+    Ok(PostCompromiseReceipt {
+        healed_at_step,
+        healed_messages_delivered: healed_delivered,
+        attacker_locked_out,
+    })
 }
 
 /// The verdict of standing up the store-and-forward wire and proving the bytes the
@@ -1893,6 +2075,68 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, CoreError::Rejected(_)));
+    }
+
+    #[test]
+    fn a_compromised_state_cannot_follow_past_the_next_dh_ratchet_step() {
+        // Post-compromise healing: after a simulated full state compromise, a message
+        // sealed on the post-step (healed) chain delivers to the legitimate peer but
+        // cannot be opened from the compromised pre-step state — the attacker is
+        // locked back out.
+        let mac = Identity::from_seed([0x11u8; 32]).unwrap();
+        let phone = Identity::from_seed([0x22u8; 32]).unwrap();
+        let dir = directory_of(&[
+            &Endpoint::new(mac.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(phone.clone(), Session::from_secret([0u8; 32])),
+        ]);
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:phone");
+        let bodies = ["after the compromise", "still healed"];
+
+        let receipt = prove_post_compromise_healing(
+            &mac,
+            &phone,
+            [0x5au8; 32],
+            [0x10u8; 32],
+            [0x20u8; 32],
+            [0x11u8; 32],
+            &mailbox,
+            &bodies,
+            &mut relay,
+            &dir,
+        )
+        .unwrap();
+
+        assert_eq!(receipt.healed_at_step, 1);
+        assert_eq!(receipt.healed_messages_delivered, bodies.len() as u64);
+        assert!(receipt.attacker_locked_out);
+    }
+
+    #[test]
+    fn the_post_compromise_proof_rejects_an_empty_body_list() {
+        let mac = Identity::from_seed([0x11u8; 32]).unwrap();
+        let phone = Identity::from_seed([0x22u8; 32]).unwrap();
+        let dir = directory_of(&[
+            &Endpoint::new(mac.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(phone.clone(), Session::from_secret([0u8; 32])),
+        ]);
+        let mut relay = MailboxStore::new();
+        let mailbox = MailboxId::new("mbx:phone");
+        assert!(matches!(
+            prove_post_compromise_healing(
+                &mac,
+                &phone,
+                [0x5au8; 32],
+                [0x10u8; 32],
+                [0x20u8; 32],
+                [0x11u8; 32],
+                &mailbox,
+                &[],
+                &mut relay,
+                &dir,
+            ),
+            Err(CoreError::Malformed(_))
+        ));
     }
 
     #[test]

@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "suite": "murmur",
+  "cycle": "post-compromise-healing",
+  "gap": "ENC-3",
+  "class": "missing-surface",
+  "severity": "feature",
+  "status": "closed",
+  "attempts": 1,
+  "net_new_gaps": 0,
+  "regressions_caught": 0,
+  "wall_clock_s": 0,
+  "verdicts_before": {"broken": 0, "green": 13, "missing": 0, "red": 3, "stale": 0},
+  "verdicts_after": {"broken": 0, "green": 14, "missing": 0, "red": 2, "stale": 0},
+  "files_touched": [
+    "crates/murmur-core/src/dh_ratchet.rs",
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml",
+    ".recurve/claims/murmur/cycles/post-compromise-healing/plan.md",
+    ".recurve/claims/murmur/cycles/post-compromise-healing/outcome.md",
+    ".recurve/claims/murmur/cycles/post-compromise-healing/record.json",
+    ".recurve/claims/murmur/bin/murmur-relay"
+  ],
+  "summary": "Built the DH (asymmetric) ratchet as a real feature — the half of the Double Ratchet that gives post-compromise security (PRD §10): after a simulated full state compromise, the next DH ratchet step restores confidentiality and the attacker is locked back out. ENC-2 built the symmetric chain (forward secrecy: an earlier ciphertext can't be reopened from a later state) but it cannot heal — an attacker who snapshots the root + chain key derives every subsequent symmetric step, because the chain only HMACs what it already holds and injects no new entropy. New crates/murmur-core/src/dh_ratchet.rs models a DhRatchet of a root key plus an X25519 ratchet key pair: a DH ratchet step (ratchet_send) mints a fresh ephemeral key pair and mixes a fresh DH(new_priv, peer_pub) into the root via HKDF-SHA256 (the Signal KDF_RK — old root salts the KDF, fresh DH output is the IKM, expand emits next_root + a fresh symmetric chain seed under two distinct domain labels), advancing+zeroizing the old root; the peer follows with ratchet_receive (DH(my_priv, peer_new_pub)) and lands on the SAME new root because DH is symmetric, seeding the same fresh forward-secret Ratchet (the ENC-2 chain) — the two compose into the full Double Ratchet. It heals because the new root depends on a private key minted AFTER the compromise that never left the device: an attacker holding only the prior root, with both ratchet public keys on the wire, still cannot compute the DH output, so cannot derive the new root. lib.rs prove_post_compromise_healing drives it hermetically: both ends seed a DhRatchet from the same agreed root; the full pre-step root is snapshotted as the attacker would seize it; the Mac takes a DH step and the handset follows; messages sealed on the post-step chain are store-and-forwarded through the relay and arrive authenticated as the Mac; finally the compromised pre-step root is run as a symmetric chain against the captured post-step ciphertext and CANNOT open it — failing closed (the trap) on an attacker who could still decrypt. murmur-relay serve gains a 5th leg (run_post_compromise_healing of now 13) emitting the post-compromise-healed marker the probe greps for. No crypto reimplemented — X25519 over x25519-dalek (the curve X3DH already uses) and HKDF-SHA256, both already in the workspace lock. No loop vocabulary in product code (the feature is named by its cryptographic name and PRD §10, never gap-ID/cycle-name/tool-name; leakcheck clean over both trees). Probe RED->GREEN; matrix --gate GREEN fleet-wide (holding 16, ready_to_close 0, 0 regressions/broken/stale/missing, 14/14 traps RED, leakcheck clean, app sculpt gate OK exit 0); coverage --gate 0 orphan prose; 98 murmur-core unit tests pass (6 new: 4 in dh_ratchet, 2 in lib); clippy clean (the too_many_arguments allow on the orchestration fn matches the existing deliver_rooted convention in the same file, not a real-defect suppression). Committed unsigned per-repo; the operator's in-flight edits were left untouched."
+}
