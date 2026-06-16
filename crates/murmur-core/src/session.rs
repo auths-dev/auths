@@ -95,7 +95,12 @@ impl Session {
     /// [`Ratchet::seal`](crate::Ratchet::seal) both draw a [`fresh_nonce`] (OS
     /// entropy) per message. Keeping `seal` `pub(crate)` removes the only public
     /// surface through which an external caller could pass a stale nonce.
-    pub(crate) fn seal(&self, nonce: [u8; 12], aad: &[u8], plaintext: &[u8]) -> CoreResult<Vec<u8>> {
+    pub(crate) fn seal(
+        &self,
+        nonce: [u8; 12],
+        aad: &[u8],
+        plaintext: &[u8],
+    ) -> CoreResult<Vec<u8>> {
         let key_bytes = self.content_key(&nonce)?;
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
         let ct = cipher

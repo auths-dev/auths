@@ -227,8 +227,8 @@ mod tests {
             to_mailbox: MailboxId::new("mbx:phone"),
             ciphertext: key.to_vec(),
         };
-        let err =
-            prove_routing_only(&leaky, b"unused", "did:keri:whoever", &key, &[1u8; 32]).unwrap_err();
+        let err = prove_routing_only(&leaky, b"unused", "did:keri:whoever", &key, &[1u8; 32])
+            .unwrap_err();
         assert!(matches!(err, CoreError::Rejected(_)));
     }
 

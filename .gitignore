@@ -11,6 +11,9 @@
 /build/
 /dist/
 **/dist/
+# Generated UniFFI bindings: build-ffi.sh regenerates these via uniffi-bindgen and
+# stages murmur_ffi.swift into the app — a pure build output, not a committed source.
+crates/murmur-ffi/generated/
 /*.wasm
 *.dSYM
 *.o
@@ -156,3 +159,7 @@ jnkn.db
 # run-state and built binaries.
 .recurve/state/
 .recurve/**/bin/
+# Cycle prose journals are redundant with commit messages + the gap ledger; the
+# machine ledger (record.json) stays tracked. (Architectural review, 2026-06-16.)
+.recurve/claims/murmur/cycles/**/plan.md
+.recurve/claims/murmur/cycles/**/outcome.md

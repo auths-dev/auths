@@ -17,6 +17,9 @@
 
 uniffi::setup_scaffolding!();
 
+/// Cross-device pairing (the QR-driven P-256 ECDH + SAS handshake).
+mod pairing;
+
 /// The error surfaced across the FFI. `NotBuilt` is the load-bearing variant
 /// for the skeleton — it names the seam that is specified but unwired.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -129,8 +132,12 @@ mod tests {
     }
 
     #[test]
-    fn trust_is_honestly_unbuilt_across_the_ffi() {
+    fn trust_rejects_a_malformed_keystate_across_the_ffi() {
+        // trust::evaluate is wired (the pre-rotation continuity check), so a non-
+        // key-state input fails closed as Malformed — not the old `NotBuilt`
+        // skeleton. The shell never claims "verified" without a key-state it could
+        // replay.
         let r = evaluate_trust("prior".into(), "current".into());
-        assert!(matches!(r, Err(MurmurError::NotBuilt(_))));
+        assert!(matches!(r, Err(MurmurError::Malformed(_))));
     }
 }

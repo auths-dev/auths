@@ -34,6 +34,14 @@ murmur-core = { path = "../murmur-core", version = "0.1.3" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+# Cross-device pairing: the transport-agnostic P-256 ECDH + SAS handshake the app
+# drives over QR (one device shows the offer, the other scans + responds). Reused
+# rather than re-implemented (it is Secure-Enclave-native and already audited).
+auths-pairing-protocol = { path = "../auths-pairing-protocol" }
+auths-crypto = { path = "../auths-crypto", features = ["native"] }
+auths-keri = { path = "../auths-keri" }
+p256 = { version = "=0.13.2", features = ["ecdsa", "pkcs8"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 [[bin]]
 name = "uniffi-bindgen"

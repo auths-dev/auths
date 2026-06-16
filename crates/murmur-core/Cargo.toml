@@ -45,6 +45,27 @@ zeroize = { workspace = true }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 # A fresh per-message AEAD nonce. Pure OS entropy, no PRNG state to carry.
 getrandom = "0.2"
+# The audited Olm/Megolm Double Ratchet (Matrix), Apache-2.0, Least-Authority-
+# audited, pure Rust. Optional: behind the `olm` feature it provides an alternate
+# message-encryption backend (an audited library ratchet) that the engine can use
+# in place of the in-tree ratchet, joined to the same KERI-rooted prekey bundle.
+# version_2 sessions (full, untruncated MAC) need `experimental-session-config`.
+# Pinned EXACTLY: v2 (full MAC) and its API live behind an upstream-experimental
+# feature, and vodozemac 0.10 made the truncated-MAC v1 the Default — a loose
+# `^0.10` bump could silently drop the full MAC. `session_config_is_v2_full_mac`
+# asserts the version stays 2, so a regression fails the build, not production.
+vodozemac = { version = "=0.10.0", optional = true, features = ["experimental-session-config"] }
+
+[features]
+default = []
+# Use the audited Olm library ratchet as the message-encryption backend, joined to
+# the KERI identity root. Off by default; the in-tree ratchet remains the default
+# until parity is proven and the join is externally audited.
+olm = ["dep:vodozemac"]
+# The hermetic proof harness (`proofs` module): the deliver_*/prove_*/hold_* legs the
+# relay binary's self-test drives. Off by default so the engine's public surface is the
+# engine; `murmur-relay` enables it. (Always available under `cfg(test)`.)
+proofs = []
 
 [lints]
 workspace = true

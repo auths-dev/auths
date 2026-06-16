@@ -126,7 +126,10 @@ impl Ratchet {
     /// appears in the relay-visible bytes. Crate-internal on purpose: the chain
     /// key is never exposed across the public API or the FFI — only the in-crate
     /// leakcheck scan, which must know the secret to prove its *absence*, may read
-    /// it.
+    /// it. Proof/test-only introspection (the leakcheck scan runs in the proof
+    /// harness), so it is gated with the harness rather than carried as dead code in
+    /// the default engine build.
+    #[cfg(any(feature = "proofs", test))]
     pub(crate) fn chain_state(&self) -> &[u8; 32] {
         &self.chain_key
     }

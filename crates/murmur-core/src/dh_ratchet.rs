@@ -142,7 +142,10 @@ impl DhRatchet {
     /// The current root key, for the metadata-hygiene self-test ([`crate::leakcheck`])
     /// to confirm the live root never appears in the relay-visible bytes, and for a
     /// proof to snapshot the *compromised* root. Crate-internal on purpose: the root
-    /// is never exposed across the public API or the FFI.
+    /// is never exposed across the public API or the FFI. Proof/test-only
+    /// introspection, gated with the harness rather than carried as dead code in the
+    /// default engine build.
+    #[cfg(any(feature = "proofs", test))]
     pub(crate) fn root_state(&self) -> &[u8; 32] {
         &self.root
     }
