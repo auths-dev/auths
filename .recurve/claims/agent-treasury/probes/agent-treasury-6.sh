@@ -31,9 +31,10 @@ fi
 
 bin_ready || broken "no staged bin/auths (or jq) — run the suite rebuild first"
 
-# The quantitative depth subset (Σ child slices ≤ self) rides the net-new aggregate
-# primitive; its absence is the gap (RED, not BROKEN).
-has_subcommand id agent reallocate \
+# The quantitative depth-subset surface (a sub-agent sub-delegating a child slice ≤
+# its own) is net-new; its absence is the gap (RED, not BROKEN). The depth-1 aggregate
+# cap (AGENT-TREASURY-1) exists; the transitive per-depth Σ-child ≤ self does not.
+has_subcommand treasury subdelegate \
     || red "ours=no-quantitative-subset expected=Σ child slices ≤ the sub-agent's own slice enforced at issuance (transitive aggregate cap) — issuance enforces only the CATEGORICAL subset (AGT-1); the QUANTITATIVE per-depth sum is not built"
 
 LAB="$(mktemp -d "${TMPDIR:-/tmp}/treasury6.XXXXXX")"

@@ -6,7 +6,7 @@
   title: Aggregate-capped reallocation — a manager moves a slice between sub-agents and Σ
     slices provably stays ≤ the parent cap
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: cli
   covers:
@@ -21,9 +21,14 @@
   - AGT-1 (crates/auths-sdk/src/domains/agents/delegation.rs add_scoped) gives the CATEGORICAL
     subset rule at issuance; the QUANTITATIVE sum constraint Σ slices ≤ parent_cap and the
     reallocate operation are not built
-  observed: 'RED at baseline 2026-06-16: ours=no-reallocate-surface expected=aggregate-capped
-    reallocate(from,to,Δ) with Σ ≤ parent_cap + distinct aggregate_cap_exceeded — the engine
-    has no aggregate cap across sub-delegations; budget is per-delegation only'
+  observed: 'GREEN 2026-06-16: the net-new `treasury` surface (auths-sdk domains::treasury +
+    the `treasury` CLI: open/allot/reallocate/status) establishes a manager aggregate cap and
+    allots four slices to Σ=10=parent_cap; a reallocation of 2 (yield→flip) commits with the
+    flip slice grown 4→6 and Σ unchanged; and BOTH an over-cap allotment (Σ→12) and an over-sum
+    reallocation (pull 4 from a slice holding 2) are refused with the distinct
+    aggregate_cap_exceeded and do NOT commit. Trap RED: a recorded over-sum move that committed
+    (status=reallocated) is refused by the probe. The repo-held treasury-ledger mirrors the AGT-4
+    usage ledger (atomic temp-write+rename, path-safe manager key).'
   smallest_fix: 'Build the net-new aggregate-cap primitive in auths: a parent-anchored quantitative
     ceiling with the verifier invariant Σ(committed sub-slices) ≤ parent_cap (re-derivable
     offline from the parent KEL), and an atomic reallocate(A,B,Δ) operation (A-=Δ, B+=Δ) that

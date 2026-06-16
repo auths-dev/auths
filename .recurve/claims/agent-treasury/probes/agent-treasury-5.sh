@@ -30,9 +30,11 @@ fi
 
 bin_ready || broken "no staged bin/auths (or jq) — run the suite rebuild first"
 
-# The free-pool accounting rides the net-new aggregate primitive; its absence is the gap.
-has_subcommand treasury status \
-    || red "ours=no-free-pool-surface expected=revoke releases the slice to parent_cap − Σ live slices (free pool), re-allocatable but never double-counted — the engine has no aggregate free-pool accounting"
+# The free-pool RECLAIM-on-revoke surface is net-new; its absence is the gap. (The
+# aggregate cap + reallocation — AGENT-TREASURY-1 — exists; the revoke→free-pool
+# release that this claim needs does not.)
+has_subcommand treasury reclaim \
+    || red "ours=no-free-pool-surface expected=revoke releases the slice to parent_cap − Σ live slices (free pool), re-allocatable but never double-counted — the engine has no revoke→free-pool reclaim"
 
 LAB="$(mktemp -d "${TMPDIR:-/tmp}/treasury5.XXXXXX")"
 trap 'rm -rf "$LAB"' EXIT

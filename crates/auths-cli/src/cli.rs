@@ -43,6 +43,7 @@ use crate::commands::sign::SignCommand;
 use crate::commands::sign_commit::SignCommitCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::tls_cert::TlsCertCommand;
+use crate::commands::treasury::TreasuryCommand;
 use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
 use crate::commands::whoami::WhoamiCommand;
@@ -161,6 +162,8 @@ pub enum RootCommand {
     Emergency(EmergencyCommand),
     #[command(hide = true)]
     Agent(AgentCommand),
+    /// Aggregate treasury cap across a manager's sub-delegated agents.
+    Treasury(TreasuryCommand),
     #[command(hide = true)]
     Witness(WitnessCommand),
     #[command(hide = true)]

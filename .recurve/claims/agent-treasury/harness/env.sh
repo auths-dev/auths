@@ -136,12 +136,35 @@ verify_status() {
 # These drive the to-be-built engine primitive. Until it lands they fail closed
 # (empty status / nonzero), which a probe reads as a RED missing-surface — the gap.
 
+# treasury_open <manager-alias> <cap> — establish the aggregate cap (calls:N or N).
+# Echoes the machine status (opened).
+treasury_open() {
+    local mgr="$1" cap="$2"
+    "$AUTHS_BIN" --repo "$ORG_REPO" --json treasury open --manager "$mgr" --cap "$cap" \
+        2>/dev/null | jq -r '.data.status // empty' 2>/dev/null
+}
+
+# treasury_allot <manager-alias> <agent-did> <amount> — commit a slice. Echoes the
+# machine status (allotted | aggregate_cap_exceeded).
+treasury_allot() {
+    local mgr="$1" to="$2" amt="$3"
+    "$AUTHS_BIN" --repo "$ORG_REPO" --json treasury allot --manager "$mgr" --to "$to" --amount "$amt" \
+        2>/dev/null | jq -r '.data.status // empty' 2>/dev/null
+}
+
+# treasury_slice <manager-alias> <agent-did> — echo a sub-agent's current slice amount.
+treasury_slice() {
+    local mgr="$1" did="$2"
+    "$AUTHS_BIN" --repo "$ORG_REPO" --json treasury status --manager "$mgr" 2>/dev/null \
+        | jq -r --arg d "$did" '.data.slices[]? | select(.agent_did==$d) | .amount' 2>/dev/null
+}
+
 # reallocate <manager-alias> <from-did> <to-did> <amount> — move <amount> of slice
 # budget from one sub-agent to another. Echoes the machine status
 # (reallocated | aggregate_cap_exceeded). Writes exit code to $LAB_DIR/realloc.code.
 reallocate() {
     local mgr="$1" from="$2" to="$3" amt="$4"
-    "$AUTHS_BIN" --repo "$ORG_REPO" --json id agent reallocate \
+    "$AUTHS_BIN" --repo "$ORG_REPO" --json treasury reallocate \
         --manager "$mgr" --from "$from" --to "$to" --amount "$amt" \
         >"$LAB_DIR/realloc.out" 2>&1
     printf '%s' "$?" > "$LAB_DIR/realloc.code"
