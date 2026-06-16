@@ -83,8 +83,11 @@ mod tests {
 
     #[test]
     fn a_consumed_message_does_not_open_again() {
-        // Forward secrecy, behaviorally: once the receiving chain advances past a
-        // message, re-presenting it is rejected — the key that opened it is gone.
+        // Once the receiving chain advances past a message, re-presenting it is
+        // rejected — the per-message key was derived and zeroized. (This is the
+        // consumption/replay behavior through the trait; the full forward-secrecy
+        // property of the in-tree ratchet — a later state cannot reopen an earlier
+        // message — is proven in `ratchet.rs`.)
         let mut send = channel([9u8; 32], b"mbx:demo");
         let mut recv = channel([9u8; 32], b"mbx:demo");
         let w0 = send.encrypt(b"m0").unwrap();
