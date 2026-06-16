@@ -511,23 +511,40 @@
   title: Revocation resolves from witness-corroborated key-state, not a relay's cache; the honest
     stale-served window is acknowledged
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '6'
   - '10'
   evidence:
-  - crates/murmur-core/src/lib.rs open() fails closed NotBuilt — the sender-AID resolve has
-    no notion of WHERE the key-state came from, so a revocation could be resolved from a relay''s
-    stale cache instead of witness-corroborated state
+  - crates/murmur-core/src/corroboration.rs pairs a resolved delegation set with its Provenance
+    (WitnessCorroborated{confirmed,threshold} | RelayCache{revocations_behind_witnesses}); a
+    relay cache is never corroborated even when current — provenance, not contents, decides.
+    CorroboratedState::resolve_revocation rejects a revoked device from witness-corroborated
+    state (RevocationResolution::RevokedFromCorroboratedState) and DISCLOSES the stale-served
+    window for a relay cache (StaleWindowDisclosed{cache_shows_revoked, revocations_behind_witnesses}),
+    never laundering a cache into a corroborated clawback
+  - crates/murmur-core/src/lib.rs prove_revocation_corroborated drives both halves hermetically —
+    the root anchors then revokes a delegated device; a contact re-resolving the witness-corroborated
+    set rejects it, and a contact served the pre-revocation snapshot (the stale cache) is told the
+    window — and fails closed on a revoked device accepted from corroborated state, a relay cache
+    trusted over the witnesses, or a hidden stale window
+  - 'murmur-relay serve drives the leg (run_revocation_corroborated) and prints
+    "revoked-from-corroborated-state + stale-window-disclosed"; the trap (revoked-accepted-from-corroborated)
+    turns the probe RED'
   - 'PRD §6.5 — revocation is prevention-vs-detection, not an instant global kill: only as fast
     as each contact re-resolves, and only safe if they get witness-corroborated state; an offline
     or stale-served contact still has a window that must be disclosed, not hidden'
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=revoked-rejected-from-corroborated+stale-window-disclosed
-    — revocation resolution from witness-corroborated state is unbuilt (murmur-relay 0.1.3:
-    store-and-forward wire not built yet (the mailbox queue + pull/subscribe surface is the
-    slice''s transport work)); RVK-1 is open'
+  observed: 'GREEN at 2026-06-16: a revoked device was rejected from witness-corroborated key-state
+    (not a relay''s cache) and the honest stale-served window was acknowledged — the relay binary
+    self-tests the leg (root anchors a delegated device, revokes it, a contact re-resolving the
+    witness-corroborated delegation set rejects it, and a contact served the relay''s stale cache
+    is told how far that cache lags the witnesses) and reports revoked-from-corroborated-state +
+    stale-window-disclosed. A relay''s cache is never corroborated even when current: provenance,
+    not contents, decides, so a stale cache can never be laundered into a corroborated clawback.
+    Clawback as detection, witness-dependent, the window disclosed rather than oversold as an
+    instant kill.'
   smallest_fix: 'Resolve revocation from WITNESS-CORROBORATED key-state, never a relay''s cache:
     after the root revokes a delegated device, a contact re-resolving corroborated state must
     REJECT the device''s next message — and the honest stale-served window (an offline contact,

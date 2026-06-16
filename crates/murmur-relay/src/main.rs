@@ -27,7 +27,8 @@ use murmur_core::{
     Aid, ContactDirectory, DelegatedDevice, Endpoint, Identity, MailboxId, MailboxStore,
     PrekeyBundle, PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once,
     deliver_rooted, deliver_routing_only, hold_relay_boundary, prove_addressed,
-    prove_delegated_device, prove_relay_queue, prove_vetted, verified_rotation_rekey,
+    prove_delegated_device, prove_relay_queue, prove_revocation_corroborated, prove_vetted,
+    verified_rotation_rekey,
 };
 
 /// What the relay was asked to do.
@@ -598,6 +599,59 @@ fn run_delegated_device() -> Result<String, String> {
     ))
 }
 
+/// Prove the corroborated-revocation leg (PRD §6.5, the revocation-corroboration
+/// claim): after the root revokes a delegated device, a contact who re-resolves the
+/// root's **witness-corroborated** key-state **rejects** the device — clawback as
+/// detection, corroborated — and a contact served the relay's **stale cache** is told
+/// the honest **stale-served window** rather than waved through as safe.
+///
+/// This strengthens the multi-device leg's clawback: that leg proves a revoked
+/// device's next message is rejected; this proves the rejection holds *from
+/// witness-corroborated state* (not a relay's cache), and that the stale-served window
+/// is **disclosed**, not hidden — the honest bound the PRD insists on instead of an
+/// over-sold "instant global kill."
+///
+/// The output line carries the markers a reader greps for — `revoked-from-corroborated-state`
+/// (the corroborated clawback) and `stale-window-disclosed` (the honest window) — so a
+/// regression in either half fails the whole self-test closed. A revoked device accepted
+/// from corroborated state, a relay cache trusted over the witnesses, or a hidden stale
+/// window (the adversarial twin) each fails the leg closed.
+fn run_revocation_corroborated() -> Result<String, String> {
+    // The phone holds the root identity; the Mac is the delegated device it revokes.
+    let root = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint root identity: {e}"))?;
+    let mac = DelegatedDevice::new(
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint device identity: {e}"))?,
+        root.aid().clone(),
+    );
+    // The contact who re-resolves the root's key-state after the revocation.
+    let contact =
+        Identity::from_seed([0x33u8; 32]).map_err(|e| format!("mint contact identity: {e}"))?;
+
+    let receipt = prove_revocation_corroborated(&root, &mac, &contact)
+        .map_err(|e| format!("the corroborated-revocation leg failed: {e}"))?;
+
+    if &receipt.root_aid != root.aid() {
+        return Err(format!(
+            "the corroborated rejection clawed the device back from {} not the root",
+            receipt.root_aid
+        ));
+    }
+
+    Ok(format!(
+        "revoked-from-corroborated-state + stale-window-disclosed: after the root {root} revoked \
+         the delegated device {dev}, a contact re-resolving the WITNESS-CORROBORATED key-state \
+         rejected it ({n} witnesses corroborated the revocation) — the clawback holds, \
+         corroborated, not from a relay's cache; and a contact served the relay's STALE cache was \
+         told the honest stale-served window (the cache lagged the witnesses by {behind} \
+         revocation), disclosed rather than waved through as safe — revocation as detection, \
+         witness-dependent, never an instant global kill",
+        root = receipt.root_aid.as_str(),
+        dev = receipt.device_aid.as_str(),
+        n = receipt.witnesses_confirmed,
+        behind = receipt.stale_window_revocations_behind,
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -611,7 +665,7 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 10] = [
+            let legs: [fn() -> Result<String, String>; 11] = [
                 run_addressed,
                 run_delivery,
                 run_rooted,
@@ -622,6 +676,7 @@ fn main() -> ExitCode {
                 run_vetted,
                 run_continuation,
                 run_delegated_device,
+                run_revocation_corroborated,
             ];
             for leg in legs {
                 match leg() {

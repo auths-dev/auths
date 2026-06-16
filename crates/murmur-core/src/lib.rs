@@ -47,6 +47,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod address;
+pub mod corroboration;
 pub mod delegation;
 pub mod envelope;
 pub mod identity;
@@ -61,9 +62,8 @@ pub mod trust;
 pub mod vetted;
 
 pub use address::Aid;
-pub use delegation::{
-    DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation,
-};
+pub use corroboration::{CorroboratedState, Provenance, RevocationResolution, provenance_token};
+pub use delegation::{DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation};
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
 pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
@@ -1109,7 +1109,10 @@ pub fn prove_delegated_device(
 
     // Both ends seal/open over the same out-of-band session (the device sends, the
     // contact receives).
-    let device_endpoint = Endpoint::new(device.identity().clone(), Session::from_secret(session_secret));
+    let device_endpoint = Endpoint::new(
+        device.identity().clone(),
+        Session::from_secret(session_secret),
+    );
     let contact_endpoint = Endpoint::new(contact.clone(), Session::from_secret(session_secret));
 
     // (2) device-as-root: the device sends; the contact opens (authenticating the
@@ -1158,6 +1161,159 @@ pub fn prove_delegated_device(
         }),
         Err(other) => Err(other),
     }
+}
+
+/// The verdict of driving the corroborated-revocation leg (PRD §6.5, the
+/// revocation-corroboration claim): after the root revokes a delegated device, a
+/// contact who re-resolves the root's **witness-corroborated** key-state **rejects**
+/// the device — and a contact served the relay's **stale cache** is told the honest
+/// **stale-served window** rather than waved through as safe. Returned by
+/// [`prove_revocation_corroborated`] so the relay binary's self-test (and the
+/// harness) can assert both halves held: corroborated clawback, and an honest
+/// disclosure of the window the PRD refuses to oversell as an instant kill.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevocationCorroborationReceipt {
+    /// The device AID that was revoked (the lost Mac's own sub-identity).
+    pub device_aid: Aid,
+    /// The **root** AID that revoked it and that a corroborated rejection clawed the
+    /// device back from.
+    pub root_aid: Aid,
+    /// How many witnesses corroborated the revocation set the corroborated rejection
+    /// resolved against.
+    pub witnesses_confirmed: u8,
+    /// How many witnessed revocations the relay's cache lagged behind — the
+    /// measurable size of the disclosed stale-served window.
+    pub stale_window_revocations_behind: u32,
+}
+
+/// Drive the corroborated-revocation leg once, hermetically (PRD §6.5, §6.6, the
+/// revocation-corroboration claim): revocation is **detection, not prevention**, and
+/// it is only *safe* when a contact resolves the **witness-corroborated** delegation
+/// set — a relay's stale cache is an honest window, not a clawback.
+///
+/// `root` is the root identity (the iPhone); `device` is a delegated device (the
+/// Mac) it anchors then revokes; `contact` is the peer who re-resolves.
+///
+///  1. The root **anchors** the device and the contact admits it (a forged anchor
+///     never enters the state).
+///  2. The root **revokes** the device (lost-the-laptop). The witnesses receipt the
+///     revocation; the contact resolves the **witness-corroborated** delegation set
+///     ([`CorroboratedState`] tagged [`Provenance::WitnessCorroborated`]).
+///  3. **revoked-from-corroborated-state:** the contact resolves the revoked device
+///     from the corroborated set and it is **rejected** — the clawback holds,
+///     corroborated by the witnesses, not by a relay's say-so.
+///  4. **stale-window-disclosed:** a *second* contact (or the same one offline) is
+///     served the relay's **stale cache** — a delegation set that predates the
+///     revocation, tagged [`Provenance::RelayCache`]. Resolving the device there
+///     does **not** certify a clawback; it returns a verdict that **discloses the
+///     stale-served window** (how far the cache lags the witnesses), so the cache is
+///     never trusted over the witnesses and the window is never hidden.
+///
+/// Returns a [`RevocationCorroborationReceipt`] iff the corroborated rejection held
+/// **and** the relay-cache path disclosed the window. Any failure — a revoked device
+/// accepted from corroborated state, a relay cache passed off as corroborated, or a
+/// hidden stale window — is an error, never a silent pass (the RED the trap records).
+pub fn prove_revocation_corroborated(
+    root: &Identity,
+    device: &DelegatedDevice,
+    contact: &Identity,
+) -> CoreResult<RevocationCorroborationReceipt> {
+    if device.root_aid() != root.aid() {
+        return Err(CoreError::Malformed(
+            "the delegated device names a different root than the one driving the leg".into(),
+        ));
+    }
+    // The contact admits the device's own AID ↔ key (so its signature resolves), the
+    // same opt-in directory the delivery legs use; the delegation state maps the
+    // device to its root.
+    let mut directory = ContactDirectory::new();
+    directory.admit(device.device_aid().clone(), device.device_key().to_vec());
+    directory.admit(contact.aid().clone(), contact.public_key().to_vec());
+
+    // (1) The root anchors the device.
+    let anchor = DelegationAnchor::issue(root, device)?;
+    let mut anchored = DelegationState::for_root(root);
+    anchored.admit_device(anchor.clone())?;
+
+    // A snapshot of the delegation set BEFORE the revocation — this is exactly the
+    // *stale* cache a lagging relay would serve: it still shows the device live.
+    let stale_cache = anchored.clone();
+
+    // (2) The root revokes the device; the witnesses receipt it, so the contact's
+    // re-resolved set is witness-corroborated.
+    let revocation = DeviceRevocation::issue(root, device.device_aid())?;
+    let mut corroborated_set = anchored;
+    corroborated_set.revoke_device(revocation)?;
+
+    // (3) revoked-from-corroborated-state: the contact resolves the revoked device
+    // from the witness-corroborated set and it is rejected — the corroborated
+    // clawback. A revoked device that was *accepted* from corroborated state would be
+    // the trap's failure, and is returned as an error below.
+    let confirmed_witnesses = 3u8;
+    let witness_threshold = 2u8;
+    let corroborated = CorroboratedState::new(
+        corroborated_set,
+        Provenance::WitnessCorroborated {
+            confirmed: confirmed_witnesses,
+            threshold: witness_threshold,
+        },
+    );
+    let corroborated_resolution =
+        corroborated.resolve_revocation(device.device_aid(), device.device_key())?;
+    if !corroborated_resolution.is_corroborated_rejection() {
+        return Err(CoreError::Rejected(
+            "revoked-accepted-from-corroborated: the revoked device was not rejected from \
+             witness-corroborated state",
+        ));
+    }
+    let (root_aid, witnesses_confirmed) = match &corroborated_resolution {
+        RevocationResolution::RevokedFromCorroboratedState {
+            root_aid,
+            witnesses_confirmed,
+            ..
+        } => (root_aid.clone(), *witnesses_confirmed),
+        // resolve_revocation guarantees the corroborated path yields exactly this
+        // variant on a rejection; any other shape is a contract break.
+        _ => {
+            return Err(CoreError::Rejected(
+                "the corroborated path did not yield a corroborated rejection",
+            ));
+        }
+    };
+
+    // (4) stale-window-disclosed: a contact served the relay's STALE cache (the
+    // pre-revocation snapshot) must NOT be told "safe". The verdict discloses the
+    // window — how far the cache lags the witnesses — instead of certifying a
+    // clawback or hiding the staleness.
+    let stale_window_behind = 1u32;
+    let relay_cache = CorroboratedState::new(
+        stale_cache,
+        Provenance::RelayCache {
+            revocations_behind_witnesses: stale_window_behind,
+        },
+    );
+    let cache_resolution =
+        relay_cache.resolve_revocation(device.device_aid(), device.device_key())?;
+    if !cache_resolution.discloses_stale_window() {
+        return Err(CoreError::Rejected(
+            "stale-window-hidden: a relay's stale cache was not disclosed as a window — it was \
+             waved through as safe",
+        ));
+    }
+    // A relay cache must never be laundered into a corroborated rejection.
+    if cache_resolution.is_corroborated_rejection() {
+        return Err(CoreError::Rejected(
+            "relay-cache-trusted-over-witness: a relay's cache was treated as a corroborated \
+             clawback",
+        ));
+    }
+
+    Ok(RevocationCorroborationReceipt {
+        device_aid: device.device_aid().clone(),
+        root_aid,
+        witnesses_confirmed,
+        stale_window_revocations_behind: stale_window_behind,
+    })
 }
 
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing
