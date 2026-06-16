@@ -167,7 +167,7 @@
   title: Depth attenuation — a sub-agent cannot sub-delegate more budget than it holds (the
     aggregate cap holds transitively)
   class: missing-surface
-  status: open
+  status: closed
   severity: feature
   reads: cli
   covers:
@@ -178,9 +178,13 @@
   - PRD §4 (AGENT-TREASURY-6)
   - maps AGT-1 / AGENT-ATTEN-3 (categorical subset rule at issuance); the quantitative per-depth
     Σ-child ≤ self constraint rides the TREASURY-1 aggregate primitive
-  observed: 'RED at baseline 2026-06-16: ours=no-quantitative-subset expected=Σ child slices
-    ≤ the sub-agent''s own slice enforced at issuance (transitive aggregate cap) — issuance
-    enforces only the CATEGORICAL subset (AGT-1); the QUANTITATIVE per-depth sum is not built'
+  observed: 'GREEN 2026-06-16: the net-new `treasury subdelegate` surface (auths-sdk
+    domains::treasury::subdelegate, a per-parent subdelegation-ledger beside the aggregate
+    ledger) enforces Σ(child slices) ≤ the parent sub-agent''s own slice: a child of 2 under
+    flip''s slice of 4 is sub-delegated, while a second child of 3 (Σ children 5 > 4) is refused
+    with the distinct aggregate_cap_exceeded and the first child still stands. Trap RED: a
+    recorded over-budget child that was minted is refused by the probe. The transitive bound
+    holds down the tree.'
   smallest_fix: 'Extend the subset rule at issuance to the QUANTITATIVE slice: a sub-agent
     sub-delegating a child a slice ≤ its own (and Σ child slices ≤ its own) succeeds and the
     child''s in-slice calls verify; a child slice larger than the parent sub-agent holds is

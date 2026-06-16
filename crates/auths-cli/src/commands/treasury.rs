@@ -80,6 +80,17 @@ pub enum TreasurySubcommand {
         )]
         claim_cents: Option<u64>,
     },
+    /// Sub-delegate a child slice from a sub-agent (Σ children ≤ the parent's slice).
+    Subdelegate {
+        #[arg(long)]
+        manager: String,
+        #[arg(long, help = "The sub-agent (parent) did:keri: doing the sub-delegation.")]
+        parent: String,
+        #[arg(long, help = "The child worker did:keri:.")]
+        child: String,
+        #[arg(long)]
+        amount: u64,
+    },
 }
 
 impl ExecutableCommand for TreasuryCommand {
@@ -149,6 +160,15 @@ pub fn handle_treasury(cmd: TreasuryCommand, repo_path: PathBuf) -> Result<()> {
                 "treasury credit",
                 serde_json::json!({ "status": v.status(), "to": to, "credited_cents": v.credited_cents(), "rail": "x402", "direction": "inbound" }),
                 &format!("credit {to}: {} ({}c inbound)", v.status(), v.credited_cents()),
+            )
+        }
+        TreasurySubcommand::Subdelegate { manager, parent, child, amount } => {
+            let v = treasury::subdelegate(&repo_path, &manager, &parent, &child, amount)
+                .map_err(anyhow::Error::new)?;
+            emit(
+                "treasury subdelegate",
+                serde_json::json!({ "status": v.status(), "manager": manager, "parent": parent, "child": child, "amount": amount }),
+                &format!("subdelegate {amount} {parent}→{child}: {}", v.status()),
             )
         }
     }

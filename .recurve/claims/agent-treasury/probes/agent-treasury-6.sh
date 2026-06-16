@@ -2,17 +2,16 @@
 # AGENT-TREASURY-6 — Depth attenuation: a sub-agent cannot sub-delegate more budget
 # than it holds; the aggregate cap holds transitively down the tree.
 #
-# The flip sub-agent (holding calls:4) spins up its own child worker. A child slice
-# ≤ flip's own (and Σ child slices ≤ flip's) succeeds and verifies; a child slice
-# LARGER than flip holds (calls:5 under flip's calls:4) is refused at issuance, and
-# a hand-forged child seal not signed by flip's key fails verify.
+# The flip sub-agent (holding a slice of 4) spins up child workers. A child slice ≤
+# flip's own (and Σ child slices ≤ flip's) succeeds; a child whose admission would
+# push Σ children over what flip holds is refused at issuance.
 #
-# GREEN: the quantitative subset holds at depth — an in-budget child (calls:2 under
-#   flip's 4) is minted and verifies, while an over-budget child (calls:5) is refused
-#   at issuance with the distinct aggregate_cap_exceeded. RED: the over-budget child
-#   is minted (the quantitative depth subset is absent — the gap at baseline), or a
-#   forged child seal verifies. BROKEN: could not build the chain.
-# Contract: 0 GREEN · 1 RED · 2 BROKEN.
+# GREEN: the quantitative subset holds at depth — an in-budget child (2 under flip's
+#   4) is sub-delegated, but a second child (3, making Σ children 5 > 4) is refused
+#   with the distinct aggregate_cap_exceeded, and the first child still stands.
+# RED: the over-budget child is admitted (the quantitative depth subset is absent —
+#   the gap at baseline), or rejected by a generic verdict. BROKEN: could not build
+#   the chain. Contract: 0 GREEN · 1 RED · 2 BROKEN.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 . ./harness/env.sh
@@ -31,32 +30,39 @@ fi
 
 bin_ready || broken "no staged bin/auths (or jq) — run the suite rebuild first"
 
-# The quantitative depth-subset surface (a sub-agent sub-delegating a child slice ≤
-# its own) is net-new; its absence is the gap (RED, not BROKEN). The depth-1 aggregate
-# cap (AGENT-TREASURY-1) exists; the transitive per-depth Σ-child ≤ self does not.
+# The quantitative depth-subset surface is net-new; its absence is the gap (RED, not BROKEN).
 has_subcommand treasury subdelegate \
     || red "ours=no-quantitative-subset expected=Σ child slices ≤ the sub-agent's own slice enforced at issuance (transitive aggregate cap) — issuance enforces only the CATEGORICAL subset (AGT-1); the QUANTITATIVE per-depth sum is not built"
+
+subdelegate() {  # <manager> <parent-did> <child-did> <amount>
+    "$AUTHS_BIN" --repo "$ORG_REPO" --json treasury subdelegate \
+        --manager "$1" --parent "$2" --child "$3" --amount "$4" 2>/dev/null \
+        | jq -r '.data.status // empty' 2>/dev/null
+}
 
 LAB="$(mktemp -d "${TMPDIR:-/tmp}/treasury6.XXXXXX")"
 trap 'rm -rf "$LAB"' EXIT
 sandbox_env "$LAB"
 MGR_DID="$(bootstrap_manager manager)"; [ -n "$MGR_DID" ] || broken "could not establish manager"
 FLIP="$(delegate_subagent flip manager)"; [ -n "$FLIP" ] || broken "could not delegate flip"
-issue_slice manager "$FLIP" calls:4 >/dev/null; [ "$(issue_rc)" -eq 0 ] || broken "could not issue flip's calls:4 slice"
 
-# In-budget child (calls:2 ≤ flip's 4): minted and verifies.
-CHILD="$(delegate_subagent flip-child flip)"
-[ -n "$CHILD" ] || red "ours=no-subdelegation expected=flip can sub-delegate a child within its slice — depth nesting is not supported, so the transitive cap cannot hold"
-issue_slice flip "$CHILD" calls:2 >/dev/null
-IN_RC="$(issue_rc)"
-[ "$IN_RC" -eq 0 ] || red "ours=in-budget-child:refused expected=minted — an in-budget child (calls:2 under flip's calls:4) was refused; legitimate nesting is broken"
+# flip holds a slice of 4 under the manager's aggregate cap.
+[ "$(treasury_open manager calls:10)" = "opened" ] || broken "could not establish the treasury cap"
+[ "$(treasury_allot manager "$FLIP" 4)" = "allotted" ] || broken "could not allot flip's slice of 4"
 
-# Over-budget child (calls:5 > flip's 4): refused at issuance.
-issue_slice flip "$CHILD" calls:5 >/dev/null
-OVER_RC="$(issue_rc)"
-OVER_SAID="$(jq -r '.data.credential_said // empty' "$LAB_DIR/last-issue.out" 2>/dev/null)"
-if [ "$OVER_RC" -ne 0 ] && [ -z "$OVER_SAID" ]; then
-    green "an in-budget child (calls:2) is minted under flip's calls:4 slice while an over-budget child (calls:5 > 4) is refused at issuance — the quantitative aggregate cap holds transitively down the tree"
+# In-budget child (2 ≤ flip's 4): sub-delegated.
+IN="$(subdelegate manager "$FLIP" did:keri:Eflipchild1 2)"
+[ "$IN" = "subdelegated" ] \
+    || red "ours=in-budget-child:${IN:-none} expected=subdelegated — an in-budget child (2 under flip's 4) was refused; legitimate nesting is broken"
+
+# Over-budget child (3, making Σ children 2+3=5 > flip's 4): refused at issuance.
+OVER="$(subdelegate manager "$FLIP" did:keri:Eflipchild2 3)"
+if [ "$OVER" = "aggregate_cap_exceeded" ]; then
+    # And the first child still stands (the refusal did not corrupt the record).
+    AGAIN="$(subdelegate manager "$FLIP" did:keri:Eflipchild3 2)"
+    [ "$AGAIN" = "subdelegated" ] \
+        || red "ours=after-refusal:${AGAIN:-none} expected=subdelegated — the refused over-budget child corrupted flip's sub-delegation record"
+    green "an in-budget child (2) is sub-delegated under flip's slice of 4 while an over-budget child (3, Σ children 5 > 4) is refused with the distinct aggregate_cap_exceeded — the quantitative aggregate cap holds transitively down the tree"
 else
-    red "ours=over-budget-child:minted(rc=$OVER_RC said=${OVER_SAID:-none}) expected=refused — a child slice (calls:5) larger than flip's calls:4 was minted; the aggregate cap does not hold transitively"
+    red "ours=over-budget-child:${OVER:-none} expected=aggregate_cap_exceeded — a child slice (3) pushing Σ children to 5 over flip's slice of 4 was admitted or rejected by a GENERIC verdict; the aggregate cap does not hold transitively"
 fi

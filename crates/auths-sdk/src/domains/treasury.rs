@@ -109,6 +109,15 @@ pub enum Verdict {
         /// The amount moved.
         amount: u64,
     },
+    /// A sub-agent sub-delegated a child slice within its own holding.
+    Subdelegated {
+        /// The sub-agent doing the sub-delegation.
+        parent: String,
+        /// The child worker receiving the slice.
+        child: String,
+        /// The child slice amount.
+        amount: u64,
+    },
     /// The aggregate cap (or a slice's holdings) would be breached — refused, no commit.
     AggregateCapExceeded {
         /// The aggregate ceiling.
@@ -127,6 +136,7 @@ impl Verdict {
             Verdict::Opened { .. } => "opened",
             Verdict::Allotted { .. } => "allotted",
             Verdict::Reallocated { .. } => "reallocated",
+            Verdict::Subdelegated { .. } => "subdelegated",
             Verdict::AggregateCapExceeded { .. } => "aggregate_cap_exceeded",
         }
     }
@@ -450,6 +460,76 @@ pub fn credit(
     Ok(CreditVerdict::Credited { cents })
 }
 
+/// The repo-relative directory holding per-sub-agent sub-delegation (depth) records.
+const SUBDELEGATION_LEDGER_DIR: &str = "subdelegation-ledger";
+
+/// A parent sub-agent's sub-delegated child slices (kept beside the aggregate ledger
+/// so the top-level [`Slice`] shape is unchanged).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct SubdelRecord {
+    parent: String,
+    children: Vec<Slice>,
+}
+
+/// A sub-agent (`parent_did`) sub-delegates a child a slice within its own holding.
+/// The transitive invariant: `Σ(child slices) ≤ the parent's own slice`. Refused
+/// `aggregate_cap_exceeded` if the child would push the children's sum over what the
+/// parent holds — a mid-swarm key-holder cannot mint budget it was never given, at
+/// any depth. The parent's own slice is read from the manager's aggregate ledger.
+pub fn subdelegate(
+    repo_path: &Path,
+    manager: &str,
+    parent_did: &str,
+    child_did: &str,
+    amount: u64,
+) -> Result<Verdict, TreasuryError> {
+    let parent_held = TreasuryLedger::new(repo_path)
+        .status(manager)?
+        .slices
+        .into_iter()
+        .find(|s| s.agent_did == parent_did)
+        .ok_or_else(|| TreasuryError::UnknownSlice(parent_did.to_string()))?
+        .amount;
+
+    let dir = repo_path.join(SUBDELEGATION_LEDGER_DIR);
+    let key = safe_key(parent_did)?;
+    let path = dir.join(format!("{key}.json"));
+    let mut rec: SubdelRecord = match fs::read(&path) {
+        Ok(b) => serde_json::from_slice(&b)
+            .map_err(|e| TreasuryError::Persistence(format!("subdel parse failed: {e}")))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => SubdelRecord {
+            parent: parent_did.to_string(),
+            children: Vec::new(),
+        },
+        Err(e) => return Err(TreasuryError::Persistence(format!("subdel read failed: {e}"))),
+    };
+    let children_sum: u64 = rec.children.iter().map(|c| c.amount).sum();
+    if children_sum + amount > parent_held {
+        return Ok(Verdict::AggregateCapExceeded {
+            parent_cap: parent_held,
+            committed: children_sum,
+            requested: amount,
+        });
+    }
+    rec.children.push(Slice {
+        agent_did: child_did.to_string(),
+        amount,
+    });
+    fs::create_dir_all(&dir).map_err(|e| TreasuryError::Persistence(format!("mkdir failed: {e}")))?;
+    let body = serde_json::to_vec_pretty(&rec)
+        .map_err(|e| TreasuryError::Persistence(format!("encode failed: {e}")))?;
+    let tmp = dir.join(format!(".{key}.tmp"));
+    fs::write(&tmp, &body)
+        .map_err(|e| TreasuryError::Persistence(format!("temp write failed: {e}")))?;
+    fs::rename(&tmp, &path)
+        .map_err(|e| TreasuryError::Persistence(format!("commit (rename) failed: {e}")))?;
+    Ok(Verdict::Subdelegated {
+        parent: parent_did.to_string(),
+        child: child_did.to_string(),
+        amount,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,6 +620,29 @@ mod tests {
                 recorded_cents: 250,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn subdelegation_within_parent_holding_holds_and_overflow_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let l = TreasuryLedger::new(dir.path());
+        l.open("m", 10).unwrap();
+        l.allot("m", "flip", 4).unwrap();
+        // A child of 2 ≤ flip's slice of 4 → sub-delegated.
+        assert!(matches!(
+            subdelegate(dir.path(), "m", "flip", "child1", 2).unwrap(),
+            Verdict::Subdelegated { .. }
+        ));
+        // A child of 3 (Σ children 2+3=5 > flip's 4) → refused, no commit.
+        assert!(matches!(
+            subdelegate(dir.path(), "m", "flip", "child2", 3).unwrap(),
+            Verdict::AggregateCapExceeded { .. }
+        ));
+        // The first child still stands (the refusal did not corrupt the record).
+        assert!(matches!(
+            subdelegate(dir.path(), "m", "flip", "child3", 2).unwrap(),
+            Verdict::Subdelegated { .. }
         ));
     }
 }
