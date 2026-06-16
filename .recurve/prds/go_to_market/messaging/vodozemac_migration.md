@@ -88,25 +88,48 @@ becomes an Olm session (§5).
 
 ## 4. vodozemac API mapping (detailed)
 
+> **M1 spike result (2026-06-16): pinned `vodozemac v0.10.0`.** API map below is **compiler-verified**
+> against that version (a throwaway crate did the real handshake + round-trip + out-of-order + replay).
+> Corrections from the original draft are marked **[M1]**. Three load-bearing facts confirmed:
+> (a) cross-compiles clean to `aarch64-apple-darwin` / `-ios` / `-ios-sim`, **zero `-sys`/C deps**
+> (pure Rust, no toolchain); (b) genuinely-new transitive crates are `aes`+`cbc` (Olm's AES-256-**CBC**,
+> not our ChaCha), `prost` (protobuf wire), `rand` — all pure Rust (so §10's "near-zero new tree" is
+> *optimistic*: ~a dozen new pure-Rust crates, no C); (c) **the stronger full-MAC mode is feature-gated**
+> (see the SessionConfig note).
+
 vodozemac's `olm` module is the 1:1 protocol. The two types that matter:
 
 **`olm::Account`** — your long-term key material + prekeys.
 - Identity keys: `curve25519_key()` (the DH identity key) and `ed25519_key()` (the signing key).
-- `generate_one_time_keys(n)`, `one_time_keys()`, `mark_keys_as_published()` — the one-time prekeys
-  a recipient publishes; consumed once per new inbound session.
-- `generate_fallback_key()`, `fallback_key()` — the reusable fallback used when one-time keys are
-  exhausted (degraded first-message FS — §7).
-- `create_outbound_session(SessionConfig, their_curve25519_identity, their_one_time_key) -> Session`
-  — the initiator handshake (Olm's triple-DH, the X3DH analog).
-- `create_inbound_session(their_curve25519_identity, &PreKeyMessage) -> InboundCreationResult { session, plaintext }`
-  — the responder handshake (also yields the first plaintext).
+- `generate_one_time_keys(n) -> OneTimeKeyGenerationResult`, `one_time_keys() -> HashMap<KeyId, Curve25519PublicKey>`,
+  `mark_keys_as_published()` — the one-time prekeys a recipient publishes; consumed once per new inbound session.
+- `generate_fallback_key() -> Option<Curve25519PublicKey>`, `fallback_key()` — the reusable fallback
+  used when one-time keys are exhausted (degraded first-message FS — §7).
+- **[M1]** `create_outbound_session(SessionConfig, their_curve25519_identity, their_one_time_key) -> Result<Session, SessionCreationError>`
+  — the initiator handshake (Olm's triple-DH, the X3DH analog). **Fallible** (returns `Result`, not a
+  bare `Session`: a non-contributory/low-order key is rejected — `NonContributoryKey`).
+- **[M1]** `create_inbound_session(expected_config: SessionConfig, their_curve25519_identity, &PreKeyMessage) -> Result<InboundCreationResult, SessionCreationError>`
+  where `InboundCreationResult { session: Session, plaintext: Vec<u8> }`. **Takes `expected_config` as
+  the first arg** (a downgrade guard: rejects `MismatchedSessionConfig` if the inbound message's Olm
+  version ≠ what we expect) **and asserts `their_identity_key == prekey.identity_key()`** (`MismatchedIdentityKey`)
+  — a useful built-in binding the join (§5) leans on.
 - `pickle()` / `from_pickle(pickle, pickle_key)` — encrypted serialization for persistence.
 
 **`olm::Session`** — the established ratchet (opaque; owns the Double Ratchet).
-- `encrypt(plaintext: &[u8]) -> OlmMessage` — seal (no caller nonce, no caller AAD — §7).
-- `decrypt(&OlmMessage) -> Result<Vec<u8>>` — open (handles out-of-order internally).
-- `session_id()` — a stable id derived from both identity keys (binds the pair — §7).
+- **[M1]** `encrypt(plaintext: impl AsRef<[u8]>) -> Result<OlmMessage, EncryptionError>` — seal (no
+  caller nonce, no caller AAD — §7). **Fallible** (returns `Result`, not a bare `OlmMessage`).
+- `decrypt(&OlmMessage) -> Result<Vec<u8>, DecryptionError>` — open (handles out-of-order internally).
+- `session_id()` — a stable id derived from both identity keys (binds the pair — §7). **[M1] confirmed
+  equal on both ends** of an established session.
 - `has_received_message()`, `pickle()` / `from_pickle()`.
+
+**[M1] `SessionConfig` — the MAC-strength decision.** `SessionConfig::version_1()` is the **default**
+and uses AES-256 + HMAC **truncated to 8 bytes** (64-bit MAC — the historical libolm default).
+`SessionConfig::version_2()` uses the **full (untruncated) MAC** but is **gated behind the
+`experimental-session-config` cargo feature**. **Murmur ships v2** (a 64-bit MAC is too short for a
+greenfield messenger) → enable `vodozemac/experimental-session-config`, and pass `version_2()` to
+**both** `create_outbound_session` and the `expected_config` of `create_inbound_session` (the
+downgrade guard then rejects any v1 peer). Recorded as risk R9 + an ENC-7 audit item.
 
 **`OlmMessage`** — `PreKey(PreKeyMessage)` (the first message, carries handshake material) or
 `Normal(Message)` (subsequent). Serializable to bytes for our `OuterEnvelope.ciphertext`.
@@ -114,9 +137,6 @@ vodozemac's `olm` module is the 1:1 protocol. The two types that matter:
 **Groups (v2, not in scope here):** `megolm::GroupSession` (outbound) + `megolm::InboundGroupSession`
 — forward-secret group messaging. Note: Megolm is a sender-key ratchet → **forward-secret but not
 per-message post-compromise-secure** (inherent to group ratchets); design the group claim accordingly.
-
-> Spike-confirm: exact method signatures and `SessionConfig` (v1 vs v2) shift across vodozemac
-> versions — pin a version in M1 and lock the API surface against it.
 
 ---
 
@@ -228,7 +248,7 @@ autonomous-safe recurve cycle.
 
 | Claim | Inspects internal state at | Black-box rewrite |
 | --- | --- | --- |
-| **ENC-2** forward secrecy | `lib.rs:556` `recv_chain.counter()` | seal 0..N, capture msg-0 wire, advance the receiver by decrypting 1..N, prove msg-0 wire now fails — behavior only (Olm `decrypt` rejects the stale message) |
+| **ENC-2** forward secrecy | `lib.rs:556` `recv_chain.counter()` | **[M1-corrected]** the original "decrypt 1..N then prove msg-0 fails" is **wrong for Olm** — its bounded skipped-message-key cache means msg-0 *still* decrypts out of order (spike-confirmed). The correct behavioral FS proxy: **a consumed message's key is destroyed** — decrypt msg-0 once (ok), then a **replay of msg-0 is `Err`** (spike-confirmed), and a message older than the skipped-key window is unrecoverable. No state inspection |
 | **ENC-3** post-compromise | `lib.rs:683/695` `*sender_dh.root_state()` | build two sessions across a DH step (the post-step session vs a pre-step "compromised" one), prove the pre-step session cannot open a post-step ciphertext — no root snapshot |
 | **ENC-4** metadata hygiene | `lib.rs:891/1014` `send_chain.chain_state()`; `leakcheck.rs:126,86` scans for the literal chain key | prove the captured wire decrypts **only** with the correct session and never equals plaintext; drop the literal chain-state scan (vodozemac never exposes the chain key — which is *itself* the stronger property) |
 | **ENC-5** relocation (was H4 AAD) | — | reframe to **per-session binding** (§7): a ciphertext does not decrypt under a different pairwise Olm session |
@@ -310,10 +330,10 @@ M2/M3/M5 are autonomous-safe; the integration, cutover, and audit M4/M6/M7 are h
 
 | Milestone | State | Notes / evidence |
 | --- | --- | --- |
-| **M1** spike | 🟡 in progress | pin vodozemac version, cross-compile 4 Apple slices, confirm/correct §4 API map (findings → §4) |
-| **M2** black-box probes | ⬜ not started | autonomous-safe; rewrite ENC-2/3/4 + reframe ENC-5 vs homegrown, gate green |
+| **M1** spike | ✅ done | pinned `vodozemac v0.10.0`; 3 Apple slices cross-compile (pure Rust, no C); §4 API corrected (3 fixes); §8 ENC-2 corrected; v1/v2 MAC finding → R9. Evidence: spike crate /tmp/vodo-spike, 2/2 tests green |
+| **M2** black-box probes | 🟡 in progress | autonomous-safe; rewrite ENC-2/3/4 + reframe ENC-5 vs homegrown, gate green |
 | **M3** trait seam | ⬜ not started | autonomous-safe; internal `Session`/`Ratchet` trait |
-| **M4** vodozemac backend | ⬜ held | supervised + **M4 trust gate** (red-team fleet) before cutover |
+| **M4** vodozemac backend | ⬜ held | supervised + **M4 trust gate** (/Users/bordumb/workspace/repositories/auths-base/auths/docs/prompts/red_team.md fleet) before cutover |
 | **M5** parity gate | ⬜ not started | ENC-PARITY: both backends green, traps RED |
 | **M6** cutover | ⬜ held | human review; delete homegrown, re-arm ENC-6 |
 | **M7** external audit | ⬜ held | external; audits the join (§5); release gate |
@@ -326,9 +346,12 @@ M2/M3/M5 are autonomous-safe; the integration, cutover, and audit M4/M6/M7 are h
 ## 10. Practicalities & dependency footprint
 
 - **Crate:** `vodozemac` (crates.io, Apache-2.0, matrix-org). Pure Rust.
-- **Deps:** `x25519-dalek`, `ed25519-dalek`, `curve25519-dalek`, `aes`, `hmac`, `sha2`, `hkdf`,
-  `prost`/serialization — high overlap with Murmur's current Cargo.lock; minimal new transitive
-  tree. (Confirm exact set in M1.)
+- **Deps [M1-measured, v0.10.0]:** **already in murmur-core** — `x25519-dalek`, `sha2`, `hkdf`,
+  `hmac`, `zeroize`, `chacha20poly1305`, `getrandom`, `serde`/`serde_json`. **Genuinely new, all pure
+  Rust** — `aes`+`cbc`+`block-padding`+`cipher` (Olm seals with **AES-256-CBC + HMAC**, not our
+  ChaCha20-Poly1305), `prost`+`prost-derive` (protobuf message wire), `rand`+`rand_chacha`+`rand_core`,
+  `curve25519-dalek` + `ed25519-dalek` (likely already transitive via the workspace). Honest read:
+  **~a dozen new pure-Rust crates**, not "near-zero" — but **no C/`-sys`/`openssl`/`cc`** anywhere.
 - **Cross-compile:** pure Rust → all four Apple targets build with no C toolchain. The `murmur-ffi`
   xcframework build pattern (per-target `cargo build --target …` → combined xcframework) is
   unchanged; only the linked crate differs.
@@ -378,6 +401,7 @@ Double Ratchet — and throws in Megolm for groups.
 | R6 | `SessionConfig` version (v1/v2) + API drift | low | pin a vodozemac version in M1; lock the surface |
 | R7 | Megolm groups PCS limitation (future) | low | scope the future group claim to "forward-secret group," not per-message PCS |
 | R8 | Secure Enclave is P-256-only; Olm is Curve25519 | low | **expected, not a blocker** (§6): the SE holds the P-256 AID root and *signs* the Olm bundle; Olm keys are software, pickle-encrypted under a Keychain/SE-wrapped key; FS/PCS + KERI revocation bound the risk — same posture as Signal/WhatsApp/Matrix |
+| R9 | **[M1]** Olm default (v1) truncates the MAC to 8 bytes; full-MAC (v2) is feature-gated | med | ship `SessionConfig::version_2()` + enable `vodozemac/experimental-session-config`; pass v2 as the `create_inbound_session` `expected_config` so the downgrade guard rejects any v1 peer; ENC-7 audits that v2 is wired on both ends |
 
 ---
 
