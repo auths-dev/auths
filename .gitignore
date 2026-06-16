@@ -11,6 +11,9 @@
 /build/
 /dist/
 **/dist/
+# Generated UniFFI bindings: build-ffi.sh regenerates these via uniffi-bindgen and
+# stages murmur_ffi.swift into the app — a pure build output, not a committed source.
+crates/murmur-ffi/generated/
 /*.wasm
 *.dSYM
 *.o
