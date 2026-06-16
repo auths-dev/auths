@@ -36,6 +36,8 @@
 //! test pins `session_config().version() == 2` so a future library bump cannot
 //! silently fall back to the 8-byte MAC.
 
+use hkdf::Hkdf;
+use sha2::Sha256;
 use vodozemac::olm::{Account, OlmMessage, Session, SessionConfig, SessionCreationError, SessionPickle};
 use vodozemac::Curve25519PublicKey;
 
@@ -43,6 +45,24 @@ use crate::address::Aid;
 use crate::channel::SecureChannel;
 use crate::identity::{verify_sender, Identity};
 use crate::{CoreError, CoreResult};
+
+/// Domain label for deriving a generation-bound pickle key (anti-rollback, R10).
+const PICKLE_GENERATION_INFO: &[u8] = b"murmur/olm-pickle-generation/v1";
+
+/// Derive a pickle key bound to a monotonic generation. A blob encrypted under
+/// generation *g* decrypts only with the key derived for *g*, so an attacker who
+/// swaps in an older blob (a different generation) cannot have it decrypt under the
+/// generation the storage layer currently expects — the binding that makes
+/// rollback detectable rather than silent.
+fn generation_pickle_key(base: &[u8; 32], generation: u64) -> CoreResult<[u8; 32]> {
+    let hk = Hkdf::<Sha256>::new(Some(&generation.to_le_bytes()), base);
+    let mut out = [0u8; 32];
+    // 32 bytes is far below HKDF's 255*HashLen output ceiling, so this only ever
+    // errors on a contract violation; surface it fail-closed rather than panic.
+    hk.expand(PICKLE_GENERATION_INFO, &mut out)
+        .map_err(|_| CoreError::Malformed("pickle-generation key derivation failed".into()))?;
+    Ok(out)
+}
 
 /// Domain-separating context the AID key signs over an Olm prekey bundle. Distinct
 /// from the in-tree bundle context so a signature over one can never be replayed as
@@ -391,6 +411,54 @@ impl OlmChannel {
             session: Session::from_pickle(pickle),
         })
     }
+
+    /// Encrypt the session bound to a **monotonic generation** for anti-rollback
+    /// (R10). The record is `"<generation>:<blob>"`, where the blob is encrypted
+    /// under a key derived from `(pickle_key, generation)`. The storage layer
+    /// increments the generation on every persist and keeps the last value in
+    /// rollback-protected storage; [`from_versioned_pickle`] then rejects a
+    /// stale-or-tampered generation. Editing the cleartext generation up does not
+    /// help an attacker — the blob only decrypts under the key for the generation it
+    /// was actually written with.
+    ///
+    /// [`from_versioned_pickle`]: OlmChannel::from_versioned_pickle
+    pub fn to_versioned_pickle(&self, pickle_key: &[u8; 32], generation: u64) -> CoreResult<String> {
+        let kg = generation_pickle_key(pickle_key, generation)?;
+        let blob = self.session.pickle().encrypt(&kg);
+        Ok(format!("{generation}:{blob}"))
+    }
+
+    /// Restore a generation-bound session, **rejecting a rollback**: a record whose
+    /// generation is below `min_generation` (the last value the storage layer
+    /// committed) is refused, and a record whose generation was tampered upward
+    /// fails to decrypt (the key is bound to the generation). Returns the channel and
+    /// its generation so the caller can advance `min_generation`.
+    pub fn from_versioned_pickle(
+        record: &str,
+        pickle_key: &[u8; 32],
+        min_generation: u64,
+    ) -> CoreResult<(OlmChannel, u64)> {
+        let (gen_str, blob) = record
+            .split_once(':')
+            .ok_or(CoreError::Rejected("malformed versioned session pickle"))?;
+        let generation: u64 = gen_str
+            .parse()
+            .map_err(|_| CoreError::Rejected("malformed session pickle generation"))?;
+        if generation < min_generation {
+            return Err(CoreError::Rejected(
+                "stale session pickle rejected (rollback to an earlier generation)",
+            ));
+        }
+        let kg = generation_pickle_key(pickle_key, generation)?;
+        let pickle = SessionPickle::from_encrypted(blob, &kg)
+            .map_err(|_| CoreError::Rejected("session pickle could not be decrypted"))?;
+        Ok((
+            OlmChannel {
+                session: Session::from_pickle(pickle),
+            },
+            generation,
+        ))
+    }
 }
 
 impl SecureChannel for OlmChannel {
@@ -666,5 +734,60 @@ mod tests {
         let reply = restored.encrypt(b"after restart").unwrap();
         assert_eq!(a2b.decrypt(&reply).unwrap(), b"after restart");
         assert!(OlmChannel::from_encrypted_pickle(&blob, &[0x00u8; 32]).is_err());
+    }
+
+    #[test]
+    fn versioned_pickle_rejects_rollback_and_tamper() {
+        // R10: a generation-bound pickle lets the storage layer detect rollback.
+        let (alice, mut a2b, mut bob, first) = joined();
+        let (b2a, _p) = bob.establish_inbound(alice.olm_identity_key(), &first).unwrap();
+        let key = [0x55u8; 32];
+
+        // Persist at generation 5; a fresh restore at the expected generation works.
+        let record5 = b2a.to_versioned_pickle(&key, 5).unwrap();
+        let (mut restored, g) = OlmChannel::from_versioned_pickle(&record5, &key, 5).unwrap();
+        assert_eq!(g, 5);
+        let reply = restored.encrypt(b"current").unwrap();
+        assert_eq!(a2b.decrypt(&reply).unwrap(), b"current");
+
+        // Rollback: an older blob (generation 3) presented when the layer has already
+        // committed generation 5 is rejected.
+        let record3 = b2a.to_versioned_pickle(&key, 3).unwrap();
+        assert!(
+            OlmChannel::from_versioned_pickle(&record3, &key, 5).is_err(),
+            "a rolled-back (earlier-generation) pickle must be rejected"
+        );
+
+        // Tamper: editing the cleartext generation upward does not help — the key is
+        // bound to the generation, so the blob no longer decrypts.
+        let (_g5, blob5) = record5.split_once(':').unwrap();
+        let forged = format!("9:{blob5}");
+        assert!(
+            OlmChannel::from_versioned_pickle(&forged, &key, 5).is_err(),
+            "a generation-tampered pickle must fail to decrypt"
+        );
+    }
+
+    #[test]
+    fn out_of_order_messages_within_the_skip_window_decrypt() {
+        // R12: Olm caches skipped message keys (default cap 40), so reordered delivery
+        // within the window still decrypts. Beyond the cap, out-of-order messages are
+        // dropped — a documented bound the relay must respect (best-effort ordering).
+        let alice = OlmIdentity::new(identity(70));
+        let mut bob = OlmIdentity::new(identity(71));
+        let bundle = bob.publish_bundle().unwrap();
+        let rooted = bundle.verify_rooted(bob.identity.public_key()).unwrap();
+        let mut a = alice.establish_outbound(&rooted).unwrap();
+
+        let w0 = a.encrypt(b"m0").unwrap();
+        let (mut b, p0) = bob.establish_inbound(alice.olm_identity_key(), &w0).unwrap();
+        assert_eq!(p0, b"m0");
+
+        let wires: Vec<Vec<u8>> = (1..6).map(|i| a.encrypt(format!("m{i}").as_bytes()).unwrap()).collect();
+        // Deliver out of order: 4, 2, 0, 3, 1 (indices into wires → m5, m3, m1, m4, m2).
+        for &i in &[4usize, 2, 0, 3, 1] {
+            let expect = format!("m{}", i + 1);
+            assert_eq!(b.decrypt(&wires[i]).unwrap(), expect.as_bytes());
+        }
     }
 }
