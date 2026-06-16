@@ -426,3 +426,29 @@ Double Ratchet — and throws in Megolm for groups.
 - **ENC-6 → re-armed** — "vodozemac-backed audited Olm; KERI join residual seam, audit-gated" — M6.
 - **ENC-7** — external audit of the join; stays open/review-gated until it passes — M7.
 - *(future)* **GRP-1** — Megolm forward-secret group messaging — M8, out of scope here.
+
+---
+
+## 15. Status & handoff (2026-06-16)
+
+**Engine-side: complete and verified.** The audited Olm backend + KERI↔Olm join exists, is red-teamed,
+and is hardened against every code-addressable finding:
+
+- `crates/murmur-core/src/{channel.rs, olm_backend.rs}` — `SecureChannel` seam; `OlmIdentity` /
+  `OlmChannel` / `OlmPrekeyBundle::verify_rooted` (the join); v2 full-MAC pinned (`=0.10.0`); signed
+  fallback key; distinct inbound errors; encrypted + **generation-bound (anti-rollback)** pickle.
+- **123 tests** pass under `--features olm` (FS, PCS, join-binding, downgrade-reject, tamper-reject,
+  relocation-reject, OTK single-use + fallback, out-of-order, versioned-pickle rollback/tamper).
+  clippy clean. The **default federated gate stays GREEN** (olm is cfg-gated off; 14/14 traps RED).
+- The Least-Authority vodozemac audit is reconciled (Issue J ⇒ our v2 decision; Issues I/G + Suggestion
+  8 ⇒ R11/R12 and the JN-3 disposition) — see `docs/plans/security/red_team_2026-06-16.md`.
+
+**What remains (deliberately, not blockers to the engine):**
+- **M5 gate-level parity** — wire the relay-serve self-test to run dual-backend so the *gate* (not just
+  unit tests) exercises Olm. Recorded; held off to keep the green gate safe.
+- **M6 cutover** — flip the default to Olm + re-arm ENC-6; human-gated (only honest once M5 lands).
+- **M7 external audit** — the join + R10–R12 + Issues I/J; the release gate for real users.
+
+**Next deliverable — the app.** Making Murmur *a fully working app* (every surface wired to this engine
+through the FFI, the build passing `--features olm`, a real relay transport) is a separate, larger body
+of work tracked in **`messaging/murmur_vodozemac_integration.md`** (the integration plan).
