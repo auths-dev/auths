@@ -131,8 +131,9 @@ by the AID's current KERI key** (the existing `prekey.rs::verify_rooted` logic �
 **Outbound (initiator) flow:**
 1. Resolve recipient AID → current KERI key via the directory (KEEP).
 2. Verify the bundle's signature against that key; assert the Olm Curve25519 identity key **≠** the
-   AID's Ed25519 signing key (the §3.1 hygiene rule — KEPT; note Olm naturally uses a *separate*
-   Curve25519 identity key, so hygiene is structural, with the KERI signature binding it to the AID).
+   AID's signing key. The AID key is **P-256** on iOS (Secure-Enclave-held) while Olm uses
+   **Curve25519**, so the §3.1 hygiene rule is *structurally* satisfied across different curves, with
+   the KERI signature binding the Olm key to the AID — see §6 for the storage/curve layering.
 3. `account.create_outbound_session(cfg, their_curve25519_identity, their_one_time_key)` (REPLACE
    the X3DH). The first message is a `PreKey` `OlmMessage`.
 
@@ -153,17 +154,48 @@ ratchet itself rides vodozemac's Least Authority audit.
 
 ---
 
-## 6. Persistence — `pickle` (simpler than libsignal's stores)
+## 6. Secure Enclave, curves & key storage
 
-vodozemac persists via **`pickle()` → an encrypted, versioned blob**, and `from_pickle(blob, key)`.
-There is **no store-trait soup** (unlike libsignal's `SessionStore`/`IdentityKeyStore`/…): Murmur
-just pickles/unpickles.
-- **Session store:** `session.pickle()` → keyed by **(peer AID, device id)** in Murmur's storage;
-  unpickle on demand. (The device-id keying is also how delegated-device multi-device maps in.)
-- **Account store:** `account.pickle()` for the local long-term keys + unpublished one-time/fallback
-  keys.
-- **Pickle key:** a local storage-encryption key, derivable from / held in the **Secure Enclave**
-  (the app already mints SE keys). Spike item: where the pickle key lives and how it's rotated.
+iOS's Secure Enclave only supports **P-256** (NIST EC) keys; it does **not** support the
+**Curve25519** keys (Ed25519 / X25519) that Olm — like Signal — is defined over. That is a fact
+about the hardware, and it shapes the key layering. The resolution is the one Signal/WhatsApp/Matrix
+all use: **the SE protects the identity *root*; the messaging ratchet lives in software.**
+
+**Two keys, two layers (the whole point):**
+- **AID / KERI identity key — P-256, in the Secure Enclave.** The root of trust: it signs the KEL,
+  rotations, and the messaging prekey bundle, and it can never be extracted. This is auths's mobile
+  default (P-256 / SE) — correct and unchanged.
+- **Olm identity + one-time + ratchet keys — Curve25519, in software.** Olm's own keys, encrypted at
+  rest (below). They **cannot** be SE-backed (curve mismatch), and that is normal — *no mainstream
+  messenger SE-holds its ratchet keys*, because (a) the curve isn't supported and (b) a ratchet key
+  changes every message, so a static hardware key can't hold an advancing ratchet anyway. Forward
+  secrecy + post-compromise security bound the value of any one software-held key, and a lost device
+  is clawed back through **KERI revocation** (the lost-laptop story) — so a leaked ratchet key is not
+  a stolen *identity*.
+
+**The binding (this IS part of the audited join, §5).** The **P-256 SE key *signs* the Curve25519
+Olm prekey bundle** — a P-256 signature over bytes that happen to contain Curve25519 public keys,
+which is completely standard (the signing curve is independent of the signed content). Two signature
+systems coexist cleanly: the **outer** KERI root signature (P-256, SE) binds the bundle to the AID
+(`verify_rooted`); the **inner** Olm signature (Ed25519, software) is protocol housekeeping. Useful
+side effect: the §3.1 "messaging key ≠ AID signing key" hygiene rule is **trivially satisfied** —
+they are different curves entirely.
+
+**Protecting the software-held Olm keys (defense-in-depth):**
+- vodozemac persists via **`pickle()` → an encrypted, versioned blob** + `from_pickle(blob, key)` —
+  **no store-trait soup** (unlike libsignal's `SessionStore`/`IdentityKeyStore`/…). Murmur pickles
+  the `Session` keyed by **(peer AID, device id)** (also how delegated-device multi-device maps in)
+  and the `Account` for the local long-term + unpublished one-time/fallback keys.
+- The **pickle key** lives in the **Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`**,
+  which is itself **SE-wrapped** — so the Olm keys are encrypted at rest under an SE-backed key, even
+  though they are not raw SE keys. Spike (M1): where the pickle key lives, how it rotates, and the
+  accessibility class.
+
+**What you do *not* get (and don't need):** the messaging ratchet key itself in the SE. That is
+impossible with *any* Double Ratchet (Signal included) and unnecessary given FS/PCS + KERI
+revocation. If a future requirement ever demanded a hardware-held *messaging* key, the only path is a
+different protocol family (e.g. an MLS ciphersuite with a P-256 option) — explicitly out of scope
+(we chose the Signal-family Double Ratchet).
 
 ---
 
@@ -205,7 +237,47 @@ Each rewrite keeps its adversarial trap RED.
 
 ---
 
-## 9. Sequence (milestones) — which steps are recurve loops vs human-led
+## 9. Execution model, trust boundary & sequencing (the build plan)
+
+**What shape of work this is.** A migration is **not** a normal recurve burndown. A burndown turns a
+**RED** claim **GREEN** by building a feature — an autonomous build loop is the right tool for that.
+This is the opposite: every claim is already **GREEN**, and the job is to **swap the implementation
+underneath while keeping every claim green** — a *refactor + parity* problem. recurve's **gate** (the
+closed claims + their adversarial traps, used as acceptance criteria) is exactly right for it;
+recurve's autonomous **build loop** is the wrong shape — there is no RED claim to chase, and pointing
+one at the crypto integration would let it author *and* green its own crypto, the precise trap the
+adversarial review caught.
+
+**The hard rule (stated once).** *recurve is the regression **gate** for this migration — never the
+unsupervised author-and-greener of the crypto integration.* A green gate after a crypto swap is
+**necessary, not sufficient**; trust comes from layering **gate + supervised integration +
+adversarial review + external audit**, with the authoring side and the verifying side deliberately
+kept separate.
+
+**Who drives each milestone (the trust boundary):**
+
+| Milestone | Driver | Why |
+| --- | --- | --- |
+| **M1** spike | human + agent | environment / version-pin / API-surface decisions |
+| **M2** black-box probes | **recurve cycle — autonomous-safe** | refactors the *tests*; gated on keeping today's claims green; authors no new crypto |
+| **M3** trait seam | **recurve cycle — autonomous-safe** | refactor behind a stable interface; same keep-green gate |
+| **M4** vodozemac backend + the KERI↔Olm join | **supervised + adversarial review** | *new crypto integration* — must NOT be auto-greened; built in the foreground, then the red-team fleet must pass before we trust it |
+| **M5** parity gate | **recurve as the safety net** | both backends pass every claim; traps stay RED (ENC-PARITY) |
+| **M6** cutover | **human review** | delete the homegrown ratchet, re-arm ENC-6 honestly |
+| **M7** external audit | **external human** | audits the join (§5); the release gate for real users |
+
+**M4 trust gate (explicit precondition, alongside ENC-7).** Before the vodozemac backend is trusted,
+the neurotically-adversarial red-team fleet — the same "green is guilty until proven honest" review
+that found the 7 highs (`auths/docs/prompts/red_team.md`) — must run **against the integration**,
+aimed squarely at: did forward-secrecy / post-compromise security survive the swap, is the KERI↔Olm
+join (§5) sound, was the vodozemac API misused. A green parity gate (M5) does **not** discharge this;
+the adversarial pass is what turns "the gate is green" into "the integration is trustworthy."
+
+**Autonomous-safe entry points:** **M2** and **M3** can start unsupervised today — they keep the gate
+green, touch no new crypto, and de-risk the eventual vodozemac drop-in. Everything from **M4** on is
+human-in-the-loop.
+
+**The milestone detail:**
 
 - **M1 — Spike (human + agent).** `cargo add vodozemac`; pin a version; lock the `olm` API surface;
   prove cross-compile to `aarch64-apple-darwin`, `aarch64-apple-ios`, `aarch64-apple-ios-sim`,
@@ -215,9 +287,10 @@ Each rewrite keeps its adversarial trap RED.
   against the *homegrown* impl; gate stays green. ✅ autonomous-safe.
 - **M3 — Trait seam (clean recurve cycle).** Introduce an internal `Ratchet`/`Session` trait;
   `Endpoint`/relay/probes depend on the interface, not the concrete type. ✅ autonomous-safe.
-- **M4 — vodozemac backend, feature-flagged (agent + review).** Implement the trait over
-  `olm::Account`/`Session` + the join (§5) + pickle persistence (§6), gated on a `vodozemac` feature;
-  **both backends build**.
+- **M4 — vodozemac backend, feature-flagged (supervised + adversarial review).** Implement the trait
+  over `olm::Account`/`Session` + the join (§5) + pickle persistence (§6), gated on a `vodozemac`
+  feature; **both backends build**. Then the **M4 trust gate** above (red-team fleet on the
+  integration) must pass before cutover — not auto-greened.
 - **M5 — Parity gate (recurve as safety net).** Run the black-box gate against **both** backends;
   add **ENC-PARITY** (homegrown ⇄ vodozemac behave identically on the claim set). Prove the
   vodozemac-backed engine passes every MSG/ENC claim. *recurve loop + review.*
@@ -227,11 +300,8 @@ Each rewrite keeps its adversarial trap RED.
   user. ENC-7 stays open/review-gated until it passes.
 - **M8 — (future) Megolm groups.** Out of scope here; recorded as the group-encryption path.
 
-**Recurve's role:** the gate + the refactors (M2, M3, M5) are exactly what recurve is for —
-autonomous-safe, with adversarial traps as acceptance criteria. The library integration, the
-cutover, and the audit (M4, M6, M7) are human-led. **Recurve is the safety net, not the
-unsupervised author of a crypto swap** — auto-greening our own probes is the exact trap the review
-flagged.
+*(Recurve's role is the trust boundary stated at the top of this section: the gate + the refactors
+M2/M3/M5 are autonomous-safe; the integration, cutover, and audit M4/M6/M7 are human-led.)*
 
 ---
 
@@ -289,6 +359,7 @@ Double Ratchet — and throws in Megolm for groups.
 | R5 | Pickle-key management (storage encryption) | med | derive/hold in Secure Enclave; define rotation in M1 |
 | R6 | `SessionConfig` version (v1/v2) + API drift | low | pin a vodozemac version in M1; lock the surface |
 | R7 | Megolm groups PCS limitation (future) | low | scope the future group claim to "forward-secret group," not per-message PCS |
+| R8 | Secure Enclave is P-256-only; Olm is Curve25519 | low | **expected, not a blocker** (§6): the SE holds the P-256 AID root and *signs* the Olm bundle; Olm keys are software, pickle-encrypted under a Keychain/SE-wrapped key; FS/PCS + KERI revocation bound the risk — same posture as Signal/WhatsApp/Matrix |
 
 ---
 
