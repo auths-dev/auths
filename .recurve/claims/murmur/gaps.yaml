@@ -476,29 +476,38 @@
   title: A forked KEL is rejected and a relay-suppressed / stale key-state is caught by the
     witness threshold — the continuity story's correctness root
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: relay
   covers:
   - '2'
   - '3'
   evidence:
-  - crates/murmur-core/src/trust.rs evaluate() fails closed NotBuilt — the KEL replay it would
-    drive has no forked-KEL detection and no witness-threshold corroboration, so a malicious
-    relay could serve a stale or forked key-state to suppress or fake a rotation
-  - PRD §2 'binding mechanism' + §3.1 — benign-continuity's integrity DEPENDS on rejecting a
-    forked KEL (two different rotations at the same sequence) and on the witness threshold catching
-    a relay-suppressed/stale key-state; the launch-centralization asterisk is load-bearing here,
-    not cosmetic
-  observed: 'RED at baseline 2026-06-15: ours=feature-absent expected=fork-rejected+stale-caught
-    — the forked-KEL detection + witness-threshold corroboration is unbuilt (murmur-relay 0.1.3:
-    store-and-forward wire not built yet (the mailbox queue + pull/subscribe surface is the
-    slice''s transport work)); WIT-1 is open'
+  - crates/murmur-core/src/kel.rs models a served witnessed key-event-log (Kel of signed KelEvents,
+    each carrying its sequence, prior key, current key, next-key pre-rotation commitment, and the
+    distinct WitnessReceipts a witness pool returned). Kel::replay derives the witnessed current
+    KeyState only when the log is fork-free AND the tip clears the AID's WitnessPolicy threshold —
+    two different events at the same sequence are Rejected (forked-kel), never resolved
+    last-writer-wins, and a tip under the distinct-witness threshold is Rejected (stale-keystate),
+    so a relay cannot suppress or fake a rotation by serving a forked or under-receipted log
+  - crates/murmur-core/src/lib.rs prove_witnessed_keystate drives all three halves hermetically —
+    the honest incept→rotate log replays to the pre-committed current key-state corroborated above
+    threshold; a fork (a second different rotation spliced in at the same sequence, even signed by
+    the legitimate prior key) is refused; the same log served with the tip's receipts withheld
+    below threshold is caught — and fails closed on a forked or stale key-state that was accepted
+  - 'murmur-relay serve drives the leg (run_witnessed_keystate) and prints "fork-rejected +
+    witness-corroborated"; the trap (probes/wit-1.trap/forked-kel, a captured replay that accepted
+    a forked/stale key-state) stays RED, so the probe discriminates'
+  observed: 'GREEN at 2026-06-16: ours=fork-rejected+witness-corroborated expected=fork-rejected+stale-caught
+    — the witnessed key-log replay (murmur-core kel.rs) refuses a forked KEL and catches a
+    relay-suppressed/stale key-state at the witness threshold; murmur-relay serve emits "fork-rejected
+    + witness-corroborated"; trap forked-kel still RED; matrix --gate green fleet-wide (federated
+    sculpt gate + leakcheck clean)'
   smallest_fix: 'Make the replay refuse a FORKED KEL (two different rotations claiming the same
     sequence number must be rejected, never silently last-writer-wins) and make a relay-suppressed
     / stale key-state FAIL the witness-threshold check (a key-state under the receipt threshold,
     or staler than a corroborated witness set, is not accepted as current). This is the single
-    most important correctness dependency: MSG-2''s verified-continuation badge is only trustworthy
+    most important correctness dependency: the verified-continuation badge is only trustworthy
     if the key-state it replays is the one true witnessed log. Adversarial (the trap): a forked
     KEL accepted, or a stale/relay-suppressed key-state passed without witness corroboration,
     must fail. TRAP probes/wit-1.trap/forked-kel/ — a captured replay where a forked or stale

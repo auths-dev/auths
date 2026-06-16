@@ -51,6 +51,7 @@ pub mod corroboration;
 pub mod delegation;
 pub mod envelope;
 pub mod identity;
+pub mod kel;
 pub mod leakcheck;
 pub mod number_free;
 pub mod prekey;
@@ -66,6 +67,7 @@ pub use corroboration::{CorroboratedState, Provenance, RevocationResolution, pro
 pub use delegation::{DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation};
 pub use envelope::{InnerEnvelope, OuterEnvelope};
 pub use identity::{Identity, verify_sender};
+pub use kel::{Kel, KelEvent, WitnessPolicy, WitnessReceipt};
 pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
 pub use number_free::{NumberFreeReport, prove_number_free};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
@@ -1314,6 +1316,176 @@ pub fn prove_revocation_corroborated(
         witnesses_confirmed,
         stale_window_revocations_behind: stale_window_behind,
     })
+}
+
+/// The verdict of driving the witnessed-key-state leg (PRD §2 binding mechanism,
+/// §3.1 launch-centralization asterisk, the witnessed-log correctness root): the served
+/// key-log replays to the witnessed current key-state **only** because a forked KEL
+/// is rejected and a relay-suppressed / stale key-state fails the witness threshold.
+/// Returned by [`prove_witnessed_keystate`] so the relay binary's self-test (and the
+/// harness) can assert all three held: the honest log replays, a fork is refused,
+/// and a sub-threshold (stale/suppressed) key-state is caught.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WitnessedKeyStateReceipt {
+    /// The stable AID whose witnessed current key-state the honest log replayed to.
+    pub aid: Aid,
+    /// How many distinct witnesses corroborated the tip key-state the honest replay
+    /// accepted as current.
+    pub witnesses_corroborating: usize,
+    /// The witness threshold the AID's key-state had to clear to be accepted.
+    pub witness_threshold: u8,
+}
+
+/// Drive the witnessed-key-state leg once, hermetically (PRD §2 binding mechanism +
+/// §3.1, the witnessed-log correctness root): the verified-continuation badge means
+/// something **only** because the key-state under it is the one true witnessed log,
+/// and two relay-served corruptions must both fail closed.
+///
+/// A contact under one stable AID has an honest log: an inception that pre-commits
+/// to the rotated key, then a rotation revealing it, with a witness pool receipting
+/// each event. This proves three things at once over the [`kel::Kel`] replay, so a
+/// regression in any one fails the leg closed:
+///
+///  1. **the honest log replays** to the witnessed current key-state — the rotated
+///     key, corroborated by a threshold of witnesses;
+///  2. **a forked KEL is rejected** — a second, *different* rotation spliced in at
+///     the same sequence number (the relay serving two contradictory branches) makes
+///     the replay refuse to derive a key-state at all, never silently taking a
+///     branch (`forked-kel`);
+///  3. **a relay-suppressed / stale key-state is caught** — the same log served with
+///     the tip's receipts withheld below the witness threshold fails the replay
+///     (`stale-keystate`), so a relay cannot suppress or fake a rotation by hiding
+///     the receipts.
+///
+/// Returns a [`WitnessedKeyStateReceipt`] iff the honest replay succeeded **and**
+/// both the fork and the stale key-state were rejected. A forked or stale key-state
+/// that was *accepted* (the adversarial twin the trap records) is an error, never a
+/// silent pass.
+pub fn prove_witnessed_keystate() -> CoreResult<WitnessedKeyStateReceipt> {
+    use kel::{Kel, KelEvent, WitnessPolicy, WitnessReceipt};
+
+    // The contact's generations: gen0 incepts and pre-commits to gen1, then rotates
+    // to gen1 (the pre-committed key), pre-committing to gen2.
+    let gen0 = Identity::from_seed([0x11u8; 32]).map_err(mint_err)?;
+    let gen1 = Identity::from_seed([0x22u8; 32]).map_err(mint_err)?;
+    let gen2 = Identity::from_seed([0x33u8; 32]).map_err(mint_err)?;
+    let aid = gen0.aid().clone();
+
+    // A witness pool of three distinct witnesses; the AID's policy demands two.
+    let threshold = 2u8;
+    let pool: Vec<Identity> = [0xA1u8, 0xA2u8, 0xA3u8]
+        .into_iter()
+        .map(|s| Identity::from_seed([s; 32]))
+        .collect::<Result<_, _>>()
+        .map_err(|e| CoreError::Malformed(format!("mint witness: {e}")))?;
+
+    let receipts_for = |count: usize, seq: u64, key: &[u8]| -> CoreResult<Vec<WitnessReceipt>> {
+        pool.iter()
+            .take(count)
+            .map(|w| WitnessReceipt::issue(w, &aid, seq, key))
+            .collect()
+    };
+
+    // (1) The honest, fully-witnessed log: incept → rotate, tip corroborated by all
+    // three witnesses (≥ threshold). It must replay to gen1 as the current key.
+    let inception = KelEvent::incept(
+        &gen0,
+        gen1.public_key(),
+        receipts_for(pool.len(), 0, gen0.public_key())?,
+    )?;
+    let rotation = KelEvent::rotate(
+        &aid,
+        &gen0,
+        &gen1,
+        1,
+        gen2.public_key(),
+        receipts_for(pool.len(), 1, gen1.public_key())?,
+    )?;
+    let honest = Kel::new(
+        aid.clone(),
+        WitnessPolicy::of(threshold),
+        vec![inception.clone(), rotation.clone()],
+    );
+    let state = honest.replay()?;
+    if state.aid != aid || state.current_key != gen1.public_key() {
+        return Err(CoreError::Rejected(
+            "the honest witnessed log did not replay to the pre-committed current key-state",
+        ));
+    }
+    let witnesses_corroborating = honest.tip_corroborating_witnesses()?;
+    if witnesses_corroborating < threshold as usize {
+        return Err(CoreError::Rejected(
+            "the honest log's tip was not corroborated above the witness threshold",
+        ));
+    }
+
+    // (2) A forked KEL: a SECOND, different rotation at the same sequence number 1.
+    // It is even signed by the legitimate prior key, so the signature alone would not
+    // catch it — only fork detection does. The replay MUST reject it outright.
+    let attacker = Identity::from_seed([0x99u8; 32]).map_err(mint_err)?;
+    let forked_rotation = KelEvent::rotate(
+        &aid,
+        &gen0, // the legitimate prior key signs the fork too
+        &attacker,
+        1,
+        attacker.public_key(),
+        receipts_for(pool.len(), 1, attacker.public_key())?,
+    )?;
+    let forked = Kel::new(
+        aid.clone(),
+        WitnessPolicy::of(threshold),
+        vec![inception.clone(), rotation.clone(), forked_rotation],
+    );
+    match forked.replay() {
+        Ok(_) => {
+            return Err(CoreError::Rejected(
+                "forked-kel-accepted: a key-log with two different rotations at the same sequence \
+                 was replayed to a key-state instead of refused",
+            ));
+        }
+        Err(CoreError::Rejected(_)) => { /* refused as required */ }
+        Err(other) => return Err(other),
+    }
+
+    // (3) A relay-suppressed / stale key-state: the SAME honest log, but the relay
+    // withheld the tip's receipts down to ONE — below the threshold of two. The
+    // replay MUST catch it: a sub-threshold key-state is not the witnessed current
+    // state, and accepting it would let a relay suppress or fake a rotation.
+    let suppressed_rotation = KelEvent::rotate(
+        &aid,
+        &gen0,
+        &gen1,
+        1,
+        gen2.public_key(),
+        receipts_for(1, 1, gen1.public_key())?, // only one witness receipt served
+    )?;
+    let suppressed = Kel::new(
+        aid.clone(),
+        WitnessPolicy::of(threshold),
+        vec![inception, suppressed_rotation],
+    );
+    match suppressed.replay() {
+        Ok(_) => {
+            return Err(CoreError::Rejected(
+                "stale-keystate-accepted: a key-state below the witness threshold was accepted as \
+                 current — a relay-suppressed or stale snapshot passed without corroboration",
+            ));
+        }
+        Err(CoreError::Rejected(_)) => { /* caught as required */ }
+        Err(other) => return Err(other),
+    }
+
+    Ok(WitnessedKeyStateReceipt {
+        aid,
+        witnesses_corroborating,
+        witness_threshold: threshold,
+    })
+}
+
+/// Small helper: turn a crypto-mint error into a `CoreError::Malformed`. Kept local
+/// to [`prove_witnessed_keystate`]'s identity minting so the leg reads cleanly.
+fn mint_err(e: impl std::fmt::Display) -> CoreError {
+    CoreError::Malformed(format!("mint identity: {e}"))
 }
 
 // Test-only shims so the adversarial test can reach an endpoint's signing/sealing

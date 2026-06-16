@@ -28,7 +28,7 @@ use murmur_core::{
     PrekeyBundle, PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once,
     deliver_rooted, deliver_routing_only, hold_relay_boundary, prove_addressed,
     prove_delegated_device, prove_relay_queue, prove_revocation_corroborated, prove_vetted,
-    verified_rotation_rekey,
+    prove_witnessed_keystate, verified_rotation_rekey,
 };
 
 /// What the relay was asked to do.
@@ -652,6 +652,44 @@ fn run_revocation_corroborated() -> Result<String, String> {
     ))
 }
 
+/// Prove the correctness root the whole continuity story rests on (PRD §2 binding
+/// mechanism + §3.1's launch-centralization asterisk, the witnessed-log claim): a
+/// forked KEL is **rejected** and a relay-suppressed / stale key-state is **caught**
+/// by the witness threshold. The verified-continuation badge (PRD §2) is only
+/// trustworthy if the key-state it replays is the one true witnessed log — so this
+/// leg drives the witnessed key-log replay and proves both corruptions fail closed.
+///
+/// Three assertions, all required for the proof line:
+///  * the honest, fully-witnessed log replays to the pre-committed current
+///    key-state, corroborated above the witness threshold;
+///  * a forked KEL — two different rotations spliced in at the same sequence number,
+///    the relay serving two contradictory branches — is refused, never resolved
+///    last-writer-wins (`fork-rejected`);
+///  * the same log served with the tip's receipts withheld below the witness
+///    threshold fails the replay (`witness-corroborated`), so a relay cannot suppress
+///    or fake a rotation by hiding the receipts.
+///
+/// The output line carries the markers a reader greps for — `fork-rejected` and
+/// `witness-corroborated` — so a regression in either half fails the whole self-test
+/// closed. A forked or stale key-state that was accepted (the adversarial twin) fails
+/// the leg closed.
+fn run_witnessed_keystate() -> Result<String, String> {
+    let receipt = prove_witnessed_keystate()
+        .map_err(|e| format!("the witnessed-key-state leg failed: {e}"))?;
+    Ok(format!(
+        "fork-rejected + witness-corroborated: the served key-log for {aid} replayed to the \
+         pre-committed current key-state only because the replay refused a FORKED KEL (two \
+         different rotations at the same sequence — never resolved last-writer-wins) and CAUGHT a \
+         relay-suppressed / stale key-state at the witness threshold (the honest tip was \
+         corroborated by {n} of a required {t} distinct witnesses; a key-state under the threshold \
+         is not the witnessed current state) — the continuity badge means something only because \
+         the log under it is the one true witnessed log",
+        aid = receipt.aid.as_str(),
+        n = receipt.witnesses_corroborating,
+        t = receipt.witness_threshold,
+    ))
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse(&args) {
@@ -665,7 +703,7 @@ fn main() -> ExitCode {
             // delivery leg and the KERI→Signal prekey-bundle join. A reader greps
             // for its own marker; a leg that breaks fails the whole self-test
             // closed.
-            let legs: [fn() -> Result<String, String>; 11] = [
+            let legs: [fn() -> Result<String, String>; 12] = [
                 run_addressed,
                 run_delivery,
                 run_rooted,
@@ -677,6 +715,7 @@ fn main() -> ExitCode {
                 run_continuation,
                 run_delegated_device,
                 run_revocation_corroborated,
+                run_witnessed_keystate,
             ];
             for leg in legs {
                 match leg() {
