@@ -151,9 +151,11 @@ mod tests {
     use super::*;
     use crate::{Endpoint, Identity, Session};
 
-    fn endpoint(seed_byte: u8, secret: [u8; 32]) -> Endpoint {
+    fn endpoint(seed_byte: u8, peer_seed: u8, secret: [u8; 32]) -> Endpoint {
+        let peer = Identity::from_seed([peer_seed; 32]).unwrap().aid().clone();
         Endpoint::new(
             Identity::from_seed([seed_byte; 32]).unwrap(),
+            peer,
             Session::from_secret(secret),
         )
     }
@@ -161,8 +163,8 @@ mod tests {
     #[test]
     fn a_real_sealed_envelope_carries_routing_only() {
         let session_secret = [0x5au8; 32];
-        let mac = endpoint(1, session_secret);
-        let phone = endpoint(2, session_secret);
+        let mac = endpoint(1, 2, session_secret);
+        let phone = endpoint(2, 1, session_secret);
         let mailbox = MailboxId::new("mbx:phone");
         let outer = mac
             .seal_to(phone.aid(), &mailbox, "the body the relay must not see")
@@ -185,7 +187,7 @@ mod tests {
     fn a_leaked_sender_address_is_caught() {
         // A malformed outer envelope that smuggles the sender AID into the
         // ciphertext field must be caught by the scan — the adversarial twin.
-        let mac = endpoint(1, [0x5au8; 32]);
+        let mac = endpoint(1, 2, [0x5au8; 32]);
         let leaky = OuterEnvelope {
             to_mailbox: MailboxId::new("mbx:phone"),
             ciphertext: mac.aid().as_str().as_bytes().to_vec(),
@@ -235,8 +237,8 @@ mod tests {
         // The mailbox id is supposed to be in the wire bytes; scanning for the
         // four secrets must still report clean even though the mailbox is present.
         let session_secret = [0x5au8; 32];
-        let mac = endpoint(1, session_secret);
-        let phone = endpoint(2, session_secret);
+        let mac = endpoint(1, 2, session_secret);
+        let phone = endpoint(2, 1, session_secret);
         let mailbox = MailboxId::new("mbx:routing-handle");
         let body = "a distinctive body long enough to never collide with random ciphertext";
         let outer = mac.seal_to(phone.aid(), &mailbox, body).unwrap();

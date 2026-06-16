@@ -67,18 +67,27 @@ fn parse(args: &[String]) -> Mode {
 /// in the flow.
 fn run_addressed() -> Result<String, String> {
     let session_secret = [0x5au8; 32];
+    let desktop_id =
+        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint desktop identity: {e}"))?;
+    let handset_id =
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?;
+    // Each endpoint's peer is the other side of this pairwise session.
     let desktop = Endpoint::new(
-        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint desktop identity: {e}"))?,
+        desktop_id.clone(),
+        handset_id.aid().clone(),
         Session::from_secret(session_secret),
     );
     let handset = Endpoint::new(
-        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
+        handset_id.clone(),
+        desktop_id.aid().clone(),
         Session::from_secret(session_secret),
     );
     // The impostor holds a key it controls — but NOT the desktop's AID key. It is
-    // never admitted into the directory as the desktop.
+    // never admitted into the directory as the desktop. (Its peer is the handset it
+    // tries to reach; only its identity is used, to forge a signature.)
     let impostor = Endpoint::new(
         Identity::from_seed([0x33u8; 32]).map_err(|e| format!("mint impostor identity: {e}"))?,
+        handset_id.aid().clone(),
         Session::from_secret(session_secret),
     );
 
@@ -133,12 +142,18 @@ fn run_delivery() -> Result<String, String> {
     // and a session secret established out-of-band (the X3DH that derives it is
     // the encryption layer's own later work).
     let session_secret = [0x5au8; 32];
+    let mac_id = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
+    let handset_id =
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?;
+    // Each endpoint's peer is the other side of this pairwise session.
     let mac = Endpoint::new(
-        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
+        mac_id.clone(),
+        handset_id.aid().clone(),
         Session::from_secret(session_secret),
     );
     let handset = Endpoint::new(
-        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
+        handset_id.clone(),
+        mac_id.aid().clone(),
         Session::from_secret(session_secret),
     );
 
@@ -432,12 +447,17 @@ fn run_relay_queue() -> Result<String, String> {
 /// leak in either path returns an error naming what escaped, failing the leg —
 /// and the whole self-test — closed.
 fn run_routing_only() -> Result<String, String> {
+    let mac_id = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
+    let handset_id =
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?;
     let mac = Endpoint::new(
-        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
+        mac_id.clone(),
+        handset_id.aid().clone(),
         Session::from_secret([0x5au8; 32]),
     );
     let handset = Endpoint::new(
-        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
+        handset_id.clone(),
+        mac_id.aid().clone(),
         Session::from_secret([0x5au8; 32]),
     );
 
@@ -483,12 +503,17 @@ fn run_routing_only() -> Result<String, String> {
 /// dropped) — alongside the mailbox the envelope routed on.
 fn run_relay_boundary() -> Result<String, String> {
     let session_secret = [0x5au8; 32];
+    let mac_id = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
+    let handset_id =
+        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?;
     let mac = Endpoint::new(
-        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?,
+        mac_id.clone(),
+        handset_id.aid().clone(),
         Session::from_secret(session_secret),
     );
     let handset = Endpoint::new(
-        Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?,
+        handset_id.clone(),
+        mac_id.aid().clone(),
         Session::from_secret(session_secret),
     );
 

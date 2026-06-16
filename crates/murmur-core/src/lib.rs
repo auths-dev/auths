@@ -161,17 +161,64 @@ impl Directory for ContactDirectory {
     }
 }
 
-/// One side of a conversation: a local identity and the session shared with the
-/// peer. The endpoint seals outgoing messages and opens incoming ones.
+/// Domain-separating prefix for the AEAD AAD, so the routing/identity context an
+/// envelope is bound to can never collide with another protocol's AAD derived off
+/// the same bytes.
+const AEAD_AAD_CONTEXT: &[u8] = b"murmur/aead-aad/v1\n";
+
+/// Build the AEAD additional-authenticated-data binding the full pairwise routing
+/// and identity context — `sender_aid ‖ recipient_aid ‖ mailbox_id` — so a sealed
+/// ciphertext validates only under the exact (sender, recipient, mailbox) it was
+/// sealed for.
+///
+/// **Defense-in-depth, honestly scoped (H4).** Content forgery is already
+/// prevented by the inner signature, which binds `sender ‖ recipient ‖ body` and
+/// is verified in [`Endpoint::open`] before any body surfaces. Binding the same
+/// context into the AEAD AAD additionally hardens *relocation*: an attacker who
+/// holds the session secret cannot unseal a ciphertext for one (sender, recipient,
+/// mailbox) and re-seal it under another without the recipient's AAD differing and
+/// the tag failing. Both sides reconstruct this AAD from data they each hold (the
+/// recipient knows its own AID and the peer it shares the pairwise session with),
+/// so the binding is symmetric.
+fn aead_aad(sender: &Aid, recipient: &Aid, mailbox: &MailboxId) -> Vec<u8> {
+    let mut aad = Vec::new();
+    aad.extend_from_slice(AEAD_AAD_CONTEXT);
+    aad.extend_from_slice(sender.as_str().as_bytes());
+    aad.push(b'\n');
+    aad.extend_from_slice(recipient.as_str().as_bytes());
+    aad.push(b'\n');
+    aad.extend_from_slice(mailbox.as_str().as_bytes());
+    aad
+}
+
+/// One side of a conversation: a local identity, the AID of the peer the pairwise
+/// session is shared with, and that session. The endpoint seals outgoing messages
+/// and opens incoming ones.
 pub struct Endpoint {
     identity: Identity,
+    /// The peer this pairwise session is with. Held so the AEAD AAD can bind the
+    /// full `sender ‖ recipient ‖ mailbox` context symmetrically: on `seal_to` the
+    /// sender is `self` and the recipient is the peer; on `open` the recipient is
+    /// `self` and the sender is the peer. A pairwise session is *with* someone —
+    /// carrying the peer AID makes that explicit and lets the AAD bind it.
+    peer: Aid,
     session: Session,
 }
 
 impl Endpoint {
-    /// Build an endpoint from a local identity and an established session.
-    pub fn new(identity: Identity, session: Session) -> Self {
-        Endpoint { identity, session }
+    /// Build an endpoint from a local identity, the AID of the peer the session is
+    /// shared with, and an established session.
+    pub fn new(identity: Identity, peer: Aid, session: Session) -> Self {
+        Endpoint {
+            identity,
+            peer,
+            session,
+        }
+    }
+
+    /// The AID of the peer this endpoint's pairwise session is with.
+    pub fn peer(&self) -> &Aid {
+        &self.peer
     }
 
     /// This endpoint's own address.
@@ -188,6 +235,10 @@ impl Endpoint {
     /// envelope (authenticating *this* endpoint's AID as the sender), then
     /// AEAD-seals it under the session so the relay sees only the mailbox id and
     /// opaque bytes.
+    ///
+    /// `recipient` is the peer this endpoint's pairwise session is with — the AAD
+    /// binds `self.aid() ‖ recipient ‖ mailbox`, the same context the recipient
+    /// reconstructs on [`open`](Self::open).
     pub fn seal_to(
         &self,
         recipient: &Aid,
@@ -204,12 +255,13 @@ impl Endpoint {
         };
         let inner_bytes = serde_json::to_vec(&inner)
             .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
-        // The mailbox id is bound into the AEAD as AAD, so a relay cannot re-file
-        // the bytes under another mailbox without the tag failing.
+        // The full sender ‖ recipient ‖ mailbox context is bound into the AEAD as
+        // AAD (defense-in-depth, H4), so a relay holding the session secret cannot
+        // re-file the bytes under another mailbox — or re-attribute them to another
+        // (sender, recipient) pair — without the tag failing.
+        let aad = aead_aad(self.aid(), recipient, mailbox);
         let nonce = session::fresh_nonce()?;
-        let ciphertext = self
-            .session
-            .seal(nonce, mailbox.as_str().as_bytes(), &inner_bytes)?;
+        let ciphertext = self.session.seal(nonce, &aad, &inner_bytes)?;
         Ok(OuterEnvelope {
             to_mailbox: mailbox.clone(),
             ciphertext,
@@ -222,10 +274,14 @@ impl Endpoint {
     /// signature does not verify — or whose sender cannot be resolved — is
     /// **rejected**, never surfaced as plaintext. This is the authentication
     /// gate the whole end-to-end leg turns on.
+    ///
+    /// The AAD reconstructs the same `sender ‖ recipient ‖ mailbox` binding the
+    /// seal used: the sender is the peer this pairwise session is with, the
+    /// recipient is `self`. A ciphertext relocated to a different mailbox — or one
+    /// whose (sender, recipient) context differs — fails the AEAD tag here.
     pub fn open(&self, outer: &OuterEnvelope, directory: &dyn Directory) -> CoreResult<Message> {
-        let inner_bytes = self
-            .session
-            .open(&outer.ciphertext, outer.to_mailbox.as_str().as_bytes())?;
+        let aad = aead_aad(self.peer(), self.aid(), &outer.to_mailbox);
+        let inner_bytes = self.session.open(&outer.ciphertext, &aad)?;
         let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
             .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
         let sender_key = directory.resolve(&inner.sender).ok_or(CoreError::Rejected(
@@ -384,9 +440,12 @@ pub fn deliver_rooted(
         X25519Public::from(&sender_eph_secret).to_bytes(),
     )?;
 
-    // (4) Seal under the rooted session, store-and-forward, drain, open.
-    let sender_endpoint = Endpoint::new(sender.clone(), sender_session);
-    let recipient_endpoint = Endpoint::new(recipient.clone(), recipient_session);
+    // (4) Seal under the rooted session, store-and-forward, drain, open. Each
+    // endpoint's peer is the other side of this pairwise session.
+    let sender_endpoint =
+        Endpoint::new(sender.clone(), recipient.aid().clone(), sender_session);
+    let recipient_endpoint =
+        Endpoint::new(recipient.clone(), sender.aid().clone(), recipient_session);
     let receipt = deliver_once(
         &sender_endpoint,
         &recipient_endpoint,
@@ -1185,10 +1244,15 @@ pub fn prove_addressed(
     let forged_bytes = serde_json::to_vec(&forged_inner)
         .map_err(|e| CoreError::Malformed(format!("serialize forged inner: {e}")))?;
     let forged_nonce = session::fresh_nonce()?;
-    let forged_ciphertext =
-        recipient
-            .session
-            .seal(forged_nonce, mailbox.as_str().as_bytes(), &forged_bytes)?;
+    // Seal the forgery with the SAME AAD the recipient reconstructs on open
+    // (sender ‖ recipient ‖ mailbox), so it genuinely decrypts and reaches the
+    // authentication gate — where the impostor's signature fails to verify. (If we
+    // sealed with a mismatched AAD it would bounce at the AEAD tag, never exercising
+    // the auth gate this leg exists to prove.)
+    let forged_aad = aead_aad(sender.aid(), recipient.aid(), mailbox);
+    let forged_ciphertext = recipient
+        .session
+        .seal(forged_nonce, &forged_aad, &forged_bytes)?;
     let forged_outer = OuterEnvelope {
         to_mailbox: mailbox.clone(),
         ciphertext: forged_ciphertext,
@@ -1292,12 +1356,18 @@ pub fn prove_delegated_device(
     delegation.admit_device(anchor)?;
 
     // Both ends seal/open over the same out-of-band session (the device sends, the
-    // contact receives).
+    // contact receives). The device sends under its OWN device AID, so the contact's
+    // peer (what its open-side AAD binds as the sender) is the device AID.
     let device_endpoint = Endpoint::new(
         device.identity().clone(),
+        contact.aid().clone(),
         Session::from_secret(session_secret),
     );
-    let contact_endpoint = Endpoint::new(contact.clone(), Session::from_secret(session_secret));
+    let contact_endpoint = Endpoint::new(
+        contact.clone(),
+        device.device_aid().clone(),
+        Session::from_secret(session_secret),
+    );
 
     // (2) device-as-root: the device sends; the contact opens (authenticating the
     // device's own signature) and resolves the device to its root.
@@ -1686,9 +1756,16 @@ impl Endpoint {
 mod tests {
     use super::*;
 
-    fn endpoint(seed_byte: u8, session_secret: [u8; 32]) -> Endpoint {
+    /// The AID an identity minted from a single repeated seed byte resolves to —
+    /// so a test can name an endpoint's peer by seed without building the peer
+    /// first.
+    fn aid_of_seed(seed_byte: u8) -> Aid {
+        Identity::from_seed([seed_byte; 32]).unwrap().aid().clone()
+    }
+
+    fn endpoint(seed_byte: u8, peer_seed: u8, session_secret: [u8; 32]) -> Endpoint {
         let id = Identity::from_seed([seed_byte; 32]).unwrap();
-        Endpoint::new(id, Session::from_secret(session_secret))
+        Endpoint::new(id, aid_of_seed(peer_seed), Session::from_secret(session_secret))
     }
 
     fn directory_of(endpoints: &[&Endpoint]) -> ContactDirectory {
@@ -1762,8 +1839,8 @@ mod tests {
     #[test]
     fn a_message_from_the_mac_arrives_authenticated_on_the_phone() {
         let secret = [9u8; 32];
-        let mac = endpoint(1, secret);
-        let phone = endpoint(2, secret);
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
         let dir = directory_of(&[&mac, &phone]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:phone");
@@ -1788,9 +1865,12 @@ mod tests {
         // Mallory shares the session with the phone (so the AEAD opens) but signs
         // and claims to *be* the Mac — without holding the Mac's key.
         let secret = [9u8; 32];
-        let mac = endpoint(1, secret);
-        let phone = endpoint(2, secret);
-        let mallory = endpoint(3, secret);
+        // The phone's pairwise session is with the Mac, so its open-side AAD binds
+        // the Mac as the sender. Mallory shares the same session bytes but is not
+        // the Mac.
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
+        let mallory = endpoint(3, 2, secret);
         // The phone only knows the real Mac; the directory binds the Mac AID to
         // the Mac key. Mallory tries to pass a forged inner envelope.
         let dir = directory_of(&[&mac, &phone]);
@@ -1812,9 +1892,11 @@ mod tests {
         let mailbox = MailboxId::new("mbx:phone");
         let inner_bytes = serde_json::to_vec(&forged).unwrap();
         let nonce = session::fresh_nonce().unwrap();
-        let ciphertext = mallory
-            .session_seal(nonce, mailbox.as_str().as_bytes(), &inner_bytes)
-            .unwrap();
+        // Seal with the SAME AAD the phone reconstructs on open (claimed sender ‖
+        // recipient ‖ mailbox), so the forgery decrypts and is caught at the
+        // signature gate, not merely bounced by the AEAD tag.
+        let aad = aead_aad(mac.aid(), phone.aid(), &mailbox);
+        let ciphertext = mallory.session_seal(nonce, &aad, &inner_bytes).unwrap();
         let outer = OuterEnvelope {
             to_mailbox: mailbox,
             ciphertext,
@@ -1831,8 +1913,8 @@ mod tests {
     #[test]
     fn the_relay_never_sees_the_plaintext() {
         let secret = [9u8; 32];
-        let mac = endpoint(1, secret);
-        let phone = endpoint(2, secret);
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
         let mailbox = MailboxId::new("mbx:phone");
         let outer = mac
             .seal_to(phone.aid(), &mailbox, "top secret body")
@@ -1862,8 +1944,8 @@ mod tests {
         let bob = Identity::from_seed([2u8; 32]).unwrap();
         let bob_prekeys = prekey::PrekeySecrets::from_seeds([0x20; 32], [0x21; 32]);
         let dir = directory_of(&[
-            &Endpoint::new(alice.clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(bob.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(alice.clone(), bob.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(bob.clone(), alice.aid().clone(), Session::from_secret([0u8; 32])),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:bob");
@@ -1922,8 +2004,8 @@ mod tests {
     #[test]
     fn the_relay_boundary_holds_against_tamper_replay_and_link() {
         let secret = [0x5au8; 32];
-        let mac = endpoint(1, secret);
-        let phone = endpoint(2, secret);
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
         let dir = directory_of(&[&mac, &phone]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:phone");
@@ -1945,14 +2027,56 @@ mod tests {
     }
 
     #[test]
+    fn the_aead_aad_binds_sender_recipient_and_mailbox() {
+        // H4 (defense-in-depth) regression: the AEAD AAD binds the full
+        // sender ‖ recipient ‖ mailbox context, so a ciphertext sealed for one
+        // (sender, recipient, mailbox) cannot be opened by a recipient whose
+        // reconstructed AAD differs in ANY of the three — the relocation an
+        // attacker holding the session secret would attempt fails the tag.
+        let secret = [0x5au8; 32];
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
+        let mailbox = MailboxId::new("mbx:phone");
+        let dir = directory_of(&[&mac, &phone]);
+
+        let outer = mac
+            .seal_to(phone.aid(), &mailbox, "addressed precisely")
+            .unwrap();
+        // The legitimate recipient, sharing the exact (sender, recipient, mailbox)
+        // context, opens it.
+        assert_eq!(phone.open(&outer, &dir).unwrap().body, "addressed precisely");
+
+        // (a) Relocated to a different mailbox: the recipient's AAD now binds a
+        // different mailbox id, so the AEAD tag fails — the relay cannot re-file it.
+        let relocated = OuterEnvelope {
+            to_mailbox: MailboxId::new("mbx:elsewhere"),
+            ciphertext: outer.ciphertext.clone(),
+        };
+        assert!(matches!(
+            phone.open(&relocated, &dir),
+            Err(CoreError::Rejected(_))
+        ));
+
+        // (b) Re-attributed to a different sender context: a recipient whose
+        // pairwise peer is someone OTHER than the Mac (but somehow holds the same
+        // session bytes) reconstructs a different sender AID into its AAD, so the
+        // same ciphertext fails to open.
+        let phone_expecting_someone_else = endpoint(2, 3, secret);
+        assert!(matches!(
+            phone_expecting_someone_else.open(&outer, &dir),
+            Err(CoreError::Rejected(_))
+        ));
+    }
+
+    #[test]
     fn a_message_is_addressed_to_and_authenticated_by_an_aid_number_free() {
         // The floor: a message addressed to an AID's pairwise mailbox, authenticated
         // as the sender AID, with no phone number or email anywhere — and a forgery
         // claiming the sender's AID is rejected.
         let secret = [0x5au8; 32];
-        let mac = endpoint(1, secret);
-        let phone = endpoint(2, secret);
-        let impostor = endpoint(3, secret);
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
+        let impostor = endpoint(3, 2, secret);
         let dir = directory_of(&[&mac, &phone]); // the impostor is NOT admitted-as-Mac
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:pairwise");
@@ -1980,9 +2104,9 @@ mod tests {
         // A body that smuggles a dialable number must fail the number-free scan —
         // the floor proves the *absence*, it does not merely narrate it.
         let secret = [0x5au8; 32];
-        let mac = endpoint(1, secret);
-        let phone = endpoint(2, secret);
-        let impostor = endpoint(3, secret);
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
+        let impostor = endpoint(3, 2, secret);
         let dir = directory_of(&[&mac, &phone]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:pairwise");
@@ -2024,8 +2148,8 @@ mod tests {
         let desktop = Identity::from_seed([0x11u8; 32]).unwrap();
         let handset = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(desktop.clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(handset.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(desktop.clone(), handset.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(handset.clone(), desktop.aid().clone(), Session::from_secret([0u8; 32])),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:pairwise-mailbox");
@@ -2086,8 +2210,8 @@ mod tests {
         let mac = Identity::from_seed([0x11u8; 32]).unwrap();
         let phone = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(mac.clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(phone.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(mac.clone(), phone.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(phone.clone(), mac.aid().clone(), Session::from_secret([0u8; 32])),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:phone");
@@ -2117,8 +2241,8 @@ mod tests {
         let mac = Identity::from_seed([0x11u8; 32]).unwrap();
         let phone = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(mac.clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(phone.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(mac.clone(), phone.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(phone.clone(), mac.aid().clone(), Session::from_secret([0u8; 32])),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:phone");
@@ -2144,8 +2268,8 @@ mod tests {
         let desktop = Identity::from_seed([0x11u8; 32]).unwrap();
         let handset = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(desktop.clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(handset.clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(desktop.clone(), handset.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(handset.clone(), desktop.aid().clone(), Session::from_secret([0u8; 32])),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:pairwise-mailbox");
