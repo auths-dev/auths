@@ -251,7 +251,7 @@ RustBuffer uniffi_murmur_ffi_fn_func_address_canonical(RustBuffer text, RustCall
 #ifndef UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_FN_FUNC_CORE_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_FN_FUNC_CORE_VERSION
 RustBuffer uniffi_murmur_ffi_fn_func_core_version(RustCallStatus *_Nonnull out_status
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_FN_FUNC_EVALUATE_TRUST
@@ -527,31 +527,30 @@ void ffi_murmur_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_
 #ifndef UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_ADDRESS_CANONICAL
 #define UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_ADDRESS_CANONICAL
 uint16_t uniffi_murmur_ffi_checksum_func_address_canonical(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_CORE_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_CORE_VERSION
 uint16_t uniffi_murmur_ffi_checksum_func_core_version(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_EVALUATE_TRUST
 #define UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_EVALUATE_TRUST
 uint16_t uniffi_murmur_ffi_checksum_func_evaluate_trust(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_SEAL_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_MURMUR_FFI_CHECKSUM_FUNC_SEAL_MESSAGE
 uint16_t uniffi_murmur_ffi_checksum_func_seal_message(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_MURMUR_FFI_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_MURMUR_FFI_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_murmur_ffi_uniffi_contract_version(void
-    
+
 );
 #endif
-

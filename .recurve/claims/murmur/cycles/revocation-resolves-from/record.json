@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "suite": "murmur",
+  "cycle": "revocation-resolves-from",
+  "gap": "RVK-1",
+  "class": "missing-surface",
+  "severity": "headline",
+  "status": "closed",
+  "attempts": 1,
+  "net_new_gaps": 0,
+  "regressions_caught": 0,
+  "wall_clock_s": 0,
+  "verdicts_before": {"broken": 0, "green": 10, "missing": 0, "red": 6, "stale": 0},
+  "verdicts_after": {"broken": 0, "green": 11, "missing": 0, "red": 5, "stale": 0},
+  "files_touched": [
+    "crates/murmur-core/src/corroboration.rs",
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml",
+    ".recurve/claims/murmur/cycles/revocation-resolves-from/plan.md",
+    ".recurve/claims/murmur/cycles/revocation-resolves-from/outcome.md"
+  ],
+  "summary": "Built revocation-with-provenance as a real feature (PRD §6.5: revocation is detection, not prevention — only as fast as a contact re-resolves, and only safe from witness-corroborated state, never a relay's cache). New crates/murmur-core/src/corroboration.rs pairs a resolved DelegationState with its Provenance (WitnessCorroborated{confirmed,threshold} | RelayCache{revocations_behind_witnesses}); provenance, not contents, decides corroboration, so a relay cache is never corroborated even when it happens to be current. CorroboratedState::resolve_revocation rejects a revoked device from witness-corroborated state (RevocationResolution::RevokedFromCorroboratedState) and DISCLOSES the honest stale-served window for a relay cache (StaleWindowDisclosed{cache_shows_revoked, revocations_behind_witnesses}) — a sub-threshold witness set or a live device fails closed, and a cache is never laundered into a corroborated clawback. lib.rs prove_revocation_corroborated drives both halves hermetically: the root anchors then revokes a delegated device; a contact re-resolving the witness-corroborated set rejects it, and a contact served the pre-revocation snapshot (the stale cache) is told the window — failing closed on a revoked device accepted from corroborated state, a relay cache trusted over the witnesses, or a hidden stale window. murmur-relay serve gains an 11th leg (run_revocation_corroborated) emitting the revoked-from-corroborated-state + stale-window-disclosed markers the probe greps for. No crypto reimplemented; built on the existing delegation/anchor/revocation signature primitives. Probe RED→GREEN; matrix --gate GREEN fleet-wide (0 regressions/broken/stale, 12/12 traps RED, leakcheck clean over both trees, app sculpt gate OK); 85 murmur-core/relay unit tests pass; clippy clean. The honest boundary is preserved: a corroborated rejection is the only safe outcome, a relay cache is always disclosed as a window — never oversold as an instant global kill."
+}

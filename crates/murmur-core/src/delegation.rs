@@ -101,10 +101,7 @@ impl DelegatedDevice {
     /// delegated under. The root's anchor over this device's key is what a contact
     /// later replays — see [`DelegationAnchor::issue`].
     pub fn new(identity: Identity, root_aid: Aid) -> Self {
-        DelegatedDevice {
-            identity,
-            root_aid,
-        }
+        DelegatedDevice { identity, root_aid }
     }
 
     /// This device's own AID (the sub-identity), distinct from the root it sends as.
@@ -307,11 +304,7 @@ impl DelegationState {
     /// Returns the root AID the device authenticates as iff both hold. A contact uses
     /// this to render `device = Mac, identity = root`, and to drop a revoked device's
     /// message rather than surface it.
-    pub fn resolve_device_to_root(
-        &self,
-        device_aid: &Aid,
-        device_key: &[u8],
-    ) -> CoreResult<Aid> {
+    pub fn resolve_device_to_root(&self, device_aid: &Aid, device_key: &[u8]) -> CoreResult<Aid> {
         let anchor = self
             .anchors
             .iter()

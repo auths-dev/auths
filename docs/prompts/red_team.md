@@ -11,6 +11,17 @@ Assume a motivated, well-resourced attacker. Assume the code will be deployed an
 attacked. Your reputation rests on the vulnerability you *missed*, not the one you
 reported.
 
+**Treat green as guilty until proven honest.** Much of this codebase is produced by an
+automated, claims-driven loop (recurve) — *the same author wrote the implementation and the
+test that "proves" it* — so a passing probe, a closed claim, a green gate, or a README "✅" is
+**evidence of nothing** until you independently confirm the implementation is real. For every
+capability the project claims is *done*, your default is that it is **stubbed, simplified, or
+gamed** until you prove otherwise. The most dangerous finding here is not a crash — it is a
+**claim that stays GREEN while the real property is violated**: "forward secrecy" that is
+HKDF-per-message rather than a real ratchet; "uses libsignal" that is in fact homegrown crypto; a
+`verify()` that returns `Ok` without checking. Hunt that class first — a same-author test cannot
+catch it, so you must.
+
 Write your report here:
 /Users/bordumb/workspace/repositories/auths-base/auths/docs/plans
 filename: red_team_{TODAY_DATE}.md
@@ -72,6 +83,30 @@ or **deny service / exhaust resources** on the network-facing components.
 
 Start here. These are the surfaces where a flaw is catastrophic. Do not stop here if
 your instincts point elsewhere, but cover all of these.
+
+### 0. The claims and the tests themselves (CROSS-CUTTING — do this first, and alongside)
+
+Before you trust any green checkmark, audit the *claim* behind it. For each capability the
+codebase asserts is complete (a closed recurve claim, a passing test, a probe + its "trap", a
+README "✅"):
+
+- **Real or stub?** Does the implementation do what its name says, or is it a plausible-looking
+  placeholder? Hunt `todo!()`, `unimplemented!()`, `NotBuilt`, hard-coded return values, a
+  function that "verifies" by returning `Ok(())`, a "ratchet" that never advances.
+- **Real primitive, or reinvention?** When the spec says "use the vetted library" (libsignal,
+  `ring`, a standard AEAD/KDF), confirm it is *actually used* — not a hand-rolled reimplementation
+  wearing the same name. **Homegrown crypto is a finding even when it passes test vectors** — the
+  bugs live in nonce management, counter overflow, out-of-order handling, and zeroization, none of
+  which a happy-path vector exercises.
+- **Does the test exercise the real path?** Could the implementation be wrong while the test stays
+  GREEN? Is the negative/"trap" case a genuine counterexample, or a weak one any implementation
+  passes? Was the gate *gamed* — hard-coded values, trivial asserts, a claim title that
+  overpromises vs what is actually checked?
+- **Verdict per claim:** label each claimed-complete capability **real**, **shallow** (passes the
+  test but not the full property), or **broken/stubbed**, and say why.
+
+This is the lens most likely to catch a catastrophic gap in a machine-generated codebase, because
+**the gate is only ever as deep as the same-author probe behind it.**
 
 ### 1. Cryptographic verification core (CRITICAL surface)
 `crates/auths-verifier`, `crates/auths-crypto`, `crates/auths-keri`.
@@ -191,10 +226,19 @@ verification entry functions. Produce a short "Attack Surface Map" (boundary →
 crosses it → what trusts it). Note where attacker-controlled data enters and how far
 it travels before it's validated.
 
-**Phase 2 — Hunt.** Work the focus areas above. For each candidate weakness, push on
-exploitability: craft the malicious input in your head and trace it through the code.
-Prefer a handful of *proven, high-impact* findings over a long list of lint-grade
-nits. Explicitly try to falsify each of the four core security claims.
+**Phase 2 — Hunt.** Work the focus areas above (start with area 0 — audit the claims). For each
+candidate weakness, push on exploitability: craft the malicious input in your head and trace it
+through the code. Prefer a handful of *proven, high-impact* findings over a long list of
+lint-grade nits. Explicitly try to falsify each of the four core security claims — *and* to refute
+each "done" claim. **Run this as parallel specialists when you can** — one per lens (claims-auditor,
+crypto, network/DoS, memory/FFI, cross-impl parity, supply-chain) — then merge and de-duplicate.
+
+**Phase 2.5 — Adversarially verify your own findings.** Before a candidate becomes a reported
+finding, try to *refute* it: re-read the cited code, build the smallest proof-of-concept, ask
+"what makes this NOT exploitable?" Keep only what survives, and report **raised-vs-confirmed**
+honestly (a review that raises 40 and confirms 15 is more trustworthy than one that asserts 40).
+A finding you can neither refute nor prove is a `Hypothesis`, not a `CRITICAL`. When run as a crew,
+the verifier should be a *different* specialist than the one who raised it.
 
 **Phase 3 — Rank & plan.** Severity-rate every finding and assemble the remediation
 document (format below). Group related findings into epics. Order by exploitability ×

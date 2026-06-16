@@ -352,7 +352,7 @@ private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-// Initial value and increment amount for handles. 
+// Initial value and increment amount for handles.
 // These ensure that SWIFT handles always have the lowest bit set
 fileprivate let UNIFFI_HANDLEMAP_INITIAL: UInt64 = 1
 fileprivate let UNIFFI_HANDLEMAP_DELTA: UInt64 = 2
@@ -482,8 +482,8 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
  */
 public enum MurmurError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
-    
-    
+
+
     /**
      * A specified seam that has not been built yet (the string names it).
      */
@@ -501,15 +501,15 @@ public enum MurmurError: Swift.Error, Equatable, Hashable, Foundation.LocalizedE
     case Malformed(String
     )
 
-    
 
-    
 
-    
+
+
+
     public var errorDescription: String? {
         String(reflecting: self)
     }
-    
+
 }
 
 #if compiler(>=6)
@@ -526,9 +526,9 @@ public struct FfiConverterTypeMurmurError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .NotBuilt(
             try FfiConverterString.read(from: &buf)
             )
@@ -546,24 +546,24 @@ public struct FfiConverterTypeMurmurError: FfiConverterRustBuffer {
     public static func write(_ value: MurmurError, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case let .NotBuilt(v1):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(v1, into: &buf)
-            
-        
+
+
         case let .Rejected(v1):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(v1, into: &buf)
-            
-        
+
+
         case let .Malformed(v1):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(v1, into: &buf)
-            
+
         }
     }
 }
@@ -593,7 +593,7 @@ public func FfiConverterTypeMurmurError_lower(_ value: MurmurError) -> RustBuffe
  */
 
 public enum TrustBadge: Equatable, Hashable {
-    
+
     /**
      * A contact whose current key-state we verified by replay.
      */
@@ -628,32 +628,32 @@ public struct FfiConverterTypeTrustBadge: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TrustBadge {
         let variant: Int32 = try readInt(&buf)
         switch variant {
-        
+
         case 1: return .verified
-        
+
         case 2: return .verifiedContinuation
-        
+
         case 3: return .nonContinuationWarning
-        
+
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
 
     public static func write(_ value: TrustBadge, into buf: inout [UInt8]) {
         switch value {
-        
-        
+
+
         case .verified:
             writeInt(&buf, Int32(1))
-        
-        
+
+
         case .verifiedContinuation:
             writeInt(&buf, Int32(2))
-        
-        
+
+
         case .nonContinuationWarning:
             writeInt(&buf, Int32(3))
-        
+
         }
     }
 }
