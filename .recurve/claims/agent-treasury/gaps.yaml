@@ -138,7 +138,7 @@
   title: Instant clawback — revoking a sub-agent stops its spend everywhere and returns its
     slice to the free pool without over-committing
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: cli
   covers:
@@ -150,9 +150,15 @@
   - maps AGENT-MCP-4 / OPS-1 (instant revocation per call); the free-pool release + non-double-counting
     reallocation of a freed slice is part of the TREASURY-1 aggregate accounting, not yet
     built
-  observed: 'RED at baseline 2026-06-16: ours=no-free-pool-surface expected=revoke releases
-    the slice to parent_cap − Σ live slices (free pool), re-allocatable but never double-counted
-    — the engine has no aggregate free-pool accounting'
+  observed: 'GREEN 2026-06-16: revoking arb (id agent revoke, OPS-1) is recorded in the registry
+    — `id agent list --include-revoked` shows arb revoked while the flip sibling stays live, the
+    offline-verifiable state the gateway refuses arb''s next call from — and the net-new
+    `treasury reclaim` (auths-sdk domains::treasury::reclaim) releases arb''s slice (2) to the free
+    pool (4→6); a second reclaim is a no-op (nothing_to_reclaim, no double-count) and a reallocation
+    from the reclaimed (gone) slice does not commit. Trap RED: a recorded double-count that committed
+    (status=reallocated) is refused by the probe. NOTE: the per-call refusal is enforced at the
+    auths-mcp gateway boundary from the recorded revocation; the credential-verify CLI path does not
+    model agent revocation (returns valid), so revocation is proven from the recorded registry state.'
   smallest_fix: 'On a parent revoke of a sub-agent, refuse its very next brokered call (revoked,
     no window — reuse OPS-1 liveness-per-call) AND release its slice to the parent free pool
     (parent_cap − Σ live slices) so the freed amount is re-allocatable; a reallocation that

@@ -118,6 +118,15 @@ pub enum Verdict {
         /// The child slice amount.
         amount: u64,
     },
+    /// A (revoked) sub-agent's slice was released back to the free pool.
+    Reclaimed {
+        /// The sub-agent whose slice was freed.
+        agent_did: String,
+        /// The amount returned to the free pool.
+        freed: u64,
+    },
+    /// The sub-agent holds no slice to reclaim — idempotent, no double-count.
+    NothingToReclaim,
     /// The aggregate cap (or a slice's holdings) would be breached — refused, no commit.
     AggregateCapExceeded {
         /// The aggregate ceiling.
@@ -137,6 +146,8 @@ impl Verdict {
             Verdict::Allotted { .. } => "allotted",
             Verdict::Reallocated { .. } => "reallocated",
             Verdict::Subdelegated { .. } => "subdelegated",
+            Verdict::Reclaimed { .. } => "reclaimed",
+            Verdict::NothingToReclaim => "nothing_to_reclaim",
             Verdict::AggregateCapExceeded { .. } => "aggregate_cap_exceeded",
         }
     }
@@ -313,6 +324,27 @@ impl TreasuryLedger {
             slices: rec.slices,
         })
     }
+
+    /// Release a (revoked) sub-agent's slice back to the free pool. Removing the slice
+    /// returns its amount to `parent_cap − Σ live slices`, re-allocatable. Idempotent: a
+    /// second reclaim finds no slice and is a no-op — the freed budget can be recommitted
+    /// but never double-counted.
+    pub fn reclaim(&self, manager: &str, agent_did: &str) -> Result<Verdict, TreasuryError> {
+        let mut rec = self
+            .read(manager)?
+            .ok_or_else(|| TreasuryError::NotOpened(manager.to_string()))?;
+        match rec.slices.iter().position(|s| s.agent_did == agent_did) {
+            Some(pos) => {
+                let freed = rec.slices.remove(pos).amount;
+                self.write(&rec)?;
+                Ok(Verdict::Reclaimed {
+                    agent_did: agent_did.to_string(),
+                    freed,
+                })
+            }
+            None => Ok(Verdict::NothingToReclaim),
+        }
+    }
 }
 
 /// Derive a path-safe single filename component from a manager alias/DID (mirrors the
@@ -360,6 +392,10 @@ pub fn reallocate(
 /// Read the aggregate invariant + free pool + slices.
 pub fn status(repo_path: &Path, manager: &str) -> Result<TreasuryStatus, TreasuryError> {
     TreasuryLedger::new(repo_path).status(manager)
+}
+/// Release a revoked sub-agent's slice back to the free pool (idempotent).
+pub fn reclaim(repo_path: &Path, manager: &str, agent_did: &str) -> Result<Verdict, TreasuryError> {
+    TreasuryLedger::new(repo_path).reclaim(manager, agent_did)
 }
 
 /// The repo-relative directory holding per-sub-agent inbound (earn) P&L credits.
@@ -644,5 +680,28 @@ mod tests {
             subdelegate(dir.path(), "m", "flip", "child3", 2).unwrap(),
             Verdict::Subdelegated { .. }
         ));
+    }
+
+    #[test]
+    fn reclaim_frees_a_slice_to_the_pool_and_is_idempotent() {
+        let (_d, l) = led();
+        l.open("m", 10).unwrap();
+        l.allot("m", "flip", 4).unwrap();
+        l.allot("m", "arb", 2).unwrap();
+        assert_eq!(l.status("m").unwrap().free_pool, 4);
+        // Reclaim arb's slice → the free pool rises by 2, committed drops to 4.
+        assert!(matches!(
+            l.reclaim("m", "arb").unwrap(),
+            Verdict::Reclaimed { freed: 2, .. }
+        ));
+        let st = l.status("m").unwrap();
+        assert_eq!(st.committed, 4);
+        assert_eq!(st.free_pool, 6);
+        // A second reclaim is a no-op — the freed budget is never double-counted.
+        assert!(matches!(
+            l.reclaim("m", "arb").unwrap(),
+            Verdict::NothingToReclaim
+        ));
+        assert_eq!(l.status("m").unwrap().free_pool, 6);
     }
 }

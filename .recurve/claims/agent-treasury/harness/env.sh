@@ -193,8 +193,16 @@ treasury_field() {
 revoke_subagent() {
     local mgr="$1" agent="$2"
     "$AUTHS_BIN" --repo "$ORG_REPO" --json id agent revoke \
-        --key "$mgr" --agent "$agent" >"$LAB_DIR/revoke.out" 2>&1
+        "$agent" --key "$mgr" >"$LAB_DIR/revoke.out" 2>&1
     printf '%s' "$?" > "$LAB_DIR/revoke.code"
     jq -r '.data.status // empty' "$LAB_DIR/revoke.out" 2>/dev/null
+}
+
+# treasury_reclaim <manager-alias> <agent-did> — release a revoked sub-agent's slice
+# back to the free pool. Echoes the machine status (reclaimed | nothing_to_reclaim).
+treasury_reclaim() {
+    local mgr="$1" agent="$2"
+    "$AUTHS_BIN" --repo "$ORG_REPO" --json treasury reclaim --manager "$mgr" --agent "$agent" \
+        2>/dev/null | jq -r '.data.status // empty' 2>/dev/null
 }
 revoke_rc() { cat "$LAB_DIR/revoke.code" 2>/dev/null || echo 127; }

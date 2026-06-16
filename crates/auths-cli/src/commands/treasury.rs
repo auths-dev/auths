@@ -91,6 +91,13 @@ pub enum TreasurySubcommand {
         #[arg(long)]
         amount: u64,
     },
+    /// Reclaim a revoked sub-agent's slice back to the free pool (idempotent).
+    Reclaim {
+        #[arg(long)]
+        manager: String,
+        #[arg(long = "agent", help = "The revoked sub-agent did:keri: to reclaim.")]
+        agent: String,
+    },
 }
 
 impl ExecutableCommand for TreasuryCommand {
@@ -169,6 +176,14 @@ pub fn handle_treasury(cmd: TreasuryCommand, repo_path: PathBuf) -> Result<()> {
                 "treasury subdelegate",
                 serde_json::json!({ "status": v.status(), "manager": manager, "parent": parent, "child": child, "amount": amount }),
                 &format!("subdelegate {amount} {parent}→{child}: {}", v.status()),
+            )
+        }
+        TreasurySubcommand::Reclaim { manager, agent } => {
+            let v = treasury::reclaim(&repo_path, &manager, &agent).map_err(anyhow::Error::new)?;
+            emit(
+                "treasury reclaim",
+                serde_json::json!({ "status": v.status(), "manager": manager, "agent": agent }),
+                &format!("reclaim {agent}: {}", v.status()),
             )
         }
     }
