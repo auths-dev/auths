@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "data": {
+    "accepted": true,
+    "status": "credited",
+    "credited_cents": 99999,
+    "recorded_settlement_cents": 250,
+    "note": "RECORDED COUNTEREXAMPLE: a padded inbound credit (claiming 99999 cents over a 250-cent recorded x402 settlement) that was WRONGLY accepted. The probe must turn RED on this — earn must be metered from the recorded settlement, not the agent's claim."
+  }
+}

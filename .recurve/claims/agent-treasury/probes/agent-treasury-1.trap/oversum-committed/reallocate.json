@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "data": {
+    "status": "reallocated",
+    "from": "did:keri:arb",
+    "to": "did:keri:flip",
+    "amount": 4,
+    "committed_sum": 12,
+    "parent_cap": 10,
+    "note": "RECORDED COUNTEREXAMPLE: an over-sum reallocation (Σ→12 > parent_cap 10) that WRONGLY committed instead of being refused aggregate_cap_exceeded. The probe must turn RED on this."
+  }
+}

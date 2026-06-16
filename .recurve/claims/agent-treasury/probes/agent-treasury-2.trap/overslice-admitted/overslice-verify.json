@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "data": {
+    "status": "valid",
+    "said": "ECredFlipSlice",
+    "calls_used": 4,
+    "cap": "calls:4",
+    "note": "RECORDED COUNTEREXAMPLE: a call at count 4 against a calls:4 slice (the 5th, over-slice call) that WRONGLY verified valid instead of cap_exceeded. The probe must turn RED on this."
+  }
+}

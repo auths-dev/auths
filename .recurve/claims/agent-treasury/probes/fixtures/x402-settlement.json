@@ -1,0 +1,20 @@
+{
+  "rail": "x402",
+  "direction": "inbound",
+  "network": "base-sepolia",
+  "scheme": "exact",
+  "asset": "USDC",
+  "decimals": 6,
+  "requirements": {
+    "maxAmountRequired": "2500000",
+    "resource": "https://flip-x402.demo/quote",
+    "payTo": "0xSubAgentX402WalletRecordedFixture000000000"
+  },
+  "settlement": {
+    "success": true,
+    "txHash": "0xRECORDEDfixtureTxHashNotALiveSettlement00000000000000000000000000",
+    "amountAtomic": "2500000",
+    "amountUsdc": "2.50"
+  },
+  "_note": "RECORDED x402 SettlementResponse fixture (no live wallet, no network). 2.50 USDC = 2_500_000 atomic (6 decimals) = 250 cents. Hermetic credit-extraction oracle for AGENT-TREASURY-4."
+}
