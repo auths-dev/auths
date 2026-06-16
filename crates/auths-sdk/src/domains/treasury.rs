@@ -352,6 +352,104 @@ pub fn status(repo_path: &Path, manager: &str) -> Result<TreasuryStatus, Treasur
     TreasuryLedger::new(repo_path).status(manager)
 }
 
+/// The repo-relative directory holding per-sub-agent inbound (earn) P&L credits.
+const CREDIT_LEDGER_DIR: &str = "credit-ledger";
+
+/// The outcome of crediting an inbound x402 settlement to a sub-agent's P&L.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CreditVerdict {
+    /// The recorded settlement amount (in cents) was credited inbound.
+    Credited {
+        /// The cents extracted from the recorded settlement and credited.
+        cents: u64,
+    },
+    /// A claimed amount did not match the recorded settlement — rejected, no credit.
+    CreditMismatch {
+        /// The amount the recorded settlement actually pays (cents).
+        recorded_cents: u64,
+        /// The (padded) amount that was claimed.
+        claimed_cents: u64,
+    },
+}
+
+impl CreditVerdict {
+    /// The stable machine token surfaced as `data.status`.
+    pub fn status(&self) -> &'static str {
+        match self {
+            CreditVerdict::Credited { .. } => "credited",
+            CreditVerdict::CreditMismatch { .. } => "credit_mismatch",
+        }
+    }
+    /// The cents credited (0 for a rejected mismatch).
+    pub fn credited_cents(&self) -> u64 {
+        match self {
+            CreditVerdict::Credited { cents } => *cents,
+            CreditVerdict::CreditMismatch { .. } => 0,
+        }
+    }
+}
+
+/// Extract the paid amount (atomic USDC → cents) from a **recorded** x402
+/// SettlementResponse and credit it inbound to a sub-agent's receipted P&L
+/// (`direction=inbound`, `rail=x402`). A claimed amount that does not match the
+/// recorded settlement is rejected — a padded earn cannot pump a sub-agent's P&L.
+/// Hermetic: reads a recorded fixture, never a live wallet/network.
+pub fn credit(
+    repo_path: &Path,
+    agent_did: &str,
+    settlement_path: &Path,
+    claim_cents: Option<u64>,
+) -> Result<CreditVerdict, TreasuryError> {
+    let bytes = fs::read(settlement_path)
+        .map_err(|e| TreasuryError::Persistence(format!("settlement read failed: {e}")))?;
+    let v: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| TreasuryError::Persistence(format!("settlement parse failed: {e}")))?;
+    let decimals = v.get("decimals").and_then(serde_json::Value::as_u64).unwrap_or(6);
+    let atomic_str = v
+        .pointer("/settlement/amountAtomic")
+        .or_else(|| v.pointer("/requirements/maxAmountRequired"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| TreasuryError::Persistence("settlement missing amountAtomic".into()))?;
+    let atomic: u128 = atomic_str.parse().map_err(|_| {
+        TreasuryError::Persistence(format!("non-numeric settlement amount '{atomic_str}'"))
+    })?;
+    // atomic USDC at `decimals` places → cents (2 places): atomic * 100 / 10^decimals.
+    let cents = (atomic * 100 / 10u128.pow(decimals as u32)) as u64;
+
+    if let Some(claimed) = claim_cents
+        && claimed != cents
+    {
+        return Ok(CreditVerdict::CreditMismatch {
+            recorded_cents: cents,
+            claimed_cents: claimed,
+        });
+    }
+
+    // Persist the cumulative inbound credit for the sub-agent (the P&L credit side).
+    let dir = repo_path.join(CREDIT_LEDGER_DIR);
+    let key = safe_key(agent_did)?;
+    fs::create_dir_all(&dir).map_err(|e| TreasuryError::Persistence(format!("mkdir failed: {e}")))?;
+    let path = dir.join(format!("{key}.json"));
+    let prior = fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|j| j.get("credited_cents").and_then(serde_json::Value::as_u64))
+        .unwrap_or(0);
+    let body = serde_json::to_vec_pretty(&serde_json::json!({
+        "agent_did": agent_did,
+        "credited_cents": prior + cents,
+        "rail": "x402",
+        "direction": "inbound",
+    }))
+    .map_err(|e| TreasuryError::Persistence(format!("encode failed: {e}")))?;
+    let tmp = dir.join(format!(".{key}.tmp"));
+    fs::write(&tmp, &body)
+        .map_err(|e| TreasuryError::Persistence(format!("temp write failed: {e}")))?;
+    fs::rename(&tmp, &path)
+        .map_err(|e| TreasuryError::Persistence(format!("commit (rename) failed: {e}")))?;
+    Ok(CreditVerdict::Credited { cents })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,6 +517,29 @@ mod tests {
         assert!(matches!(
             l.open("../escape", 10),
             Err(TreasuryError::UnsafeKey(_))
+        ));
+    }
+
+    #[test]
+    fn x402_credit_extracts_cents_and_rejects_a_padded_claim() {
+        let dir = tempfile::tempdir().unwrap();
+        let settlement = dir.path().join("s.json");
+        // 2.50 USDC = 2_500_000 atomic (6 decimals) = 250 cents.
+        std::fs::write(
+            &settlement,
+            br#"{"decimals":6,"settlement":{"amountAtomic":"2500000"}}"#,
+        )
+        .unwrap();
+        let v = credit(dir.path(), "did:keri:Ex402", &settlement, None).unwrap();
+        assert_eq!(v, CreditVerdict::Credited { cents: 250 });
+        // A padded claim (≠ the recorded settlement) is rejected, no credit.
+        let v = credit(dir.path(), "did:keri:Ex402", &settlement, Some(99999)).unwrap();
+        assert!(matches!(
+            v,
+            CreditVerdict::CreditMismatch {
+                recorded_cents: 250,
+                ..
+            }
         ));
     }
 }

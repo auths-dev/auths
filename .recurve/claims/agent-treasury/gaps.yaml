@@ -104,7 +104,7 @@
   title: x402 inbound — a sub-agent EARNS and the credit lands in its verifiable P&L (testnet-flagged,
     hermetic)
   class: missing-surface
-  status: open
+  status: closed
   severity: feature
   reads: cli
   covers:
@@ -116,9 +116,12 @@
     crediting is not built
   - hermetic over a recorded x402 SettlementResponse fixture (network=base-sepolia) — no live
     x402 call
-  observed: 'RED at baseline 2026-06-16: ours=no-credit-surface expected=x402 inbound credit
-    extraction (atomic USDC→cents, direction=inbound, rail=x402) — the engine meters only
-    the debit (spend) side; a sub-agent cannot EARN into a verifiable P&L'
+  observed: 'GREEN 2026-06-16: the net-new `treasury credit` surface (auths-sdk domains::treasury::credit)
+    extracts a recorded x402 SettlementResponse (2.50 USDC = 2_500_000 atomic at 6 decimals)
+    to exactly 250 cents and credits it inbound (direction=inbound, rail=x402) to a credit-ledger,
+    while a padded credit (--claim-cents 99999 over the 250c settlement) is rejected credit_mismatch.
+    Trap RED: a recorded padded credit that was accepted is refused by the probe. Hermetic over the
+    recorded fixture; the live inbound leg (funded base-sepolia wallet) stays evidence-only, deferred.'
   smallest_fix: 'Build the inbound (credit) side of x402 metering: given a recorded x402/USDC
     SettlementResponse for a service the sub-agent SOLD, extract the paid amount (atomic USDC
     at 6 decimals → cents), credit it to the sub-agent''s receipted P&L (direction=inbound,

@@ -68,6 +68,18 @@ pub enum TreasurySubcommand {
         #[arg(long)]
         manager: String,
     },
+    /// Credit a recorded x402 inbound settlement to a sub-agent's verifiable P&L.
+    Credit {
+        #[arg(long = "to", help = "Sub-agent did:keri: to credit.")]
+        to: String,
+        #[arg(long, help = "Path to a recorded x402 SettlementResponse JSON.")]
+        settlement: PathBuf,
+        #[arg(
+            long = "claim-cents",
+            help = "Assert the credited amount (rejected if ≠ the recorded settlement)."
+        )]
+        claim_cents: Option<u64>,
+    },
 }
 
 impl ExecutableCommand for TreasuryCommand {
@@ -129,6 +141,15 @@ pub fn handle_treasury(cmd: TreasuryCommand, repo_path: PathBuf) -> Result<()> {
                 }
             }
             Ok(())
+        }
+        TreasurySubcommand::Credit { to, settlement, claim_cents } => {
+            let v = treasury::credit(&repo_path, &to, &settlement, claim_cents)
+                .map_err(anyhow::Error::new)?;
+            emit(
+                "treasury credit",
+                serde_json::json!({ "status": v.status(), "to": to, "credited_cents": v.credited_cents(), "rail": "x402", "direction": "inbound" }),
+                &format!("credit {to}: {} ({}c inbound)", v.status(), v.credited_cents()),
+            )
         }
     }
 }
