@@ -147,9 +147,10 @@ pub fn verify_continuation(prior: &KeyState, current: &KeyState) -> TrustVerdict
     } else {
         TrustVerdict {
             state: TrustState::NonContinuationWarning,
-            reason: "the new key was NOT pre-committed by the prior key-state — a non-continuation \
+            reason:
+                "the new key was NOT pre-committed by the prior key-state — a non-continuation \
                      key change, not a verified rotation"
-                .to_string(),
+                    .to_string(),
         }
     }
 }
@@ -162,10 +163,15 @@ pub fn verify_continuation(prior: &KeyState, current: &KeyState) -> TrustVerdict
 /// relay binary's self-test (and the harness) can assert all three held:
 /// continuation verified, session re-keyed, prekey re-verified.
 ///
-/// Not `Debug`: it holds the re-keyed and prior [`Session`]s, whose secrets must
-/// never be formatted into a log line. The trust states and AID it exposes by
-/// accessor are the safe, printable part.
-#[derive(Clone)]
+/// **No session secret lingers in the receipt (H5).** The receipt is a *verdict*,
+/// not a key holder: it carries the stable AID, the two trust states, and a
+/// [`was_rekeyed`](Self::was_rekeyed) boolean. Both the pre-rotation `Session` and
+/// the freshly re-keyed `Session` are confined to [`verified_rotation_rekey`]'s
+/// scope, where they are dropped (and zeroized via `ZeroizeOnDrop`) the moment the
+/// re-key verdict is computed. So a memory snapshot taken while a receipt is live
+/// cannot recover either the superseded root (decrypting pre-rotation traffic) or
+/// the new root.
+#[derive(Clone, Debug)]
 pub struct RotationRekeyReceipt {
     /// The stable AID whose continuation verified — unchanged across the rotation.
     pub aid: Aid,
@@ -176,19 +182,20 @@ pub struct RotationRekeyReceipt {
     /// ([`TrustState::NonContinuationWarning`]) — proof the adversarial case is
     /// warned, not re-pinned.
     pub substituted: TrustState,
-    /// The fresh X3DH root the re-keyed session agreed against the new key-state.
-    rekeyed_session: Session,
-    /// The pre-rotation session's root, kept only to assert the re-key produced a
-    /// *different* root (the old ratchet was not continued across the rotation).
-    prior_session: Session,
+    /// Whether the re-key produced a root *different* from the pre-rotation one —
+    /// decided locally in [`verified_rotation_rekey`], so the superseded root is
+    /// dropped (zeroized) rather than carried in the receipt.
+    was_rekeyed: bool,
 }
 
 impl RotationRekeyReceipt {
-    /// True iff the re-keyed session is rooted in a *different* secret than the
+    /// True iff the re-keyed session was rooted in a *different* secret than the
     /// pre-rotation one — i.e. the old ratchet was torn down and X3DH re-run
-    /// against the new key-state, never continued across the identity change.
+    /// against the new key-state, never continued across the identity change. The
+    /// comparison was made (and the prior root dropped) in
+    /// [`verified_rotation_rekey`]; the receipt only carries the verdict.
     pub fn session_was_rekeyed(&self) -> bool {
-        self.rekeyed_session.secret_bytes() != self.prior_session.secret_bytes()
+        self.was_rekeyed
     }
 }
 
@@ -234,7 +241,8 @@ pub fn verified_rotation_rekey(
     // not a rotation at all.
     if prior_identity.public_key() == rotated_identity.public_key() {
         return Err(CoreError::Malformed(
-            "the rotation must change the signing key — prior and rotated keys are identical".into(),
+            "the rotation must change the signing key — prior and rotated keys are identical"
+                .into(),
         ));
     }
 
@@ -323,7 +331,11 @@ pub fn verified_rotation_rekey(
             "the re-keyed session did not agree on both sides after the rotation",
         ));
     }
-    if rekeyed_session.secret_bytes() == prior_session.secret_bytes() {
+    // Decide the re-key verdict here, locally, comparing against the prior root —
+    // then the receipt carries only the boolean and the pre-rotation `Session` is
+    // dropped (zeroized) at end of scope, never lingering in the receipt (H5).
+    let was_rekeyed = rekeyed_session.secret_bytes() != prior_session.secret_bytes();
+    if !was_rekeyed {
         return Err(CoreError::Rejected(
             "ratchet-continued-across-identity-change: the session was not re-keyed — the old \
              ratchet's root survived the rotation",
@@ -335,7 +347,7 @@ pub fn verified_rotation_rekey(
     let substitute = Identity::from_seed([0xABu8; 32])
         .map_err(|e| CoreError::Malformed(format!("mint substitute key: {e}")))?;
     let substituted_state = KeyState {
-        aid: stable_aid.clone(), // claims the same stable AID …
+        aid: stable_aid.clone(),                       // claims the same stable AID …
         current_key: substitute.public_key().to_vec(), // … but a key never pre-committed
         next_commitment: compute_next_commitment(substitute.public_key()),
     };
@@ -351,9 +363,11 @@ pub fn verified_rotation_rekey(
         aid: stable_aid.clone(),
         continuation: continuation.state,
         substituted: substituted.state,
-        rekeyed_session,
-        prior_session,
+        was_rekeyed,
     })
+    // `prior_session` and `rekeyed_session` both drop here — their 32-byte roots
+    // are zeroized (ZeroizeOnDrop), so neither the superseded nor the new root
+    // outlives this scope, let alone the returned receipt.
 }
 
 #[cfg(test)]
@@ -402,8 +416,11 @@ mod tests {
         let rotated = identity(2);
         let prior_state = KeyState::new(stable_aid(), &prior, rotated.public_key());
         // The new state claims a DIFFERENT AID — not a continuation of this identity.
-        let rotated_state =
-            KeyState::new(Aid::new("did:keri:someone-else"), &rotated, rotated.public_key());
+        let rotated_state = KeyState::new(
+            Aid::new("did:keri:someone-else"),
+            &rotated,
+            rotated.public_key(),
+        );
         let v = verify_continuation(&prior_state, &rotated_state);
         assert_eq!(v.state, TrustState::NonContinuationWarning);
     }
@@ -442,6 +459,34 @@ mod tests {
         assert_eq!(receipt.continuation, TrustState::VerifiedContinuation);
         assert_eq!(receipt.substituted, TrustState::NonContinuationWarning);
         assert!(receipt.session_was_rekeyed());
+    }
+
+    #[test]
+    fn the_receipt_carries_no_session_secret_only_a_verdict() {
+        // H5 regression: the receipt is a verdict, not a key holder. It exposes the
+        // AID, the two trust states, and a `was_rekeyed` boolean — never a prior or
+        // re-keyed `Session`. We prove the re-key verdict is reported (true) while
+        // the receipt is `Clone + Debug` over only printable, non-secret fields, so
+        // a memory snapshot of a live receipt recovers no root key.
+        let prior = identity(1);
+        let rotated = identity(2);
+        let aid = stable_aid();
+        let rotated_prekeys = secrets(0x40, 0x41);
+        let receipt = verified_rotation_rekey(
+            &aid,
+            &prior,
+            &rotated,
+            [0x5au8; 32],
+            &rotated_prekeys,
+            [0x51u8; 32],
+            [0x52u8; 32],
+        )
+        .unwrap();
+        assert!(receipt.session_was_rekeyed());
+        // The receipt is Debug-printable in full — there is no secret it could leak
+        // into a log line, because it holds none.
+        let printed = format!("{receipt:?}");
+        assert!(printed.contains(aid.as_str()));
     }
 
     #[test]

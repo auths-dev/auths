@@ -44,7 +44,13 @@ pub fn fresh_nonce() -> CoreResult<[u8; 12]> {
 
 /// A shared session secret between two endpoints. Wrapping it keeps the raw
 /// bytes from being logged or serialized by accident.
-#[derive(Clone)]
+///
+/// The 32-byte secret is zeroized on drop (`ZeroizeOnDrop`): once a `Session`
+/// (or the `Endpoint`/receipt that owns one) is dropped, the root secret is wiped
+/// from memory, so a heap snapshot or use-after-free cannot recover it. `Clone`
+/// is kept — the X3DH/rotation paths legitimately need a second handle — and each
+/// clone wipes itself independently.
+#[derive(Clone, zeroize::ZeroizeOnDrop)]
 pub struct Session {
     secret: [u8; 32],
 }
@@ -77,10 +83,19 @@ impl Session {
     }
 
     /// Seal `plaintext` under a freshly-derived content key, binding `aad` (the
-    /// routing context — the mailbox id) into the AEAD so a relay cannot move
-    /// ciphertext between mailboxes without the tag failing. Returns the message
-    /// nonce prepended to the ciphertext.
-    pub fn seal(&self, nonce: [u8; 12], aad: &[u8], plaintext: &[u8]) -> CoreResult<Vec<u8>> {
+    /// routing/identity context) into the AEAD so a relay cannot move ciphertext
+    /// between mailboxes without the tag failing. Returns the message nonce
+    /// prepended to the ciphertext.
+    ///
+    /// **Crate-internal on purpose (nonce-reuse containment).** The content key is
+    /// HKDF-derived from the `nonce` (it is the salt), so reusing a `nonce` reuses
+    /// the keystream — the catastrophic AEAD misuse. Taking the nonce as a
+    /// parameter is only safe when the caller guarantees uniqueness, which the two
+    /// in-crate callers do: [`Endpoint::seal_to`](crate::Endpoint::seal_to) and
+    /// [`Ratchet::seal`](crate::Ratchet::seal) both draw a [`fresh_nonce`] (OS
+    /// entropy) per message. Keeping `seal` `pub(crate)` removes the only public
+    /// surface through which an external caller could pass a stale nonce.
+    pub(crate) fn seal(&self, nonce: [u8; 12], aad: &[u8], plaintext: &[u8]) -> CoreResult<Vec<u8>> {
         let key_bytes = self.content_key(&nonce)?;
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&key_bytes));
         let ct = cipher
@@ -205,5 +220,39 @@ mod tests {
             other.open(&sealed, b"mbx:bob"),
             Err(CoreError::Rejected(_))
         ));
+    }
+
+    // ── Adversarial regression: nonce-reuse containment (H1/H6/L17) ────────────
+    // `seal` is `pub(crate)`, so no external caller can pass a stale nonce; the
+    // only public seal surfaces (`Endpoint::seal_to`, `Ratchet::seal`) draw a
+    // `fresh_nonce` per message. We pin the property that distinct nonces give
+    // distinct keystreams — the thing nonce-uniqueness protects — and that
+    // `fresh_nonce` does not repeat across a batch, so the public paths cannot
+    // reuse a content key.
+
+    #[test]
+    fn distinct_nonces_yield_distinct_keystreams() {
+        // The HKDF content key is salted by the nonce, so two different nonces
+        // produce two different keystreams: sealing the SAME plaintext under two
+        // distinct nonces yields ciphertext bodies that differ. (Reusing a nonce
+        // would make them identical — the misuse `seal`'s pub(crate) surface and
+        // the fresh-nonce callers prevent.)
+        let s = session();
+        let a = s.seal([10u8; 12], b"mbx:bob", b"same plaintext").unwrap();
+        let b = s.seal([20u8; 12], b"mbx:bob", b"same plaintext").unwrap();
+        // Bodies (after the 12-byte nonce prefix) must differ.
+        assert_ne!(&a[12..], &b[12..]);
+    }
+
+    #[test]
+    fn fresh_nonce_does_not_repeat_across_a_batch() {
+        // The public seal paths rely on `fresh_nonce` for uniqueness. Draw a batch
+        // and confirm no collision — a structural check that the only nonce source
+        // the public API uses does not hand out a stale nonce.
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        for _ in 0..2048 {
+            assert!(seen.insert(fresh_nonce().unwrap()), "fresh_nonce repeated");
+        }
     }
 }
