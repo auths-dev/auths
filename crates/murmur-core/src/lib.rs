@@ -67,7 +67,7 @@ pub mod trust;
 pub mod vetted;
 
 pub use address::Aid;
-pub use channel::{RatchetChannel, SecureChannel};
+pub use channel::SecureChannel;
 #[cfg(feature = "olm")]
 pub use olm_backend::{OlmChannel, OlmIdentity, OlmPrekeyBundle, OlmRootedBundle};
 pub use corroboration::{CorroboratedState, Provenance, RevocationResolution, provenance_token};
