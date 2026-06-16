@@ -68,8 +68,6 @@ pub mod vetted;
 
 pub use address::Aid;
 pub use channel::SecureChannel;
-#[cfg(feature = "olm")]
-pub use olm_backend::{OlmChannel, OlmIdentity, OlmPrekeyBundle, OlmRootedBundle};
 pub use corroboration::{CorroboratedState, Provenance, RevocationResolution, provenance_token};
 pub use delegation::{DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation};
 pub use dh_ratchet::{DhRatchet, DhStep};
@@ -78,6 +76,8 @@ pub use identity::{Identity, verify_sender};
 pub use kel::{Kel, KelEvent, WitnessPolicy, WitnessReceipt};
 pub use leakcheck::{RoutingOnlyReport, prove_routing_only, relay_visible_bytes};
 pub use number_free::{NumberFreeReport, prove_number_free};
+#[cfg(feature = "olm")]
+pub use olm_backend::{OlmChannel, OlmIdentity, OlmPrekeyBundle, OlmRootedBundle};
 pub use prekey::{PrekeyBundle, PrekeySecrets, RootedBundle, x3dh_initiator, x3dh_responder};
 pub use ratchet::Ratchet;
 pub use relay::{DepositOutcome, MailboxId, MailboxStore, RelayLimits, RelayRequest};
@@ -362,7 +362,11 @@ mod tests {
 
     fn endpoint(seed_byte: u8, peer_seed: u8, session_secret: [u8; 32]) -> Endpoint {
         let id = Identity::from_seed([seed_byte; 32]).unwrap();
-        Endpoint::new(id, aid_of_seed(peer_seed), Session::from_secret(session_secret))
+        Endpoint::new(
+            id,
+            aid_of_seed(peer_seed),
+            Session::from_secret(session_secret),
+        )
     }
 
     fn directory_of(endpoints: &[&Endpoint]) -> ContactDirectory {
@@ -541,8 +545,16 @@ mod tests {
         let bob = Identity::from_seed([2u8; 32]).unwrap();
         let bob_prekeys = prekey::PrekeySecrets::from_seeds([0x20; 32], [0x21; 32]);
         let dir = directory_of(&[
-            &Endpoint::new(alice.clone(), bob.aid().clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(bob.clone(), alice.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(
+                alice.clone(),
+                bob.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
+            &Endpoint::new(
+                bob.clone(),
+                alice.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:bob");
@@ -641,7 +653,10 @@ mod tests {
             .unwrap();
         // The legitimate recipient, sharing the exact (sender, recipient, mailbox)
         // context, opens it.
-        assert_eq!(phone.open(&outer, &dir).unwrap().body, "addressed precisely");
+        assert_eq!(
+            phone.open(&outer, &dir).unwrap().body,
+            "addressed precisely"
+        );
 
         // (a) Relocated to a different mailbox: the recipient's AAD now binds a
         // different mailbox id, so the AEAD tag fails — the relay cannot re-file it.
@@ -745,8 +760,16 @@ mod tests {
         let desktop = Identity::from_seed([0x11u8; 32]).unwrap();
         let handset = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(desktop.clone(), handset.aid().clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(handset.clone(), desktop.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(
+                desktop.clone(),
+                handset.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
+            &Endpoint::new(
+                handset.clone(),
+                desktop.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:pairwise-mailbox");
@@ -807,8 +830,16 @@ mod tests {
         let mac = Identity::from_seed([0x11u8; 32]).unwrap();
         let phone = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(mac.clone(), phone.aid().clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(phone.clone(), mac.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(
+                mac.clone(),
+                phone.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
+            &Endpoint::new(
+                phone.clone(),
+                mac.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:phone");
@@ -838,8 +869,16 @@ mod tests {
         let mac = Identity::from_seed([0x11u8; 32]).unwrap();
         let phone = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(mac.clone(), phone.aid().clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(phone.clone(), mac.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(
+                mac.clone(),
+                phone.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
+            &Endpoint::new(
+                phone.clone(),
+                mac.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:phone");
@@ -865,8 +904,16 @@ mod tests {
         let desktop = Identity::from_seed([0x11u8; 32]).unwrap();
         let handset = Identity::from_seed([0x22u8; 32]).unwrap();
         let dir = directory_of(&[
-            &Endpoint::new(desktop.clone(), handset.aid().clone(), Session::from_secret([0u8; 32])),
-            &Endpoint::new(handset.clone(), desktop.aid().clone(), Session::from_secret([0u8; 32])),
+            &Endpoint::new(
+                desktop.clone(),
+                handset.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
+            &Endpoint::new(
+                handset.clone(),
+                desktop.aid().clone(),
+                Session::from_secret([0u8; 32]),
+            ),
         ]);
         let mut relay = MailboxStore::new();
         let mailbox = MailboxId::new("mbx:pairwise-mailbox");

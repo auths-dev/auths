@@ -38,12 +38,14 @@
 
 use hkdf::Hkdf;
 use sha2::Sha256;
-use vodozemac::olm::{Account, OlmMessage, Session, SessionConfig, SessionCreationError, SessionPickle};
 use vodozemac::Curve25519PublicKey;
+use vodozemac::olm::{
+    Account, OlmMessage, Session, SessionConfig, SessionCreationError, SessionPickle,
+};
 
 use crate::address::Aid;
 use crate::channel::SecureChannel;
-use crate::identity::{verify_sender, Identity};
+use crate::identity::{Identity, verify_sender};
 use crate::{CoreError, CoreResult};
 
 /// Domain label for deriving a generation-bound pickle key (anti-rollback, R10).
@@ -86,8 +88,7 @@ fn olm_bundle_signing_bytes(
     one_time_key: &[u8; 32],
     fallback_key: &[u8; 32],
 ) -> Vec<u8> {
-    let mut bytes =
-        Vec::with_capacity(OLM_BUNDLE_CONTEXT.len() + aid.as_str().len() + 96 + 1);
+    let mut bytes = Vec::with_capacity(OLM_BUNDLE_CONTEXT.len() + aid.as_str().len() + 96 + 1);
     bytes.extend_from_slice(OLM_BUNDLE_CONTEXT);
     bytes.extend_from_slice(aid.as_str().as_bytes());
     bytes.push(b'\n');
@@ -272,7 +273,10 @@ impl OlmIdentity {
     /// First-message forward secrecy is weaker (the fallback is shared across
     /// initiators until rotated); the established ratchet's forward secrecy is the
     /// same.
-    pub fn establish_outbound_on_fallback(&self, rooted: &OlmRootedBundle) -> CoreResult<OlmChannel> {
+    pub fn establish_outbound_on_fallback(
+        &self,
+        rooted: &OlmRootedBundle,
+    ) -> CoreResult<OlmChannel> {
         self.outbound_with(rooted.identity_key, rooted.fallback_key)
     }
 
@@ -422,7 +426,11 @@ impl OlmChannel {
     /// was actually written with.
     ///
     /// [`from_versioned_pickle`]: OlmChannel::from_versioned_pickle
-    pub fn to_versioned_pickle(&self, pickle_key: &[u8; 32], generation: u64) -> CoreResult<String> {
+    pub fn to_versioned_pickle(
+        &self,
+        pickle_key: &[u8; 32],
+        generation: u64,
+    ) -> CoreResult<String> {
         let kg = generation_pickle_key(pickle_key, generation)?;
         let blob = self.session.pickle().encrypt(&kg);
         Ok(format!("{generation}:{blob}"))
@@ -530,8 +538,9 @@ mod tests {
     #[test]
     fn join_round_trips_both_directions() {
         let (alice, mut a2b, mut bob, first) = joined();
-        let (mut b2a, first_plain) =
-            bob.establish_inbound(alice.olm_identity_key(), &first).unwrap();
+        let (mut b2a, first_plain) = bob
+            .establish_inbound(alice.olm_identity_key(), &first)
+            .unwrap();
         assert_eq!(first_plain, b"hello bob");
         let reply = b2a.encrypt(b"hi alice").unwrap();
         assert_eq!(a2b.decrypt(&reply).unwrap(), b"hi alice");
@@ -550,7 +559,9 @@ mod tests {
         let rooted = bundle.verify_rooted(bob.identity.public_key()).unwrap();
         let mut a = alice.establish_outbound(&rooted).unwrap();
         let w0 = a.encrypt(b"m0").unwrap();
-        let (mut b, p0) = bob.establish_inbound(alice.olm_identity_key(), &w0).unwrap();
+        let (mut b, p0) = bob
+            .establish_inbound(alice.olm_identity_key(), &w0)
+            .unwrap();
         assert_eq!(p0, b"m0");
         let w1 = a.encrypt(b"m1").unwrap();
         let w2 = a.encrypt(b"m2").unwrap();
@@ -581,7 +592,9 @@ mod tests {
         let mut a2b = alice.establish_outbound(&rooted).unwrap();
 
         let w0 = a2b.encrypt(b"m0").unwrap();
-        let (mut b2a, _p0) = bob.establish_inbound(alice.olm_identity_key(), &w0).unwrap();
+        let (mut b2a, _p0) = bob
+            .establish_inbound(alice.olm_identity_key(), &w0)
+            .unwrap();
 
         // Attacker seizes Bob's full session state here.
         let attacker = b2a.snapshot();
@@ -627,7 +640,9 @@ mod tests {
         // First initiator consumes the OTK.
         let mut a1 = alice1.establish_outbound(&rooted).unwrap();
         let w1 = a1.encrypt(b"from alice1").unwrap();
-        let (_c1, p1) = bob.establish_inbound(alice1.olm_identity_key(), &w1).unwrap();
+        let (_c1, p1) = bob
+            .establish_inbound(alice1.olm_identity_key(), &w1)
+            .unwrap();
         assert_eq!(p1, b"from alice1");
 
         // Second initiator reuses the OTK → rejected (consumed), with a message that
@@ -639,7 +654,10 @@ mod tests {
         match bob.establish_inbound(alice2.olm_identity_key(), &w2) {
             Ok(_) => panic!("a reused (consumed) one-time key must be rejected"),
             Err(CoreError::Rejected(msg)) => {
-                assert!(msg.contains("one-time key"), "expected a one-time-key error, got: {msg}")
+                assert!(
+                    msg.contains("one-time key"),
+                    "expected a one-time-key error, got: {msg}"
+                )
             }
             Err(other) => panic!("expected Rejected, got {other:?}"),
         }
@@ -647,7 +665,9 @@ mod tests {
         // The fallback key recovers first contact for the second initiator.
         let mut a2f = alice2.establish_outbound_on_fallback(&rooted).unwrap();
         let w2f = a2f.encrypt(b"from alice2 via fallback").unwrap();
-        let (_c2, p2) = bob.establish_inbound(alice2.olm_identity_key(), &w2f).unwrap();
+        let (_c2, p2) = bob
+            .establish_inbound(alice2.olm_identity_key(), &w2f)
+            .unwrap();
         assert_eq!(p2, b"from alice2 via fallback");
     }
 
@@ -688,7 +708,10 @@ mod tests {
         match bob.establish_inbound(attacker.curve25519_key(), &v1_wire) {
             Ok(_) => panic!("a v1 (truncated-MAC) first message must be rejected"),
             Err(CoreError::Rejected(msg)) => {
-                assert!(msg.contains("version"), "expected a version/downgrade error, got: {msg}")
+                assert!(
+                    msg.contains("version"),
+                    "expected a version/downgrade error, got: {msg}"
+                )
             }
             Err(other) => panic!("expected Rejected, got {other:?}"),
         }
@@ -699,20 +722,27 @@ mod tests {
         // Flip a byte inside an established normal-message ciphertext (past the type
         // tag) and prove the full v2 MAC rejects it.
         let (alice, mut a2b, mut bob, first) = joined();
-        let (mut b2a, _p) = bob.establish_inbound(alice.olm_identity_key(), &first).unwrap();
+        let (mut b2a, _p) = bob
+            .establish_inbound(alice.olm_identity_key(), &first)
+            .unwrap();
         let reply = b2a.encrypt(b"genuine").unwrap();
         a2b.decrypt(&reply).unwrap();
         let next = b2a.encrypt(b"second genuine").unwrap();
         let mut tampered = next.clone();
         let last = tampered.len() - 1;
         tampered[last] ^= 0x01;
-        assert!(a2b.decrypt(&tampered).is_err(), "a MAC-broken ciphertext must be rejected");
+        assert!(
+            a2b.decrypt(&tampered).is_err(),
+            "a MAC-broken ciphertext must be rejected"
+        );
     }
 
     #[test]
     fn relocating_a_ciphertext_to_a_different_session_fails() {
         let (alice, _a2b, mut bob, first) = joined();
-        let (mut b2a, _p) = bob.establish_inbound(alice.olm_identity_key(), &first).unwrap();
+        let (mut b2a, _p) = bob
+            .establish_inbound(alice.olm_identity_key(), &first)
+            .unwrap();
         let from_bob = b2a.encrypt(b"for alice only").unwrap();
         let carol = OlmIdentity::new(identity(50));
         let mut dave = OlmIdentity::new(identity(51));
@@ -720,14 +750,21 @@ mod tests {
         let cr = cb.verify_rooted(dave.identity.public_key()).unwrap();
         let mut c2d = carol.establish_outbound(&cr).unwrap();
         let cw = c2d.encrypt(b"unrelated").unwrap();
-        let (mut d2c, _pp) = dave.establish_inbound(carol.olm_identity_key(), &cw).unwrap();
-        assert!(d2c.decrypt(&from_bob).is_err(), "cross-session decrypt must fail");
+        let (mut d2c, _pp) = dave
+            .establish_inbound(carol.olm_identity_key(), &cw)
+            .unwrap();
+        assert!(
+            d2c.decrypt(&from_bob).is_err(),
+            "cross-session decrypt must fail"
+        );
     }
 
     #[test]
     fn encrypted_pickle_round_trips_a_live_session() {
         let (alice, mut a2b, mut bob, first) = joined();
-        let (b2a, _p) = bob.establish_inbound(alice.olm_identity_key(), &first).unwrap();
+        let (b2a, _p) = bob
+            .establish_inbound(alice.olm_identity_key(), &first)
+            .unwrap();
         let key = [0x42u8; 32];
         let blob = b2a.to_encrypted_pickle(&key);
         let mut restored = OlmChannel::from_encrypted_pickle(&blob, &key).unwrap();
@@ -740,7 +777,9 @@ mod tests {
     fn versioned_pickle_rejects_rollback_and_tamper() {
         // R10: a generation-bound pickle lets the storage layer detect rollback.
         let (alice, mut a2b, mut bob, first) = joined();
-        let (b2a, _p) = bob.establish_inbound(alice.olm_identity_key(), &first).unwrap();
+        let (b2a, _p) = bob
+            .establish_inbound(alice.olm_identity_key(), &first)
+            .unwrap();
         let key = [0x55u8; 32];
 
         // Persist at generation 5; a fresh restore at the expected generation works.
@@ -780,10 +819,14 @@ mod tests {
         let mut a = alice.establish_outbound(&rooted).unwrap();
 
         let w0 = a.encrypt(b"m0").unwrap();
-        let (mut b, p0) = bob.establish_inbound(alice.olm_identity_key(), &w0).unwrap();
+        let (mut b, p0) = bob
+            .establish_inbound(alice.olm_identity_key(), &w0)
+            .unwrap();
         assert_eq!(p0, b"m0");
 
-        let wires: Vec<Vec<u8>> = (1..6).map(|i| a.encrypt(format!("m{i}").as_bytes()).unwrap()).collect();
+        let wires: Vec<Vec<u8>> = (1..6)
+            .map(|i| a.encrypt(format!("m{i}").as_bytes()).unwrap())
+            .collect();
         // Deliver out of order: 4, 2, 0, 3, 1 (indices into wires → m5, m3, m1, m4, m2).
         for &i in &[4usize, 2, 0, 3, 1] {
             let expect = format!("m{}", i + 1);

@@ -127,8 +127,7 @@ pub fn deliver_rooted(
 
     // (4) Seal under the rooted session, store-and-forward, drain, open. Each
     // endpoint's peer is the other side of this pairwise session.
-    let sender_endpoint =
-        Endpoint::new(sender.clone(), recipient.aid().clone(), sender_session);
+    let sender_endpoint = Endpoint::new(sender.clone(), recipient.aid().clone(), sender_session);
     let recipient_endpoint =
         Endpoint::new(recipient.clone(), sender.aid().clone(), recipient_session);
     let receipt = deliver_once(
@@ -355,8 +354,7 @@ pub fn prove_post_compromise_healing(
 
     // (1) Both ends seed a DH ratchet from the same agreed root and their own
     // X25519 ratchet keys.
-    let mut sender_dh =
-        DhRatchet::from_root(root_secret, X25519Secret::from(sender_ratchet_seed));
+    let mut sender_dh = DhRatchet::from_root(root_secret, X25519Secret::from(sender_ratchet_seed));
     let mut recipient_dh =
         DhRatchet::from_root(root_secret, X25519Secret::from(recipient_ratchet_seed));
     let mailbox_aad = mailbox.as_str().as_bytes();
@@ -370,8 +368,10 @@ pub fn prove_post_compromise_healing(
     // (3) The healing step: the sender takes a DH ratchet step (fresh ephemeral, fresh
     // DH output mixed into the root); the receiver follows it. Both land on the same
     // new root and a fresh chain.
-    let (step, mut healed_send) =
-        sender_dh.ratchet_send(&recipient_dh.public_key(), X25519Secret::from(fresh_ratchet_seed))?;
+    let (step, mut healed_send) = sender_dh.ratchet_send(
+        &recipient_dh.public_key(),
+        X25519Secret::from(fresh_ratchet_seed),
+    )?;
     let mut healed_recv = recipient_dh.ratchet_receive(&step.public_key)?;
     let healed_at_step = sender_dh.steps();
 

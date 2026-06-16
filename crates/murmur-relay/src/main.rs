@@ -30,9 +30,9 @@ use murmur_core::{
 // The deliver_*/prove_*/hold_* legs live in the hermetic proof harness (the `proofs`
 // feature, which this crate enables) — not the engine's default public surface.
 use murmur_core::proofs::{
-    deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only, hold_relay_boundary,
-    prove_addressed, prove_delegated_device, prove_post_compromise_healing, prove_relay_queue,
-    prove_revocation_corroborated, prove_witnessed_keystate,
+    deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only,
+    hold_relay_boundary, prove_addressed, prove_delegated_device, prove_post_compromise_healing,
+    prove_relay_queue, prove_revocation_corroborated, prove_witnessed_keystate,
 };
 
 /// What the relay was asked to do.
@@ -146,7 +146,8 @@ fn run_delivery() -> Result<String, String> {
     // and a session secret established out-of-band (the X3DH that derives it is
     // the encryption layer's own later work).
     let session_secret = [0x5au8; 32];
-    let mac_id = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
+    let mac_id =
+        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
     let handset_id =
         Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?;
     // Each endpoint's peer is the other side of this pairwise session.
@@ -350,7 +351,11 @@ fn run_post_compromise_healing() -> Result<String, String> {
     let root_secret = [0x5au8; 32];
     let mut relay = MailboxStore::new();
     let mailbox = MailboxId::new("mbx:handset");
-    let bodies = ["after the compromise", "still healed", "and still locked out"];
+    let bodies = [
+        "after the compromise",
+        "still healed",
+        "and still locked out",
+    ];
 
     let receipt = prove_post_compromise_healing(
         &mac,
@@ -451,7 +456,8 @@ fn run_relay_queue() -> Result<String, String> {
 /// leak in either path returns an error naming what escaped, failing the leg —
 /// and the whole self-test — closed.
 fn run_routing_only() -> Result<String, String> {
-    let mac_id = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
+    let mac_id =
+        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
     let handset_id =
         Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?;
     let mac = Endpoint::new(
@@ -507,7 +513,8 @@ fn run_routing_only() -> Result<String, String> {
 /// dropped) — alongside the mailbox the envelope routed on.
 fn run_relay_boundary() -> Result<String, String> {
     let session_secret = [0x5au8; 32];
-    let mac_id = Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
+    let mac_id =
+        Identity::from_seed([0x11u8; 32]).map_err(|e| format!("mint Mac identity: {e}"))?;
     let handset_id =
         Identity::from_seed([0x22u8; 32]).map_err(|e| format!("mint handset identity: {e}"))?;
     let mac = Endpoint::new(
