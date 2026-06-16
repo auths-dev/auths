@@ -25,10 +25,14 @@ use std::process::ExitCode;
 
 use murmur_core::{
     Aid, ContactDirectory, DelegatedDevice, Endpoint, Identity, MailboxId, MailboxStore,
-    PrekeyBundle, PrekeySecrets, Session, TrustState, deliver_forward_secret, deliver_once,
-    deliver_rooted, deliver_routing_only, hold_relay_boundary, prove_addressed,
-    prove_delegated_device, prove_post_compromise_healing, prove_relay_queue,
-    prove_revocation_corroborated, prove_vetted, prove_witnessed_keystate, verified_rotation_rekey,
+    PrekeyBundle, PrekeySecrets, Session, TrustState, prove_vetted, verified_rotation_rekey,
+};
+// The deliver_*/prove_*/hold_* legs live in the hermetic proof harness (the `proofs`
+// feature, which this crate enables) — not the engine's default public surface.
+use murmur_core::proofs::{
+    deliver_forward_secret, deliver_once, deliver_rooted, deliver_routing_only, hold_relay_boundary,
+    prove_addressed, prove_delegated_device, prove_post_compromise_healing, prove_relay_queue,
+    prove_revocation_corroborated, prove_witnessed_keystate,
 };
 
 /// What the relay was asked to do.

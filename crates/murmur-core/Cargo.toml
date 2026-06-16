@@ -62,6 +62,10 @@ default = []
 # the KERI identity root. Off by default; the in-tree ratchet remains the default
 # until parity is proven and the join is externally audited.
 olm = ["dep:vodozemac"]
+# The hermetic proof harness (`proofs` module): the deliver_*/prove_*/hold_* legs the
+# relay binary's self-test drives. Off by default so the engine's public surface is the
+# engine; `murmur-relay` enables it. (Always available under `cfg(test)`.)
+proofs = []
 
 [lints]
 workspace = true
