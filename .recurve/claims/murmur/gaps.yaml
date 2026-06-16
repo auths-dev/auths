@@ -355,8 +355,11 @@
   unlocks: The relay is dumb AND safe — tamper/replay/link all closed at the boundary.
 
 - id: ENC-6
-  title: Vetted implementation, used correctly — the wrapper passes libsignal's test vectors
-    and a differential interop, and never reuses a key
+  title: 'Homegrown Double-Ratchet, vector-tested and used carefully — NOT a vetted libsignal
+    wrapper: the engine''s own ratchet passes published known-answer vectors of the audited
+    primitives it composes + a reference-Double-Ratchet interop and never reuses a key, but it
+    carried 7 high-sev bugs (now fixed) and is GATED on an external audit (ENC-7) before any real
+    user'
   class: missing-surface
   status: closed
   severity: headline
@@ -377,12 +380,29 @@
   - 'crates/murmur-relay/src/main.rs — the serve self-test''s vetted leg prints
     libsignal-vectors-pass with the vector/interop/no-reuse counts; a vector miss, a
     reference-decrypt mismatch, or a reused key fails the leg (and the whole self-test) closed'
-  observed: 'GREEN 2026-06-15: the misuse-resistant wrapper matched 4 official known-answer test
-    vectors of the audited primitives it composes (AEAD/HKDF/HMAC/X25519), an independent reference
-    Double-Ratchet — sharing no code with the wrapper — decrypted a message our ratchet sealed (the
-    differential/interop leg), and 256 one-time prekeys + 256 per-message keys were each handed out
-    exactly once (the no-reuse property: the jar consumes-and-zeroizes, every per-message ciphertext
-    distinct). The trap (a captured run reusing a one-time prekey) still turns the probe RED.'
+  observed: 'GREEN 2026-06-15: the engine''s OWN ratchet (HOMEGROWN, not libsignal) matched 4
+    official known-answer test vectors of the audited primitives it composes (AEAD/HKDF/HMAC/X25519),
+    an independent reference Double-Ratchet — sharing no code with the engine — decrypted a message
+    our ratchet sealed (the differential/interop leg), and 256 one-time prekeys + 256 per-message
+    keys were each handed out exactly once (the no-reuse property: the jar consumes-and-zeroizes,
+    every per-message ciphertext distinct). The trap (a captured run reusing a one-time prekey)
+    still turns the probe RED.
+
+    CORRECTED 2026-06-16 (adversarial review, docs/plans/security/murmur-crypto-adversarial-review.md):
+    the prior title/observed read "vetted libsignal wrapper, used correctly". That was an OVERCLAIM
+    — the ratchet is HOMEGROWN (a hand-rolled Double Ratchet over audited primitives), tested
+    against reference vectors, NOT an embedding of vetted libsignal. The review found 7 high-sev +
+    2 medium bugs the green gate could not see; all actionable per-finding fixes have now landed in
+    murmur-core/murmur-relay (nonce-reuse containment H1/H6/L17, session zeroization H7, rekey
+    teardown H5, AEAD AAD binding H4, counter-overflow guard L13, same-key-rotation reject M9,
+    explicit HKDF salt L16, relay quotas H2, bounded dedup set M8), each with an adversarial
+    regression test (108 murmur-core tests green). H3 (out-of-order tolerance) is documented as a
+    strict-in-order contract and DEFERRED to the libsignal swap (a bounded skipped-message-key
+    cache is libsignal''s job; a half-built one is a foot-gun). This claim is GREEN for what it
+    measures (vectors + interop + no-reuse over the engine''s own code) but the homegrown ratchet
+    ships to NO real user until the EXTERNAL audit (ENC-7) — the recommended root fix is to replace
+    the homegrown ratchet with libsignal, which retires the majority of these findings at the
+    source.'
   smallest_fix: 'Done: crates/murmur-core/src/vetted.rs::prove_vetted runs three checks over the
     engine''s own code paths — official known-answer vectors for each composed primitive, an
     independent reference Double-Ratchet decrypt of a wrapper-sealed message, and a no-reuse property
@@ -609,6 +629,14 @@
     by the same people who wrote the wiring, so on this surface self-tests are a floor, not
     an audit; the KERI↔Signal join + the multi-device lifecycle must pass EXTERNAL cryptographic
     review before any non-demo user'
+  - 'docs/plans/security/murmur-crypto-adversarial-review.md (2026-06-16) — the neurotically-
+    adversarial review confirmed the crypto is REAL but HOMEGROWN (ENC-6 was downgraded from
+    "vetted libsignal" accordingly). The recommended ROOT FIX is to replace the homegrown ratchet
+    (ratchet.rs/dh_ratchet.rs/session.rs AEAD) with libsignal, which retires nonce-management,
+    out-of-order/skipped-message keys (H3, deferred here), counter handling, and zeroization at the
+    source. That swap is XL, C-backed, opaque-session (it breaks the transparent-state probes) and
+    is human-in-loop — recorded as the precondition this audit gate covers. Until that swap +
+    external audit land, the homegrown ratchet ships to no real user.'
   observed: 'RED at baseline 2026-06-15: ours=lifecycle-unspecified-no-external-audit expected=specified+externally-audited
     — the multi-device key-lifecycle spec is not written down and no external cryptographic
     audit verdict is recorded; ENC-7 is open and REVIEW-GATED (never self-closes on a green
