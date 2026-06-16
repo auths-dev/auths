@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "suite": "murmur",
+  "cycle": "nothing-but-routing-leav",
+  "gap": "ENC-4",
+  "class": "missing-surface",
+  "severity": "headline",
+  "status": "closed",
+  "attempts": 1,
+  "net_new_gaps": 0,
+  "regressions_caught": 0,
+  "wall_clock_s": 0,
+  "verdicts_before": {"broken": 0, "green": 4, "missing": 0, "red": 12, "stale": 0},
+  "verdicts_after": {"broken": 0, "green": 5, "missing": 0, "red": 11, "stale": 0},
+  "files_touched": [
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-core/src/leakcheck.rs",
+    "crates/murmur-core/src/ratchet.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml",
+    ".recurve/claims/murmur/cycles/nothing-but-routing-leav/outcome.md",
+    ".recurve/claims/murmur/cycles/nothing-but-routing-leav/plan.md"
+  ],
+  "summary": "Built a metadata-hygiene leakcheck as a real feature in murmur-core, driven through the real murmur-relay binary, to prove ENC-4: nothing but routing leaves the device in the clear. leakcheck.rs relay_visible_bytes() returns the RAW wire form the relay holds (mailbox-id bytes concatenated with the opaque ciphertext bytes) — deliberately not a JSON/length-prefixed re-encoding, which would hide a leaked byte run behind its own escaping and make the scan lie (this was the first-pass bug: serde_json renders Vec<u8> as a number array so raw AID/key runs never appeared). prove_routing_only() runs a leakcheck-style scan over those bytes for four sensitive values — the message body, the sender address, the session content key, and the forward-secret chain state — returning a RoutingOnlyReport only if every one is absent as a contiguous run; any hit returns CoreError::Rejected naming what leaked, so a caller fails closed, and the mailbox id (the legitimate routing handle) is never treated as a leak. lib.rs deliver_routing_only + RoutingHygieneReceipt seal a real message on BOTH send paths (Endpoint::seal_to and a Ratchet sending chain), store-and-forward each, capture the outer envelope off the MailboxStore after it was forwarded (so the scan runs over literally what the relay held), and prove routing-only over each — the ratchet capture scanned against the live chain state via a new crate-internal ratchet chain_state() accessor that never crosses the public API or FFI. murmur-relay serve drives a fourth leg (run_routing_only) and prints routing-only-envelope; a leak in either path fails the leg and the whole self-test closed. Soundness note carried forward: a ciphertext leakcheck is only meaningful for distinctive secrets (a 2-byte plaintext can false-positive against random AEAD output ~1/65536 per window — surfaced as a flaky test), so the self-test and tests use long distinctive bodies; high-entropy secrets (53-char AID, 32-byte keys/chain state) never collide; the probe ran 6x with no flake. Deferred as named seams, not stubs: the logs/receipts/telemetry scan surface (no logging path exists on the seal leg today, so nothing to leak through one), and ENC-5 (relay can't tamper/replay/link). Crypto untouched (plain byte-window matching over real sealed output; same ChaCha20-Poly1305/HMAC-SHA256 primitives). ENC-4 RED/open -> GREEN/closed. matrix --gate green fleet-wide (16 holding, 0 regressions/broken/stale/missing), traps 5/5 still RED (the new enc-4 trap discriminates), sculpt murmur gate OK, leakcheck clean; cargo test -p murmur-core -p murmur-relay 38 passed (+5 leakcheck tests), clippy clean no suppressions, coverage --gate 0 orphan prose gaps."
+}

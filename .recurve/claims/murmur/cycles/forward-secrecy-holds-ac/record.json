@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "suite": "murmur",
+  "cycle": "forward-secrecy-holds-ac",
+  "gap": "ENC-2",
+  "class": "missing-surface",
+  "severity": "headline",
+  "status": "closed",
+  "attempts": 1,
+  "net_new_gaps": 0,
+  "regressions_caught": 0,
+  "wall_clock_s": 0,
+  "verdicts_before": {"broken": 0, "green": 3, "missing": 0, "red": 13, "stale": 0},
+  "verdicts_after": {"broken": 0, "green": 4, "missing": 0, "red": 12, "stale": 0},
+  "files_touched": [
+    "crates/murmur-core/Cargo.toml",
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-core/src/ratchet.rs",
+    "crates/murmur-core/src/session.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml",
+    ".recurve/claims/murmur/cycles/forward-secrecy-holds-ac/outcome.md",
+    ".recurve/claims/murmur/cycles/forward-secrecy-holds-ac/plan.md"
+  ],
+  "summary": "Built the forward-secret symmetric ratchet (the Double Ratchet's sending/receiving chain) as a real feature in murmur-core, driven through the real murmur-relay binary. ratchet.rs seeds a Ratchet chain from the X3DH root Session via a domain-separated HMAC bind and, per message, runs the symmetric-key chain step over HMAC-SHA256 (message_key = HMAC(chain_key, 0x01); chain_key' = HMAC(chain_key, 0x02)), zeroizing the spent message key on drop and the prior chain key on every advance; the one-way KDF means a state holding chain_key_n cannot reproduce an earlier message key. seal/open carry the message index so the receiver derives the matching key in lockstep, and an out-of-order/replayed index, a tamper, or a wrong key all fail closed (no relay decryption oracle). lib.rs deliver_forward_secret + ForwardSecrecyReceipt seal N authenticated messages over a ratcheted session, capture the first ciphertext off the relay, advance the receiving chain past it, then replay the captured ciphertext against the advanced (compromised) state — which must fail; a later state that decrypted the earlier message is returned as an error, never a silent pass. murmur-relay serve drives the leg hermetically and prints forward-secrecy-held (captured index 0 undecryptable from the compromised state at index 4). Crypto is not reimplemented (hmac/sha2/zeroize, all already in the workspace lock). Deferred as named seams, not stubs: the asymmetric DH ratchet step for post-compromise healing, embedding libsignal behind a misuse-resistant wrapper, skipped-message-key caching for out-of-order delivery, and the external-audit precondition. ENC-2 RED/open -> GREEN/closed. matrix --gate green fleet-wide (16 holding, 0 regressions/broken/stale/missing), traps 4/4 still RED, sculpt murmur gate OK, leakcheck clean; cargo test -p murmur-core 33 passed (+6 ratchet tests), clippy clean, coverage --gate 0 orphan prose gaps."
+}

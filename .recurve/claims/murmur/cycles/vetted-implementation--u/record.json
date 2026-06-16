@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "run_id": "",
+  "cycle": "vetted-implementation--u",
+  "gap": "ENC-6",
+  "suite": "murmur",
+  "class": "missing-surface",
+  "severity": "headline",
+  "status": "closed",
+  "attempts": 1,
+  "wall_clock_s": 0,
+  "files_touched": [
+    "crates/murmur-core/src/vetted.rs",
+    "crates/murmur-core/src/session.rs",
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml"
+  ],
+  "net_new_gaps": 0,
+  "verdicts_before": { "green": 6, "red": 10, "broken": 0, "stale": 0, "missing": 0 },
+  "verdicts_after": { "green": 7, "red": 9, "broken": 0, "stale": 0, "missing": 0 },
+  "regressions_caught": 0,
+  "summary": "Closed ENC-6 (vetted implementation, used correctly). Built crates/murmur-core/src/vetted.rs: a misuse-resistant-wrapper self-test that proves three things over the engine's own code paths and fails closed on any slip. (1) Official known-answer vectors for every audited primitive the wrapper composes, recomputed through the production paths: ChaCha20-Poly1305 (RFC 8439 sec 2.8.2, driven via Session::seal_with_key), HKDF-SHA256 (RFC 5869 TC1), HMAC-SHA256 (RFC 4231 TC2), X25519 (RFC 7748 sec 5.2). (2) A differential/interop leg: an independent ReferenceRatchet written from the Signal symmetric-ratchet spec, sharing no code with the wrapper, decrypts a message our Ratchet sealed. (3) A no-reuse property: a OneTimePrekeyJar that consumes-and-zeroizes (a prekey id is never drawn twice) and a 256-message ratchet run yielding 256 distinct sealed wires. prove_vetted() runs all three; the relay serve self-test calls it as a sixth leg printing libsignal-vectors-pass. Probe GREEN, the key-reused trap still RED, all 50 unit tests pass, clippy clean (no suppressions), and recurve matrix --gate is green fleet-wide (sculpt murmur gate OK, leakcheck clean, 7/7 traps RED)."
+}

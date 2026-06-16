@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "suite": "murmur",
+  "cycle": "verified-continuation-rotation",
+  "gap": "MSG-2",
+  "class": "missing-surface",
+  "severity": "headline",
+  "status": "closed",
+  "attempts": 1,
+  "net_new_gaps": 0,
+  "regressions_caught": 0,
+  "files_touched": [
+    "crates/murmur-core/src/rotation.rs",
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-core/src/trust.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml",
+    ".recurve/claims/murmur/cycles/verified-continuation-rotation/plan.md",
+    ".recurve/claims/murmur/cycles/verified-continuation-rotation/outcome.md"
+  ],
+  "summary": "Built the headline win as a real feature: a contact's pre-committed key rotation now verifies as a continuation of the same identity instead of firing an unverifiable safety-number warning (PRD §2/§10, the verified-continuation claim). New module crates/murmur-core/src/rotation.rs models a contact's KeyState (the STABLE AID that outlives the signing key across a rotation, the current key the AID resolves to in that state, and the pre-rotation commitment to the next key). compute_next_commitment() is the one-way domain-separated SHA-256 commitment the prior state records (the same binding KERI's n field gives). verify_continuation(prior, current) runs the commitment check: the freshly revealed current key must hash to the prior state's next_commitment AND the AID must be preserved -> VerifiedContinuation; a key the prior state never pre-committed to -> NonContinuationWarning, NEVER a soft re-pin (the wedge). verified_rotation_rekey() drives the §2 binding mechanism end to end: on a verified continuation it RE-KEYS the Signal session by re-running X3DH against the freshly-replayed key-state and asserts the re-keyed root DIFFERS from the prior session's (the old ratchet is never continued across the identity change), and RE-VERIFIES the republished prekey bundle against the new current key, proving a stale-signer bundle (signed by the superseded key) is Rejected. The adversarial twin (a substituted key the prior state never pre-committed to) must yield NonContinuationWarning or the beat fails closed. trust.rs evaluate() no longer fails closed NotBuilt: it decodes two KeyState snapshots (the shape a KEL replay yields) and returns the verify_continuation verdict, so the three TrustStates are produced by a real commitment check rather than modelled-but-never-produced. murmur-relay serve gains a run_continuation self-test leg printing the verified-continuation + session-rekeyed + prekey-reverified markers the probe greps for, failing the serve closed on a re-pinned substitute, an un-re-keyed session, or an accepted stale-signer prekey. No crypto reimplemented; X25519/HKDF/SHA-256 from the existing prekey/session modules. An initial draft referenced the gap id MSG-2 in doc comments and was caught by leakcheck in the gate, then rewritten to the claim name (no loop vocabulary in product code). MSG-2 RED/open -> GREEN/closed. matrix --gate green fleet-wide (16 holding, 0 regressions/broken/stale/missing), traps 9/9 still RED (the MSG-2 substituted-key counterexample is now an active guard), sculpt murmur gate OK, leakcheck clean; cargo test -p murmur-core -p murmur-relay 68 passed (+8), clippy clean, coverage --gate 0 orphan prose gaps.",
+  "verdicts_before": {
+    "green": 8,
+    "red": 8,
+    "broken": 0,
+    "stale": 0,
+    "missing": 0
+  },
+  "verdicts_after": {
+    "green": 9,
+    "red": 7,
+    "broken": 0,
+    "stale": 0,
+    "missing": 0
+  },
+  "wall_clock_s": 0
+}

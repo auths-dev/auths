@@ -1,0 +1,655 @@
+# gaps.yaml — the live ledger: verified observations only.
+# Entries arrive here through `baseline` (the promotion ceremony); the
+# `observed` field quotes actual dated output, never a prediction.
+
+- id: MSG-1
+  title: A message is addressed to, and authenticated by, an AID — no phone number or email
+    anywhere in the flow
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - 'crates/murmur-core/src/lib.rs prove_addressed() — seals a message addressed to the recipient
+    AID''s pairwise mailbox, authenticated as the sender AID via Endpoint::seal_to/open (the
+    signature verifies under the key the AID resolves to), proves it number-free, and rejects
+    a forgery claiming an uncontrolled AID with CoreError::Rejected'
+  - 'crates/murmur-core/src/number_free.rs prove_number_free() — scans the serialized Message
+    and both envelopes and rejects any dialable number or email shape; AID strings are masked
+    (a self-certifying identifier is an address, never a number), so a did:keri hex digit-run
+    never false-trips while a number in the body still does'
+  - crates/murmur-core/src/address.rs Aid — the address is a did:keri / did:webs string; no
+    phone-number or email field exists in Message, by construction
+  observed: 'GREEN 2026-06-16: ours=aid-authenticated+number-free expected=aid-authenticated+number-free
+    — the relay self-test floor leg (murmur-relay run_addressed) seals a message addressed to
+    a recipient AID via a pairwise mailbox, authenticated as the sender AID, scans the message
+    and both envelopes free of any telco identifier, and rejects a forgery claiming an AID the
+    sender does not control; trap msg-1.trap/unauthenticated turns the probe RED. MSG-1 closed'
+  smallest_fix: 'Bind the sender: seal() must KERI-authenticate the sender AID (sign the Signal
+    identity key with the AID''s current KERI key) and address the OuterEnvelope to the recipient
+    AID''s pairwise mailbox — with NO phone number or email anywhere in Message or the envelope.
+    Adversarial (the trap): a message claiming an AID the sender does not control must be
+    REJECTED (CoreError::Rejected), never surfaced as authenticated. TRAP probes/msg-1.trap/unauthenticated/
+    — a captured flow where a message from an uncontrolled AID was accepted as authentic must
+    turn the probe RED.'
+  probe: probes/msg-1.sh
+  unlocks: The floor — a message can be addressed to and authenticated by an AID at all (no
+    number).
+
+- id: MSG-2
+  title: A contact's key rotation verifies as a pre-committed continuation of the same identity;
+    a substituted key is rejected
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - 'crates/murmur-core/src/rotation.rs — KeyState carries the stable AID + the current key +
+    the pre-rotation commitment to the next key; verify_continuation(prior, current) runs the
+    commitment check (the revealed current key must hash to the prior state''s next_commitment)
+    and yields VerifiedContinuation for a pre-committed rotation, NonContinuationWarning for a
+    substituted key — never a soft re-pin'
+  - 'crates/murmur-core/src/rotation.rs verified_rotation_rekey() drives the §2 binding mechanism:
+    on a verified continuation it re-keys the Signal session by re-running X3DH against the
+    freshly-replayed key-state (asserting the re-keyed root differs from the prior session''s —
+    the old ratchet is NOT continued across the change) and re-verifies the republished prekey
+    bundle against the new current key (a stale-signer bundle signed by the superseded key is
+    rejected)'
+  - 'crates/murmur-core/src/trust.rs evaluate() now decodes two KeyState snapshots and returns
+    the verify_continuation verdict — the three TrustStates are produced by a real commitment
+    check, not modelled-but-never-produced'
+  - 'crates/murmur-relay/src/main.rs run_continuation() self-test prints the markers the probe
+    greps for — verified-continuation + session-rekeyed + prekey-reverified — and fails the
+    serve closed if the substituted-key twin is re-pinned, the session is not re-keyed, or a
+    stale-signer prekey is accepted'
+  observed: 'GREEN at 2026-06-16: a pre-committed rotation verified as a continuation of the same
+    identity; the Signal session was re-keyed against the freshly-replayed key-state (the old
+    ratchet was not continued across the change) and the republished prekey was re-verified
+    against the fresh current key; a substituted key the prior state never pre-committed to was
+    warned (NonContinuationWarning), not re-pinned. Probe GREEN, trap probes/msg-2.trap/substituted-key/
+    still RED (substituted/stale-signer acceptance turns it RED), federated gate OK, leakcheck clean'
+  smallest_fix: 'Wire evaluate() to replay the contact''s KEL and run the pre-rotation commitment
+    check (verify the new key was pre-committed by the prior key-state): a pre-committed rotation
+    yields VerifiedContinuation; a substituted (not-pre-committed) key yields NonContinuationWarning,
+    NOT a soft re-pin. STRENGTHENED (PRD §2 binding mechanism — these are load-bearing, not
+    cosmetic): on a verified rotation the app must RE-KEY the Signal session deterministically
+    — tear down and re-establish X3DH against the freshly-replayed key-state, NEVER continue
+    the old ratchet across an identity change — AND re-verify the republished prekey bundle
+    against the freshly-replayed CURRENT key (accepting a bundle whose signer you did not re-check
+    is the dangerous bug). Adversarial (the trap): a substituted key a pinning model would wave
+    through as a mere warning must yield NonContinuationWarning here; AND the old ratchet must
+    never be continued across an identity change, and a stale-signer prekey must never be accepted.
+    TRAP probes/msg-2.trap/substituted-key/ — a captured rotation where a non-pre-committed key
+    verified as a continuation, where the ratchet was continued across an identity change, or
+    where a stale-signer prekey was accepted, must turn the probe RED.'
+  probe: probes/msg-2.sh
+  unlocks: The wedge — verifiable key continuity (pre-rotation) no pinning model can match.
+
+- id: MSG-3
+  title: Message content is forward-secret and the relay learns neither the plaintext nor
+    a phone number
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - 'crates/murmur-core/src/lib.rs prove_relay_queue() seals each body on a forward-secret
+    Ratchet, deposits it into the real MailboxStore queue, drains it, and proves over the
+    genuine queued bytes that the body, the sender AID, the session key, and the live chain
+    state are each absent (leakcheck::prove_routing_only) while the ciphertext stays opaque
+    and a peer chain still ratchet-opens it — the privacy floor over the store-and-forward
+    wire, not over a struct it trusts the shape of'
+  - 'crates/murmur-relay/src/main.rs run_relay_queue drives that leg on every serve and emits
+    the ciphertext-queued marker in number-free vocabulary (handset/desktop, never a device
+    word the relay must not utter); the relay''s diagnostics no longer read like the thing
+    they disprove'
+  observed: 'GREEN since fn (cycle message-content-is-forwa): the store-and-forward wire stands
+    up over a forward-secret envelope — prove_relay_queue queues Signal-class per-message
+    ciphertext under a pairwise mailbox id and a leakcheck over the genuine drained bytes finds
+    no plaintext, no sender AID, and no PII, while the queued ciphertext stays opaque and still
+    ratchet-opens to the original body. The adversarial twin (a queued envelope holding the
+    cleartext) is rejected by the same scan and the recorded trap stays RED.'
+  smallest_fix: 'DONE: stood up the relay wire over a forward-secret envelope — the bytes the
+    relay queues are Signal-Protocol per-message ciphertext addressed to a pairwise mailbox id,
+    with no plaintext, no sender AID, and no phone number in the relay-visible OuterEnvelope,
+    proven over the genuine drained queue. Adversarial (the trap): a compromised relay capturing
+    the queue reads neither plaintext nor any PII. TRAP probes/msg-3.trap/relay-sees-plaintext/
+    — a captured relay queue containing plaintext or a phone number turns the probe RED.'
+  probe: probes/msg-3.sh
+  unlocks: The privacy floor — the untrusted relay never had your number to begin with.
+
+- id: MSG-4
+  title: A delegated device (the Mac) sends authenticated as the same root identity; revoking
+    it stops the next message
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - 'the delegated-device chain is built — crates/murmur-core/src/delegation.rs models a
+    DelegatedDevice (its own signing key + the root AID it sends as), a DelegationAnchor (the
+    root''s signature over root-AID ‖ device-AID ‖ device-key, the iPhone anchoring the Mac''s
+    delegated inception), a DeviceRevocation (the root''s signature clawing a device back),
+    and a DelegationState (the witness-corroborated KEL-replay stand-in carrying the root key,
+    the admitted anchors, and the revocations). resolve_device_to_root() resolves a device to
+    the SAME root AID iff the device is anchored, its key matches the anchored key, and it is
+    not revoked — a forged anchor/revocation is rejected at admission against the root key'
+  - 'murmur-relay serve drives the leg hermetically (prove_delegated_device): the root anchors
+    the Mac; the Mac seals a message stored-and-forwarded through the relay; the contact opens
+    it (authenticating the Mac''s own signature) and resolves the Mac to the root AID
+    (device=Mac, identity=root); the root then revokes the Mac and its NEXT message — still
+    decrypting, still carrying a valid device signature — is rejected on resolve (clawback from
+    the chain), never surfaced. it prints "device-as-root + revoked-rejected"; the trap
+    (revoked-device-accepted) turns the probe RED'
+  observed: 'GREEN at 2026-06-16: a delegated device verified as the same root identity, and
+    its next message after revocation was rejected — clawback from the chain (murmur-relay
+    0.1.3 device-as-root + revoked-rejected). The adversarial twin — a revoked device whose
+    message still verified as the root — turns probes/msg-4.trap/revoked-device-accepted/ RED.
+    The honest stale-served window (a contact who re-resolves from a relay cache rather than
+    witness-corroborated state still has a window) is carried by RVK-1, not this claim.'
+  smallest_fix: 'Resolve a delegated device to its root: open() must verify a message from
+    a delegated device (the Mac) as the SAME root AID (device=Mac, identity=root), and after
+    the root revokes that device its next message must FAIL to verify for every contact. Adversarial
+    (the trap): a message from a revoked device must be rejected (clawback from the chain),
+    not accepted. TRAP probes/msg-4.trap/revoked-device-accepted/ — a captured flow where
+    a revoked device''s message still verified must turn the probe RED.'
+  probe: probes/msg-4.sh
+  unlocks: Multi-device on real hardware — send from the Mac as you; revoke it as a chain
+    event.
+
+- id: ENC-1
+  title: The Signal session is rooted in a KERI-authenticated prekey bundle; a wrong-key bundle
+    is rejected
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - the KERI-to-Signal join is built — crates/murmur-core/src/prekey.rs publishes a PrekeyBundle
+    carrying a recipient's DISTINCT X25519 Signal identity key + signed prekey, signed by the
+    recipient's AID current key; PrekeyBundle::verify_rooted verifies that signature against
+    the key the AID resolves to (a directory/KEL-replay stand-in), rejects a wrong-/non-pre-committed-key
+    bundle, and asserts key hygiene (no signing-to-DH reuse) — only then returning a RootedBundle
+    capability that x3dh_initiator/x3dh_responder can agree a session over (verify-then-agree
+    is enforced by the type, not by convention)
+  - 'murmur-relay serve drives the join hermetically (deliver_rooted): a verified bundle roots
+    an X3DH session and the message arrives authenticated, while a bundle signed by the wrong
+    key is rejected before any Diffie-Hellman — it prints "bundle-verified-against-aid"; the
+    trap (wrong-key-bundle) turns the probe RED'
+  observed: 'GREEN at 2026-06-15: the session was rooted only in a prekey bundle verified against
+    the recipient AID''s current key (a distinct Signal identity key — no signing-to-DH reuse);
+    a wrong-key bundle was rejected before X3DH (the MITM the safety-number warning exists to
+    catch). The relay binary self-tests publish → verify-against-AID → X3DH → seal → store-and-forward
+    → drain → verify+decrypt and reports bundle-verified-against-aid; the type system makes
+    X3DH unreachable without a prior verify_rooted. libsignal''s audited ratchet (forward secrecy,
+    post-compromise healing) and the external-audit precondition remain later work.'
+  smallest_fix: 'Before X3DH, verify the recipient''s signed prekey bundle against their AID''s
+    current key (KEL replay); reject a bundle signed by a wrong or non-pre-committed key.
+    Assert key hygiene: the AID key signs a distinct Signal identity key. Embed libsignal
+    (audited Rust) behind a misuse-resistant wrapper — do NOT reimplement the crypto. Adversarial
+    (the trap): a bundle signed by the wrong key must be rejected, closing the MITM the safety-number
+    warning exists to catch. TRAP probes/enc-1.trap/wrong-key-bundle/ — a captured session
+    rooted in a mis-signed bundle must turn the probe RED.'
+  probe: probes/enc-1.sh
+  unlocks: The join KERI-to-Signal — the session starts from keys you VERIFIED belong to that
+    AID.
+
+- id: ENC-2
+  title: Forward secrecy holds across our wiring — a captured ciphertext cannot be decrypted
+    from a later compromised state
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - the forward-secret symmetric ratchet is built — crates/murmur-core/src/ratchet.rs seeds a
+    Ratchet chain from the X3DH root (a domain-separated HMAC bind) and, per message, runs the
+    Double Ratchet's symmetric-key chain step (message_key = HMAC(chain_key, 0x01); chain_key' =
+    HMAC(chain_key, 0x02)), zeroizing the spent message key on drop and the prior chain key on
+    every advance. The chain KDF is one-way, so a state holding chain_key_n cannot reproduce any
+    earlier message key — forward secrecy is a property of the chain alone, with no DH step
+    (post-compromise healing remains its own later work)
+  - 'murmur-relay serve drives the property hermetically (deliver_forward_secret): the Mac seals
+    several authenticated messages over a ratcheted session that are store-and-forwarded through
+    the relay; the first ciphertext is captured off the relay, the phone''s receiving chain is
+    advanced past it, and the advanced (compromised) state cannot decrypt the captured early
+    ciphertext — it prints "forward-secrecy-held". The trap (late-state-decrypts-old) turns the
+    probe RED'
+  observed: 'GREEN at 2026-06-15: a ciphertext captured off the relay could not be decrypted from
+    a later, compromised receiving-chain state — its per-message key had been ratcheted past and
+    the spent key zeroized; used message keys and the prior chain key are wiped on every advance.
+    The relay binary self-tests seal-N → store-and-forward → drain → open-in-order → replay the
+    captured early ciphertext against the advanced state (rejected) and reports forward-secrecy-held;
+    murmur-core unit tests cover the chain (distinct per-message keys, the counter, replay/
+    out-of-order rejection, tamper rejection). This is the symmetric half of the Double Ratchet;
+    the DH half (post-compromise healing) and embedding libsignal''s audited ratchet behind a
+    misuse-resistant wrapper remain later work, gated on the external-audit precondition.'
+  smallest_fix: 'Integrate the Double Ratchet (via libsignal) so each message has forward
+    secrecy and used message keys are zeroized. Adversarial (the trap): snapshot the session
+    state at message N and fail to decrypt message N-k from it. TRAP probes/enc-2.trap/late-state-decrypts-old/
+    — a captured run where a later compromised state decrypted an earlier ciphertext must
+    turn the probe RED.'
+  probe: probes/enc-2.sh
+  unlocks: Per-message forward secrecy across OUR wiring, not just Signal's premise.
+
+- id: ENC-3
+  title: Post-compromise healing — after a simulated state compromise the next DH ratchet
+    step restores confidentiality
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - the DH (asymmetric) ratchet is built — crates/murmur-core/src/dh_ratchet.rs holds a
+    DhRatchet of a root key plus an X25519 ratchet key pair. A DH ratchet step (ratchet_send)
+    mints a fresh ephemeral key pair and mixes a fresh DH(new_priv, peer_pub) into the root via
+    HKDF-SHA256 (the Signal KDF_RK — old root salts the KDF, fresh DH output is the IKM),
+    advancing the root and seeding a fresh forward-secret symmetric chain; the peer follows with
+    ratchet_receive (DH(my_priv, peer_new_pub)) to land on the same new root. The old root is
+    zeroized on every advance. The new root depends on a private key minted AFTER a compromise,
+    so an attacker holding only the prior root cannot follow — that asymmetry is the healing
+  - 'murmur-relay serve drives the property hermetically (prove_post_compromise_healing): both
+    ends seed a DhRatchet from the same agreed root; the full pre-step root is snapshotted as the
+    attacker would seize it; the Mac takes a DH ratchet step and the handset follows; messages
+    sealed on the post-step chain are store-and-forwarded through the relay and arrive
+    authenticated as the Mac; finally the compromised pre-step root is run as a symmetric chain
+    against the captured post-step ciphertext and CANNOT open it — it prints
+    "post-compromise-healed". The trap (no-healing) turns the probe RED'
+  observed: 'GREEN at 2026-06-16: after a simulated full state compromise (the attacker holds the
+    live root key and can read the traffic of the moment), the next DH ratchet step mixed in a
+    fresh DH output the attacker never held; messages sealed on the post-step chain delivered
+    authenticated to the legitimate peer, who followed the step, while the compromised pre-step
+    state — which can only run the symmetric chain off the old root — could NOT decrypt them. The
+    relay binary self-tests seed-DH → snapshot-the-compromise → DH-step (send/receive) →
+    seal-N-on-the-healed-chain → store-and-forward → open-authenticated → replay the captured
+    post-step ciphertext against the compromised state (rejected) and reports
+    post-compromise-healed; murmur-core unit tests cover the DH step (both sides land on the same
+    chain, the root advances away from the compromised value, an attacker with only the old root
+    cannot derive the healed chain, the new root depends on the fresh DH output not the old root
+    alone). This composes the asymmetric half with the existing symmetric Ratchet (ENC-2) into the
+    full Double Ratchet; embedding libsignal''s audited ratchet behind a misuse-resistant wrapper
+    remains its own work, gated on the external-audit precondition (ENC-7).'
+  smallest_fix: 'Wire the DH ratchet so that after a simulated state compromise the next ratchet
+    step locks the attacker back out (post-compromise security). Adversarial (the trap): a
+    run where the attacker remains able to decrypt AFTER a ratchet step must fail. TRAP probes/enc-3.trap/no-healing/
+    — a captured run where confidentiality did not recover after the ratchet step must turn
+    the probe RED.'
+  probe: probes/enc-3.sh
+  unlocks: Post-compromise security — a transient compromise does not become permanent.
+
+- id: ENC-4
+  title: Nothing but routing leaves the device in the clear — no plaintext, key, ratchet state,
+    or sender AID in the relay-visible bytes
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - crates/murmur-core/src/leakcheck.rs prove_routing_only() — captures the raw relay-visible
+    bytes (mailbox id ‖ ciphertext) of a real sealed envelope and scans them for the message
+    body, the sender AID, the session key, and the forward-secret chain state; a contiguous
+    run of any returns CoreError::Rejected naming what leaked
+  - crates/murmur-core/src/lib.rs deliver_routing_only() — proves the property over BOTH send
+    paths (Endpoint::seal_to and Ratchet::seal), capturing each envelope off the MailboxStore
+    after it was forwarded, so what is scanned is literally what the relay held
+  - crates/murmur-relay/src/main.rs run_routing_only() — the relay's serve self-test drives
+    the capture+scan on every run and prints "routing-only-envelope"; a leak fails it closed
+  observed: 'GREEN at 2026-06-15: a captured outer envelope held only the pairwise mailbox id
+    (mbx:phone) — the message body, the sender AID, the session key, and the forward-secret
+    chain state were each scanned for in the raw relay-visible bytes and found absent, across
+    both the fixed-session and ratchet send paths. The adversarial trap (an envelope smuggling
+    the sender AID into the ciphertext field) turns the probe RED. ENC-4 is closed.'
+  smallest_fix: 'Guarantee the outer envelope / relay-visible bytes / logs / receipts carry
+    NO plaintext, message key, ratchet state, or sender AID — only the pairwise mailbox id.
+    A leakcheck-style scan AND a relay-capture assertion. Adversarial (the trap): a captured
+    envelope that leaks the sender AID or a key must fail. TRAP probes/enc-4.trap/sender-aid-in-envelope/
+    — a captured outer envelope carrying the sender AID must turn the probe RED.'
+  probe: probes/enc-4.sh
+  unlocks: Metadata hygiene — the relay sees routing only, never identity or content.
+
+- id: ENC-5
+  title: The untrusted relay cannot tamper, replay, or link — bit-flipped ciphertext fails
+    AEAD, a replay is deduped, the envelope carries only a pairwise id
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - crates/murmur-core/src/relay.rs — MailboxStore.deposit fingerprints the opaque ciphertext
+    (SHA-256, per mailbox) and drops a byte-identical replay; the fingerprint outlives a drain
+  - crates/murmur-core/src/lib.rs — hold_relay_boundary drives all three properties end-to-end
+    (tamper rejected by AEAD with a uniform error, replay deduped to one delivery, envelope scanned
+    routing-only)
+  - crates/murmur-relay/src/main.rs — the serve self-test's boundary leg prints aead-rejected +
+    replay-deduped over a real sealed envelope
+  observed: 'GREEN 2026-06-15: a bit-flipped ciphertext fails the recipient''s AEAD and is rejected
+    with the same uniform error a wrong key produces (no padding/oracle); a byte-identical capture
+    re-presented to the relay is deduped on a per-mailbox ciphertext fingerprint so the recipient
+    drains exactly one copy; the relay-visible envelope carries only the pairwise mailbox id (body,
+    sender address, and session key each scanned for and found absent). The trap (a captured run
+    where a bit-flipped ciphertext was accepted) still turns the probe RED.'
+  smallest_fix: 'Done: relay-side dedup (MailboxStore.deposit, SHA-256 over ciphertext, per mailbox,
+    surviving a drain) drops a replay; the AEAD open already rejects a bit-flip with a uniform error
+    (no oracle); the routing-only scan proves the envelope carries only a pairwise mailbox id. A
+    tampered ciphertext that opened, or a replay delivered twice, fails the leg closed. TRAP probes/enc-5.trap/tamper-accepted/
+    — a captured run where a bit-flipped ciphertext was accepted turns the probe RED.'
+  probe: probes/enc-5.sh
+  unlocks: The relay is dumb AND safe — tamper/replay/link all closed at the boundary.
+
+- id: ENC-6
+  title: 'Homegrown Double-Ratchet, vector-tested and used carefully — NOT a vetted libsignal
+    wrapper: the engine''s own ratchet passes published known-answer vectors of the audited
+    primitives it composes + a reference-Double-Ratchet interop and never reuses a key, but it
+    carried 7 high-sev bugs (now fixed) and is GATED on an external audit (ENC-7) before any real
+    user'
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - 'crates/murmur-core/src/vetted.rs — the misuse-resistant wrapper''s self-test. Each audited
+    primitive it composes is checked against a published known-answer vector (ChaCha20-Poly1305
+    RFC 8439 sec 2.8.2; HKDF-SHA256 RFC 5869 TC1; HMAC-SHA256 RFC 4231 TC2; X25519 RFC 7748 sec
+    5.2); an independent ReferenceRatchet (no shared code with the wrapper''s ratchet) decrypts a
+    wrapper-sealed message (the differential/interop leg); OneTimePrekeyJar consumes-and-zeroizes
+    so a prekey id is never drawn twice, and a 256-message ratchet run yields 256 distinct
+    per-message keys'
+  - 'crates/murmur-core/src/session.rs — Session.seal_with_key exposes the engine''s own AEAD
+    framing so the AEAD vector is driven through the path the engine encrypts with, not a bare
+    cipher'
+  - 'crates/murmur-relay/src/main.rs — the serve self-test''s vetted leg prints
+    libsignal-vectors-pass with the vector/interop/no-reuse counts; a vector miss, a
+    reference-decrypt mismatch, or a reused key fails the leg (and the whole self-test) closed'
+  observed: 'GREEN 2026-06-15: the engine''s OWN ratchet (HOMEGROWN, not libsignal) matched 4
+    official known-answer test vectors of the audited primitives it composes (AEAD/HKDF/HMAC/X25519),
+    an independent reference Double-Ratchet — sharing no code with the engine — decrypted a message
+    our ratchet sealed (the differential/interop leg), and 256 one-time prekeys + 256 per-message
+    keys were each handed out exactly once (the no-reuse property: the jar consumes-and-zeroizes,
+    every per-message ciphertext distinct). The trap (a captured run reusing a one-time prekey)
+    still turns the probe RED.
+
+    CORRECTED 2026-06-16 (adversarial review, docs/plans/security/murmur-crypto-adversarial-review.md):
+    the prior title/observed read "vetted libsignal wrapper, used correctly". That was an OVERCLAIM
+    — the ratchet is HOMEGROWN (a hand-rolled Double Ratchet over audited primitives), tested
+    against reference vectors, NOT an embedding of vetted libsignal. The review found 7 high-sev +
+    2 medium bugs the green gate could not see; all actionable per-finding fixes have now landed in
+    murmur-core/murmur-relay (nonce-reuse containment H1/H6/L17, session zeroization H7, rekey
+    teardown H5, AEAD AAD binding H4, counter-overflow guard L13, same-key-rotation reject M9,
+    explicit HKDF salt L16, relay quotas H2, bounded dedup set M8), each with an adversarial
+    regression test (108 murmur-core tests green). H3 (out-of-order tolerance) is documented as a
+    strict-in-order contract and DEFERRED to the libsignal swap (a bounded skipped-message-key
+    cache is libsignal''s job; a half-built one is a foot-gun). This claim is GREEN for what it
+    measures (vectors + interop + no-reuse over the engine''s own code) but the homegrown ratchet
+    ships to NO real user until the EXTERNAL audit (ENC-7) — the recommended root fix is to replace
+    the homegrown ratchet with libsignal, which retires the majority of these findings at the
+    source.'
+  smallest_fix: 'Done: crates/murmur-core/src/vetted.rs::prove_vetted runs three checks over the
+    engine''s own code paths — official known-answer vectors for each composed primitive, an
+    independent reference Double-Ratchet decrypt of a wrapper-sealed message, and a no-reuse property
+    over one-time prekeys (OneTimePrekeyJar) and per-message ratchet keys. The relay serve leg prints
+    libsignal-vectors-pass on success and fails closed on any vector miss / interop mismatch / key
+    reuse. TRAP probes/enc-6.trap/key-reused/ — a captured run reusing a one-time prekey turns the
+    probe RED.'
+  probe: probes/enc-6.sh
+  unlocks: Proof we use Signal CORRECTLY — battle-tested is the premise, never the proof.
+
+- id: UI-TRUST
+  title: The trust state survives the material — the verified-continuation badge and the key-change
+    warning hold WCAG AA behind glass, in every appearance, under Reduce Transparency + Motion
+  class: security-tradeoff
+  status: open
+  severity: headline
+  reads: none
+  covers:
+  - '5'
+  - '10'
+  evidence:
+  - ../murmur Murmur/Sources/Shared/TrustTokens.swift — the token layer + the contrast math
+    exist and the host gate proves AA, but the SUBJECTIVE judgement (does it read behind glass
+    on a real backdrop, under Reduce Transparency / Reduce Motion on a real device) is not,
+    and must not be, decided by a deterministic test
+  observed: 'RED at baseline 2026-06-15: ours=aa-floor-only-no-operator-review expected=aa-floor+operator-confirmed
+    — the deterministic contrast floor is met, but the SUBJECTIVE behind-glass judgement (under
+    Reduce Transparency / Reduce Motion) is review-gated and not yet operator-confirmed; UI-TRUST
+    is open (build it, screenshot it on a sim, leave it for review)'
+  smallest_fix: 'REVIEW-GATED (security-tradeoff): build the trust badge so it reads unmistakably
+    behind Liquid Glass on ANY backdrop, in light/dark/increased-contrast and under Reduce
+    Transparency + Reduce Motion; the deterministic contrast math (the app''s gate scheme)
+    proves the AA FLOOR, but the visual judgement is the operator''s to confirm by SIMULATING
+    — never self-closed by a green gate. Build it, screenshot it on a booted simulator (allowed
+    for this suite), and leave it for review. The probe asserts only the falsifiable floor
+    (the opaque trust component holds AA) plus a recorded operator verdict; a green gate is
+    necessary but NOT sufficient here. TRAP probes/ui-trust.trap/glass-dilutes-signal/ — a
+    captured token set where glass dropped the trust signal below AA must turn the probe RED.'
+  probe: probes/ui-trust.sh
+  unlocks: Translucency never weakens a security signal — the messenger's analog of a clear
+    verdict.
+
+- id: APP-1
+  title: The iOS + macOS apps build and launch from one multiplatform codebase
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: none
+  covers:
+  - '4'
+  evidence:
+  - ../murmur — the SwiftUI multiplatform skeleton (iOS + macOS schemes) exists and embeds
+    murmur-core through the UniFFI bridge; this probe asserts both app schemes BUILD clean
+    under xcodebuild and a headless launch-smoke boots the shell to a first frame with the
+    engine answering
+  observed: 'GREEN 2026-06-15: both shells build from one multiplatform codebase AND launch
+    to a first frame with the embedded engine answering. ContentView''s .task fires a shared
+    LaunchSmoke beacon (MURMUR_LAUNCH_SMOKE platform=… engine=ok core=<ver>) at the first
+    frame — an FFI round-trip to the core. MurmurTests/LaunchSmokeTests gates that round-trip
+    deterministically (no sim) in the Gate scheme; scripts/launch-smoke.sh is the real-boot
+    leg (boots an iPhone sim + the macOS app, waits for the beacon) and went GREEN on both.
+    Two build-config fixes made install/launch possible: a valid version pair (MARKETING_VERSION
+    / CURRENT_PROJECT_VERSION → CFBundleVersion) on the apps and GENERATE_INFOPLIST_FILE on
+    the embedded MurmurCore framework — without them the simulator refused to install the
+    shell, so it built but never launched.'
+  smallest_fix: 'Keep the two native SwiftUI shells building clean under xcodebuild (the iOS
+    app for the simulator, the macOS app for the host) from one multiplatform codebase, embedding
+    murmur-core through the FFI, AND ship a headless launch-smoke that boots each shell to
+    a first frame with the embedded engine answering. Adversarial (the trap): a build configuration
+    that does not produce both apps, or a launch that never reaches a first frame, must fail.
+    TRAP probes/app-1.trap/build-broken/ — a captured build log where a scheme failed or the
+    launch-smoke was absent must turn the probe RED.'
+  probe: probes/app-1.sh
+  unlocks: The two-app testbed exists at all — the thing you hold to make the thesis click.
+
+- id: DEV-1
+  title: A message sent from the Mac arrives, authenticated, on the iPhone sim
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '4'
+  - '10'
+  evidence:
+  - the end-to-end leg is built — Endpoint::seal_to signs an inner envelope (real Ed25519,
+    authenticating the sender AID) and AEAD-seals it (ChaCha20-Poly1305 under an HKDF-derived
+    content key) into an OuterEnvelope of nothing but a pairwise mailbox id and opaque bytes;
+    MailboxStore stores-and-forwards that outer envelope; Endpoint::open AEAD-decrypts, resolves
+    the sender AID to its key via the directory, and verifies the signature before surfacing
+    the body — so a message that arrived but did not authenticate is rejected, never shown
+  - 'murmur-relay serve drives the whole leg hermetically (deliver_once) and prints
+    "delivered-and-authenticated"; the trap (arrives-unauthenticated) turns the probe RED'
+  observed: 'GREEN at 2026-06-15: a message sealed on the desktop side was stored-and-forwarded
+    through the relay and arrived authenticated as the sender on the receiving side (the relay
+    binary self-tests the seal → store-and-forward → drain → verify+decrypt leg and reports
+    delivered-and-authenticated; the relay only ever touches the outer envelope, so it sees
+    neither plaintext nor a sender AID). The live two-device demo on a booted simulator remains
+    the operator''s dev confirmation; this deterministic relay self-test is the gate.'
+  smallest_fix: 'Prove the flagship beat end-to-end: a message composed on the macOS app is
+    sealed (MSG-1/ENC-1), stored-and-forwarded through the untrusted relay (MSG-3), pulled
+    on the iOS sim, and verified+decrypted (MSG-4) — arriving authenticated as the sender
+    on the iPhone. The deterministic gate drives the relay + the core seam hermetically; the
+    live two-device demo on a booted simulator is the operator''s dev confirmation (allowed
+    for this suite), never the gate. Adversarial (the trap): a delivery where the arriving
+    message failed to authenticate must fail. TRAP probes/dev-1.trap/arrives-unauthenticated/
+    — a captured delivery where the message arrived but did not authenticate must turn the
+    probe RED.'
+  probe: probes/dev-1.sh
+  unlocks: The whole pitch in one gesture — send from the Mac, watch it arrive verified on
+    the phone.
+
+- id: WIT-1
+  title: A forked KEL is rejected and a relay-suppressed / stale key-state is caught by the
+    witness threshold — the continuity story's correctness root
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '2'
+  - '3'
+  evidence:
+  - crates/murmur-core/src/kel.rs models a served witnessed key-event-log (Kel of signed KelEvents,
+    each carrying its sequence, prior key, current key, next-key pre-rotation commitment, and the
+    distinct WitnessReceipts a witness pool returned). Kel::replay derives the witnessed current
+    KeyState only when the log is fork-free AND the tip clears the AID's WitnessPolicy threshold —
+    two different events at the same sequence are Rejected (forked-kel), never resolved
+    last-writer-wins, and a tip under the distinct-witness threshold is Rejected (stale-keystate),
+    so a relay cannot suppress or fake a rotation by serving a forked or under-receipted log
+  - crates/murmur-core/src/lib.rs prove_witnessed_keystate drives all three halves hermetically —
+    the honest incept→rotate log replays to the pre-committed current key-state corroborated above
+    threshold; a fork (a second different rotation spliced in at the same sequence, even signed by
+    the legitimate prior key) is refused; the same log served with the tip's receipts withheld
+    below threshold is caught — and fails closed on a forked or stale key-state that was accepted
+  - 'murmur-relay serve drives the leg (run_witnessed_keystate) and prints "fork-rejected +
+    witness-corroborated"; the trap (probes/wit-1.trap/forked-kel, a captured replay that accepted
+    a forked/stale key-state) stays RED, so the probe discriminates'
+  observed: 'GREEN at 2026-06-16: ours=fork-rejected+witness-corroborated expected=fork-rejected+stale-caught
+    — the witnessed key-log replay (murmur-core kel.rs) refuses a forked KEL and catches a
+    relay-suppressed/stale key-state at the witness threshold; murmur-relay serve emits "fork-rejected
+    + witness-corroborated"; trap forked-kel still RED; matrix --gate green fleet-wide (federated
+    sculpt gate + leakcheck clean)'
+  smallest_fix: 'Make the replay refuse a FORKED KEL (two different rotations claiming the same
+    sequence number must be rejected, never silently last-writer-wins) and make a relay-suppressed
+    / stale key-state FAIL the witness-threshold check (a key-state under the receipt threshold,
+    or staler than a corroborated witness set, is not accepted as current). This is the single
+    most important correctness dependency: the verified-continuation badge is only trustworthy
+    if the key-state it replays is the one true witnessed log. Adversarial (the trap): a forked
+    KEL accepted, or a stale/relay-suppressed key-state passed without witness corroboration,
+    must fail. TRAP probes/wit-1.trap/forked-kel/ — a captured replay where a forked or stale
+    key-state was accepted must turn the probe RED.'
+  probe: probes/wit-1.sh
+  unlocks: The correctness root of the whole continuity story — the badge means something only
+    because the log under it is the one true witnessed log.
+
+- id: RVK-1
+  title: Revocation resolves from witness-corroborated key-state, not a relay's cache; the honest
+    stale-served window is acknowledged
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '6'
+  - '10'
+  evidence:
+  - crates/murmur-core/src/corroboration.rs pairs a resolved delegation set with its Provenance
+    (WitnessCorroborated{confirmed,threshold} | RelayCache{revocations_behind_witnesses}); a
+    relay cache is never corroborated even when current — provenance, not contents, decides.
+    CorroboratedState::resolve_revocation rejects a revoked device from witness-corroborated
+    state (RevocationResolution::RevokedFromCorroboratedState) and DISCLOSES the stale-served
+    window for a relay cache (StaleWindowDisclosed{cache_shows_revoked, revocations_behind_witnesses}),
+    never laundering a cache into a corroborated clawback
+  - crates/murmur-core/src/lib.rs prove_revocation_corroborated drives both halves hermetically —
+    the root anchors then revokes a delegated device; a contact re-resolving the witness-corroborated
+    set rejects it, and a contact served the pre-revocation snapshot (the stale cache) is told the
+    window — and fails closed on a revoked device accepted from corroborated state, a relay cache
+    trusted over the witnesses, or a hidden stale window
+  - 'murmur-relay serve drives the leg (run_revocation_corroborated) and prints
+    "revoked-from-corroborated-state + stale-window-disclosed"; the trap (revoked-accepted-from-corroborated)
+    turns the probe RED'
+  - 'PRD §6.5 — revocation is prevention-vs-detection, not an instant global kill: only as fast
+    as each contact re-resolves, and only safe if they get witness-corroborated state; an offline
+    or stale-served contact still has a window that must be disclosed, not hidden'
+  observed: 'GREEN at 2026-06-16: a revoked device was rejected from witness-corroborated key-state
+    (not a relay''s cache) and the honest stale-served window was acknowledged — the relay binary
+    self-tests the leg (root anchors a delegated device, revokes it, a contact re-resolving the
+    witness-corroborated delegation set rejects it, and a contact served the relay''s stale cache
+    is told how far that cache lags the witnesses) and reports revoked-from-corroborated-state +
+    stale-window-disclosed. A relay''s cache is never corroborated even when current: provenance,
+    not contents, decides, so a stale cache can never be laundered into a corroborated clawback.
+    Clawback as detection, witness-dependent, the window disclosed rather than oversold as an
+    instant kill.'
+  smallest_fix: 'Resolve revocation from WITNESS-CORROBORATED key-state, never a relay''s cache:
+    after the root revokes a delegated device, a contact re-resolving corroborated state must
+    REJECT the device''s next message — and the honest stale-served window (an offline contact,
+    or one served a relay''s stale cache) must be ACKNOWLEDGED in the verdict, never silently
+    waved through as safe. This strengthens MSG-4''s clawback (PRD §6.5): clawback is detection,
+    witness-dependent, not an instant global kill. Adversarial (the trap): a revoked device
+    accepted from corroborated state, a relay cache trusted over the witnesses, or a hidden
+    stale window, must fail. TRAP probes/rvk-1.trap/revoked-from-corroborated/ — a captured
+    flow where a revoked device verified from corroborated state, or the stale window was hidden,
+    must turn the probe RED.'
+  probe: probes/rvk-1.sh
+  unlocks: Revocation as honest detection — clawback from corroborated state, with the stale-served
+    window disclosed rather than oversold as an instant kill.
+
+- id: ENC-7
+  title: The multi-device key lifecycle is specified and gated on the external cryptographic
+    audit before any real user
+  class: security-tradeoff
+  status: open
+  severity: headline
+  reads: none
+  covers:
+  - '10'
+  evidence:
+  - the multi-device key lifecycle — N delegated devices, each with its own Signal identity
+    key and prekey bundles, continuity that must hold across rotation AND delegation simultaneously
+    — is the combinatorial state machine where the subtle break hides (PRD §10 release gate);
+    no spec artifact and no external-audit verdict exist yet
+  - 'PRD §10 — a green ENC-1..6 gate is NECESSARY but NOT SUFFICIENT here: ENC-1..6 are written
+    by the same people who wrote the wiring, so on this surface self-tests are a floor, not
+    an audit; the KERI↔Signal join + the multi-device lifecycle must pass EXTERNAL cryptographic
+    review before any non-demo user'
+  - 'docs/plans/security/murmur-crypto-adversarial-review.md (2026-06-16) — the neurotically-
+    adversarial review confirmed the crypto is REAL but HOMEGROWN (ENC-6 was downgraded from
+    "vetted libsignal" accordingly). The recommended ROOT FIX is to replace the homegrown ratchet
+    (ratchet.rs/dh_ratchet.rs/session.rs AEAD) with libsignal, which retires nonce-management,
+    out-of-order/skipped-message keys (H3, deferred here), counter handling, and zeroization at the
+    source. That swap is XL, C-backed, opaque-session (it breaks the transparent-state probes) and
+    is human-in-loop — recorded as the precondition this audit gate covers. Until that swap +
+    external audit land, the homegrown ratchet ships to no real user.'
+  observed: 'RED at baseline 2026-06-15: ours=lifecycle-unspecified-no-external-audit expected=specified+externally-audited
+    — the multi-device key-lifecycle spec is not written down and no external cryptographic
+    audit verdict is recorded; ENC-7 is open and REVIEW-GATED (never self-closes on a green
+    gate)'
+  smallest_fix: 'REVIEW-GATED (security-tradeoff — NEVER auto-closed): SPECIFY the multi-device
+    key lifecycle (N devices × Signal identity keys × prekey bundles; continuity across rotation
+    AND delegation simultaneously) at cycles/enc-7/key-lifecycle.md — the falsifiable floor —
+    AND gate promotion on an EXTERNAL cryptographic audit recorded at cycles/enc-7/external-audit.md
+    (PRD §10 release gate). A green matrix gate is necessary but NOT sufficient; this promotes
+    only through REVIEW.md, never through an unattended cycle. Adversarial (the trap): the lifecycle
+    closed on self-tests alone, or a rotation-during-delegation continuity break slipping through,
+    must fail. TRAP probes/enc-7.trap/closed-without-audit/ — a captured lifecycle closed without
+    an external audit must turn the probe RED.'
+  probe: probes/enc-7.sh
+  unlocks: The PRD §10 release gate as a real, falsifiable claim — the join that decides whether
+    a real user can be told this is private waits for an external auditor, not for us.

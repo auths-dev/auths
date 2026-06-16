@@ -1,0 +1,40 @@
+[package]
+name = "murmur-ffi"
+# Explicit version: this crate declares its own empty `[workspace]` so it stays
+# OUT of the main workspace (UniFFI / cross-target resolver concerns — the same
+# reason auths-mobile-ffi does), so `version.workspace = true` cannot resolve.
+# Keep in sync with the main workspace version at `../../Cargo.toml`.
+version = "0.1.3"
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "UniFFI bindings for murmur-core — the Swift↔engine glue the native iOS + macOS Murmur shells embed (mirrors auths-mobile-ffi)."
+license = "Apache-2.0"
+repository = "https://github.com/auths-dev/auths"
+homepage = "https://github.com/auths-dev/auths"
+
+# Exclude from the main workspace — built separately with UniFFI, like
+# auths-mobile-ffi. The cross-target/staticlib build does not belong in the
+# platform workspace's release build.
+[workspace]
+
+[lib]
+name = "murmur_ffi"
+# staticlib for the apps to link (the .a slices that make up the xcframework);
+# lib so `uniffi-bindgen generate --library` can read the FFI metadata. No
+# cdylib — the iOS device target cannot link a Rust cdylib against the host SDK,
+# and the apps embed the static archive, not a dylib.
+crate-type = ["lib", "staticlib"]
+
+[dependencies]
+uniffi = { version = "0.31.0", features = ["cli"] }
+# murmur-core is the engine this FFI exposes. Pulled by path so the FFI is a
+# thin projection of the same skeleton the relay binary and the probes drive.
+murmur-core = { path = "../murmur-core", version = "0.1.3" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"

@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "suite": "murmur",
+  "gap": "MSG-4",
+  "cycle": "a-delegated-device--the",
+  "class": "missing-surface",
+  "severity": "headline",
+  "status": "closed",
+  "attempts": 1,
+  "net_new_gaps": 0,
+  "regressions_caught": 0,
+  "wall_clock_s": 0,
+  "verdicts_before": {"broken": 0, "green": 10, "missing": 0, "red": 6, "stale": 0},
+  "verdicts_after": {"broken": 0, "green": 11, "missing": 0, "red": 5, "stale": 0},
+  "files_touched": [
+    "crates/murmur-core/src/delegation.rs",
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml",
+    ".recurve/claims/murmur/cycles/a-delegated-device--the/plan.md",
+    ".recurve/claims/murmur/cycles/a-delegated-device--the/outcome.md"
+  ],
+  "summary": "Built multi-device on real hardware as a real feature (PRD §4/§6.2/§6.5/§10, the multi-device claim): a delegated device (the Mac) sends a message that authenticates as the SAME root identity the iPhone holds, and revoking that device stops its next message — clawback from the chain. New module crates/murmur-core/src/delegation.rs models the delegated-device chain as a real signature-checked authorization, not a flag: DelegatedDevice (its own signing key + the root AID it sends as); DelegationAnchor::{issue,verify} (the ROOT's signature over root-AID ‖ device-AID ‖ device-key — the iPhone anchoring the Mac's delegated inception); DeviceRevocation::{issue,verify} (the root's signature clawing a device back, a relay cannot fabricate or suppress it without the root key); DelegationState (the witness-corroborated KEL-replay stand-in: the root key, admitted anchors, revocations). resolve_device_to_root() resolves a device to the root AID iff it is anchored, its key matches the anchored key, and it is not revoked. prove_delegated_device() in lib.rs drives the leg end-to-end through the relay's MailboxStore queue: root anchors the Mac; the Mac seals a message stored-and-forwarded through the relay; the contact opens it (authenticating the Mac's own signature) and resolves the Mac to the root (device=Mac, identity=root); the root revokes the Mac; the Mac's NEXT message — still decrypting, still validly device-signed — is rejected on resolve, never surfaced. murmur-relay serve gains a run_delegated_device self-test leg (now 10 legs) printing device-as-root + revoked-rejected. 8 new tests (forged-anchor, forged-revocation, swapped-key, unanchored, and revoked all rejected); cargo test 79 passed; clippy clean with no suppressions (arg count kept at 7 by folding the two bodies into [&str;2]). The honest stale-served window (a contact re-resolving from a relay cache rather than witness-corroborated state still has a window, PRD §6.5) is carried by RVK-1, noted in the ledger evidence. matrix --gate: GATE OK, sculpt murmur gate OK, leakcheck clean, 0 regressions/broken/stale/missing, traps 11/11 still RED; MSG-4 open→closed."
+}

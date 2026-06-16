@@ -33,6 +33,8 @@ members = [
   "crates/auths-witness-node",
   "crates/auths-checkpoint-cosigner",
   "crates/auths-monitor",
+  "crates/murmur-core",
+  "crates/murmur-relay",
 ]
 
 [workspace.package]

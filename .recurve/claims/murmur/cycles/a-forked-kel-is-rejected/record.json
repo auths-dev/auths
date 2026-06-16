@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "project": "murmur",
+  "suite": "murmur",
+  "cycle": "a-forked-kel-is-rejected",
+  "gap": "WIT-1",
+  "class": "missing-surface",
+  "severity": "headline",
+  "status": "closed",
+  "attempts": 1,
+  "net_new_gaps": 0,
+  "regressions_caught": 0,
+  "wall_clock_s": 0,
+  "verdicts_before": {"broken": 0, "green": 12, "missing": 0, "red": 4, "stale": 0},
+  "verdicts_after": {"broken": 0, "green": 13, "missing": 0, "red": 3, "stale": 0},
+  "files_touched": [
+    "crates/murmur-core/src/kel.rs",
+    "crates/murmur-core/src/lib.rs",
+    "crates/murmur-relay/src/main.rs",
+    ".recurve/claims/murmur/gaps.yaml",
+    ".recurve/claims/murmur/cycles/a-forked-kel-is-rejected/plan.md",
+    ".recurve/claims/murmur/cycles/a-forked-kel-is-rejected/outcome.md"
+  ],
+  "summary": "Built the witnessed key-log replay as a real feature — the correctness root the whole continuity story rests on (PRD §2 binding mechanism, §3.1 launch-centralization asterisk): the verified-continuation badge means something only because the key-state it replays is the one true witnessed log. New crates/murmur-core/src/kel.rs models a served witnessed key-event-log: a Kel of signed KelEvents, each carrying its sequence number, the prior key that signed it, the current key it installs, the next-key pre-rotation commitment, and the distinct WitnessReceipts a witness pool returned. Kel::replay derives the witnessed current KeyState ONLY when the log is fork-free AND the tip clears the AID's WitnessPolicy threshold: two different events at the same sequence are Rejected('forked-kel') and never resolved last-writer-wins (a byte-identical duplicate is not a fork but is still caught as a repeated sequence); each rotation must be signed by the prior key the preceding event installed and reveal a key it pre-committed to; and a tip under the distinct-witness threshold (a relay-suppressed / under-receipted / stale snapshot) is Rejected('stale-keystate'), with duplicate receipts from one witness unable to inflate the count and a zero threshold never accepting. lib.rs prove_witnessed_keystate drives all three halves hermetically: the honest incept->rotate log replays to the pre-committed current key-state corroborated above threshold; a fork (a second different rotation spliced in at the same sequence, even signed by the legitimate prior key so signature alone would not catch it) is refused; and the same log served with the tip's receipts withheld below threshold is caught — failing closed on a forked or stale key-state that was accepted. murmur-relay serve gains a 12th leg (run_witnessed_keystate) emitting the fork-rejected + witness-corroborated markers the probe greps for. No crypto reimplemented; built on the existing Identity signing, Aid derivation, and compute_next_commitment primitives, and produces the same KeyState shape verify_continuation consumes — now provably over the one true witnessed log. No loop vocabulary in product code (claims referenced by description / PRD section, never gap-ID; leakcheck clean over both trees). Probe RED->GREEN; matrix --gate GREEN fleet-wide (0 regressions/broken/stale/missing, 13/13 traps RED, leakcheck clean, app sculpt gate OK); 92 murmur-core unit tests pass (7 new in kel); clippy clean, no suppressions. Committed unsigned per-repo; the operator's in-flight unstaged edits in the same crate were left untouched."
+}
