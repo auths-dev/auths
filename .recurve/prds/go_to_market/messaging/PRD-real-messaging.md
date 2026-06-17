@@ -15,6 +15,26 @@
 
 ---
 
+## Build status — 2026-06-17 (what's done, what's next)
+
+| Epic | What landed | Verified | Commit |
+|---|---|---|---|
+| **C** Relay HTTP | `murmur-relay serve-http`: POST /deposit, GET /drain/{mailbox}, PUT/GET /prekey/{aid} | `cargo test -p murmur-relay` real-socket round-trip ✅ + probe **NET-1** GREEN | `1692cce1` |
+| **B** Session FFI | `murmur-core::contact` (establish_initiator/responder + ContactSession, **digest-bound MITM defense**, PRF unlinkable mailboxes); FFI `MurmurSession` + `mint`/`publish` | 5 contact tests + 2 FFI tests ✅ (round-trip, swapped-bundle rejected, forged-AID rejected, unlinkable mailbox) | `b2a7994a` |
+| **A** Real identity | onboarding mints a real Ed25519 AID, Keychain-persisted (`IdentityStore`); profile/share-code show the real AID | Murmur-macOS + Murmur-iOS BUILD SUCCEEDED ✅ | `5f61198`(murmur) |
+| **D** App wiring | `RelayClient`, `MessagingService` (first-contact inbox rendezvous + outbox), runtime poll loop, `ThreadView.send` seals→deposits with honest status, relay URL setting | macOS + iOS build ✅ | `5f61198`(murmur) |
+| **H** Gate | **NET-1** ledgered (closed); engine claims rebuild murmur-core(+contact)/murmur-relay(+http) | NET-1 GREEN, trap RED ✅ | `283cbc40` |
+| Plan + reviews | this PRD + UX (§8) + security (§9) folded in | — | `3e22c3f5` |
+
+**Next (not done tonight, in priority order):**
+1. **Session persistence** (Epic B5) — sessions are process-lifetime; add versioned anti-rollback pickle (sec #3) so a relaunch doesn't re-establish. Until then, after an app restart the first message re-bootstraps.
+2. **D6 inbound → Request UI** — `deliverIncoming` currently starts a conversation directly (TOFU); route an unknown sender to the **Requests** shelf (the opt-in firewall) per §8 P0-1.
+3. **Status/notifications** (Epic I) — delivery-ack control message; `BGAppRefreshTask`; ordering by sealed sequence.
+4. **Decorative-control audit** (Epic G3) — calls/attachments/typing toggles → honest-absent or removed; recovery honesty (Epic A + §8 P0-5).
+5. **Two-device manual test recipe** is in the morning report / below.
+
+**Run a real iPhone↔Mac message (manual):** on the Mac, `cargo run --release -p murmur-relay -- serve-http 0.0.0.0:8787`; in both apps set Settings ▸ Relays ▸ "Message relay" to `http://<mac-LAN-IP>:8787` and tap Connect; share a contact code one way (scan/paste), then send. (First contact needs the recipient to have opened the app once so its bundle is published.)
+
 ## 0. Reality — what is and is NOT built (READ THIS FIRST)
 
 An earlier status report called the engine "a skeleton, weeks of crypto." **That
