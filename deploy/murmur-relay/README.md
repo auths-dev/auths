@@ -14,17 +14,21 @@ auto-connect to — so users just QR each other and message, no terminal, no set
 
 ## What it does today
 
-- Serves `GET /` (health → `murmur-relay <version>`), `POST /deposit`,
+- Serves `GET /` (health → `murmur-relay <version>`; pings the backend), `POST /deposit`,
   `GET /drain/{mailbox}`, and `PUT`/`GET /prekey/{aid}` (the first-contact directory).
-- Stores everything **in memory** (`MailboxStore` + a prekey map). There is **no disk
-  state and no volume** — a restart drops whatever is queued. That is acceptable by
-  design: store-and-forward is transient and the app's outbox re-sends. (A durable
-  backing store is future work.)
-- Caps memory: 1024 msgs / 16 MiB per mailbox, **256 MiB global** queue, 4096-entry
-  dedup window. The 512 MB VM in `fly.toml` sits comfortably above that.
+- **Pluggable backend.** With no `MURMUR_RELAY_REDIS_URL` it runs in-memory (dev/demo — a
+  restart drops the queue). With a Redis URL it is **durable**: a relay restart loses
+  nothing, and many stateless relay machines share one Redis. **Use Redis for anything
+  real** — see [Durable backlog](#durable-backlog-redis--use-this-for-real-traffic) below.
+  Design + benchmarks: [`docs/PRD-durable-relay.md`](docs/PRD-durable-relay.md),
+  [`docs/perf-results.md`](docs/perf-results.md).
+- Caps: 1024 msgs / 16 MiB per mailbox; messages expire on a TTL (default 30 d) so the
+  relay is a buffer, not an archive. The global bound is Redis `maxmemory` (set on the
+  instance).
 
-It does **not** terminate TLS itself (the Fly edge does), persist, federate, or run any
-crypto — it cannot decrypt what it carries.
+It does **not** terminate TLS itself (the Fly edge does), federate, or run any crypto — it
+cannot decrypt what it carries. Durable or not, it only ever holds an opaque mailbox id
+and opaque ciphertext.
 
 ## Posture
 
@@ -38,6 +42,47 @@ crypto — it cannot decrypt what it carries.
   timing, source IPs, and which mailbox/AID is fetched. Mailbox ids are already a PRF of
   the pairwise session secret (unlinkable to your AID). Reducing the rest (sealed-sender
   style, fetch privacy) is tracked separately.
+
+## Durable backlog (Redis) — use this for real traffic
+
+In-memory is fine for a demo, but a relay restart (every deploy, host move, crash) drops
+every undelivered message. Point the relay at Redis and a restart **loses nothing**; the
+relay tier also becomes stateless, so you can run several machines behind one Redis.
+
+Provision a managed Redis next to the app (Upstash via Fly), wire it as a secret, and set
+the memory cap:
+
+```bash
+# A managed Redis (Upstash) in your region; prints a rediss:// URL with auth + TLS.
+fly redis create                      # or: fly ext upstash-redis create
+
+# Tell the relay to use it (a secret, not in fly.toml).
+fly secrets set --app <your-app> \
+  MURMUR_RELAY_REDIS_URL='rediss://default:<password>@<host>:<port>'
+
+# The global backlog bound is Redis maxmemory + noeviction (set on the Upstash plan /
+# instance). Per-mailbox caps + message TTL are enforced by the relay.
+```
+
+Redeploy and the boot log reads `… backend: redis (durable)`. If the Redis URL is set but
+unreachable at boot, the relay **crash-loops** (fail-fast) rather than serving errors —
+Fly will surface it.
+
+**Tuning** (all optional env; secrets/`fly secrets set`):
+
+| Env | Default | Meaning |
+|---|---|---|
+| `MURMUR_RELAY_REDIS_URL` | *(unset → in-memory)* | `redis://` / `rediss://` (TLS). Set → durable. |
+| `MURMUR_RELAY_MSG_TTL_SECS` | `2592000` (30 d) | undrained-message expiry (sliding per mailbox) |
+| `MURMUR_RELAY_DEDUP_TTL_SECS` | `86400` (1 d) | replay-recognition horizon |
+| `MURMUR_RELAY_PREKEY_TTL_SECS` | `2592000` (30 d) | published-bundle expiry |
+| `MURMUR_RELAY_MAX_MSGS_PER_MAILBOX` | `1024` | per-mailbox message cap |
+| `MURMUR_RELAY_MAX_BYTES_PER_MAILBOX` | `16777216` | per-mailbox byte cap |
+
+**Sizing:** budget ~**800 B of Redis per undrained 256 B message** (the at-rest encoding is
+a known ~3× overhead — see `docs/perf-results.md`); a 512 MB–1 GB Redis holds a large
+offline backlog. One relay + one small Redis does **34k deposit/drain round-trips/s at p99
+1.7 ms** locally — scale relay machines (`fly scale count N`) and Redis memory independently.
 
 ## Prerequisites
 
@@ -96,14 +141,13 @@ fly apps destroy your-murmur-relay   # tear down
 
 ## Cost / scaling
 
-- Default here: **one always-on** `shared-cpu-1x` / 512 MB machine (a few $/mo) so the
-  in-memory queue is never dropped mid-conversation.
-- Cheaper, idle-friendly: set `auto_stop_machines = "suspend"` and
-  `min_machines_running = 0` in `fly.toml` — Fly wakes the machine on the next request,
-  at the cost of dropping anything queued while it was suspended.
-- Run more than one region by adding machines (`fly scale count 2 --region lhr`); note
-  each machine has its **own** in-memory queue until a shared backing store lands, so
-  keep it single-machine until then.
+- Default `fly.toml`: **one always-on** `shared-cpu-1x` / 512 MB machine (a few $/mo).
+- **With Redis, the relay tier is stateless** — `fly scale count N` (or more regions) all
+  share one Redis, so you scale relay machines and Redis memory independently. Without
+  Redis, keep it to one machine (each has its own in-memory queue).
+- Cheaper, idle-friendly: `auto_stop_machines = "suspend"` + `min_machines_running = 0`.
+  Safe **with Redis** (state is in Redis, not the machine); with the in-memory backend it
+  drops anything queued while suspended.
 
 ## Next (not in this kit)
 
@@ -112,4 +156,6 @@ fly apps destroy your-murmur-relay   # tear down
 - **Relay-in-the-QR (federation):** the contact code carries each user's home relay, so
   two people on different relays still reach each other — the step that keeps a default
   relay from hardening into centralization.
-- **Durability + a lean no-`proofs` build + env-var config** for the relay crate.
+- **Endpoint delivery-acks** (the hybrid's second half — app-side; see the PRD §8) and a
+  more compact at-rest encoding (base64/binary instead of JSON number arrays — ~3× memory
+  win, `docs/perf-results.md`).

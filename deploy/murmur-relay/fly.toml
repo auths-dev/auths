@@ -10,6 +10,12 @@
 # Fly's edge terminates TLS and proxies plaintext to internal_port, so the public
 # endpoint is HTTPS (https://<app>.fly.dev) — point the Murmur app there; no ATS
 # exception needed. The relay sees only an opaque mailbox id + ciphertext.
+#
+# DURABILITY (recommended for real traffic): set a Redis URL as a secret so a restart
+# loses nothing and the relay tier is stateless (see README "Durable backlog"):
+#   fly redis create
+#   fly secrets set --app <app> MURMUR_RELAY_REDIS_URL='rediss://default:<pw>@<host>:<port>'
+# Without it the relay is in-memory (a restart drops the queue) — fine for a demo only.
 
 app = "murmur-relay"            # globally unique on Fly — rename if taken
 primary_region = "iad"          # set to your nearest region (fly platform regions)

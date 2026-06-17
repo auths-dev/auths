@@ -36,6 +36,7 @@ use murmur_core::proofs::{
 };
 
 mod http;
+mod store;
 
 /// What the relay was asked to do.
 enum Mode {
