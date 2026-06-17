@@ -1,58 +1,104 @@
 # murmur-relay — performance & volume results
 
-Real numbers from the `loadtest` harness + the durability suite. Re-run anytime (below);
-these are the evidence behind the PRD's targets (`PRD-durable-relay.md` §11).
+Real numbers from the `loadtest` harness + the durability suite, on the **current** build
+(binary wire + raw-ciphertext at-rest + bounded sorted-set dedup + the v2 sealed inner
+frame). Re-run anytime (last section); these are the evidence behind the PRD's targets
+(`PRD-durable-relay.md` §11).
 
-## JSON → binary wire/at-rest (the encoding migration)
+Last re-run: all four scenarios + the volume/memory measurement below were re-measured after
+the inner-frame v2 change. Throughput is run-to-run ±5%.
 
-The envelope was JSON (`ciphertext` as a number array ≈ 3–4 chars/byte); it is now a compact
-binary frame on the wire and raw ciphertext at rest. Same harness, same host, Redis backend:
+## Current results
+
+### Throughput & latency (the `loadtest` example)
+
+`roundtrip` = deposit **and** drain each op (Redis sees ~2× these ops/s); `deposit` = deposit
+only (builds a backlog). 64 concurrent HTTP clients. **0 errors** in every run.
+
+| Scenario | Backend | Payload | Throughput (deposits/s) | p50 | p99 | p999 | max |
+|---|---|---|---:|---:|---:|---:|---:|
+| A roundtrip | **Redis** | 256 B | **39,816** | 0.76 ms | 1.54 ms | 2.29 ms | 11.1 ms |
+| B roundtrip | in-memory | 256 B | 57,561 | 0.53 ms | 1.25 ms | 2.23 ms | 30.6 ms |
+| C roundtrip | **Redis** | 16 KiB | **10,781** | 2.93 ms | 4.21 ms | 13.4 ms | 22.4 ms |
+| D deposit-only | **Redis** | 256 B | **77,242** | 0.77 ms | 1.60 ms | 2.13 ms | 11.1 ms |
+
+**Reading it:**
+- **Durability is cheap.** Redis round-trips at ~69% of the in-memory backend (39.8k vs
+  57.6k/s) at p99 1.54 ms. Persisting every message costs ~30% of peak throughput and
+  ~0.3 ms of p99 — a good trade for "a restart loses nothing."
+- **Targets blown past.** PRD target was ≥5,000 round-trips/s at p99 < 15 ms; actual is
+  **39.8k/s at p99 1.5 ms** (256 B), and even 16 KiB messages sustain **10.8k/s at p99
+  4.2 ms** (~170 MB/s of ciphertext through Redis + HTTP).
+- **Deposit-only is faster** (77k/s) — `RPUSH` + counter + one `ZADD`/`ZSCORE`, no drain.
+
+### Volume / memory (scenario D backlog)
+
+A deposit-only run built and held a large undrained backlog:
+
+- **618,042** messages queued across **20,000** mailboxes (no drains).
+- **29,229** Redis keys total — ~1.5 per mailbox (a queue list + a byte counter + one dedup
+  sorted-set; many mailboxes share the small key set). **Not** per-message keys.
+- **182.3 MiB** `used_memory` → **~309 B per queued 256 B message**.
+
+That 309 B is a fixed **random 256 B** payload (the synthetic worst case for the overhead
+*ratio*) — so ~256 B ciphertext + ~53 B of Redis structure (quicklist node + the amortized
+dedup-zset entry + counter). A **real** message is smaller: its sealed ciphertext is ~150 B
+for a short text (§"inner frame", measured in murmur-core), so it sits at ~150 + ~53 ≈
+**~200 B at rest**.
+
+**Global bound:** with `maxmemory`/`noeviction` set, a backlog that would exceed it makes
+`RPUSH` return OOM and the relay answers `507` (fail-closed) — the deposit Lua mutates the
+queue first so an OOM leaves no partial state.
+
+## How we got here (the three optimizations)
+
+Each row is a real before/after on the same harness + host.
+
+### 1. JSON → binary (wire + at-rest encoding)
+
+`ciphertext` used to serialize as a JSON number array (`[255,12,…]`, ~3–4 chars/byte); now a
+compact binary frame on the wire and raw ciphertext at rest.
 
 | Scenario | JSON (before) | Binary (after) | Δ |
 |---|---|---|---|
-| roundtrip 256 B — throughput | 34,356/s | **40,821/s** | +19% |
-| roundtrip 256 B — p99 | 1.70 ms | **1.48 ms** | −13% |
-| **roundtrip 16 KiB — throughput** | 5,287/s | **10,867/s** | **≈2×** |
-| **roundtrip 16 KiB — p99** | 7.01 ms | **2.00 ms** | **≈3.5× better** |
-| deposit-volume 256 B — throughput | 71,377/s | **77,749/s** | +9% |
-| **bytes / queued 256 B message** | **792 B** | **462 B** | **−42%** |
+| roundtrip 256 B — throughput | 34,356/s | 40,821/s | +19% |
+| **roundtrip 16 KiB — throughput** | 5,287/s | 10,867/s | **≈2×** |
+| **roundtrip 16 KiB — p99** | 7.01 ms | ~2–4 ms | **≈2–3× better** |
+| bytes / queued 256 B message | 792 B | 462 B | −42% |
 
-0 errors throughout. The dramatic win is **large payloads**: a 16 KiB ciphertext was ~64 KB
-of JSON number-array, so binary roughly doubles 16 KiB throughput and cuts its p99 ~3.5×.
+The dramatic win is **large payloads**: a 16 KiB ciphertext was ~64 KB of JSON number-array.
 
-**Where the residual 462 B/msg went:** the 256 B ciphertext is now stored raw (was ~770 B of
-JSON), so the per-message *queue element* shrank ~514 B. The remaining overhead was dominated
-by the **per-message dedup key** (`mr:{mbx}:s:<sha256-hex>` — a ~110-char key + TTL + Redis
-per-key overhead, ~185 B per *message*). That has now been fixed (next section). The inner
-envelope is binary too, so *real* messages (whose 64-byte signature was a ~200-char JSON
-array) also shrink.
+### 2. Per-message dedup keys → bounded per-mailbox sorted-set
 
-## Dedup: per-message keys → bounded per-mailbox sorted-set
-
-The byte-replay dedup was one TTL'd Redis key per message; it is now **one bounded sorted-set
-per mailbox** (ZADD a raw 128-bit fingerprint scored by arrival, keep the newest N=128,
-`ZREMRANGEBYRANK`). This restores the in-memory backend's bounded sliding window, and the
-**authoritative** dedup moved app-side (by `message_id`) — the relay's window is just a cheap
-network-replay guard. Same volume test (256 B, deposit-only, ~614k-message backlog):
+The byte-replay dedup was one TTL'd Redis key per message (`mr:{mbx}:s:<sha256-hex>`,
+~185 B/message of key + overhead); now **one bounded sorted-set per mailbox** (ZADD a raw
+128-bit fingerprint scored by arrival, keep the newest N=128 via `ZREMRANGEBYRANK`). The
+**authoritative** dedup moved app-side (by `message_id`); the relay window is a cheap
+network-replay guard.
 
 | | per-message keys | bounded sorted-set |
 |---|---:|---:|
-| bytes / queued msg | 462 B | **309 B** |
-| Redis keys | ~1.86 M | **29,100** (≈64× fewer) |
-| deposit throughput | 77,749/s | 76,722/s (unchanged) |
+| bytes / queued 256 B msg | 462 B | **309 B** |
+| Redis keys (≈614k backlog) | ~1.86 M | **~29 k** (≈64× fewer) |
+| deposit throughput | 77,749/s | 77,242/s (unchanged) |
 
-**Net across both changes:** JSON 792 B/msg → binary 462 → **309 B/msg (−61%)**, now ~36 B
-over the floor *for this synthetic 256 B ciphertext* (256 + minimal queue overhead). Durability
-suite 6/6 still green with the sorted-set dedup (idempotent replay, drain-once, post-drain
-replay all hold).
+### 3. Slimmer sealed inner frame (v2) — smaller *real* messages
 
-> The 256 B here is a fixed random payload — it does not shrink with the envelope. A **real**
-> message's ciphertext got smaller too: the sealed *inner* frame was slimmed (recipient AID not
-> stored — reconstructed as the opener; sender AID stored as its 32-byte digest, not the
-> `did:keri:<64-hex>` string; default content_type/flags omitted; id shrunk to a variable
-> sequence). Measured in murmur-core: a 12-byte message's ciphertext is **150 B** (was ~282 B,
-> −47%), so it sits at ~150 + ~36 ≈ **~186 B at rest**. See
-> `murmur/docs/messages/message_format.md` §4.
+The synthetic 256 B payload above doesn't shrink with the envelope, but a real message's
+**ciphertext** did: the sealed inner frame stopped re-stating per-conversation-constant data —
+recipient AID not stored (reconstructed as the opener), sender AID stored as its 32-byte
+digest (not `did:keri:<64-hex>`), default content_type/flags omitted, id shrunk to a variable
+sequence (default 8 B).
+
+| | inner frame v1 | inner frame v2 |
+|---|---:|---:|
+| ciphertext of a 12-byte message | ~282 B | **150 B** (−47%) |
+| → at rest (~+53 B Redis) | ~335 B | **~200 B** |
+
+(Measured by a murmur-core test that seals a real message and asserts the compact size.)
+
+**Net for at-rest memory:** JSON 792 B/msg → 462 → **309 B/msg** for the synthetic 256 B
+payload (−61%); a real short message is **~200 B at rest** (ciphertext ~150 B).
 
 ## Environment
 
@@ -62,50 +108,6 @@ replay all hold).
   Production scales out (stateless relay tier + managed Redis); loopback also understates
   latency a real network would add and overstates contention vs a dedicated Redis box.
 
-## Throughput & latency (the `loadtest` example)
-
-`roundtrip` = deposit **and** drain each op (so Redis sees ~2× these ops/s); `deposit` =
-deposit only (builds a backlog). 64 concurrent HTTP clients unless noted. **0 errors** in
-every run.
-
-| Scenario | Backend | Payload | Throughput (deposits/s) | p50 | p99 | p999 | max |
-|---|---|---|---:|---:|---:|---:|---:|
-| A roundtrip | **Redis** | 256 B | **34,356** | 0.90 ms | 1.70 ms | 2.86 ms | 13.2 ms |
-| B roundtrip | in-memory | 256 B | 53,172 | 0.57 ms | 1.44 ms | 3.00 ms | 11.8 ms |
-| C roundtrip | **Redis** | 16 KiB | 5,287 | 2.99 ms | 7.01 ms | 13.6 ms | 30.6 ms |
-| D deposit-only | **Redis** | 256 B | **71,377** | 0.85 ms | 1.62 ms | 2.31 ms | 6.2 ms |
-
-**Reading it:**
-- **Durability is cheap.** Redis round-trips at ~65% of the in-memory backend's
-  throughput (34k vs 53k/s) at sub-2 ms p99. Persisting every message costs ~35% of peak
-  throughput and ~0.3 ms of p99 — a good trade for "a restart loses nothing."
-- **Targets blown past.** PRD target was ≥5,000 round-trips/s at p99 < 15 ms; actual is
-  **34k/s at p99 1.7 ms** (256 B), and even 16 KiB messages sustain 5.3k/s at p99 7 ms
-  (~170 MB/s of ciphertext through Redis + HTTP).
-- **Deposit-only is faster** (71k/s) — pure `RPUSH`+counter+dedup, no drain `LRANGE`/`DEL`.
-
-## Volume / memory (scenario D backlog)
-
-A deposit-only run built and held a large undrained backlog:
-
-- **571,127** messages queued across **20,000** mailboxes (no drains).
-- **589,165** Redis keys (per active mailbox: a queue list + a byte counter; plus per-
-  message dedup keys).
-- **431.2 MiB** `used_memory` → **~792 B per queued 256 B message**.
-
-**Memory note (a real optimization, not yet done):** ~792 B to hold a 256 B ciphertext is
-~3×. The cause is the storage encoding: the `OuterEnvelope` is stored as **JSON**, and
-`ciphertext` serializes as a JSON *number array* (`[255,12,...]` ≈ 3–4 chars/byte), so
-256 B becomes ~770 B of JSON before Redis/list overhead. Storing the ciphertext **base64**
-(~1.37×) or as a compact **binary** blob (bincode/raw) would cut backlog memory roughly
-2–3×. The HTTP wire stays JSON; only the at-rest encoding changes. Tracked as a follow-up
-(PRD §12). Until then, size Redis for ~800 B per expected undrained 256 B message (more for
-larger payloads — dominated by the ciphertext itself at that point).
-
-**Global bound:** with `maxmemory`/`noeviction` set, a backlog that would exceed it makes
-`RPUSH` return OOM and the relay answers `507` (fail-closed) — verified by design; the
-deposit Lua mutates the queue first so an OOM leaves no partial state.
-
 ## Correctness / reliability (the durability suite — all green)
 
 `cargo test -p murmur-relay --test redis_durability` (6/6 passing on live Redis):
@@ -113,8 +115,8 @@ deposit Lua mutates the queue first so an OOM leaves no partial state.
 1. **`durability_survives_a_relay_restart`** — deposit 25 → **kill the relay process** →
    start a fresh relay on the same Redis → drain returns all 25 in order. *A restart loses
    nothing.*
-2. `idempotent_replay_and_drain_once` — byte-identical re-deposit → `deduped_replay`; a
-   replay after a drain is still dropped.
+2. `idempotent_replay_and_drain_once` — byte-identical re-deposit → `deduped_replay` (now via
+   the per-mailbox sorted-set window); a replay after a drain is still dropped.
 3. `quota_per_mailbox_message_cap` — over-cap deposit → `429 quota_exceeded`, records nothing.
 4. `prekey_round_trip_and_404` — publish/fetch opaque bytes; unknown AID → 404.
 5. `ttl_expires_an_undrained_message` — a 1 s TTL reclaims an undrained message.
@@ -137,10 +139,16 @@ cargo build --release -p murmur-relay --bin murmur-relay --example loadtest
 MURMUR_RELAY_REDIS_URL=redis://127.0.0.1:6390 \
   target/release/murmur-relay serve-http 127.0.0.1:8788 &
 
-# 4. throughput + volume
+# 4. throughput + volume (A/C/D; drop the env var + use a 2nd port for the in-memory B)
 target/release/examples/loadtest --url http://127.0.0.1:8788 \
-  --concurrency 64 --seconds 12 --payload 256 --mode roundtrip
+  --concurrency 64 --seconds 12 --payload 256 --mode roundtrip          # A
 target/release/examples/loadtest --url http://127.0.0.1:8788 \
-  --concurrency 64 --seconds 8 --payload 256 --mailboxes 20000 --mode deposit
+  --concurrency 64 --seconds 8  --payload 16384 --mode roundtrip        # C
+target/release/examples/loadtest --url http://127.0.0.1:8788 \
+  --concurrency 64 --seconds 8  --payload 256 --mailboxes 20000 --mode deposit   # D
 redis-cli -p 6390 info memory | grep used_memory_human
+redis-cli -p 6390 dbsize
+
+# 5. the real-message ciphertext size (not synthetic)
+cargo test -p murmur-core a_short_real_message_seals_to_a_compact_ciphertext -- --nocapture
 ```
