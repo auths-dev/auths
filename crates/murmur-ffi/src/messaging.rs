@@ -83,12 +83,12 @@ fn random_seed() -> [u8; 32] {
     seed
 }
 
-/// A fresh random 16-byte message id (when the app does not supply a stable one).
-fn random_message_id() -> [u8; 16] {
+/// A fresh random 8-byte message id (when the app does not supply a stable one).
+fn random_message_id() -> Vec<u8> {
     use p256::elliptic_curve::rand_core::{OsRng, RngCore};
-    let mut id = [0u8; 16];
+    let mut id = [0u8; 8];
     OsRng.fill_bytes(&mut id);
-    id
+    id.to_vec()
 }
 
 /// Encode an `(mailbox, ciphertext)` into the binary `OuterEnvelope` frame the relay
@@ -227,13 +227,10 @@ impl MurmurSession {
         flags: u32,
         message_id: Vec<u8>,
     ) -> Result<Vec<u8>, MurmurError> {
-        let id: [u8; 16] = if message_id.is_empty() {
+        let id = if message_id.is_empty() {
             random_message_id()
         } else {
             message_id
-                .as_slice()
-                .try_into()
-                .map_err(|_| MurmurError::Malformed("message_id must be 16 bytes".into()))?
         };
         let envelope = self.inner.seal_with(&body, id, &content_type, flags)?;
         envelope.to_frame().map_err(MurmurError::from)

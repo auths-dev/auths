@@ -42,8 +42,17 @@ network-replay guard. Same volume test (256 B, deposit-only, ~614k-message backl
 | deposit throughput | 77,749/s | 76,722/s (unchanged) |
 
 **Net across both changes:** JSON 792 B/msg → binary 462 → **309 B/msg (−61%)**, now ~36 B
-over the hard floor (~273 B = ciphertext + minimal queue overhead). Durability suite 6/6 still
-green with the sorted-set dedup (idempotent replay, drain-once, post-drain replay all hold).
+over the floor *for this synthetic 256 B ciphertext* (256 + minimal queue overhead). Durability
+suite 6/6 still green with the sorted-set dedup (idempotent replay, drain-once, post-drain
+replay all hold).
+
+> The 256 B here is a fixed random payload — it does not shrink with the envelope. A **real**
+> message's ciphertext got smaller too: the sealed *inner* frame was slimmed (recipient AID not
+> stored — reconstructed as the opener; sender AID stored as its 32-byte digest, not the
+> `did:keri:<64-hex>` string; default content_type/flags omitted; id shrunk to a variable
+> sequence). Measured in murmur-core: a 12-byte message's ciphertext is **150 B** (was ~282 B,
+> −47%), so it sits at ~150 + ~36 ≈ **~186 B at rest**. See
+> `murmur/docs/messages/message_format.md` §4.
 
 ## Environment
 

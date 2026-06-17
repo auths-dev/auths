@@ -91,7 +91,7 @@ impl ContactSession {
     pub fn seal_with(
         &self,
         body: &str,
-        message_id: [u8; 16],
+        message_id: Vec<u8>,
         content_type: &str,
         flags: u32,
     ) -> CoreResult<OuterEnvelope> {

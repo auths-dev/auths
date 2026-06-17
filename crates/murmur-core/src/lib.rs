@@ -130,9 +130,9 @@ pub struct Message {
     pub from: Aid,
     /// The cleartext the user typed. Never leaves the device in the clear.
     pub body: String,
-    /// The stable end-to-end message id (authenticated). For recipient-side dedup +
-    /// receipts + edit/delete once those land; ignored by the engine today.
-    pub message_id: [u8; 16],
+    /// The stable end-to-end message id (variable length, authenticated). For recipient-side
+    /// dedup + receipts + edit/delete once those land; ignored by the engine today.
+    pub message_id: Vec<u8>,
     /// The body's content type (`"text"` by default; authenticated).
     pub content_type: String,
     /// Per-message flags (0 by default; authenticated).
@@ -275,7 +275,7 @@ impl Endpoint {
         recipient: &Aid,
         mailbox: &MailboxId,
         body: &str,
-        message_id: [u8; 16],
+        message_id: Vec<u8>,
         content_type: &str,
         flags: u32,
     ) -> CoreResult<OuterEnvelope> {
@@ -325,7 +325,9 @@ impl Endpoint {
     pub fn open(&self, outer: &OuterEnvelope, directory: &dyn Directory) -> CoreResult<Message> {
         let aad = aead_aad(self.peer(), self.aid(), &outer.to_mailbox);
         let inner_bytes = self.session.open(&outer.ciphertext, &aad)?;
-        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
+        // The recipient is not stored in the inner frame — it is this endpoint. Supplying
+        // `self.aid()` reconstructs the same signing bytes the sender used.
+        let inner = InnerEnvelope::from_frame(&inner_bytes, self.aid())?;
         let sender_key = directory.resolve(&inner.sender).ok_or(CoreError::Rejected(
             "sender AID could not be resolved to a key",
         ))?;
@@ -349,11 +351,14 @@ impl Endpoint {
 /// A fresh random 16-byte message id (OS entropy). Minted per message by
 /// [`Endpoint::seal_to`]; callers that need a *stable* id across re-sends pass their
 /// own through [`Endpoint::seal_to_with`].
-fn fresh_message_id() -> CoreResult<[u8; 16]> {
-    let mut id = [0u8; 16];
+fn fresh_message_id() -> CoreResult<Vec<u8>> {
+    // 8 random bytes (64 bits) — collision-proof for a per-conversation dedup window, and
+    // half the size of the old 16-byte id. A caller wanting a stable/ordered id (a per-
+    // conversation sequence reused on re-send) passes one through `seal_to_with`.
+    let mut id = [0u8; 8];
     getrandom::getrandom(&mut id)
         .map_err(|_| CoreError::Malformed("OS entropy source unavailable for message id".into()))?;
-    Ok(id)
+    Ok(id.to_vec())
 }
 
 /// Seal a [`Message`] into the two-layer envelope. The FFI seam the SwiftUI
@@ -530,7 +535,7 @@ mod tests {
         let forged = InnerEnvelope {
             sender: mac.aid().clone(),
             recipient: phone.aid().clone(),
-            message_id: [0u8; 16],
+            message_id: vec![0u8; 8],
             content_type: "text".to_string(),
             flags: 0,
             body: "I am the Mac".into(),
@@ -538,7 +543,7 @@ mod tests {
                 .identity_sign(&InnerEnvelope::signing_bytes(
                     mac.aid(),
                     phone.aid(),
-                    &[0u8; 16],
+                    &[0u8; 8],
                     "text",
                     0,
                     "I am the Mac",
@@ -736,6 +741,31 @@ mod tests {
     }
 
     #[test]
+    fn a_short_real_message_seals_to_a_compact_ciphertext() {
+        // The inner frame drops the redundant recipient AID (the opener is the
+        // recipient), stores the sender AID as its 32-byte digest (not the
+        // `did:keri:<64-hex>` string), and omits a default content_type/flags — so a
+        // short message's sealed ciphertext is small. It used to be dominated by ~150 B
+        // of repeated AID strings + a 16-byte id.
+        let secret = [0x5au8; 32];
+        let mac = endpoint(1, 2, secret);
+        let phone = endpoint(2, 1, secret);
+        let dir = directory_of(&[&mac, &phone]);
+        let mailbox = MailboxId::new("mbx:pairwise");
+
+        let outer = mac.seal_to(phone.aid(), &mailbox, "see you soon").unwrap();
+        // It still round-trips + authenticates with the recipient reconstructed.
+        assert_eq!(phone.open(&outer, &dir).unwrap().body, "see you soon");
+
+        let len = outer.ciphertext.len();
+        println!("short-message ciphertext = {len} bytes");
+        // ciphertext = inner frame + AEAD nonce(12)+tag(16). The legacy inner frame for
+        // the same message was ~244 B (two did:keri AID strings + 16-byte id + "text" +
+        // u32 flags); the compact frame is well under half.
+        assert!(len < 160, "short-message ciphertext stays compact: {len} bytes");
+    }
+
+    #[test]
     fn a_message_is_addressed_to_and_authenticated_by_an_aid_number_free() {
         // The floor: a message addressed to an AID's pairwise mailbox, authenticated
         // as the sender AID, with no phone number or email anywhere — and a forgery
@@ -797,7 +827,7 @@ mod tests {
             to: Aid::placeholder(),
             from: Aid::placeholder(),
             body: "hi".into(),
-            message_id: [0u8; 16],
+            message_id: vec![0u8; 8],
             content_type: "text".to_string(),
             flags: 0,
         };

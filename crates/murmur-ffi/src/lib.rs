@@ -101,7 +101,7 @@ pub fn seal_message(to: String, from: String, body: String) -> Result<Vec<u8>, M
         to: murmur_core::Aid::new(to),
         from: murmur_core::Aid::new(from),
         body,
-        message_id: [0u8; 16],
+        message_id: vec![0u8; 8],
         content_type: "text".to_string(),
         flags: 0,
     };

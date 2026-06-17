@@ -210,12 +210,12 @@ pub fn deliver_forward_secret(
     let mut wires: Vec<Vec<u8>> = Vec::with_capacity(bodies.len());
     for body in bodies {
         let signing_bytes =
-            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
+            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 8], "text", 0, body);
         let signature = sender.sign(&signing_bytes)?;
         let inner = InnerEnvelope {
             sender: sender.aid().clone(),
             recipient: recipient.aid().clone(),
-            message_id: [0u8; 16],
+            message_id: vec![0u8; 8],
             content_type: "text".to_string(),
             flags: 0,
             body: (*body).to_string(),
@@ -248,7 +248,7 @@ pub fn deliver_forward_secret(
     let mut delivered = 0u64;
     for wire in &wires {
         let inner_bytes = recv_chain.open(mailbox_aad, wire)?;
-        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
+        let inner = InnerEnvelope::from_frame(&inner_bytes, recipient.aid())?;
         let sender_key = directory
             .resolve(&inner.sender)
             .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
@@ -389,12 +389,12 @@ pub fn prove_post_compromise_healing(
     // envelope and store-and-forward it. The relay only ever sees the outer envelope.
     for body in bodies {
         let signing_bytes =
-            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
+            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 8], "text", 0, body);
         let signature = sender.sign(&signing_bytes)?;
         let inner = InnerEnvelope {
             sender: sender.aid().clone(),
             recipient: recipient.aid().clone(),
-            message_id: [0u8; 16],
+            message_id: vec![0u8; 8],
             content_type: "text".to_string(),
             flags: 0,
             body: (*body).to_string(),
@@ -423,7 +423,7 @@ pub fn prove_post_compromise_healing(
     let mut healed_delivered = 0u64;
     for env in &queued {
         let inner_bytes = healed_recv.open(mailbox_aad, &env.ciphertext)?;
-        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
+        let inner = InnerEnvelope::from_frame(&inner_bytes, recipient.aid())?;
         let sender_key = directory
             .resolve(&inner.sender)
             .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
@@ -537,12 +537,12 @@ pub fn prove_relay_queue(
     // real queue. The relay only ever touches the outer envelope.
     for body in bodies {
         let signing_bytes =
-            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
+            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 8], "text", 0, body);
         let signature = sender.sign(&signing_bytes)?;
         let inner = InnerEnvelope {
             sender: sender.aid().clone(),
             recipient: recipient.aid().clone(),
-            message_id: [0u8; 16],
+            message_id: vec![0u8; 8],
             content_type: "text".to_string(),
             flags: 0,
             body: (*body).to_string(),
@@ -601,7 +601,7 @@ pub fn prove_relay_queue(
     let mut envelopes_queued = 0u64;
     for env in &queued {
         let inner_bytes = recv_chain.open(mailbox_aad, &env.ciphertext)?;
-        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
+        let inner = InnerEnvelope::from_frame(&inner_bytes, recipient.aid())?;
         let sender_key = directory
             .resolve(&inner.sender)
             .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
@@ -909,16 +909,16 @@ pub fn prove_addressed(
         to: receipt.recipient.clone(),
         from: receipt.authenticated_sender.clone(),
         body: receipt.body.clone(),
-        message_id: [0u8; 16],
+        message_id: vec![0u8; 8],
         content_type: "text".to_string(),
         flags: 0,
     };
     let signing_bytes =
-        InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
+        InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 8], "text", 0, body);
     let inner = InnerEnvelope {
         sender: sender.aid().clone(),
         recipient: recipient.aid().clone(),
-        message_id: [0u8; 16],
+        message_id: vec![0u8; 8],
         content_type: "text".to_string(),
         flags: 0,
         body: body.to_string(),
@@ -939,7 +939,7 @@ pub fn prove_addressed(
     let forged_inner = InnerEnvelope {
         sender: sender.aid().clone(),
         recipient: recipient.aid().clone(),
-        message_id: [0u8; 16],
+        message_id: vec![0u8; 8],
         content_type: "text".to_string(),
         flags: 0,
         body: body.to_string(),

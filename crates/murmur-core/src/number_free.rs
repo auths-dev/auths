@@ -234,14 +234,14 @@ mod tests {
             to: to.clone(),
             from: from.clone(),
             body: body.to_string(),
-            message_id: [0u8; 16],
+            message_id: vec![0u8; 8],
             content_type: "text".to_string(),
             flags: 0,
         };
         let inner = InnerEnvelope {
             sender: from,
             recipient: to,
-            message_id: [0u8; 16],
+            message_id: vec![0u8; 8],
             content_type: "text".to_string(),
             flags: 0,
             body: body.to_string(),
