@@ -653,3 +653,37 @@
   probe: probes/enc-7.sh
   unlocks: The PRD §10 release gate as a real, falsifiable claim — the join that decides whether
     a real user can be told this is private waits for an external auditor, not for us.
+
+- id: NET-1
+  title: The relay's HTTP surface stores-and-forwards an opaque envelope off-box — two separate
+    devices reach the same mailbox
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: relay
+  covers:
+  - '10'
+  evidence:
+  - 'crates/murmur-relay/src/http.rs — an axum surface over the same MailboxStore: POST /deposit
+    (JSON OuterEnvelope), GET /drain/{mailbox}, and a PUT/GET /prekey/{aid} directory for
+    first-contact bundles; the relay still only ever touches {mailbox, ciphertext}'
+  - 'crates/murmur-relay/src/http.rs tests::http_round_trip_delivers_an_authenticated_message
+    — a real-socket round-trip seals, deposits, drains, and OPENS an authenticated message
+    (the crypto leg); a byte-identical re-deposit is answered deduped_replay/200 (idempotent)'
+  - crates/murmur-relay/src/main.rs — `serve-http [addr]` mode binds a TCP listener and prints
+    the resolved address; the hermetic `serve` self-test (13 legs) is unchanged
+  observed: 'GREEN 2026-06-17: ours=stored-and-forwarded expected=stored-and-forwarded — booting
+    `murmur-relay serve-http 127.0.0.1:0`, a JSON deposit returns queued, a drain returns the same
+    opaque ciphertext exactly once, a second drain is empty, a byte-identical re-deposit is
+    deduped_replay, and a prekey bundle round-trips through the directory; trap
+    net-1.trap/regressed turns the probe RED. NET-1 closed'
+  smallest_fix: 'Expose the built MailboxStore over HTTP so an iPhone and a Mac reach the same
+    mailbox off-box: a `serve-http` mode with POST /deposit, GET /drain/{mailbox}, PUT/GET
+    /prekey/{aid}; JSON wire so the SwiftUI client decodes natively; DedupedReplay answered as a
+    200 success so a retry after a lost response is idempotent. Adversarial (the trap): the http
+    surface absent, or the round-trip double-delivering / leaking plaintext, must fail. TRAP
+    probes/net-1.trap/regressed/ — a captured round-trip with no http surface must turn the probe
+    RED.'
+  probe: probes/net-1.sh
+  unlocks: The transport — the built store-and-forward queue becomes reachable by two real
+    devices, the precondition for the app''s real send/receive over a relay.
