@@ -20,6 +20,18 @@ path = "src/main.rs"
 # feature (the deliver_*/prove_*/hold_* legs live behind it; the default engine surface
 # does not carry them).
 murmur-core = { path = "../murmur-core", version = "0.1.3", features = ["proofs"] }
+# The network surface that exposes the mailbox to remote devices. The relay still only
+# ever touches the outer envelope (a mailbox id and opaque bytes) — these crates just
+# carry those bytes over HTTP. JSON wire so the SwiftUI client decodes natively.
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio.workspace = true
+
+[dev-dependencies]
+# A real HTTP client for the round-trip test: bind an ephemeral port, deposit a sealed
+# envelope, drain it, open it — over a real socket, not in-process.
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
 
 [lints]
 workspace = true

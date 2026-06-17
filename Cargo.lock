@@ -4635,7 +4635,12 @@ dependencies = [
 name = "murmur-relay"
 version = "0.1.3"
 dependencies = [
+ "axum",
  "murmur-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
