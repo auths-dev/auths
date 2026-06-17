@@ -52,8 +52,12 @@ pub struct RelayConfig {
     /// Sliding TTL (seconds) on a mailbox's queue — an undrained backlog expires this long
     /// after its last deposit.
     pub msg_ttl_secs: u64,
-    /// How long (seconds) a byte-identical replay stays recognized after first sight.
+    /// How long (seconds) a per-mailbox dedup window survives after its last deposit.
     pub dedup_ttl_secs: u64,
+    /// How many recent fingerprints the per-mailbox dedup window keeps (a count-bounded
+    /// sliding window, like the in-memory backend). Small by default since the authoritative
+    /// dedup is app-side by `message_id`; ≤128 keeps the zset listpack-compact.
+    pub dedup_window: usize,
     /// Published prekey-bundle TTL (seconds); the app republishes on launch.
     pub prekey_ttl_secs: u64,
     /// Per-mailbox cap on undrained messages.
@@ -71,6 +75,7 @@ impl Default for RelayConfig {
             redis_url: None,
             msg_ttl_secs: 30 * 24 * 60 * 60,
             dedup_ttl_secs: 24 * 60 * 60,
+            dedup_window: 128,
             prekey_ttl_secs: 30 * 24 * 60 * 60,
             max_msgs_per_mailbox: limits.max_messages_per_mailbox,
             max_bytes_per_mailbox: limits.max_bytes_per_mailbox,
@@ -93,6 +98,7 @@ impl RelayConfig {
             redis_url: std::env::var("MURMUR_RELAY_REDIS_URL").ok().filter(|s| !s.is_empty()),
             msg_ttl_secs: env_u64("MURMUR_RELAY_MSG_TTL_SECS", d.msg_ttl_secs),
             dedup_ttl_secs: env_u64("MURMUR_RELAY_DEDUP_TTL_SECS", d.dedup_ttl_secs),
+            dedup_window: env_usize("MURMUR_RELAY_DEDUP_WINDOW", d.dedup_window),
             prekey_ttl_secs: env_u64("MURMUR_RELAY_PREKEY_TTL_SECS", d.prekey_ttl_secs),
             max_msgs_per_mailbox: env_usize("MURMUR_RELAY_MAX_MSGS_PER_MAILBOX", d.max_msgs_per_mailbox),
             max_bytes_per_mailbox: env_usize("MURMUR_RELAY_MAX_BYTES_PER_MAILBOX", d.max_bytes_per_mailbox),
@@ -216,19 +222,31 @@ impl Default for MemoryStore {
 }
 
 /// Atomic deposit (dedup → quota → queue) as one Lua script — so concurrent deposits to a
-/// mailbox cannot race the quota or double-count. KEYS = [queue, bytes, seen]; ARGV =
-/// [payload, size, max_msgs, max_bytes, msg_ttl_ms, dedup_ttl_secs]. Returns the outcome.
+/// mailbox cannot race the quota or double-count.
+///
+/// Dedup is a **single per-mailbox bounded sorted-set** (`s`), not one TTL'd key per
+/// message: ZADD the binary fingerprint scored by arrival, keep only the newest
+/// `dedup_window` (ZREMRANGEBYRANK). This restores the in-memory backend's bounded sliding
+/// window, costs one compact (listpack) key per mailbox instead of ~185 B/message, and a
+/// replay after a drain is still dropped while it's in the window. The authoritative dedup
+/// is app-side by `message_id`; this is the cheap network-replay guard.
+///
+/// KEYS = [queue, bytes, dedup_zset]; ARGV = [payload, size, fp, score, max_msgs,
+/// max_bytes, msg_ttl_ms, dedup_window, dedup_ttl_ms]. Returns the outcome.
 const DEPOSIT_LUA: &str = r#"
 local q = KEYS[1]
 local b = KEYS[2]
 local s = KEYS[3]
 local payload = ARGV[1]
 local size = tonumber(ARGV[2])
-local max_msgs = tonumber(ARGV[3])
-local max_bytes = tonumber(ARGV[4])
-local msg_ttl_ms = tonumber(ARGV[5])
-local dedup_ttl = tonumber(ARGV[6])
-if redis.call('EXISTS', s) == 1 then
+local fp = ARGV[3]
+local score = tonumber(ARGV[4])
+local max_msgs = tonumber(ARGV[5])
+local max_bytes = tonumber(ARGV[6])
+local msg_ttl_ms = tonumber(ARGV[7])
+local dedup_window = tonumber(ARGV[8])
+local dedup_ttl_ms = tonumber(ARGV[9])
+if redis.call('ZSCORE', s, fp) then
   return 'deduped'
 end
 local n = redis.call('LLEN', q)
@@ -238,9 +256,11 @@ if n >= max_msgs or (mb + size) > max_bytes then
 end
 redis.call('RPUSH', q, payload)
 redis.call('INCRBY', b, size)
+redis.call('ZADD', s, score, fp)
+redis.call('ZREMRANGEBYRANK', s, 0, -dedup_window - 1)
 redis.call('PEXPIRE', q, msg_ttl_ms)
 redis.call('PEXPIRE', b, msg_ttl_ms)
-redis.call('SET', s, '1', 'EX', dedup_ttl)
+redis.call('PEXPIRE', s, dedup_ttl_ms)
 return 'queued'
 "#;
 
@@ -310,8 +330,9 @@ impl RedisStore {
     fn bkey(&self, mbx: &str) -> String {
         format!("{}:{{{}}}:b", self.cfg.key_prefix, mbx)
     }
-    fn skey(&self, mbx: &str, fp: &str) -> String {
-        format!("{}:{{{}}}:s:{}", self.cfg.key_prefix, mbx, fp)
+    /// The per-mailbox dedup sorted-set (one key per mailbox, not per message).
+    fn skey(&self, mbx: &str) -> String {
+        format!("{}:{{{}}}:s", self.cfg.key_prefix, mbx)
     }
     fn pkkey(&self, aid: &str) -> String {
         format!("{}:{{{}}}:pk", self.cfg.key_prefix, aid)
@@ -319,21 +340,25 @@ impl RedisStore {
 
     async fn deposit(&self, env: &OuterEnvelope) -> Result<DepositOutcome, StoreError> {
         let mbx = env.to_mailbox.as_str();
-        let fp = fingerprint_hex(&env.ciphertext);
+        let fp = fingerprint(&env.ciphertext); // raw 16-byte truncated SHA-256
         // Store the RAW ciphertext (the mailbox is the key); no JSON/redundant mailbox.
         let size = env.ciphertext.len();
+        let score = now_millis(); // arrival order for the bounded dedup window
         let mut conn = self.conn.clone();
         let outcome: String = self
             .deposit
             .key(self.qkey(mbx))
             .key(self.bkey(mbx))
-            .key(self.skey(mbx, &fp))
+            .key(self.skey(mbx))
             .arg(env.ciphertext.as_slice())
             .arg(size)
+            .arg(fp.as_slice())
+            .arg(score)
             .arg(self.cfg.max_msgs_per_mailbox)
             .arg(self.cfg.max_bytes_per_mailbox)
             .arg(self.cfg.msg_ttl_secs.saturating_mul(1000))
-            .arg(self.cfg.dedup_ttl_secs)
+            .arg(self.cfg.dedup_window)
+            .arg(self.cfg.dedup_ttl_secs.saturating_mul(1000))
             .invoke_async(&mut conn)
             .await
             .map_err(map_redis_err)?;
@@ -402,14 +427,23 @@ impl RedisStore {
 
 /// `hex(SHA256(ciphertext))` — the same dedup fingerprint rule the in-memory store uses
 /// (over the opaque ciphertext only, never the mailbox id or anything inside it).
-fn fingerprint_hex(ciphertext: &[u8]) -> String {
+/// The dedup fingerprint: the first 16 bytes (128 bits) of `SHA-256(ciphertext)`, raw (not
+/// hex). 128 bits is collision-proof for a per-mailbox replay window, and raw bytes are half
+/// the size of hex. Over the opaque ciphertext only — never the mailbox id or its contents.
+fn fingerprint(ciphertext: &[u8]) -> [u8; 16] {
     let digest = Sha256::digest(ciphertext);
-    let mut s = String::with_capacity(64);
-    for b in digest {
-        use std::fmt::Write;
-        let _ = write!(s, "{b:02x}");
-    }
-    s
+    let mut fp = [0u8; 16];
+    fp.copy_from_slice(&digest[..16]);
+    fp
+}
+
+/// Milliseconds since the Unix epoch (the relay's clock) — the arrival score for the
+/// bounded dedup window. Monotonic enough for "keep the newest N"; ties are harmless.
+fn now_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Map a Redis error to a fail-closed [`StoreError`] — OOM is distinguished (so the relay

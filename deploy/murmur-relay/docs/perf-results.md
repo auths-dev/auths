@@ -20,13 +20,30 @@ binary frame on the wire and raw ciphertext at rest. Same harness, same host, Re
 0 errors throughout. The dramatic win is **large payloads**: a 16 KiB ciphertext was ~64 KB
 of JSON number-array, so binary roughly doubles 16 KiB throughput and cuts its p99 ~3.5×.
 
-**Where the residual 462 B/msg goes:** the 256 B ciphertext is now stored raw (was ~770 B of
-JSON), so the per-message *queue element* shrank ~514 B. The remaining ~206 B/msg of Redis
-overhead is structural and dominated by the **per-message dedup key** (`mr:{mbx}:s:<sha256>` —
-a ~110-char key + TTL) plus list-node + byte-counter overhead. Shrinking *that* (a shorter
-fingerprint or a different dedup structure) is the next memory lever — separate from the
-encoding, which is now optimal (~1× ciphertext at rest). The inner envelope is binary too, so
-*real* messages (whose 64-byte signature was a ~200-char JSON array) also shrink.
+**Where the residual 462 B/msg went:** the 256 B ciphertext is now stored raw (was ~770 B of
+JSON), so the per-message *queue element* shrank ~514 B. The remaining overhead was dominated
+by the **per-message dedup key** (`mr:{mbx}:s:<sha256-hex>` — a ~110-char key + TTL + Redis
+per-key overhead, ~185 B per *message*). That has now been fixed (next section). The inner
+envelope is binary too, so *real* messages (whose 64-byte signature was a ~200-char JSON
+array) also shrink.
+
+## Dedup: per-message keys → bounded per-mailbox sorted-set
+
+The byte-replay dedup was one TTL'd Redis key per message; it is now **one bounded sorted-set
+per mailbox** (ZADD a raw 128-bit fingerprint scored by arrival, keep the newest N=128,
+`ZREMRANGEBYRANK`). This restores the in-memory backend's bounded sliding window, and the
+**authoritative** dedup moved app-side (by `message_id`) — the relay's window is just a cheap
+network-replay guard. Same volume test (256 B, deposit-only, ~614k-message backlog):
+
+| | per-message keys | bounded sorted-set |
+|---|---:|---:|
+| bytes / queued msg | 462 B | **309 B** |
+| Redis keys | ~1.86 M | **29,100** (≈64× fewer) |
+| deposit throughput | 77,749/s | 76,722/s (unchanged) |
+
+**Net across both changes:** JSON 792 B/msg → binary 462 → **309 B/msg (−61%)**, now ~36 B
+over the hard floor (~273 B = ciphertext + minimal queue overhead). Durability suite 6/6 still
+green with the sorted-set dedup (idempotent replay, drain-once, post-drain replay all hold).
 
 ## Environment
 
