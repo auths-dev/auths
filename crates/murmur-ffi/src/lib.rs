@@ -101,6 +101,9 @@ pub fn seal_message(to: String, from: String, body: String) -> Result<Vec<u8>, M
         to: murmur_core::Aid::new(to),
         from: murmur_core::Aid::new(from),
         body,
+        message_id: [0u8; 16],
+        content_type: "text".to_string(),
+        flags: 0,
     };
     let outer = murmur_core::seal(&msg)?;
     serde_json::to_vec(&outer).map_err(|e| MurmurError::Malformed(e.to_string()))

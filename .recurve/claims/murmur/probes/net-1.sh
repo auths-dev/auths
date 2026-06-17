@@ -48,22 +48,27 @@ for _ in $(seq 1 50); do
 done
 [ -n "$BASE" ] || broken "serve-http did not report a listen address: $(head -1 "$LOG" 2>/dev/null)"
 
-ENVELOPE='{"to_mailbox":"mbx-net1","ciphertext":[1,2,3,4,5]}'
-DEP1="$(curl -s -X POST "$BASE/deposit" -H 'Content-Type: application/json' -d "$ENVELOPE")"
-DRAIN1="$(curl -s "$BASE/drain/mbx-net1")"
-DRAIN2="$(curl -s "$BASE/drain/mbx-net1")"
-DEP2="$(curl -s -X POST "$BASE/deposit" -H 'Content-Type: application/json' -d "$ENVELOPE")"
+# The wire is a compact BINARY frame. Build one OuterEnvelope frame by hand:
+#   [ver:u8=1][mbx_len:u16=8]["mbx-net1"][ciphertext = 1 2 3 4 5]
+# (printf writes the bytes incl. the NUL in mbx_len; pipe to curl --data-binary @-).
+build_frame() { printf '\x01\x00\x08mbx-net1\x01\x02\x03\x04\x05'; }
+DEP1="$(build_frame | curl -s -X POST "$BASE/deposit" -H 'Content-Type: application/octet-stream' --data-binary @-)"
+# The drain response is a length-prefixed binary list; read it as hex.
+DRAIN1="$(curl -s "$BASE/drain/mbx-net1" | od -An -tx1 | tr -d ' \n')"
+DRAIN2="$(curl -s "$BASE/drain/mbx-net1" | od -An -tx1 | tr -d ' \n')"
+DEP2="$(build_frame | curl -s -X POST "$BASE/deposit" -H 'Content-Type: application/octet-stream' --data-binary @-)"
 curl -s -X PUT "$BASE/prekey/did:keri:Enet1" --data-binary $'\x09\x08\x07' >/dev/null
 PK="$(curl -s "$BASE/prekey/did:keri:Enet1" | od -An -tu1 | tr -s ' ')"
 
-# GREEN requires every leg: deposit queued; drain returns the ciphertext; a second
-# drain is empty (drained once); a re-deposit is deduped; the prekey bytes round-trip.
+# GREEN requires every leg: deposit queued (JSON outcome); the drain hex carries the
+# ciphertext bytes 0102030405; a second drain is the empty list (count=0 → 00000000); a
+# re-deposit is deduped; the prekey bytes round-trip.
 if printf '%s' "$DEP1"   | grep -q 'queued' \
-   && printf '%s' "$DRAIN1" | grep -q '1,2,3,4,5' \
-   && [ "$DRAIN2" = "[]" ] \
+   && printf '%s' "$DRAIN1" | grep -q '0102030405' \
+   && [ "$DRAIN2" = "00000000" ] \
    && printf '%s' "$DEP2"   | grep -q 'deduped_replay' \
    && printf '%s' "$PK"     | grep -q '9 8 7'; then
-    green "the relay http surface stored-and-forwarded one opaque envelope exactly once, deduped a replay, and round-tripped a prekey bundle"
+    green "the relay http surface stored-and-forwarded one opaque binary envelope exactly once, deduped a replay, and round-tripped a prekey bundle"
 fi
 
 red "ours=http-round-trip-broken expected=stored-and-forwarded — deposit='${DEP1}' drain='${DRAIN1}' redrain='${DRAIN2}' redeposit='${DEP2}' prekey='${PK}'"

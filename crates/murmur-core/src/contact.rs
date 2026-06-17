@@ -86,6 +86,25 @@ impl ContactSession {
             .seal_to(self.endpoint.peer(), &self.deposit_mailbox, body)
     }
 
+    /// Seal `body` with explicit end-to-end metadata (a stable `message_id` for recipient
+    /// dedup/receipts, a `content_type`, and `flags`) — all signed and sealed.
+    pub fn seal_with(
+        &self,
+        body: &str,
+        message_id: [u8; 16],
+        content_type: &str,
+        flags: u32,
+    ) -> CoreResult<OuterEnvelope> {
+        self.endpoint.seal_to_with(
+            self.endpoint.peer(),
+            &self.deposit_mailbox,
+            body,
+            message_id,
+            content_type,
+            flags,
+        )
+    }
+
     /// Open an envelope drained from this session's drain mailbox — AEAD-decrypt and
     /// **authenticate** the sender, or reject. Never returns unverified plaintext: the
     /// whole authenticate-or-reject contract is [`Endpoint::open`]'s, projected here.

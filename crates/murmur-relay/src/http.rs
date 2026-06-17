@@ -28,7 +28,7 @@ use axum::{
     Json, Router,
     body::Bytes,
     extract::{Path, State},
-    http::StatusCode,
+    http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post, put},
 };
@@ -93,8 +93,13 @@ async fn health(State(store): State<RelayStore>) -> Response {
     }
 }
 
-/// `POST /deposit` — queue an opaque envelope for an offline recipient.
-async fn deposit(State(store): State<RelayStore>, Json(envelope): Json<OuterEnvelope>) -> Response {
+/// `POST /deposit` — queue an opaque envelope for an offline recipient. The body is one
+/// binary [`OuterEnvelope`] frame (`application/octet-stream`).
+async fn deposit(State(store): State<RelayStore>, body: Bytes) -> Response {
+    let envelope = match OuterEnvelope::from_frame(&body) {
+        Ok(envelope) => envelope,
+        Err(_) => return (StatusCode::BAD_REQUEST, "malformed envelope frame").into_response(),
+    };
     match store.deposit(&envelope).await {
         Ok(DepositOutcome::Queued) => {
             (StatusCode::OK, Json(DepositResponse { outcome: "queued" })).into_response()
@@ -113,12 +118,35 @@ async fn deposit(State(store): State<RelayStore>, Json(envelope): Json<OuterEnve
     }
 }
 
-/// `GET /drain/{mailbox}` — hand back and remove everything queued under a mailbox, FIFO.
+/// `GET /drain/{mailbox}` — hand back and remove everything queued under a mailbox, FIFO,
+/// as a length-prefixed list of binary frames: `[count:u32]( [len:u32][frame] )*`.
 async fn drain(State(store): State<RelayStore>, Path(mailbox): Path<String>) -> Response {
     match store.drain(&mailbox).await {
-        Ok(envelopes) => (StatusCode::OK, Json(envelopes)).into_response(),
+        Ok(envelopes) => match encode_drain_list(&envelopes) {
+            Ok(bytes) => (
+                [(header::CONTENT_TYPE, "application/octet-stream")],
+                bytes,
+            )
+                .into_response(),
+            Err(e) => store_error(e),
+        },
         Err(e) => store_error(e),
     }
+}
+
+/// Encode a drained list as `[count:u32]( [frame_len:u32][frame] )*` (big-endian) — each
+/// element a binary [`OuterEnvelope`] frame, so a client splits by length without parsing.
+fn encode_drain_list(envelopes: &[OuterEnvelope]) -> Result<Vec<u8>, StoreError> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&(envelopes.len() as u32).to_be_bytes());
+    for env in envelopes {
+        let frame = env
+            .to_frame()
+            .map_err(|_| StoreError::Backend("encode envelope frame".into()))?;
+        out.extend_from_slice(&(frame.len() as u32).to_be_bytes());
+        out.extend_from_slice(&frame);
+    }
+    Ok(out)
 }
 
 /// `PUT /prekey/{aid}` — publish a recipient's prekey bundle (opaque bytes). The relay
@@ -193,38 +221,42 @@ mod tests {
 
         let resp = client
             .post(format!("{base}/deposit"))
-            .json(&envelope)
+            .body(envelope.to_frame().unwrap())
             .send()
             .await
             .unwrap();
         assert_eq!(resp.status(), 200);
 
-        let drained: Vec<OuterEnvelope> = client
-            .get(format!("{base}/drain/{}", mailbox.as_str()))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
+        let drained = decode_drain_list(
+            &client
+                .get(format!("{base}/drain/{}", mailbox.as_str()))
+                .send()
+                .await
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap(),
+        );
         assert_eq!(drained.len(), 1, "exactly one envelope queued");
         let message = recipient_ep.open(&drained[0], &directory).unwrap();
         assert_eq!(message.body, "hello over a real socket");
         assert_eq!(message.from, *sender.aid());
 
-        let empty: Vec<OuterEnvelope> = client
-            .get(format!("{base}/drain/{}", mailbox.as_str()))
-            .send()
-            .await
-            .unwrap()
-            .json()
-            .await
-            .unwrap();
+        let empty = decode_drain_list(
+            &client
+                .get(format!("{base}/drain/{}", mailbox.as_str()))
+                .send()
+                .await
+                .unwrap()
+                .bytes()
+                .await
+                .unwrap(),
+        );
         assert!(empty.is_empty(), "mailbox drained");
 
         let resp2 = client
             .post(format!("{base}/deposit"))
-            .json(&envelope)
+            .body(envelope.to_frame().unwrap())
             .send()
             .await
             .unwrap();
@@ -255,5 +287,24 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(missing.status(), 404);
+    }
+
+    /// Split the binary drain response `[count:u32]( [len:u32][frame] )*` into envelopes.
+    fn decode_drain_list(bytes: &[u8]) -> Vec<OuterEnvelope> {
+        let mut out = Vec::new();
+        if bytes.len() < 4 {
+            return out;
+        }
+        let count = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let mut pos = 4usize;
+        for _ in 0..count {
+            let len =
+                u32::from_be_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
+                    as usize;
+            pos += 4;
+            out.push(OuterEnvelope::from_frame(&bytes[pos..pos + len]).unwrap());
+            pos += len;
+        }
+        out
     }
 }

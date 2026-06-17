@@ -18,6 +18,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use murmur_core::{MailboxId, OuterEnvelope};
+
 struct Cfg {
     url: String,
     concurrency: usize,
@@ -109,12 +111,14 @@ async fn main() {
             let deposit_url = format!("{}/deposit", cfg.url);
             while Instant::now() < deadline {
                 let mbx = format!("mbx-load-{}", (w as u64).wrapping_add(counter) % cfg.mailboxes);
-                let body = serde_json::json!({
-                    "to_mailbox": mbx,
-                    "ciphertext": payload(w, counter, cfg.payload),
-                });
+                let body = OuterEnvelope {
+                    to_mailbox: MailboxId::new(&mbx),
+                    ciphertext: payload(w, counter, cfg.payload),
+                }
+                .to_frame()
+                .unwrap();
                 let t0 = Instant::now();
-                let resp = client.post(&deposit_url).json(&body).send().await;
+                let resp = client.post(&deposit_url).body(body).send().await;
                 let ok = matches!(&resp, Ok(r) if r.status().is_success());
                 if !ok {
                     errors.fetch_add(1, Ordering::Relaxed);

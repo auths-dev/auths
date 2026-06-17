@@ -3,6 +3,31 @@
 Real numbers from the `loadtest` harness + the durability suite. Re-run anytime (below);
 these are the evidence behind the PRD's targets (`PRD-durable-relay.md` §11).
 
+## JSON → binary wire/at-rest (the encoding migration)
+
+The envelope was JSON (`ciphertext` as a number array ≈ 3–4 chars/byte); it is now a compact
+binary frame on the wire and raw ciphertext at rest. Same harness, same host, Redis backend:
+
+| Scenario | JSON (before) | Binary (after) | Δ |
+|---|---|---|---|
+| roundtrip 256 B — throughput | 34,356/s | **40,821/s** | +19% |
+| roundtrip 256 B — p99 | 1.70 ms | **1.48 ms** | −13% |
+| **roundtrip 16 KiB — throughput** | 5,287/s | **10,867/s** | **≈2×** |
+| **roundtrip 16 KiB — p99** | 7.01 ms | **2.00 ms** | **≈3.5× better** |
+| deposit-volume 256 B — throughput | 71,377/s | **77,749/s** | +9% |
+| **bytes / queued 256 B message** | **792 B** | **462 B** | **−42%** |
+
+0 errors throughout. The dramatic win is **large payloads**: a 16 KiB ciphertext was ~64 KB
+of JSON number-array, so binary roughly doubles 16 KiB throughput and cuts its p99 ~3.5×.
+
+**Where the residual 462 B/msg goes:** the 256 B ciphertext is now stored raw (was ~770 B of
+JSON), so the per-message *queue element* shrank ~514 B. The remaining ~206 B/msg of Redis
+overhead is structural and dominated by the **per-message dedup key** (`mr:{mbx}:s:<sha256>` —
+a ~110-char key + TTL) plus list-node + byte-counter overhead. Shrinking *that* (a shorter
+fingerprint or a different dedup structure) is the next memory lever — separate from the
+encoding, which is now optimal (~1× ciphertext at rest). The inner envelope is binary too, so
+*real* messages (whose 64-byte signature was a ~200-char JSON array) also shrink.
+
 ## Environment
 
 - Host: Apple Silicon (dev laptop), local Redis **8.0.3** on loopback (`--maxmemory 512mb

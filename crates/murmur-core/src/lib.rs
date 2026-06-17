@@ -130,6 +130,13 @@ pub struct Message {
     pub from: Aid,
     /// The cleartext the user typed. Never leaves the device in the clear.
     pub body: String,
+    /// The stable end-to-end message id (authenticated). For recipient-side dedup +
+    /// receipts + edit/delete once those land; ignored by the engine today.
+    pub message_id: [u8; 16],
+    /// The body's content type (`"text"` by default; authenticated).
+    pub content_type: String,
+    /// Per-message flags (0 by default; authenticated).
+    pub flags: u32,
 }
 
 /// Resolve an AID to the public key that controls it. In the full engine this is
@@ -256,16 +263,41 @@ impl Endpoint {
         mailbox: &MailboxId,
         body: &str,
     ) -> CoreResult<OuterEnvelope> {
-        let signing_bytes = InnerEnvelope::signing_bytes(self.aid(), recipient, body);
+        self.seal_to_with(recipient, mailbox, body, fresh_message_id()?, "text", 0)
+    }
+
+    /// Like [`seal_to`](Self::seal_to) but with explicit end-to-end metadata — a
+    /// `message_id` (so a re-send carries a stable id for recipient dedup/receipts), a
+    /// `content_type`, and `flags`. All three are signed and sealed; the relay never
+    /// sees them. Callers that don't need them use [`seal_to`](Self::seal_to).
+    pub fn seal_to_with(
+        &self,
+        recipient: &Aid,
+        mailbox: &MailboxId,
+        body: &str,
+        message_id: [u8; 16],
+        content_type: &str,
+        flags: u32,
+    ) -> CoreResult<OuterEnvelope> {
+        let signing_bytes = InnerEnvelope::signing_bytes(
+            self.aid(),
+            recipient,
+            &message_id,
+            content_type,
+            flags,
+            body,
+        );
         let signature = self.identity.sign(&signing_bytes)?;
         let inner = InnerEnvelope {
             sender: self.aid().clone(),
             recipient: recipient.clone(),
+            message_id,
+            content_type: content_type.to_string(),
+            flags,
             body: body.to_string(),
             signature,
         };
-        let inner_bytes = serde_json::to_vec(&inner)
-            .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
+        let inner_bytes = inner.to_frame()?;
         // The full sender ‖ recipient ‖ mailbox context is bound into the AEAD as
         // AAD (defense-in-depth, H4), so a relay holding the session secret cannot
         // re-file the bytes under another mailbox — or re-attribute them to another
@@ -293,8 +325,7 @@ impl Endpoint {
     pub fn open(&self, outer: &OuterEnvelope, directory: &dyn Directory) -> CoreResult<Message> {
         let aad = aead_aad(self.peer(), self.aid(), &outer.to_mailbox);
         let inner_bytes = self.session.open(&outer.ciphertext, &aad)?;
-        let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
-            .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
+        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
         let sender_key = directory.resolve(&inner.sender).ok_or(CoreError::Rejected(
             "sender AID could not be resolved to a key",
         ))?;
@@ -308,8 +339,21 @@ impl Endpoint {
             to: inner.recipient,
             from: inner.sender,
             body: inner.body,
+            message_id: inner.message_id,
+            content_type: inner.content_type,
+            flags: inner.flags,
         })
     }
+}
+
+/// A fresh random 16-byte message id (OS entropy). Minted per message by
+/// [`Endpoint::seal_to`]; callers that need a *stable* id across re-sends pass their
+/// own through [`Endpoint::seal_to_with`].
+fn fresh_message_id() -> CoreResult<[u8; 16]> {
+    let mut id = [0u8; 16];
+    getrandom::getrandom(&mut id)
+        .map_err(|_| CoreError::Malformed("OS entropy source unavailable for message id".into()))?;
+    Ok(id)
 }
 
 /// Seal a [`Message`] into the two-layer envelope. The FFI seam the SwiftUI
@@ -486,17 +530,23 @@ mod tests {
         let forged = InnerEnvelope {
             sender: mac.aid().clone(),
             recipient: phone.aid().clone(),
+            message_id: [0u8; 16],
+            content_type: "text".to_string(),
+            flags: 0,
             body: "I am the Mac".into(),
             signature: mallory
                 .identity_sign(&InnerEnvelope::signing_bytes(
                     mac.aid(),
                     phone.aid(),
+                    &[0u8; 16],
+                    "text",
+                    0,
                     "I am the Mac",
                 ))
                 .unwrap(),
         };
         let mailbox = MailboxId::new("mbx:phone");
-        let inner_bytes = serde_json::to_vec(&forged).unwrap();
+        let inner_bytes = forged.to_frame().unwrap();
         let nonce = session::fresh_nonce().unwrap();
         // Seal with the SAME AAD the phone reconstructs on open (claimed sender ‖
         // recipient ‖ mailbox), so the forgery decrypts and is caught at the
@@ -747,6 +797,9 @@ mod tests {
             to: Aid::placeholder(),
             from: Aid::placeholder(),
             body: "hi".into(),
+            message_id: [0u8; 16],
+            content_type: "text".to_string(),
+            flags: 0,
         };
         assert!(matches!(seal(&m), Err(CoreError::NotBuilt(_))));
     }

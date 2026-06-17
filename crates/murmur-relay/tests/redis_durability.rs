@@ -15,6 +15,7 @@
 use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime};
 
+use murmur_core::{MailboxId, OuterEnvelope};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 
@@ -64,26 +65,52 @@ async fn spawn_relay(url: &str, prefix: &str, extra_env: &[(&str, &str)]) -> (Ch
     (child, base)
 }
 
-fn envelope(mailbox: &str, ciphertext: Vec<u8>) -> serde_json::Value {
-    serde_json::json!({ "to_mailbox": mailbox, "ciphertext": ciphertext })
+fn frame(mailbox: &str, ciphertext: Vec<u8>) -> Vec<u8> {
+    OuterEnvelope {
+        to_mailbox: MailboxId::new(mailbox),
+        ciphertext,
+    }
+    .to_frame()
+    .unwrap()
 }
 
-async fn deposit(client: &reqwest::Client, base: &str, env: &serde_json::Value) -> (u16, String) {
-    let r = client.post(format!("{base}/deposit")).json(env).send().await.unwrap();
+async fn deposit(client: &reqwest::Client, base: &str, frame: &[u8]) -> (u16, String) {
+    let r = client
+        .post(format!("{base}/deposit"))
+        .body(frame.to_vec())
+        .send()
+        .await
+        .unwrap();
     let code = r.status().as_u16();
     let body = r.text().await.unwrap();
     (code, body)
 }
 
-async fn drain(client: &reqwest::Client, base: &str, mailbox: &str) -> Vec<serde_json::Value> {
-    client
+/// Drain and return each queued envelope's ciphertext (decode the binary list
+/// `[count:u32]( [len:u32][frame] )*`).
+async fn drain(client: &reqwest::Client, base: &str, mailbox: &str) -> Vec<Vec<u8>> {
+    let bytes = client
         .get(format!("{base}/drain/{mailbox}"))
         .send()
         .await
         .unwrap()
-        .json()
+        .bytes()
         .await
-        .unwrap()
+        .unwrap();
+    let mut out = Vec::new();
+    if bytes.len() < 4 {
+        return out;
+    }
+    let count = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    let mut pos = 4usize;
+    for _ in 0..count {
+        let len =
+            u32::from_be_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]) as usize;
+        pos += 4;
+        out.push(OuterEnvelope::from_frame(&bytes[pos..pos + len]).unwrap().ciphertext);
+        pos += len;
+    }
+    out
 }
 
 /// THE headline test: deposit a backlog, KILL the relay process, start a fresh one on the
@@ -101,7 +128,7 @@ async fn durability_survives_a_relay_restart() {
     // Relay #1 accepts a backlog.
     let (mut relay1, base1) = spawn_relay(&url, &prefix, &[]).await;
     for i in 0..25u8 {
-        let (code, body) = deposit(&client, &base1, &envelope(mailbox, vec![i; 32])).await;
+        let (code, body) = deposit(&client, &base1, &frame(mailbox, vec![i; 32])).await;
         assert_eq!(code, 200, "deposit {i} not accepted: {body}");
     }
 
@@ -114,9 +141,8 @@ async fn durability_survives_a_relay_restart() {
     // The backlog is intact, in order.
     let drained = drain(&client, &base2, mailbox).await;
     assert_eq!(drained.len(), 25, "a restart must lose nothing");
-    for (i, env) in drained.iter().enumerate() {
-        let ct = env["ciphertext"].as_array().unwrap();
-        assert_eq!(ct[0].as_u64().unwrap(), i as u64, "order preserved");
+    for (i, ciphertext) in drained.iter().enumerate() {
+        assert_eq!(ciphertext[0], i as u8, "order preserved");
     }
     // Drained once.
     assert!(drain(&client, &base2, mailbox).await.is_empty());
@@ -136,7 +162,7 @@ async fn idempotent_replay_and_drain_once() {
     let client = reqwest::Client::new();
     let (mut relay, base) = spawn_relay(&url, &prefix, &[]).await;
     let mbx = "mbx-dedup";
-    let env = envelope(mbx, vec![1, 2, 3, 4, 5]);
+    let env = frame(mbx, vec![1, 2, 3, 4, 5]);
 
     let (c1, _) = deposit(&client, &base, &env).await;
     assert_eq!(c1, 200);
@@ -170,11 +196,11 @@ async fn quota_per_mailbox_message_cap() {
     let mbx = "mbx-quota";
 
     for i in 0..3u8 {
-        let (code, _) = deposit(&client, &base, &envelope(mbx, vec![i; 16])).await;
+        let (code, _) = deposit(&client, &base, &frame(mbx, vec![i; 16])).await;
         assert_eq!(code, 200);
     }
     // The 4th distinct message exceeds the cap.
-    let (code, body) = deposit(&client, &base, &envelope(mbx, vec![99; 16])).await;
+    let (code, body) = deposit(&client, &base, &frame(mbx, vec![99; 16])).await;
     assert_eq!(code, 429, "over-cap deposit refused");
     assert!(body.contains("quota_exceeded"), "{body}");
 
@@ -224,7 +250,7 @@ async fn ttl_expires_an_undrained_message() {
     let mbx = "mbx-ttl";
 
     // Deposit and DON'T drain; after the 1 s TTL the undrained message is gone.
-    let (code, _) = deposit(&client, &base, &envelope(mbx, vec![2; 8])).await;
+    let (code, _) = deposit(&client, &base, &frame(mbx, vec![2; 8])).await;
     assert_eq!(code, 200);
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(

@@ -49,6 +49,21 @@ pub struct SealedMessage {
     pub from: String,
     /// The decrypted, authenticated message body.
     pub body: String,
+    /// The stable 16-byte message id (authenticated). For recipient-side dedup + receipts
+    /// + edit/delete once built; available to read today.
+    pub message_id: Vec<u8>,
+    /// The body's content type (`"text"` by default; authenticated).
+    pub content_type: String,
+    /// Per-message flags (0 by default; authenticated).
+    pub flags: u32,
+}
+
+/// The mailbox + ciphertext decoded from an envelope frame (for the inbox-handshake path,
+/// so Swift never hand-rolls the binary frame).
+#[derive(uniffi::Record)]
+pub struct EnvelopeParts {
+    pub mailbox: String,
+    pub ciphertext: Vec<u8>,
 }
 
 /// What gets published to the relay's prekey directory for an AID: the AID's signing
@@ -66,6 +81,36 @@ fn random_seed() -> [u8; 32] {
     let mut seed = [0u8; 32];
     OsRng.fill_bytes(&mut seed);
     seed
+}
+
+/// A fresh random 16-byte message id (when the app does not supply a stable one).
+fn random_message_id() -> [u8; 16] {
+    use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+    let mut id = [0u8; 16];
+    OsRng.fill_bytes(&mut id);
+    id
+}
+
+/// Encode an `(mailbox, ciphertext)` into the binary `OuterEnvelope` frame the relay
+/// speaks — so the app builds the first-contact handshake envelope without hand-rolling
+/// the frame format.
+#[uniffi::export]
+pub fn encode_envelope(mailbox: String, ciphertext: Vec<u8>) -> Result<Vec<u8>, MurmurError> {
+    let envelope = OuterEnvelope {
+        to_mailbox: murmur_core::MailboxId::new(mailbox),
+        ciphertext,
+    };
+    envelope.to_frame().map_err(MurmurError::from)
+}
+
+/// Decode a binary `OuterEnvelope` frame into its mailbox + ciphertext.
+#[uniffi::export]
+pub fn decode_envelope(frame: Vec<u8>) -> Result<EnvelopeParts, MurmurError> {
+    let envelope = OuterEnvelope::from_frame(&frame).map_err(MurmurError::from)?;
+    Ok(EnvelopeParts {
+        mailbox: envelope.to_mailbox.as_str().to_string(),
+        ciphertext: envelope.ciphertext,
+    })
 }
 
 /// Coerce a Swift `Vec<u8>` into a 32-byte seed, or a malformed error.
@@ -169,18 +214,42 @@ impl MurmurSession {
     /// Seal `body` for the peer — returns the JSON `OuterEnvelope` to `POST /deposit`.
     pub fn seal(&self, body: String) -> Result<Vec<u8>, MurmurError> {
         let envelope = self.inner.seal(&body)?;
-        serde_json::to_vec(&envelope).map_err(|e| MurmurError::Malformed(e.to_string()))
+        envelope.to_frame().map_err(MurmurError::from)
+    }
+
+    /// Seal with explicit end-to-end metadata. An empty `message_id` mints a fresh 16-byte
+    /// one; a non-empty one MUST be 16 bytes (e.g. a stable id from the app's outbox so a
+    /// re-send carries the same id for recipient dedup). `content_type`/`flags` are signed.
+    pub fn seal_with(
+        &self,
+        body: String,
+        content_type: String,
+        flags: u32,
+        message_id: Vec<u8>,
+    ) -> Result<Vec<u8>, MurmurError> {
+        let id: [u8; 16] = if message_id.is_empty() {
+            random_message_id()
+        } else {
+            message_id
+                .as_slice()
+                .try_into()
+                .map_err(|_| MurmurError::Malformed("message_id must be 16 bytes".into()))?
+        };
+        let envelope = self.inner.seal_with(&body, id, &content_type, flags)?;
+        envelope.to_frame().map_err(MurmurError::from)
     }
 
     /// Open a JSON `OuterEnvelope` drained from this session's mailbox — authenticate or
     /// reject (uniform error; never unverified plaintext).
     pub fn open(&self, envelope_bytes: Vec<u8>) -> Result<SealedMessage, MurmurError> {
-        let envelope: OuterEnvelope = serde_json::from_slice(&envelope_bytes)
-            .map_err(|e| MurmurError::Malformed(format!("envelope: {e}")))?;
+        let envelope = OuterEnvelope::from_frame(&envelope_bytes).map_err(MurmurError::from)?;
         let message = self.inner.open(&envelope)?;
         Ok(SealedMessage {
             from: message.from.as_str().to_string(),
             body: message.body,
+            message_id: message.message_id.to_vec(),
+            content_type: message.content_type,
+            flags: message.flags,
         })
     }
 

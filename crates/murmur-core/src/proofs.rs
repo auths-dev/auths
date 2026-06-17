@@ -209,16 +209,19 @@ pub fn deliver_forward_secret(
     // mailbox id and opaque ratcheted bytes.
     let mut wires: Vec<Vec<u8>> = Vec::with_capacity(bodies.len());
     for body in bodies {
-        let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+        let signing_bytes =
+            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
         let signature = sender.sign(&signing_bytes)?;
         let inner = InnerEnvelope {
             sender: sender.aid().clone(),
             recipient: recipient.aid().clone(),
+            message_id: [0u8; 16],
+            content_type: "text".to_string(),
+            flags: 0,
             body: (*body).to_string(),
             signature,
         };
-        let inner_bytes = serde_json::to_vec(&inner)
-            .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
+        let inner_bytes = inner.to_frame()?;
         let ciphertext = send_chain.seal(mailbox_aad, &inner_bytes)?;
         relay.handle(&RelayRequest::Deposit(OuterEnvelope {
             to_mailbox: mailbox.clone(),
@@ -245,8 +248,7 @@ pub fn deliver_forward_secret(
     let mut delivered = 0u64;
     for wire in &wires {
         let inner_bytes = recv_chain.open(mailbox_aad, wire)?;
-        let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
-            .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
+        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
         let sender_key = directory
             .resolve(&inner.sender)
             .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
@@ -386,16 +388,19 @@ pub fn prove_post_compromise_healing(
     // Seal each body on the post-step (healed) chain into an authenticated inner
     // envelope and store-and-forward it. The relay only ever sees the outer envelope.
     for body in bodies {
-        let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+        let signing_bytes =
+            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
         let signature = sender.sign(&signing_bytes)?;
         let inner = InnerEnvelope {
             sender: sender.aid().clone(),
             recipient: recipient.aid().clone(),
+            message_id: [0u8; 16],
+            content_type: "text".to_string(),
+            flags: 0,
             body: (*body).to_string(),
             signature,
         };
-        let inner_bytes = serde_json::to_vec(&inner)
-            .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
+        let inner_bytes = inner.to_frame()?;
         let ciphertext = healed_send.seal(mailbox_aad, &inner_bytes)?;
         relay.handle(&RelayRequest::Deposit(OuterEnvelope {
             to_mailbox: mailbox.clone(),
@@ -418,8 +423,7 @@ pub fn prove_post_compromise_healing(
     let mut healed_delivered = 0u64;
     for env in &queued {
         let inner_bytes = healed_recv.open(mailbox_aad, &env.ciphertext)?;
-        let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
-            .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
+        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
         let sender_key = directory
             .resolve(&inner.sender)
             .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
@@ -532,16 +536,19 @@ pub fn prove_relay_queue(
     // inner envelope, wrap it as an outer envelope, and DEPOSIT it into the relay's
     // real queue. The relay only ever touches the outer envelope.
     for body in bodies {
-        let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+        let signing_bytes =
+            InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
         let signature = sender.sign(&signing_bytes)?;
         let inner = InnerEnvelope {
             sender: sender.aid().clone(),
             recipient: recipient.aid().clone(),
+            message_id: [0u8; 16],
+            content_type: "text".to_string(),
+            flags: 0,
             body: (*body).to_string(),
             signature,
         };
-        let inner_bytes = serde_json::to_vec(&inner)
-            .map_err(|e| CoreError::Malformed(format!("serialize inner: {e}")))?;
+        let inner_bytes = inner.to_frame()?;
         let ciphertext = send_chain.seal(mailbox_aad, &inner_bytes)?;
         if relay.deposit(&OuterEnvelope {
             to_mailbox: mailbox.clone(),
@@ -594,8 +601,7 @@ pub fn prove_relay_queue(
     let mut envelopes_queued = 0u64;
     for env in &queued {
         let inner_bytes = recv_chain.open(mailbox_aad, &env.ciphertext)?;
-        let inner: InnerEnvelope = serde_json::from_slice(&inner_bytes)
-            .map_err(|e| CoreError::Malformed(format!("parse inner: {e}")))?;
+        let inner = InnerEnvelope::from_frame(&inner_bytes)?;
         let sender_key = directory
             .resolve(&inner.sender)
             .ok_or(CoreError::Rejected("sender AID could not be resolved"))?;
@@ -903,11 +909,18 @@ pub fn prove_addressed(
         to: receipt.recipient.clone(),
         from: receipt.authenticated_sender.clone(),
         body: receipt.body.clone(),
+        message_id: [0u8; 16],
+        content_type: "text".to_string(),
+        flags: 0,
     };
-    let signing_bytes = InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), body);
+    let signing_bytes =
+        InnerEnvelope::signing_bytes(sender.aid(), recipient.aid(), &[0u8; 16], "text", 0, body);
     let inner = InnerEnvelope {
         sender: sender.aid().clone(),
         recipient: recipient.aid().clone(),
+        message_id: [0u8; 16],
+        content_type: "text".to_string(),
+        flags: 0,
         body: body.to_string(),
         signature: sender.identity.sign(&signing_bytes)?,
     };
@@ -926,12 +939,14 @@ pub fn prove_addressed(
     let forged_inner = InnerEnvelope {
         sender: sender.aid().clone(),
         recipient: recipient.aid().clone(),
+        message_id: [0u8; 16],
+        content_type: "text".to_string(),
+        flags: 0,
         body: body.to_string(),
         // signed by the impostor, who does NOT control the sender's AID
         signature: impostor.identity.sign(&signing_bytes)?,
     };
-    let forged_bytes = serde_json::to_vec(&forged_inner)
-        .map_err(|e| CoreError::Malformed(format!("serialize forged inner: {e}")))?;
+    let forged_bytes = forged_inner.to_frame()?;
     let forged_nonce = session::fresh_nonce()?;
     // Seal the forgery with the SAME AAD the recipient reconstructs on open
     // (sender ‖ recipient ‖ mailbox), so it genuinely decrypts and reaches the

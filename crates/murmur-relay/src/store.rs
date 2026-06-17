@@ -320,8 +320,7 @@ impl RedisStore {
     async fn deposit(&self, env: &OuterEnvelope) -> Result<DepositOutcome, StoreError> {
         let mbx = env.to_mailbox.as_str();
         let fp = fingerprint_hex(&env.ciphertext);
-        let payload = serde_json::to_string(env)
-            .map_err(|e| StoreError::Backend(format!("serialize envelope: {e}")))?;
+        // Store the RAW ciphertext (the mailbox is the key); no JSON/redundant mailbox.
         let size = env.ciphertext.len();
         let mut conn = self.conn.clone();
         let outcome: String = self
@@ -329,7 +328,7 @@ impl RedisStore {
             .key(self.qkey(mbx))
             .key(self.bkey(mbx))
             .key(self.skey(mbx, &fp))
-            .arg(payload)
+            .arg(env.ciphertext.as_slice())
             .arg(size)
             .arg(self.cfg.max_msgs_per_mailbox)
             .arg(self.cfg.max_bytes_per_mailbox)
@@ -348,20 +347,22 @@ impl RedisStore {
 
     async fn drain(&self, mailbox: &str) -> Result<Vec<OuterEnvelope>, StoreError> {
         let mut conn = self.conn.clone();
-        let items: Vec<String> = self
+        // Each list element is the raw ciphertext; rebuild the envelope with the mailbox
+        // from the key (binary-safe `Vec<u8>` items, not strings).
+        let items: Vec<Vec<u8>> = self
             .drain
             .key(self.qkey(mailbox))
             .key(self.bkey(mailbox))
             .invoke_async(&mut conn)
             .await
             .map_err(map_redis_err)?;
-        items
+        Ok(items
             .into_iter()
-            .map(|s| {
-                serde_json::from_str::<OuterEnvelope>(&s)
-                    .map_err(|e| StoreError::Backend(format!("parse queued envelope: {e}")))
+            .map(|ciphertext| OuterEnvelope {
+                to_mailbox: MailboxId::new(mailbox),
+                ciphertext,
             })
-            .collect()
+            .collect())
     }
 
     async fn put_prekey(&self, aid: &str, bytes: Vec<u8>) -> Result<(), StoreError> {
