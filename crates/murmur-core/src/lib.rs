@@ -48,6 +48,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod address;
 pub mod channel;
+pub mod contact;
 pub mod corroboration;
 pub mod delegation;
 pub mod dh_ratchet;
@@ -68,6 +69,10 @@ pub mod vetted;
 
 pub use address::Aid;
 pub use channel::SecureChannel;
+pub use contact::{
+    ContactSession, Handshake, establish_initiator, establish_initiator_seeded,
+    establish_responder, establish_responder_seeded, publish_bundle_seeded,
+};
 pub use corroboration::{CorroboratedState, Provenance, RevocationResolution, provenance_token};
 pub use delegation::{DelegatedDevice, DelegationAnchor, DelegationState, DeviceRevocation};
 pub use dh_ratchet::{DhRatchet, DhStep};

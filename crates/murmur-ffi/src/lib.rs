@@ -20,6 +20,10 @@ uniffi::setup_scaffolding!();
 /// Cross-device pairing (the QR-driven P-256 ECDH + SAS handshake).
 mod pairing;
 
+/// Real end-to-end messaging — mint, publish a prekey bundle, establish a pairwise
+/// session with a contact, and seal/open authenticated messages over the relay.
+mod messaging;
+
 /// The error surfaced across the FFI. `NotBuilt` is the load-bearing variant
 /// for the skeleton — it names the seam that is specified but unwired.
 #[derive(Debug, thiserror::Error, uniffi::Error)]

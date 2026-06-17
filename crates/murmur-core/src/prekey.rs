@@ -60,7 +60,7 @@ const X3DH_ROOT_INFO: &[u8] = b"murmur/x3dh/root-key/v1";
 /// against the key the AID resolves to.
 ///
 /// [`verify_rooted`]: PrekeyBundle::verify_rooted
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PrekeyBundle {
     /// The AID this bundle claims to publish keys for. Verification binds it to
     /// `signature` and to the resolved KERI key — a bundle cannot borrow another
