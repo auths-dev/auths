@@ -5,8 +5,12 @@
 //! SIGNED proof and re-derive the true spend **without the operator** — re-running each record's
 //! `call_commit` (and, when present, `settlement_commit`) through the SAME
 //! `verify_commit_against_kel_scoped` the live gate uses. One JSON object per line; the writer
-//! only ever APPENDS — it never rewrites or truncates a prior record, so a dropped/edited line is
-//! a detectable tamper, not a silent loss.
+//! only ever APPENDS — it never rewrites a prior record. EDITING a record is detected (the change
+//! breaks its SSH signature → the audit returns a tampered-proof verdict). Detecting a DROPPED or
+//! reordered record is NOT yet enforced here: the records carry no signed back-link, so the audit
+//! trusts what the log contains but cannot yet prove it is COMPLETE. A signed per-record
+//! predecessor link (so the audit can verify continuity and catch a dropped/reordered line) is a
+//! follow-on.
 //!
 //! The path layout and the READ side (`spend_log_path` / `read_spend_log`) live in
 //! `auths_mcp_core` so the gateway (writer) and the `auths-cli` auditor (reader) share ONE
