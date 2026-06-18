@@ -319,14 +319,33 @@ async fn drive_call(
     // the AGENT-SIGNED cost (un-forgeable by the operator), not just the rail-attested number.
     let settlement_commit = match (forwarded_result.is_some(), rail, settled_charge_ref) {
         (true, Some(rail_name), Some(charge)) if cost.settle_cents > 0 => {
-            let (bytes, _sha) = chain.sign_settlement(
+            // Bind the settlement to THIS call by the hash of its signed commit bytes.
+            let call_binding = if std::env::var_os("AUTHS_MCP_SETTLE_REBIND").is_some() {
+                // Adversarial harness hook: stamp a binding for a DIFFERENT call — simulating an
+                // operator that moves a genuinely-signed (cheaper) settlement onto another call.
+                // The settlement signature stays VALID, but its binding no longer matches this
+                // call, so the audit must reject it on the binding check. Never set in normal use.
+                auths_mcp_core::call_commit_binding(b"a different call commit")
+            } else {
+                auths_mcp_core::call_commit_binding(&proof_bytes)
+            };
+            let (mut bytes, _sha) = chain.sign_settlement(
                 idx,
-                &auths_mcp_core::call_commit_binding(&proof_bytes),
+                &call_binding,
                 rail_name,
                 cost.settle_cents,
                 charge,
                 cumulative,
             )?;
+            // Adversarial harness hook: when AUTHS_MCP_SETTLE_TAMPER is set, flip a byte of the
+            // SIGNED settlement after signing — simulating an operator that alters the agent's
+            // settled cost. The signature no longer matches, so the offline audit catches it.
+            // Never set in normal operation.
+            if std::env::var_os("AUTHS_MCP_SETTLE_TAMPER").is_some()
+                && let Some(b) = bytes.iter_mut().find(|b| **b == b'a')
+            {
+                *b = b'b';
+            }
             Some(bytes)
         }
         _ => None,
