@@ -185,6 +185,15 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
         Ok(records) => {
             let verdict = gate.audit_spend_log(&records, Utc::now().timestamp()).await;
             println!("▸ audit: {} — {verdict}", verdict.code());
+            // Emit the exact args to re-run the audit as a STANDALONE process (`verify-spend`),
+            // so an external party (and the smoke) can re-derive this verdict from disk alone.
+            println!(
+                "▸ audit-cmd: --log {} --registry {} --agent {} --root {}",
+                log_path.display(),
+                chain.org_repo().display(),
+                chain.agent_did,
+                chain.root_did,
+            );
         }
         Err(e) => println!("▸ audit: SKIPPED — no spend log to audit ({e})"),
     }

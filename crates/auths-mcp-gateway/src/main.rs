@@ -58,6 +58,12 @@ enum Command {
     /// gate / `--check` entrypoint, PRD §7). No model, no network — deterministic
     /// verdicts the probes assert.
     Replay(ReplayArgs),
+
+    /// Independently audit a persisted spend log OFFLINE (M2 — "the moat"): re-verify every
+    /// signed proof through the same verifier the gate uses + re-derive the spend, with NO
+    /// trust in the operator that produced the log. Exits non-zero on any non-`consistent`
+    /// verdict. Needs the issuer's registry to resolve the agent + delegator KELs.
+    VerifySpend(VerifySpendArgs),
 }
 
 #[derive(Parser)]
@@ -141,6 +147,26 @@ struct ReplayArgs {
     transcript: std::path::PathBuf,
 }
 
+#[derive(Parser)]
+struct VerifySpendArgs {
+    /// The spend log (JSONL) to audit, e.g. `<repo>/spend-log/<delegation>.jsonl`.
+    #[arg(long = "log", value_name = "FILE")]
+    log: std::path::PathBuf,
+
+    /// The issuer's registry the agent + delegator KELs are resolved from — the SAME local KEL
+    /// resolution the live gate uses, run OFFLINE by anyone holding a copy of the registry.
+    #[arg(long = "registry", value_name = "DIR")]
+    registry: std::path::PathBuf,
+
+    /// The agent's delegated `did:keri:…` whose signed proofs are re-verified.
+    #[arg(long = "agent", value_name = "DID")]
+    agent: String,
+
+    /// The delegator/root `did:keri:…` the grant is anchored to (the pinned trust root).
+    #[arg(long = "root", value_name = "DID")]
+    root: String,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let runtime = match tokio::runtime::Runtime::new() {
@@ -153,6 +179,7 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Wrap(args) => runtime.block_on(run_wrap(args)),
         Command::Replay(args) => runtime.block_on(run_replay(args)),
+        Command::VerifySpend(args) => runtime.block_on(run_verify_spend(args)),
     }
 }
 
@@ -201,5 +228,46 @@ async fn run_replay(args: ReplayArgs) -> ExitCode {
             );
             ExitCode::FAILURE
         }
+    }
+}
+
+/// The offline auditor (M2 — "the moat"): re-verify a persisted spend log against the issuer's
+/// registry with the gate's OWN `verify_commit_against_kel_scoped` + `audit_spend_log` — run by
+/// anyone, with no trust in the operator that produced the log. Exits non-zero on any
+/// non-`consistent` verdict.
+async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
+    use auths_mcp_core::PerCallGate;
+    use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
+
+    let records = match auths_mcp_core::read_spend_log(&args.log) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot read spend log `{}`: {e}",
+                args.log.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let registry =
+        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&args.registry));
+    let gate = match PerCallGate::resolve(&registry, &args.agent, &args.root) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot resolve KELs from registry `{}`: {e}",
+                args.registry.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let verdict = gate
+        .audit_spend_log(&records, chrono::Utc::now().timestamp())
+        .await;
+    println!("verify-spend: {} — {verdict}", verdict.code());
+    if verdict.is_consistent() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
