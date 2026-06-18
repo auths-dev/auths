@@ -476,6 +476,71 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_calls_never_exceed_the_cross_rail_cap() {
+        // The cap-enforcement boundary must hold under REAL parallel access through the
+        // `Arc<Mutex<CrossRailBudget>>` the live gateway uses: 50 agents race ONE $1.00
+        // reserve→settle each against a $10.00 cap, with the "rail" touched OUTSIDE the lock
+        // (the genuine concurrency window between reserve and settle). Under ANY interleaving,
+        // exactly 10 settle (consuming the cap) and 40 are refused BEFORE the rail — the
+        // cross-rail total never exceeds the cap, and no reservation is left stranded.
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        let dir = tempfile::tempdir().unwrap();
+        let (cap, amount, agents) = (1000u64, 100u64, 50u64);
+        let b = Arc::new(Mutex::new(budget(dir.path(), cap)));
+        let settled = Arc::new(AtomicU64::new(0));
+        let refused = Arc::new(AtomicU64::new(0));
+
+        let handles: Vec<_> = (0..agents)
+            .map(|_| {
+                let b = Arc::clone(&b);
+                let settled = Arc::clone(&settled);
+                let refused = Arc::clone(&refused);
+                std::thread::spawn(move || {
+                    // RESERVE under the lock — the pre-auth boundary. The guard drops at the
+                    // end of this statement, releasing the lock before the "rail".
+                    let hold = match b.lock().unwrap().reserve(amount).unwrap() {
+                        ReserveOutcome::Reserved { hold, .. } => Some(hold),
+                        ReserveOutcome::Refused { .. } => None,
+                    };
+                    match hold {
+                        Some(hold) => {
+                            std::thread::yield_now(); // "rail" touched WITHOUT the lock
+                            match b.lock().unwrap().settle(hold, amount).unwrap() {
+                                SettleOutcome::Advanced { .. } => {
+                                    settled.fetch_add(1, Ordering::SeqCst);
+                                }
+                                SettleOutcome::RolledBack { .. } => {
+                                    panic!("a fresh settle must not roll back")
+                                }
+                            }
+                        }
+                        None => {
+                            refused.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let g = b.lock().unwrap();
+        // The hard invariant: the cross-rail total NEVER exceeds the cap, under any race.
+        assert!(
+            g.settled_cents().unwrap() <= cap,
+            "cross-rail cap exceeded under concurrency"
+        );
+        // And it is fully + exactly consumed: cap/amount settle, the rest refused, none stranded.
+        assert_eq!(g.settled_cents().unwrap(), cap);
+        assert_eq!(settled.load(Ordering::SeqCst), cap / amount);
+        assert_eq!(refused.load(Ordering::SeqCst), agents - cap / amount);
+        assert_eq!(g.reserved_cents(), 0);
+    }
+
+    #[test]
     fn reserve_settle_releases_slack() {
         // Call reserves a $2.00 ceiling but settles $1.50 — the $0.50 slack must be
         // RELEASED so a later in-budget call is not starved by the over-reservation.
