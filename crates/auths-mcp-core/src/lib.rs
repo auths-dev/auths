@@ -31,6 +31,7 @@
 //! A forged or tampered proof yields a non-`Valid` verdict, so the gateway refuses
 //! the call before the downstream tool is ever invoked.
 
+pub mod audit;
 pub mod budget;
 pub mod gate;
 pub mod paymode;
@@ -38,6 +39,7 @@ pub mod rail;
 pub mod receipt;
 pub mod session;
 
+pub use audit::{AuditVerdict, SpendLogRecord};
 pub use budget::{
     BudgetError, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds, SettleOutcome,
     SettledCounter,
