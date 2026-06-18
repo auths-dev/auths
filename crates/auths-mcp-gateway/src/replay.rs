@@ -11,7 +11,8 @@
 use std::path::{Path, PathBuf};
 
 use auths_mcp_core::{
-    Budget, CrossRailBudget, ExtractedCost, PerCallGate, Receipt, ToolCall, Verdict,
+    Budget, CrossRailBudget, ExtractedCost, PerCallGate, Receipt, SpendLogRecord, ToolCall,
+    Verdict,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -34,6 +35,10 @@ struct CallCost {
     /// True when the cost was EXTRACTED from the rail's recorded response (vs. read from
     /// the transcript's known `cost_cents`) — drives the receipt's extraction evidence.
     extracted: bool,
+    /// The rail's RAW recorded response bytes the cost was extracted from (`None` when the
+    /// cost is the transcript's known number, not rail-extracted). Retained for the spend log
+    /// (M2/A) so the offline audit re-extracts + cross-checks the cost against the signed cost.
+    rail_response: Option<Vec<u8>>,
 }
 
 /// Resolve a paid call's cost. When the call names a `response_fixture`, the cost is
@@ -48,6 +53,7 @@ fn resolve_call_cost(call: &Call) -> anyhow::Result<CallCost> {
             settle_cents: call.cost_cents,
             charge_ref: None,
             extracted: false,
+            rail_response: None,
         });
     };
 
@@ -83,6 +89,7 @@ fn resolve_call_cost(call: &Call) -> anyhow::Result<CallCost> {
         settle_cents: amount_cents,
         charge_ref: Some(reference),
         extracted: true,
+        rail_response: Some(bytes),
     })
 }
 
@@ -276,6 +283,22 @@ async fn drive_call(
         .digest()
         .map_err(|e| anyhow::anyhow!("receipt digest: {e}"))?;
     let receipt_json = serde_json::to_string(&receipt)?;
+
+    // (M2 / A) Persist the per-call proof+receipt+rail-response record to the append-only spend
+    // log under `<org_repo>/spend-log/<delegation>.jsonl`, so an offline `auths verify-spend`
+    // re-verifies the SIGNED `call_commit` bytes (not just the SHA) + re-derives spend with NO
+    // trust in the operator. (B1: the `settlement_commit` anchoring the actual cost lands in 2.1.)
+    crate::spend_log::append(
+        chain.org_repo(),
+        &chain.agent_did,
+        &SpendLogRecord {
+            call_commit: proof_bytes,
+            receipt,
+            rail: rail.map(|r| r.to_string()),
+            rail_response: cost.rail_response.clone(),
+            settlement_commit: None,
+        },
+    )?;
 
     let rail_tag = rail.map(|r| format!(" rail={r}")).unwrap_or_default();
     // When the cost was EXTRACTED from the rail's response, name the charge id it was

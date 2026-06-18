@@ -19,6 +19,7 @@
 use crate::receipt::Receipt;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 /// One append-only record in the spend log — everything an offline audit needs to re-verify
 /// ONE brokered call without the operator's cooperation. Persisted as one JSON object per line
@@ -41,6 +42,11 @@ pub struct SpendLogRecord {
     pub rail: Option<String>,
     /// The rail's RAW response bytes, retained so the audit re-extracts the cost via
     /// `rail::extract` and cross-checks it against the signed settlement (`None` if non-metered).
+    ///
+    /// ⚠️ LIVE-WIRING CAVEAT (must-review when the live path populates this): capture the response
+    /// **body only** — NEVER request/response auth headers. An `Authorization: Bearer …` or the
+    /// gateway's custodied downstream credential must never land in the spend log. (Hermetic today:
+    /// this is a recorded fixture body, which holds no secret.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rail_response: Option<Vec<u8>>,
     /// (B1) Raw bytes of the agent's signed SETTLEMENT commit anchoring the actual cost
@@ -157,11 +163,53 @@ impl fmt::Display for AuditVerdict {
     }
 }
 
+/// The spend-log file for one agent delegation under `repo` (the verifier-held registry path):
+/// `<repo>/spend-log/<delegation>.jsonl`. Shared by the gateway (which appends records) and the
+/// offline auditor (which reads them) so there is ONE definition of where the log lives.
+pub fn spend_log_path(repo: &Path, delegation: &str) -> PathBuf {
+    repo.join("spend-log")
+        .join(format!("{}.jsonl", safe_key(delegation)))
+}
+
+/// Read every [`SpendLogRecord`] from a delegation's spend log, in order (for the offline
+/// auditor). A blank trailing line is ignored; a non-blank line that fails to parse is
+/// `InvalidData` — a corrupted or edited log fails closed rather than silently dropping a call.
+pub fn read_spend_log(path: &Path) -> std::io::Result<Vec<SpendLogRecord>> {
+    let raw = std::fs::read_to_string(path)?;
+    raw.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            serde_json::from_str::<SpendLogRecord>(l)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        })
+        .collect()
+}
+
+/// A filesystem-safe single component from a delegation id: strip the `did:keri:` scheme and map
+/// anything that is not `[A-Za-z0-9_-]` to `_` (defensive — a `did:keri:E…` tail is base64url and
+/// already safe; this only guards a malformed key from escaping the directory).
+fn safe_key(delegation: &str) -> String {
+    let tail = delegation.strip_prefix("did:keri:").unwrap_or(delegation);
+    if tail.is_empty() || tail == "." || tail == ".." {
+        return "_".to_string();
+    }
+    tail.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::gate::{ToolCall, Verdict};
     use chrono::DateTime;
+    use std::path::Path;
 
     fn sample_receipt() -> Receipt {
         let call = ToolCall {
@@ -260,5 +308,34 @@ mod tests {
         );
         let back: SpendLogRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(serde_json::to_string(&back).unwrap(), json);
+    }
+
+    #[test]
+    fn spend_log_path_strips_scheme_and_stays_in_one_component() {
+        let p = spend_log_path(Path::new("/repo"), "did:keri:EabC-_9");
+        assert!(p.ends_with("spend-log/EabC-_9.jsonl"), "{p:?}");
+        // a malformed delegation cannot escape the spend-log dir
+        let evil = spend_log_path(Path::new("/repo"), "../../etc/passwd");
+        assert!(!evil.to_string_lossy().contains(".."), "{evil:?}");
+    }
+
+    #[test]
+    fn read_spend_log_parses_in_order_and_fails_closed_on_garbage() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("log.jsonl");
+        let line = serde_json::to_string(&SpendLogRecord {
+            call_commit: b"a".to_vec(),
+            receipt: sample_receipt(),
+            rail: None,
+            rail_response: None,
+            settlement_commit: None,
+        })
+        .unwrap();
+        // two records + a blank line (ignored)
+        std::fs::write(&path, format!("{line}\n\n{line}\n")).unwrap();
+        assert_eq!(read_spend_log(&path).unwrap().len(), 2);
+        // a corrupted/edited line fails closed, never silently drops a record
+        std::fs::write(&path, format!("{line}\nnot json\n")).unwrap();
+        assert!(read_spend_log(&path).is_err());
     }
 }

@@ -33,6 +33,7 @@ use clap::{Parser, Subcommand};
 mod chain;
 mod proxy;
 mod replay;
+mod spend_log;
 mod transcript;
 
 #[derive(Parser)]
