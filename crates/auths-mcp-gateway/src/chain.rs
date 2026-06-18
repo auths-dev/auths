@@ -210,6 +210,7 @@ impl Chain {
         idx: usize,
         canonical: &[u8],
         capability: &str,
+        prev_binding: &str,
     ) -> anyhow::Result<(Vec<u8>, String)> {
         let work = self.work_root.join(format!("call-{idx}"));
         std::fs::create_dir_all(&work)?;
@@ -244,9 +245,14 @@ impl Chain {
                 .current_dir(&work),
             "git add",
         )?;
+        // The signed `Auths-Prev` trailer links this call to the prior spend-log record (the hash of
+        // its commit), or a fixed genesis sentinel for the first — so the offline audit can verify
+        // the log is a continuous chain and catch a DROPPED or reordered record, not only an edited
+        // one. The SSH signature applied below covers it.
         must(
             Command::new("git")
                 .args(["commit", "-qm", "tools/call", "--no-gpg-sign"])
+                .args(["--trailer", &format!("Auths-Prev:{prev_binding}")])
                 .current_dir(&work),
             "git commit",
         )?;

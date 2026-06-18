@@ -229,6 +229,9 @@ pub async fn audit_spend_log(
 ) -> AuditVerdict {
     let provider = auths_crypto::default_provider();
     let mut settled: u64 = 0;
+    // The binding each record's `Auths-Prev` must match — the prior record's commit hash, or the
+    // genesis sentinel for the first record.
+    let mut expected_prev = SPEND_LOG_GENESIS.to_string();
     for (i, rec) in records.iter().enumerate() {
         // Re-verify the SIGNED proof bytes — the gate's own authenticity check, re-run offline.
         let commit_verdict = auths_verifier::verify_commit_against_kel_scoped(
@@ -255,6 +258,15 @@ pub async fn audit_spend_log(
             // not a tamper; only forgery and revocation are audit failures of the proof itself.
             _ => {}
         }
+        // Continuity: each record's SIGNED `Auths-Prev` links to the prior record's commit (the
+        // first to the genesis sentinel). A DROPPED or reordered record breaks the chain and is
+        // caught here — only an EDITED record was caught before (via its broken signature). The
+        // proof was just verified authentic, so this trailer is signed and trustworthy.
+        let claimed_prev = commit_trailer(&rec.call_commit, "Auths-Prev").unwrap_or("");
+        if claimed_prev != expected_prev {
+            return AuditVerdict::DroppedCall { at: i };
+        }
+        expected_prev = call_commit_binding(&rec.call_commit);
         // Sum the settled cost for a call that (a) carries an AUTHENTIC, IN-SCOPE proof —
         // `Allowed`/`AgentExpired`, both PROOF-DETERMINED, so the operator cannot relabel a settled
         // call as refused without breaking its signature (`OutsideAgentScope` never settled) — AND
@@ -369,10 +381,16 @@ pub async fn audit_spend_log(
     }
 }
 
+/// The first record in a spend log has no predecessor; its signed `Auths-Prev` trailer carries this
+/// fixed sentinel instead of a prior commit's hash. The audit requires record 0 to match it, so an
+/// operator cannot drop the head of the log and pass off a later record as the first.
+pub const SPEND_LOG_GENESIS: &str = "genesis";
+
 /// The hex SHA-256 of a call's signed commit bytes — the value that binds a settlement to the one
-/// call it settles. The gateway stamps this into the settlement's signed `Auths-Settle-Call`
-/// trailer; the audit recomputes it from the record's own `call_commit` and requires a match, so a
-/// settlement signed for a cheap call cannot be moved onto an expensive one.
+/// call it settles, and that the next record's `Auths-Prev` links back to. The gateway stamps this
+/// into the settlement's signed `Auths-Settle-Call` trailer; the audit recomputes it from the
+/// record's own `call_commit` and requires a match, so a settlement signed for a cheap call cannot
+/// be moved onto an expensive one.
 pub fn call_commit_binding(call_commit: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(call_commit);

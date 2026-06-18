@@ -278,6 +278,11 @@ struct GatewayProxy {
     /// call is metered on it (the cost is read from the rail's own response), so an agent cannot
     /// bypass the cap by omitting a per-call declaration.
     rail: Option<String>,
+    /// The hash of the last persisted spend-log record — threaded into the next call's signed
+    /// `Auths-Prev` so the log is a continuous chain the audit can verify is complete. Correct for
+    /// the sequential single-agent flow; concurrent persists from multiple agents on one gateway
+    /// would need this serialized across sign+append (a follow-on).
+    prev_binding: Arc<Mutex<String>>,
 }
 
 impl GatewayProxy {
@@ -400,9 +405,12 @@ impl ServerHandler for GatewayProxy {
         let idx = self
             .next_call
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // Link this call to the prior persisted record (the genesis sentinel for the first) via the
+        // signed `Auths-Prev` trailer, so the audit can verify the spend log is a complete chain.
+        let prev_binding = self.prev_binding.lock().await.clone();
         let (proof_bytes, proof_sha) = self
             .chain
-            .sign_call(idx, &canonical, capability.as_str())
+            .sign_call(idx, &canonical, capability.as_str(), &prev_binding)
             .map_err(|e| McpError::internal_error(format!("sign the brokered call: {e}"), None))?;
 
         // Authenticate + pre-authorize over the SIGNED proof: the gate verifies the proof
@@ -526,6 +534,9 @@ impl ServerHandler for GatewayProxy {
             cumulative,
             now,
         );
+        // This record's binding — what the NEXT call's `Auths-Prev` links to. Computed from the
+        // bytes about to be stored, before they move into the record.
+        let new_binding = auths_mcp_core::call_commit_binding(&proof_bytes);
         if let Err(e) = crate::spend_log::append(
             self.chain.org_repo(),
             &self.chain.agent_did,
@@ -542,6 +553,8 @@ impl ServerHandler for GatewayProxy {
                 None,
             ));
         }
+        // Advance the chain head so the next brokered call links to this record.
+        *self.prev_binding.lock().await = new_binding;
 
         let rail_tag = cost
             .rail
@@ -804,6 +817,16 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         chain.root_did,
     );
 
+    // Continue the spend log's hash chain across restarts: the first call this session signs links
+    // its `Auths-Prev` to the LAST record already on disk (or the genesis sentinel for a fresh log).
+    let prev_binding = match auths_mcp_core::read_spend_log(&spend_log) {
+        Ok(records) => records
+            .last()
+            .map(|r| auths_mcp_core::call_commit_binding(&r.call_commit))
+            .unwrap_or_else(|| auths_mcp_core::SPEND_LOG_GENESIS.to_string()),
+        Err(_) => auths_mcp_core::SPEND_LOG_GENESIS.to_string(),
+    };
+
     let proxy = GatewayProxy {
         downstream,
         budget: Arc::new(Mutex::new(budget)),
@@ -811,6 +834,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         gate: Arc::new(gate),
         next_call: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         rail: cfg.rail,
+        prev_binding: Arc::new(Mutex::new(prev_binding)),
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.

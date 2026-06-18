@@ -156,6 +156,9 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
 
     let mut all_matched = true;
     let mut call_idx = 0usize;
+    // The hash of the prior persisted record, threaded into each call's signed `Auths-Prev` so the
+    // spend log is a continuous chain; the first record links to the genesis sentinel.
+    let mut prev_binding = auths_mcp_core::SPEND_LOG_GENESIS.to_string();
 
     for step in &transcript.calls {
         match step {
@@ -170,8 +173,10 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
                 println!("▸ event: {event} (ignored)");
             }
             Step::Call(call) => {
-                let matched = drive_call(&gate, &chain, &mut budget, call_idx, call).await?;
+                let (matched, new_binding) =
+                    drive_call(&gate, &chain, &mut budget, call_idx, call, &prev_binding).await?;
                 all_matched &= matched;
+                prev_binding = new_binding;
                 call_idx += 1;
             }
         }
@@ -221,7 +226,8 @@ async fn drive_call(
     budget: &mut CrossRailBudget,
     idx: usize,
     call: &Call,
-) -> anyhow::Result<bool> {
+    prev_binding: &str,
+) -> anyhow::Result<(bool, String)> {
     // The cost source: for a metered rail with a recorded response fixture the amount is
     // EXTRACTED from the rail's own response (the metered-rail cost extraction, PRD §11);
     // otherwise it is the transcript's known cost. The reserve ceiling and the settled
@@ -239,7 +245,8 @@ async fn drive_call(
     let reserve_ceiling = cost.reserve_ceiling_cents;
 
     // The agent signs the canonical call as an auths artifact (its delegated key).
-    let (mut proof_bytes, proof_sha) = chain.sign_call(idx, &canonical, capability.as_str())?;
+    let (mut proof_bytes, proof_sha) =
+        chain.sign_call(idx, &canonical, capability.as_str(), prev_binding)?;
 
     // Adversarial harness hook: when AUTHS_MCP_REPLAY_TAMPER is set, flip a byte of
     // the signed proof AFTER signing. The downstream tool must never be invoked on a
@@ -351,6 +358,10 @@ async fn drive_call(
         _ => None,
     };
 
+    // This record's binding — what the NEXT call's `Auths-Prev` links to, so the audit can verify
+    // the log is a continuous chain. Computed from the bytes about to be stored.
+    let new_binding = auths_mcp_core::call_commit_binding(&proof_bytes);
+
     // Persist the per-call proof+receipt+rail-response(+settlement) record to the append-only spend
     // log under `<org_repo>/spend-log/<delegation>.jsonl`, so an offline `auths verify-spend`
     // re-verifies the SIGNED `call_commit` bytes + sums the AGENT-SIGNED cost with NO trust in the
@@ -450,7 +461,7 @@ async fn drive_call(
             verdict_code,
         );
     }
-    Ok(matched)
+    Ok((matched, new_binding))
 }
 
 /// Format cents as `$D.CC` for the human verdict line.
