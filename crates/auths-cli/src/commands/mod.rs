@@ -45,6 +45,7 @@ pub mod sign;
 pub mod sign_commit;
 pub mod status;
 pub mod tls_cert;
+pub mod treasury;
 pub mod trust;
 pub mod unified_verify;
 pub mod utils;

@@ -1,0 +1,7 @@
+{
+  "ok": true,
+  "data": {
+    "status": "reallocated",
+    "note": "RECORDED COUNTEREXAMPLE: a reallocation that double-counts a freed (revoked) slice — committing it a second time so Σ live slices exceeds parent_cap. It WRONGLY returned `reallocated` instead of aggregate_cap_exceeded. The probe must turn RED on this."
+  }
+}

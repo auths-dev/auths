@@ -1,0 +1,46 @@
+# Fly.io config for the murmur-relay store-and-forward mailbox.
+#
+# Deploy from the AUTHS REPO ROOT so the Docker build context is the whole
+# workspace (the relay crate pulls murmur-core + deps):
+#
+#   fly apps create <your-app-name>
+#   fly deploy --config deploy/murmur-relay/fly.toml \
+#              --dockerfile deploy/murmur-relay/Dockerfile .
+#
+# Fly's edge terminates TLS and proxies plaintext to internal_port, so the public
+# endpoint is HTTPS (https://<app>.fly.dev) — point the Murmur app there; no ATS
+# exception needed. The relay sees only an opaque mailbox id + ciphertext.
+#
+# DURABILITY (recommended for real traffic): set a Redis URL as a secret so a restart
+# loses nothing and the relay tier is stateless (see README "Durable backlog"):
+#   fly redis create
+#   fly secrets set --app <app> MURMUR_RELAY_REDIS_URL='rediss://default:<pw>@<host>:<port>'
+# Without it the relay is in-memory (a restart drops the queue) — fine for a demo only.
+
+app = "murmur-relay"            # globally unique on Fly — rename if taken
+primary_region = "iad"          # set to your nearest region (fly platform regions)
+
+[build]
+  dockerfile = "deploy/murmur-relay/Dockerfile"   # relative to the repo-root context
+
+[http_service]
+  internal_port = 8080
+  force_https = true            # redirect http→https at the edge
+  # The mailbox is in-memory; keep the machine up so a suspend doesn't drop the
+  # queue. (Cheaper scale-to-zero alternative: auto_stop_machines = "suspend" +
+  # min_machines_running = 0 — accepts dropping queued messages when idle.)
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Fly hits the relay's GET / health endpoint (distroless has no curl, so health
+  # is a platform check, not a Docker HEALTHCHECK). 200 + "murmur-relay <ver>".
+  [[http_service.checks]]
+    interval = "15s"
+    timeout  = "2s"
+    method   = "GET"
+    path     = "/"
+
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"             # headroom over the relay's 256 MiB global queue cap

@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "data": {
+    "status": "valid",
+    "said": "ECredForgedXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "claimed_earn_cents": 50000,
+    "note": "RECORDED COUNTEREXAMPLE: a forged/self-reported P&L receipt (a fabricated SAID claiming a $500 earn) that WRONGLY verified valid against the manager's registry. The probe must turn RED on this — the books must not be fakeable."
+  }
+}

@@ -20,6 +20,10 @@ uniffi::setup_scaffolding!();
 /// Cross-device pairing (the QR-driven P-256 ECDH + SAS handshake).
 mod pairing;
 
+/// Real end-to-end messaging — mint, publish a prekey bundle, establish a pairwise
+/// session with a contact, and seal/open authenticated messages over the relay.
+mod messaging;
+
 /// The error surfaced across the FFI. `NotBuilt` is the load-bearing variant
 /// for the skeleton — it names the seam that is specified but unwired.
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -97,6 +101,9 @@ pub fn seal_message(to: String, from: String, body: String) -> Result<Vec<u8>, M
         to: murmur_core::Aid::new(to),
         from: murmur_core::Aid::new(from),
         body,
+        message_id: vec![0u8; 8],
+        content_type: "text".to_string(),
+        flags: 0,
     };
     let outer = murmur_core::seal(&msg)?;
     serde_json::to_vec(&outer).map_err(|e| MurmurError::Malformed(e.to_string()))

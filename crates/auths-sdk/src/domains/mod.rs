@@ -21,3 +21,4 @@ pub mod identity;
 pub mod namespace;
 pub mod org;
 pub mod signing;
+pub mod treasury;

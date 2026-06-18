@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "data": {
+    "minted": true,
+    "credential_said": "ECredOverBudgetChildXXXXXXXXXXXXXXXXXXXXXXXX",
+    "child_cap": "calls:5",
+    "parent_slice": "calls:4",
+    "note": "RECORDED COUNTEREXAMPLE: a child slice (calls:5) larger than the parent sub-agent's own slice (calls:4) that was WRONGLY minted. The probe must turn RED on this — a mid-swarm key-holder must not mint budget it was never given."
+  }
+}

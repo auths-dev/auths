@@ -1,0 +1,203 @@
+# gaps.yaml — the live ledger: verified observations only.
+# Entries arrive here through `baseline` (the promotion ceremony); the
+# `observed` field quotes actual dated output, never a prediction.
+
+- id: AGENT-TREASURY-1
+  title: Aggregate-capped reallocation — a manager moves a slice between sub-agents and Σ
+    slices provably stays ≤ the parent cap
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGENT-TREASURY-1
+  - aggregate-cap
+  evidence:
+  - PRD §2 (the property), §4 (AGENT-TREASURY-1), §5 (the load-bearing gap), §9
+  - auths AGT-4 usage ledger (crates/auths-sdk/src/domains/credentials/usage_ledger.rs) caps
+    PER-DELEGATION (one credential SAID, one cap); the cross-rail CrossRailBudget (crates/auths-mcp-core/src/budget.rs)
+    sums rails WITHIN one delegation — there is NO aggregate cap across sub-delegations and
+    NO reallocation that holds the parent sum
+  - AGT-1 (crates/auths-sdk/src/domains/agents/delegation.rs add_scoped) gives the CATEGORICAL
+    subset rule at issuance; the QUANTITATIVE sum constraint Σ slices ≤ parent_cap and the
+    reallocate operation are not built
+  observed: 'GREEN 2026-06-16: the net-new `treasury` surface (auths-sdk domains::treasury +
+    the `treasury` CLI: open/allot/reallocate/status) establishes a manager aggregate cap and
+    allots four slices to Σ=10=parent_cap; a reallocation of 2 (yield→flip) commits with the
+    flip slice grown 4→6 and Σ unchanged; and BOTH an over-cap allotment (Σ→12) and an over-sum
+    reallocation (pull 4 from a slice holding 2) are refused with the distinct
+    aggregate_cap_exceeded and do NOT commit. Trap RED: a recorded over-sum move that committed
+    (status=reallocated) is refused by the probe. The repo-held treasury-ledger mirrors the AGT-4
+    usage ledger (atomic temp-write+rename, path-safe manager key).'
+  smallest_fix: 'Build the net-new aggregate-cap primitive in auths: a parent-anchored quantitative
+    ceiling with the verifier invariant Σ(committed sub-slices) ≤ parent_cap (re-derivable
+    offline from the parent KEL), and an atomic reallocate(A,B,Δ) operation (A-=Δ, B+=Δ) that
+    commits ONLY if the post-move sum ≤ parent_cap, is anchored as a parent KEL event, serializes
+    concurrent moves at the cap, keeps each slice independently revocable, and returns a freed
+    (revoked) slice to the free pool without double-counting. Add the distinct aggregate_cap_exceeded
+    verdict (sibling to cap_exceeded). Reuse AGT-4''s usage-ledger machinery (a parent-keyed
+    aggregate counter beside the per-slice counters) and the AGT-1 anchoring/subset path.
+    Surface it as `id agent reallocate` (+ `treasury status` for the aggregate invariant +
+    free pool).
+
+    '
+  probe: probes/agent-treasury-1.sh
+  unlocks: A manager can move REAL capital across a swarm while the worst case is provably
+    "down ≤ your cap" — the floor for the whole fund-of-agents family.
+
+- id: AGENT-TREASURY-2
+  title: A sub-agent provably cannot exceed its own attenuated slice (per-slice spend cap)
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGENT-TREASURY-2
+  - per-slice-cap
+  evidence:
+  - PRD §4 (AGENT-TREASURY-2), §7 (Act 3)
+  - 'maps AGENT-MCP-3 / AGT-4 (crates/auths-sdk/src/domains/credentials/verify.rs, usage_ledger.rs):
+    the per-call cap exists per credential SAID; here it is the per-sub-agent slice'
+  observed: 'GREEN at baseline 2026-06-16: the flip sub-agent''s four in-slice calls verify,
+    the 5th (count 4) is refused cap_exceeded with the treasury still holding unspent headroom,
+    and under-claiming a lower count is refused (usage_counter_rolled_back) — a sub-agent
+    is bounded by its own attenuated slice, not the treasury total'
+  smallest_fix: 'Each sub-agent''s slice is a credential carrying a calls:N cap; a call that
+    would reserve the slice past its amount is refused cap_exceeded before the rail is touched,
+    even when the parent treasury still has headroom in other slices, and under-claiming a
+    lower count cannot re-open it.
+
+    '
+  probe: probes/agent-treasury-2.sh
+  unlocks: Each sub-agent is bounded by ITS slice, not the treasury total — attenuation made
+    quantitative per agent.
+
+- id: AGENT-TREASURY-3
+  title: The per-agent P&L is a stream of signed receipts the manager rebalances on, and a
+    self-reported/forged P&L is excluded
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGENT-TREASURY-3
+  - verifiable-pnl
+  evidence:
+  - PRD §4 (AGENT-TREASURY-3), §3 G3, §8 M4
+  - maps AGENT-MCP-1 (signed per-call receipts, offline-verifiable); a forged/foreign receipt
+    does not verify against the manager registry (crates/auths-sdk/src/domains/credentials/verify.rs)
+  observed: 'GREEN at baseline 2026-06-16: a real slice receipt verifies (valid), while a
+    fabricated SAID (none) and a foreign-issuer receipt (none) do NOT verify against the manager''s
+    registry — the manager rebalances on verifiable books only; a self-reported or forged
+    P&L is excluded'
+  smallest_fix: 'The manager''s allocation signal is a function of VERIFIED receipts only:
+    a real slice receipt verifies (valid), while a fabricated SAID and a foreign-issuer receipt
+    do NOT verify against the manager''s registry, so a self-reported or forged P&L is excluded
+    from the rebalancing signal.
+
+    '
+  probe: probes/agent-treasury-3.sh
+  unlocks: Capital moves on VERIFIABLE books, not an agent's self-report — the P&L an underwriter
+    can audit.
+
+- id: AGENT-TREASURY-4
+  title: x402 inbound — a sub-agent EARNS and the credit lands in its verifiable P&L (testnet-flagged,
+    hermetic)
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers:
+  - AGENT-TREASURY-4
+  - x402-inbound
+  evidence:
+  - PRD §4 (AGENT-TREASURY-4), §6 (live-scope flag)
+  - maps AGENT-PAY-2 (x402/USDC rail, DEBIT side built); the INBOUND credit extraction + P&L
+    crediting is not built
+  - hermetic over a recorded x402 SettlementResponse fixture (network=base-sepolia) — no live
+    x402 call
+  observed: 'GREEN 2026-06-16: the net-new `treasury credit` surface (auths-sdk domains::treasury::credit)
+    extracts a recorded x402 SettlementResponse (2.50 USDC = 2_500_000 atomic at 6 decimals)
+    to exactly 250 cents and credits it inbound (direction=inbound, rail=x402) to a credit-ledger,
+    while a padded credit (--claim-cents 99999 over the 250c settlement) is rejected credit_mismatch.
+    Trap RED: a recorded padded credit that was accepted is refused by the probe. Hermetic over the
+    recorded fixture; the live inbound leg (funded base-sepolia wallet) stays evidence-only, deferred.'
+  smallest_fix: 'Build the inbound (credit) side of x402 metering: given a recorded x402/USDC
+    SettlementResponse for a service the sub-agent SOLD, extract the paid amount (atomic USDC
+    at 6 decimals → cents), credit it to the sub-agent''s receipted P&L (direction=inbound,
+    rail=x402), and raise its share. A credit not matching the recorded settlement (a padded
+    earn) is rejected. Surface: `treasury credit`. LIVE-SCOPE FLAG: a live inbound leg needs
+    a funded USDC testnet wallet — out of hermetic scope, deferred.
+
+    '
+  probe: probes/agent-treasury-4.sh
+  unlocks: The treasury GROWS from agent revenue (x402 inbound), and the growth is as verifiable
+    as the spend.
+
+- id: AGENT-TREASURY-5
+  title: Instant clawback — revoking a sub-agent stops its spend everywhere and returns its
+    slice to the free pool without over-committing
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - AGENT-TREASURY-5
+  - clawback
+  - aggregate-cap
+  evidence:
+  - PRD §4 (AGENT-TREASURY-5), §7 (Act 6)
+  - maps AGENT-MCP-4 / OPS-1 (instant revocation per call); the free-pool release + non-double-counting
+    reallocation of a freed slice is part of the TREASURY-1 aggregate accounting, not yet
+    built
+  observed: 'GREEN 2026-06-16: revoking arb (id agent revoke, OPS-1) is recorded in the registry
+    — `id agent list --include-revoked` shows arb revoked while the flip sibling stays live, the
+    offline-verifiable state the gateway refuses arb''s next call from — and the net-new
+    `treasury reclaim` (auths-sdk domains::treasury::reclaim) releases arb''s slice (2) to the free
+    pool (4→6); a second reclaim is a no-op (nothing_to_reclaim, no double-count) and a reallocation
+    from the reclaimed (gone) slice does not commit. Trap RED: a recorded double-count that committed
+    (status=reallocated) is refused by the probe. NOTE: the per-call refusal is enforced at the
+    auths-mcp gateway boundary from the recorded revocation; the credential-verify CLI path does not
+    model agent revocation (returns valid), so revocation is proven from the recorded registry state.'
+  smallest_fix: 'On a parent revoke of a sub-agent, refuse its very next brokered call (revoked,
+    no window — reuse OPS-1 liveness-per-call) AND release its slice to the parent free pool
+    (parent_cap − Σ live slices) so the freed amount is re-allocatable; a reallocation that
+    double-counts the freed slice (would push Σ > parent_cap) is refused aggregate_cap_exceeded.
+
+    '
+  probe: probes/agent-treasury-5.sh
+  unlocks: One revoke = clawback everywhere instantly, and the freed budget can be recommitted
+    but never over-committed.
+
+- id: AGENT-TREASURY-6
+  title: Depth attenuation — a sub-agent cannot sub-delegate more budget than it holds (the
+    aggregate cap holds transitively)
+  class: missing-surface
+  status: closed
+  severity: feature
+  reads: cli
+  covers:
+  - AGENT-TREASURY-6
+  - depth-attenuation
+  - aggregate-cap
+  evidence:
+  - PRD §4 (AGENT-TREASURY-6)
+  - maps AGT-1 / AGENT-ATTEN-3 (categorical subset rule at issuance); the quantitative per-depth
+    Σ-child ≤ self constraint rides the TREASURY-1 aggregate primitive
+  observed: 'GREEN 2026-06-16: the net-new `treasury subdelegate` surface (auths-sdk
+    domains::treasury::subdelegate, a per-parent subdelegation-ledger beside the aggregate
+    ledger) enforces Σ(child slices) ≤ the parent sub-agent''s own slice: a child of 2 under
+    flip''s slice of 4 is sub-delegated, while a second child of 3 (Σ children 5 > 4) is refused
+    with the distinct aggregate_cap_exceeded and the first child still stands. Trap RED: a
+    recorded over-budget child that was minted is refused by the probe. The transitive bound
+    holds down the tree.'
+  smallest_fix: 'Extend the subset rule at issuance to the QUANTITATIVE slice: a sub-agent
+    sub-delegating a child a slice ≤ its own (and Σ child slices ≤ its own) succeeds and the
+    child''s in-slice calls verify; a child slice larger than the parent sub-agent holds is
+    refused at issuance (aggregate_cap_exceeded), and a hand-forged child seal not signed
+    by the sub-agent''s key fails verify.
+
+    '
+  probe: probes/agent-treasury-6.sh
+  unlocks: The swarm can nest — a sub-agent can run its own bounded workers — and the cryptographic
+    max-drawdown bound holds transitively.

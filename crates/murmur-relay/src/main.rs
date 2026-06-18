@@ -35,20 +35,35 @@ use murmur_core::proofs::{
     prove_relay_queue, prove_revocation_corroborated, prove_witnessed_keystate,
 };
 
+mod http;
+mod store;
+
 /// What the relay was asked to do.
 enum Mode {
     /// Print the version and exit 0 — the liveness check the probe harness uses.
     Version,
     /// Drive the store-and-forward leg end-to-end.
     Serve,
+    /// Bind an HTTP listener at the given address so separate devices reach the mailbox.
+    ServeHttp(String),
     /// Anything else.
     Usage,
 }
+
+/// Where `serve-http` listens when no address is given.
+const DEFAULT_HTTP_ADDR: &str = "127.0.0.1:8787";
 
 fn parse(args: &[String]) -> Mode {
     match args.first().map(String::as_str) {
         Some("--version" | "-V" | "version") => Mode::Version,
         Some("serve") | None => Mode::Serve,
+        Some("serve-http") => {
+            let addr = args
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| DEFAULT_HTTP_ADDR.to_string());
+            Mode::ServeHttp(addr)
+        }
         _ => Mode::Usage,
     }
 }
@@ -831,8 +846,30 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Mode::ServeHttp(addr) => {
+            // The hermetic `serve` above proves the leg in one process; this exposes the
+            // same `MailboxStore` over a socket so an iPhone and a Mac reach it. A small
+            // multi-thread runtime drives the async server; the binary's `main` stays sync.
+            let runtime = match tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(why) => {
+                    eprintln!("murmur-relay {}: runtime: {why}", murmur_core::VERSION);
+                    return ExitCode::FAILURE;
+                }
+            };
+            match runtime.block_on(http::serve(&addr)) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(why) => {
+                    eprintln!("murmur-relay {}: {why}", murmur_core::VERSION);
+                    ExitCode::FAILURE
+                }
+            }
+        }
         Mode::Usage => {
-            eprintln!("usage: murmur-relay [serve|--version]");
+            eprintln!("usage: murmur-relay [serve|serve-http [addr]|--version]");
             ExitCode::from(2)
         }
     }
