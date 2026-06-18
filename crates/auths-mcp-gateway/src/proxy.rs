@@ -1,4 +1,4 @@
-//! The real-MCP `wrap` proxy (PRD §5 Build item 2 / D1).
+//! The real-MCP `wrap` proxy (D1).
 //!
 //! Speaks MCP JSON-RPC **up** to the agent (an `rmcp` server over stdio) and
 //! **down** to the wrapped downstream server (an `rmcp` child-process client over
@@ -9,7 +9,7 @@
 //! This is the transport the scripted demos cannot reach: a stock MCP client
 //! (Claude Desktop, the Agents SDK, Cursor) connects to the gateway exactly as it
 //! would to the raw downstream, and the enforcement is additive middleware (a
-//! non-auths client still works, unauthenticated, no receipt — PRD §6).
+//! non-auths client still works, unauthenticated, no receipt).
 //!
 //! Each brokered `tools/call` is SIGNED as the agent and authenticated through the
 //! same `PerCallGate::judge` the hermetic replay path runs — scope ⊆ grant, live,
@@ -40,9 +40,9 @@ use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use tokio::sync::Mutex;
 
 /// The gateway's custody vault: the downstream tool's secret(s) the gateway holds
-/// and injects into the wrapped downstream, and which the agent never sees (PRD
-/// §12). Each entry is an environment variable the downstream reads to authenticate
-/// to its credentialed resource — exactly the "API key in an env var" majority §12
+/// and injects into the wrapped downstream, and which the agent never sees.
+/// Each entry is an environment variable the downstream reads to authenticate
+/// to its credentialed resource — exactly the "API key in an env var" majority this
 /// flips into the strongest pitch.
 ///
 /// The vault is sourced ONLY from the gateway's own config/environment (the `wrap`
@@ -111,7 +111,7 @@ impl CustodyVault {
     }
 
     /// Inject the custodied secrets into a downstream child's environment, sourced
-    /// from the GATEWAY. This is the §12 mechanism: the spawned downstream reads its
+    /// from the GATEWAY. This is the mechanism: the spawned downstream reads its
     /// key from its env, the agent's own process never holds it.
     fn inject(&self, command: &mut tokio::process::Command) {
         for (name, value) in &self.entries {
@@ -138,7 +138,7 @@ pub struct WrapConfig {
     /// on the wire (the deferred live leg); the counter SOURCE is durable regardless.
     pub agent_delegation: Option<String>,
     /// The downstream credential(s) the gateway custodies and injects into the
-    /// wrapped downstream — the agent never holds them (PRD §12).
+    /// wrapped downstream — the agent never holds them.
     pub custody: CustodyVault,
     /// The downstream MCP server command (everything after `--`).
     pub downstream: Vec<String>,

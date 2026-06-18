@@ -1,6 +1,6 @@
 //! # auths-mcp-core — the reusable per-tool-call enforcement
 //!
-//! The engine half of the bounded-agent MCP gateway (PRD §5, Build item 1). This
+//! The engine half of the bounded-agent MCP gateway. This
 //! crate harvests the KERI-presentation auth core from `auths-mcp-server` (offline
 //! delegated-credential verify + revocation + the capability gate) and adds the
 //! **one per-`tools/call` gate** that every brokered call passes through:

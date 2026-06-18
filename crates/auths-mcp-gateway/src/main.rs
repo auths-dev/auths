@@ -6,7 +6,7 @@
 
 //! # auths-mcp-gateway — the bounded-agent MCP gateway (the binary)
 //!
-//! The real-MCP proxy (PRD §5, Build item 2). It speaks MCP JSON-RPC up to the
+//! The real-MCP proxy. It speaks MCP JSON-RPC up to the
 //! agent and down to a wrapped downstream server; on each `tools/call` it
 //! canonicalizes + signs the call, runs `auths-mcp-core`'s per-call gate (proof
 //! authenticity + scope ⊆ parent · budget · expiry · revocation), forwards only on
@@ -19,7 +19,7 @@
 //!   config. Speaks MCP up to the agent (an `rmcp` server over stdio) and down to
 //!   the wrapped downstream (an `rmcp` child-process client), proxying `tools/list`
 //!   and `tools/call`, gating each call.
-//! * `replay` — the hermetic gate / `--check` entrypoint (PRD §7). Drives the same
+//! * `replay` — the hermetic gate / `--check` entrypoint. Drives the same
 //!   per-call gate from a frozen transcript of a prior run's `tools/call` sequence —
 //!   no model, no network — to deterministic verdicts the probes assert. It builds
 //!   a throwaway delegation chain in the sandbox registry, has the agent sign each
@@ -55,7 +55,7 @@ enum Command {
     Wrap(WrapArgs),
 
     /// Drive the gateway from a frozen transcript of a prior live run (the hermetic
-    /// gate / `--check` entrypoint, PRD §7). No model, no network — deterministic
+    /// gate / `--check` entrypoint). No model, no network — deterministic
     /// verdicts the probes assert.
     Replay(ReplayArgs),
 
@@ -126,7 +126,7 @@ struct WrapArgs {
 
     /// A downstream credential the GATEWAY custodies and injects into the wrapped
     /// downstream (repeatable), e.g. `--custody-credential DOWNSTREAM_API_KEY=sk-…`
-    /// (PRD §12, the custody broker). The gateway holds the downstream tool's
+    /// (the custody broker). The gateway holds the downstream tool's
     /// secret and injects it into the spawned downstream's environment on the
     /// brokered path; the agent connects with only its auths delegation and never
     /// sees or carries this secret. An agent that bypasses the gateway reaches the

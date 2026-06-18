@@ -1,4 +1,4 @@
-//! Signed per-call receipts (PRD §4 G4). Every brokered call — allowed or refused
+//! Signed per-call receipts. Every brokered call — allowed or refused
 //! — emits a receipt: who acted, under which grant, on what action, with what
 //! verdict, and the running spend total. The audit trail is cryptographic — the
 //! receipt names the agent's signed-call proof (a git commit `auths verify`
@@ -40,7 +40,7 @@ pub struct Receipt {
     /// rather than a known transcript number. Naming it in the receipt is what proves
     /// the settle is rail-response-authoritative: a stranger re-derives the metered
     /// cost from the recorded response by this reference, not from an agent-declared
-    /// number (the metered-rail cost extraction, PRD §11). `None` for a call whose cost
+    /// number (the metered-rail cost extraction). `None` for a call whose cost
     /// is not extracted from a rail response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub charge_ref: Option<String>,
@@ -197,7 +197,7 @@ mod tests {
         // A metered call whose cost was EXTRACTED from the rail's response names the
         // rail-native reference (a Stripe charge id) in its receipt — the evidence that
         // the settle is rail-response-authoritative, not an agent-declared number
-        // (the metered-rail cost extraction, PRD §11).
+        // (the metered-rail cost extraction).
         let call = ToolCall {
             tool: "paid_call".into(),
             args: serde_json::json!({ "endpoint": "/charge" }),

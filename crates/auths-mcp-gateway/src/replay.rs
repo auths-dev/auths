@@ -21,7 +21,7 @@ use crate::chain::Chain;
 use crate::transcript::{Call, Step, Transcript};
 
 /// The cost source for a paid call: where the amount the gate RESERVES and SETTLES comes
-/// from. The whole point of the metered-rail cost extraction (PRD §11) is that for a
+/// from. The whole point of the metered-rail cost extraction is that for a
 /// metered rail the amount is read out of the rail's own RESPONSE — never an
 /// agent-declared number.
 struct CallCost {
@@ -229,7 +229,7 @@ async fn drive_call(
     prev_binding: &str,
 ) -> anyhow::Result<(bool, String)> {
     // The cost source: for a metered rail with a recorded response fixture the amount is
-    // EXTRACTED from the rail's own response (the metered-rail cost extraction, PRD §11);
+    // EXTRACTED from the rail's own response (the metered-rail cost extraction);
     // otherwise it is the transcript's known cost. The reserve ceiling and the settled
     // actual both come from this source — for an extracted call, from the response,
     // never an agent number.
@@ -389,7 +389,7 @@ async fn drive_call(
     // When the cost was EXTRACTED from the rail's response, name the charge id it was
     // extracted from + the extracted amount — the receipt-grade evidence that the metered
     // cost came from the response (the `ch_…` a stranger re-derives the cost by), not an
-    // agent-declared number (the metered-rail cost extraction, PRD §11).
+    // agent-declared number (the metered-rail cost extraction).
     let charge_tag = match (&cost.charge_ref, cost.extracted) {
         (Some(reference), true) => format!(
             " charge={reference} extracted={amt}",

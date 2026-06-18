@@ -11,7 +11,7 @@
 //! the cost the gateway reserves and settles is read out of the bytes the rail itself
 //! returned, so the settle is authoritative regardless of what the agent declared.
 //!
-//! ## Bound, don't build (PRD §11)
+//! ## Bound, don't build
 //!
 //! `auths-mcp-core` holds **zero** payment code beyond reading a rail's documented
 //! response shape. Each rail is a wrapped downstream MCP server; this module is the
@@ -21,7 +21,7 @@
 //! receipt-grade reference (the charge id) a stranger can use to re-derive the metered
 //! cost from that same response.
 //!
-//! ## Stripe (the Stripe-test rail, PRD §11)
+//! ## Stripe (the Stripe-test rail)
 //!
 //! The Stripe rail returns a Charge object
 //! ([docs.stripe.com/api/charges/object](https://docs.stripe.com/api/charges/object)).
@@ -30,7 +30,7 @@
 //! the documented shape so adding a real `sk_test_…` key (the live evidence leg) makes
 //! the same code path read a real test-mode charge with minimal reconciliation.
 //!
-//! ## x402 / USDC (the second rail — cross-rail summing, PRD §11)
+//! ## x402 / USDC (the second rail — cross-rail summing)
 //!
 //! The x402 rail settles a metered tool call in USDC and returns an x402
 //! `SettlementResponse` alongside the `PaymentRequirements` it was settled against

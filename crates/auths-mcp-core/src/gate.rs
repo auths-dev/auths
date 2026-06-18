@@ -52,7 +52,7 @@ impl ToolCall {
 }
 
 /// The machine-readable verdict for one brokered call — the distinct codes the
-/// incumbents cannot express (PRD §2). Each maps to a fail-closed MCP error the
+/// incumbents cannot express. Each maps to a fail-closed MCP error the
 /// model can read and react to.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]

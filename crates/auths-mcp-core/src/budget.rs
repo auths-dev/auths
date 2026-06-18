@@ -38,7 +38,7 @@
 //!    hold is taken before the rail is touched and dropped (released) on settle, or
 //!    expires if the call never returns. `available = cap − settled − Σ(holds)`.
 //!
-//! ## Checkpoint-anchoring (the §12 durability layer) — PARKED
+//! ## Checkpoint-anchoring (the durability layer) — PARKED
 //!
 //! D8's full durability story checkpoint-anchors the settled total's digest to the
 //! chain periodically (every N calls / $X / T), so the running total is tamper-evident
@@ -52,7 +52,7 @@
 //! total back to the last *persisted* high-water; the monotonic ledger refuses a
 //! settle below it, so the uncaught-overspend window is bounded by how stale a
 //! reloaded snapshot can be — D8 pins this to ≤ one checkpoint interval once anchoring
-//! lands (detection ≠ reversal, §12).
+//! lands (detection ≠ reversal).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -197,7 +197,7 @@ impl SettledCounter {
     }
 
     /// The settled total's digest — the tamper-evident value a checkpointer anchors to
-    /// the chain periodically (D8, §12). Built over the canonical record so a stranger
+    /// the chain periodically (D8). Built over the canonical record so a stranger
     /// can re-derive it from the persisted counter alone. (The periodic *anchoring* is
     /// the parked follow-on; this exposes the digest the anchor would carry.)
     pub fn digest(&self) -> Result<String, BudgetError> {

@@ -1,4 +1,4 @@
-//! The frozen-transcript schema the replay gate drives the gateway from (PRD §7).
+//! The frozen-transcript schema the replay gate drives the gateway from.
 //!
 //! A transcript captures a prior run's grant and the agent's `tools/call`
 //! sequence, plus the per-call verdict expectation. Replay re-derives each verdict
@@ -77,7 +77,7 @@ pub struct Call {
     /// (e.g. `stripe-charge.test.json`), resolved under `AUTHS_MCP_RAIL_FIXTURES`. When
     /// present, the cost is NOT taken from `cost_cents` — it is read out of the rail's
     /// own response (the documented charge amount), so an agent under-declaring the cost
-    /// cannot change what is metered (the metered-rail cost extraction, PRD §11). The
+    /// cannot change what is metered (the metered-rail cost extraction). The
     /// reserved ceiling and the settled actual both come from this response.
     #[serde(default)]
     pub response_fixture: Option<String>,
