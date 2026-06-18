@@ -58,7 +58,10 @@ fn parse(args: &[String]) -> Mode {
         Some("--version" | "-V" | "version") => Mode::Version,
         Some("serve") | None => Mode::Serve,
         Some("serve-http") => {
-            let addr = args.get(1).cloned().unwrap_or_else(|| DEFAULT_HTTP_ADDR.to_string());
+            let addr = args
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| DEFAULT_HTTP_ADDR.to_string());
             Mode::ServeHttp(addr)
         }
         _ => Mode::Usage,

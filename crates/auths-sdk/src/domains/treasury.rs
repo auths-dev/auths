@@ -450,7 +450,10 @@ pub fn credit(
         .map_err(|e| TreasuryError::Persistence(format!("settlement read failed: {e}")))?;
     let v: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|e| TreasuryError::Persistence(format!("settlement parse failed: {e}")))?;
-    let decimals = v.get("decimals").and_then(serde_json::Value::as_u64).unwrap_or(6);
+    let decimals = v
+        .get("decimals")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(6);
     let atomic_str = v
         .pointer("/settlement/amountAtomic")
         .or_else(|| v.pointer("/requirements/maxAmountRequired"))
@@ -474,7 +477,8 @@ pub fn credit(
     // Persist the cumulative inbound credit for the sub-agent (the P&L credit side).
     let dir = repo_path.join(CREDIT_LEDGER_DIR);
     let key = safe_key(agent_did)?;
-    fs::create_dir_all(&dir).map_err(|e| TreasuryError::Persistence(format!("mkdir failed: {e}")))?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| TreasuryError::Persistence(format!("mkdir failed: {e}")))?;
     let path = dir.join(format!("{key}.json"));
     let prior = fs::read(&path)
         .ok()
@@ -537,7 +541,11 @@ pub fn subdelegate(
             parent: parent_did.to_string(),
             children: Vec::new(),
         },
-        Err(e) => return Err(TreasuryError::Persistence(format!("subdel read failed: {e}"))),
+        Err(e) => {
+            return Err(TreasuryError::Persistence(format!(
+                "subdel read failed: {e}"
+            )));
+        }
     };
     let children_sum: u64 = rec.children.iter().map(|c| c.amount).sum();
     if children_sum + amount > parent_held {
@@ -551,7 +559,8 @@ pub fn subdelegate(
         agent_did: child_did.to_string(),
         amount,
     });
-    fs::create_dir_all(&dir).map_err(|e| TreasuryError::Persistence(format!("mkdir failed: {e}")))?;
+    fs::create_dir_all(&dir)
+        .map_err(|e| TreasuryError::Persistence(format!("mkdir failed: {e}")))?;
     let body = serde_json::to_vec_pretty(&rec)
         .map_err(|e| TreasuryError::Persistence(format!("encode failed: {e}")))?;
     let tmp = dir.join(format!(".{key}.tmp"));
@@ -613,7 +622,11 @@ mod tests {
         let st = l.status("m").unwrap();
         assert_eq!(st.committed, 9);
         assert_eq!(
-            st.slices.iter().find(|s| s.agent_did == "flip").unwrap().amount,
+            st.slices
+                .iter()
+                .find(|s| s.agent_did == "flip")
+                .unwrap()
+                .amount,
             6
         );
         // Pull 4 from arb (holds 2) — would fabricate budget; refused, no commit.
@@ -622,7 +635,13 @@ mod tests {
             Verdict::AggregateCapExceeded { .. }
         ));
         assert_eq!(
-            l.status("m").unwrap().slices.iter().find(|s| s.agent_did == "flip").unwrap().amount,
+            l.status("m")
+                .unwrap()
+                .slices
+                .iter()
+                .find(|s| s.agent_did == "flip")
+                .unwrap()
+                .amount,
             6
         );
     }

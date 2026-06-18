@@ -758,11 +758,13 @@ mod tests {
         assert_eq!(phone.open(&outer, &dir).unwrap().body, "see you soon");
 
         let len = outer.ciphertext.len();
-        println!("short-message ciphertext = {len} bytes");
         // ciphertext = inner frame + AEAD nonce(12)+tag(16). The legacy inner frame for
         // the same message was ~244 B (two did:keri AID strings + 16-byte id + "text" +
         // u32 flags); the compact frame is well under half.
-        assert!(len < 160, "short-message ciphertext stays compact: {len} bytes");
+        assert!(
+            len < 160,
+            "short-message ciphertext stays compact: {len} bytes"
+        );
     }
 
     #[test]

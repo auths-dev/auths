@@ -84,7 +84,10 @@ pub enum TreasurySubcommand {
     Subdelegate {
         #[arg(long)]
         manager: String,
-        #[arg(long, help = "The sub-agent (parent) did:keri: doing the sub-delegation.")]
+        #[arg(
+            long,
+            help = "The sub-agent (parent) did:keri: doing the sub-delegation."
+        )]
         parent: String,
         #[arg(long, help = "The child worker did:keri:.")]
         child: String,
@@ -128,15 +131,25 @@ pub fn handle_treasury(cmd: TreasuryCommand, repo_path: PathBuf) -> Result<()> {
                 &format!("treasury cap established for {manager}: {parent_cap}"),
             )
         }
-        TreasurySubcommand::Allot { manager, to, amount } => {
-            let v = treasury::allot(&repo_path, &manager, &to, amount).map_err(anyhow::Error::new)?;
+        TreasurySubcommand::Allot {
+            manager,
+            to,
+            amount,
+        } => {
+            let v =
+                treasury::allot(&repo_path, &manager, &to, amount).map_err(anyhow::Error::new)?;
             emit(
                 "treasury allot",
                 serde_json::json!({ "status": v.status(), "manager": manager, "to": to, "amount": amount }),
                 &format!("allot {amount} → {to}: {}", v.status()),
             )
         }
-        TreasurySubcommand::Reallocate { manager, from, to, amount } => {
+        TreasurySubcommand::Reallocate {
+            manager,
+            from,
+            to,
+            amount,
+        } => {
             let v = treasury::reallocate(&repo_path, &manager, &from, &to, amount)
                 .map_err(anyhow::Error::new)?;
             emit(
@@ -160,16 +173,29 @@ pub fn handle_treasury(cmd: TreasuryCommand, repo_path: PathBuf) -> Result<()> {
             }
             Ok(())
         }
-        TreasurySubcommand::Credit { to, settlement, claim_cents } => {
+        TreasurySubcommand::Credit {
+            to,
+            settlement,
+            claim_cents,
+        } => {
             let v = treasury::credit(&repo_path, &to, &settlement, claim_cents)
                 .map_err(anyhow::Error::new)?;
             emit(
                 "treasury credit",
                 serde_json::json!({ "status": v.status(), "to": to, "credited_cents": v.credited_cents(), "rail": "x402", "direction": "inbound" }),
-                &format!("credit {to}: {} ({}c inbound)", v.status(), v.credited_cents()),
+                &format!(
+                    "credit {to}: {} ({}c inbound)",
+                    v.status(),
+                    v.credited_cents()
+                ),
             )
         }
-        TreasurySubcommand::Subdelegate { manager, parent, child, amount } => {
+        TreasurySubcommand::Subdelegate {
+            manager,
+            parent,
+            child,
+            amount,
+        } => {
             let v = treasury::subdelegate(&repo_path, &manager, &parent, &child, amount)
                 .map_err(anyhow::Error::new)?;
             emit(

@@ -20,12 +20,17 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 
 fn test_redis_url() -> Option<String> {
-    std::env::var("MURMUR_RELAY_TEST_REDIS_URL").ok().filter(|s| !s.is_empty())
+    std::env::var("MURMUR_RELAY_TEST_REDIS_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 /// A unique key prefix so tests (and reruns) never collide in a shared Redis.
 fn unique_prefix(tag: &str) -> String {
-    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos();
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     format!("mrtest:{tag}:{nanos}")
 }
 
@@ -104,10 +109,14 @@ async fn drain(client: &reqwest::Client, base: &str, mailbox: &str) -> Vec<Vec<u
     let count = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
     let mut pos = 4usize;
     for _ in 0..count {
-        let len =
-            u32::from_be_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]]) as usize;
+        let len = u32::from_be_bytes([bytes[pos], bytes[pos + 1], bytes[pos + 2], bytes[pos + 3]])
+            as usize;
         pos += 4;
-        out.push(OuterEnvelope::from_frame(&bytes[pos..pos + len]).unwrap().ciphertext);
+        out.push(
+            OuterEnvelope::from_frame(&bytes[pos..pos + len])
+                .unwrap()
+                .ciphertext,
+        );
         pos += len;
     }
     out
@@ -168,7 +177,10 @@ async fn idempotent_replay_and_drain_once() {
     assert_eq!(c1, 200);
     let (c2, b2) = deposit(&client, &base, &env).await;
     assert_eq!(c2, 200);
-    assert!(b2.contains("deduped_replay"), "second deposit deduped: {b2}");
+    assert!(
+        b2.contains("deduped_replay"),
+        "second deposit deduped: {b2}"
+    );
 
     let drained = drain(&client, &base, mbx).await;
     assert_eq!(drained.len(), 1, "exactly one queued despite two deposits");
@@ -176,8 +188,14 @@ async fn idempotent_replay_and_drain_once() {
     // A replay after the drain is still recognized (delivery horizon outlives the queue).
     let (c3, b3) = deposit(&client, &base, &env).await;
     assert_eq!(c3, 200);
-    assert!(b3.contains("deduped_replay"), "post-drain replay still deduped: {b3}");
-    assert!(drain(&client, &base, mbx).await.is_empty(), "no re-delivery of a replay");
+    assert!(
+        b3.contains("deduped_replay"),
+        "post-drain replay still deduped: {b3}"
+    );
+    assert!(
+        drain(&client, &base, mbx).await.is_empty(),
+        "no re-delivery of a replay"
+    );
 
     relay.kill().await.ok();
 }
@@ -204,7 +222,11 @@ async fn quota_per_mailbox_message_cap() {
     assert_eq!(code, 429, "over-cap deposit refused");
     assert!(body.contains("quota_exceeded"), "{body}");
 
-    assert_eq!(drain(&client, &base, mbx).await.len(), 3, "only the 3 under-cap queued");
+    assert_eq!(
+        drain(&client, &base, mbx).await.len(),
+        3,
+        "only the 3 under-cap queued"
+    );
     relay.kill().await.ok();
 }
 
@@ -227,11 +249,19 @@ async fn prekey_round_trip_and_404() {
         .send()
         .await
         .unwrap();
-    let got = client.get(format!("{base}/prekey/{aid}")).send().await.unwrap();
+    let got = client
+        .get(format!("{base}/prekey/{aid}"))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(got.status(), 200);
     assert_eq!(got.bytes().await.unwrap().as_ref(), bundle.as_slice());
 
-    let missing = client.get(format!("{base}/prekey/did:keri:Enobody")).send().await.unwrap();
+    let missing = client
+        .get(format!("{base}/prekey/did:keri:Enobody"))
+        .send()
+        .await
+        .unwrap();
     assert_eq!(missing.status(), 404);
     relay.kill().await.ok();
 }
@@ -245,8 +275,7 @@ async fn ttl_expires_an_undrained_message() {
     };
     let prefix = unique_prefix("ttl");
     let client = reqwest::Client::new();
-    let (mut relay, base) =
-        spawn_relay(&url, &prefix, &[("MURMUR_RELAY_MSG_TTL_SECS", "1")]).await;
+    let (mut relay, base) = spawn_relay(&url, &prefix, &[("MURMUR_RELAY_MSG_TTL_SECS", "1")]).await;
     let mbx = "mbx-ttl";
 
     // Deposit and DON'T drain; after the 1 s TTL the undrained message is gone.
@@ -281,5 +310,8 @@ async fn fails_fast_when_redis_is_unreachable() {
         .await
         .expect("relay should exit fast on an unreachable Redis")
         .expect("wait");
-    assert!(!status.success(), "relay must fail-fast (non-zero) on a dead Redis");
+    assert!(
+        !status.success(),
+        "relay must fail-fast (non-zero) on a dead Redis"
+    );
 }

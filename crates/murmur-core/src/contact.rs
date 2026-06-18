@@ -133,7 +133,11 @@ impl ContactSession {
 /// the lexical order of the two AIDs (used only locally — it never enters the mailbox
 /// value, so the ids stay unlinkable to either AID). Returns `(deposit, drain)` from
 /// the perspective of `my_aid`.
-fn mailbox_pair(session: &Session, my_aid: &Aid, peer_aid: &Aid) -> CoreResult<(MailboxId, MailboxId)> {
+fn mailbox_pair(
+    session: &Session,
+    my_aid: &Aid,
+    peer_aid: &Aid,
+) -> CoreResult<(MailboxId, MailboxId)> {
     let to_low = derive_mailbox(session, MAILBOX_TO_LOW)?;
     let to_high = derive_mailbox(session, MAILBOX_TO_HIGH)?;
     // The lexically-smaller AID is "low". Messages addressed to the low party land in
@@ -346,8 +350,7 @@ mod tests {
             }
         }
         fn bundle(&self) -> PrekeyBundle {
-            let secrets =
-                PrekeySecrets::from_seeds(self.x3dh_identity_seed, self.x3dh_prekey_seed);
+            let secrets = PrekeySecrets::from_seeds(self.x3dh_identity_seed, self.x3dh_prekey_seed);
             PrekeyBundle::publish(&self.identity, &secrets).unwrap()
         }
         fn signing_key(&self) -> Vec<u8> {
@@ -424,9 +427,9 @@ mod tests {
             &alice.identity,
             alice.x3dh_identity_seed,
             [99u8; 32],
-            bob.identity.aid(),       // Alice believes she's reaching Bob
-            &mallory.signing_key(),   // relay-substituted key
-            &mallory.bundle(),        // relay-substituted bundle
+            bob.identity.aid(),     // Alice believes she's reaching Bob
+            &mallory.signing_key(), // relay-substituted key
+            &mallory.bundle(),      // relay-substituted bundle
         );
         assert!(
             matches!(attempt, Err(CoreError::Rejected(_))),
@@ -441,7 +444,10 @@ mod tests {
         let bob = Party::new(2, 21, 22);
         let mut handshake = Handshake {
             sender_aid: Aid::new("did:keri:Esomeone-else"),
-            sender_signing_key: Identity::from_seed([5u8; 32]).unwrap().public_key().to_vec(),
+            sender_signing_key: Identity::from_seed([5u8; 32])
+                .unwrap()
+                .public_key()
+                .to_vec(),
             sender_x3dh_identity: [1u8; 32],
             sender_ephemeral: [2u8; 32],
         };
@@ -504,7 +510,11 @@ mod tests {
         )
         .unwrap();
         // The AID digests must not appear inside the mailbox ids.
-        let alice_hex = alice.identity.aid().as_str().trim_start_matches("did:keri:");
+        let alice_hex = alice
+            .identity
+            .aid()
+            .as_str()
+            .trim_start_matches("did:keri:");
         let bob_hex = bob.identity.aid().as_str().trim_start_matches("did:keri:");
         for mbx in [session.deposit_mailbox(), session.drain_mailbox()] {
             assert!(!mbx.contains(alice_hex), "mailbox leaks the sender AID");

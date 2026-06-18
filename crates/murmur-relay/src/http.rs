@@ -79,7 +79,7 @@ fn store_error(e: StoreError) -> Response {
     let code = match e {
         StoreError::Unavailable(_) => StatusCode::SERVICE_UNAVAILABLE, // 503
         StoreError::OutOfMemory(_) => StatusCode::INSUFFICIENT_STORAGE, // 507
-        StoreError::Backend(_) => StatusCode::INTERNAL_SERVER_ERROR, // 500
+        StoreError::Backend(_) => StatusCode::INTERNAL_SERVER_ERROR,   // 500
     };
     (code, e.to_string()).into_response()
 }
@@ -88,7 +88,11 @@ fn store_error(e: StoreError) -> Response {
 /// down) marks the machine unhealthy and the platform stops routing to it.
 async fn health(State(store): State<RelayStore>) -> Response {
     match store.health().await {
-        Ok(()) => (StatusCode::OK, format!("murmur-relay {}", murmur_core::VERSION)).into_response(),
+        Ok(()) => (
+            StatusCode::OK,
+            format!("murmur-relay {}", murmur_core::VERSION),
+        )
+            .into_response(),
         Err(e) => store_error(e),
     }
 }
@@ -105,13 +109,19 @@ async fn deposit(State(store): State<RelayStore>, body: Bytes) -> Response {
             (StatusCode::OK, Json(DepositResponse { outcome: "queued" })).into_response()
         }
         // A byte-identical replay the store already holds — idempotent success.
-        Ok(DepositOutcome::DedupedReplay) => {
-            (StatusCode::OK, Json(DepositResponse { outcome: "deduped_replay" })).into_response()
-        }
+        Ok(DepositOutcome::DedupedReplay) => (
+            StatusCode::OK,
+            Json(DepositResponse {
+                outcome: "deduped_replay",
+            }),
+        )
+            .into_response(),
         // A quota would be exceeded — fail closed so one mailbox cannot exhaust memory.
         Ok(DepositOutcome::QuotaExceeded) => (
             StatusCode::TOO_MANY_REQUESTS,
-            Json(DepositResponse { outcome: "quota_exceeded" }),
+            Json(DepositResponse {
+                outcome: "quota_exceeded",
+            }),
         )
             .into_response(),
         Err(e) => store_error(e),
@@ -123,11 +133,9 @@ async fn deposit(State(store): State<RelayStore>, body: Bytes) -> Response {
 async fn drain(State(store): State<RelayStore>, Path(mailbox): Path<String>) -> Response {
     match store.drain(&mailbox).await {
         Ok(envelopes) => match encode_drain_list(&envelopes) {
-            Ok(bytes) => (
-                [(header::CONTENT_TYPE, "application/octet-stream")],
-                bytes,
-            )
-                .into_response(),
+            Ok(bytes) => {
+                ([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response()
+            }
             Err(e) => store_error(e),
         },
         Err(e) => store_error(e),
@@ -192,7 +200,9 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
-            axum::serve(listener, app(RelayStore::memory())).await.unwrap();
+            axum::serve(listener, app(RelayStore::memory()))
+                .await
+                .unwrap();
         });
         let base = format!("http://{addr}");
         let client = reqwest::Client::new();

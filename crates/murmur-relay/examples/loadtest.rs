@@ -43,13 +43,34 @@ fn parse_args() -> Cfg {
     while i < args.len() {
         let val = args.get(i + 1).cloned().unwrap_or_default();
         match args[i].as_str() {
-            "--url" => { c.url = val; i += 2; }
-            "--concurrency" => { c.concurrency = val.parse().unwrap_or(c.concurrency); i += 2; }
-            "--seconds" => { c.seconds = val.parse().unwrap_or(c.seconds); i += 2; }
-            "--payload" => { c.payload = val.parse().unwrap_or(c.payload); i += 2; }
-            "--mailboxes" => { c.mailboxes = val.parse().unwrap_or(c.mailboxes); i += 2; }
-            "--mode" => { c.mode = val; i += 2; }
-            other => { eprintln!("unknown arg: {other}"); i += 1; }
+            "--url" => {
+                c.url = val;
+                i += 2;
+            }
+            "--concurrency" => {
+                c.concurrency = val.parse().unwrap_or(c.concurrency);
+                i += 2;
+            }
+            "--seconds" => {
+                c.seconds = val.parse().unwrap_or(c.seconds);
+                i += 2;
+            }
+            "--payload" => {
+                c.payload = val.parse().unwrap_or(c.payload);
+                i += 2;
+            }
+            "--mailboxes" => {
+                c.mailboxes = val.parse().unwrap_or(c.mailboxes);
+                i += 2;
+            }
+            "--mode" => {
+                c.mode = val;
+                i += 2;
+            }
+            other => {
+                eprintln!("unknown arg: {other}");
+                i += 1;
+            }
         }
     }
     c
@@ -110,7 +131,10 @@ async fn main() {
             let mut counter = 0u64;
             let deposit_url = format!("{}/deposit", cfg.url);
             while Instant::now() < deadline {
-                let mbx = format!("mbx-load-{}", (w as u64).wrapping_add(counter) % cfg.mailboxes);
+                let mbx = format!(
+                    "mbx-load-{}",
+                    (w as u64).wrapping_add(counter) % cfg.mailboxes
+                );
                 let body = OuterEnvelope {
                     to_mailbox: MailboxId::new(&mbx),
                     ciphertext: payload(w, counter, cfg.payload),
@@ -127,7 +151,10 @@ async fn main() {
                 ops.fetch_add(1, Ordering::Relaxed);
 
                 if cfg.mode == "roundtrip" {
-                    let _ = client.get(format!("{}/drain/{}", cfg.url, mbx)).send().await;
+                    let _ = client
+                        .get(format!("{}/drain/{}", cfg.url, mbx))
+                        .send()
+                        .await;
                 }
                 counter += 1;
             }
@@ -148,13 +175,30 @@ async fn main() {
     let errs = errors.load(Ordering::Relaxed);
     println!("\n── results ─────────────────────────────");
     println!("deposits        : {total}");
-    println!("errors          : {errs} ({:.3}%)", errs as f64 / total.max(1) as f64 * 100.0);
+    println!(
+        "errors          : {errs} ({:.3}%)",
+        errs as f64 / total.max(1) as f64 * 100.0
+    );
     println!("throughput      : {:.0} deposits/s", total as f64 / elapsed);
-    println!("latency p50     : {:.2} ms", percentile(&all, 0.50) as f64 / 1000.0);
-    println!("latency p99     : {:.2} ms", percentile(&all, 0.99) as f64 / 1000.0);
-    println!("latency p999    : {:.2} ms", percentile(&all, 0.999) as f64 / 1000.0);
-    println!("latency max     : {:.2} ms", all.last().copied().unwrap_or(0) as f64 / 1000.0);
+    println!(
+        "latency p50     : {:.2} ms",
+        percentile(&all, 0.50) as f64 / 1000.0
+    );
+    println!(
+        "latency p99     : {:.2} ms",
+        percentile(&all, 0.99) as f64 / 1000.0
+    );
+    println!(
+        "latency p999    : {:.2} ms",
+        percentile(&all, 0.999) as f64 / 1000.0
+    );
+    println!(
+        "latency max     : {:.2} ms",
+        all.last().copied().unwrap_or(0) as f64 / 1000.0
+    );
     if cfg.mode == "deposit" {
-        println!("\n(volume mode — read Redis memory: redis-cli -p <port> INFO memory | grep used_memory_human)");
+        println!(
+            "\n(volume mode — read Redis memory: redis-cli -p <port> INFO memory | grep used_memory_human)"
+        );
     }
 }

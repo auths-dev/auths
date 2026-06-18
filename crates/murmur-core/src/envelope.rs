@@ -207,12 +207,10 @@ impl InnerEnvelope {
 /// `did:keri:<64-hex>` (kind 0, ~33 B) or the UTF-8 string for any other AID (kind 1).
 fn put_aid(out: &mut Vec<u8>, aid: &crate::address::Aid) -> CoreResult<()> {
     let s = aid.as_str();
-    if let Some(hex) = s.strip_prefix("did:keri:") {
-        if let Some(digest) = decode_hex32(hex) {
-            out.push(0);
-            out.extend_from_slice(&digest);
-            return Ok(());
-        }
+    if let Some(digest) = s.strip_prefix("did:keri:").and_then(decode_hex32) {
+        out.push(0);
+        out.extend_from_slice(&digest);
+        return Ok(());
     }
     out.push(1);
     put_u16_prefixed(out, s.as_bytes())
@@ -223,7 +221,10 @@ fn take_aid(r: &mut FrameReader) -> CoreResult<crate::address::Aid> {
     match r.u8()? {
         0 => {
             let digest = r.take(32)?;
-            Ok(crate::address::Aid::new(format!("did:keri:{}", encode_hex(digest))))
+            Ok(crate::address::Aid::new(format!(
+                "did:keri:{}",
+                encode_hex(digest)
+            )))
         }
         1 => {
             let s = std::str::from_utf8(r.take_u16_prefixed()?)
@@ -382,10 +383,17 @@ mod tests {
             signature: vec![5u8; 64],
         };
         let frame = inner.to_frame().unwrap();
-        assert_eq!(InnerEnvelope::from_frame(&frame, &recipient).unwrap(), inner);
+        assert_eq!(
+            InnerEnvelope::from_frame(&frame, &recipient).unwrap(),
+            inner
+        );
         // ver(1) + sender(1+32) + msgid(1+3) + present(1) + sig(2+64) + body(2) = 109.
         // No recipient string (~75 B), no content_type ("text"), no flags stored.
-        assert!(frame.len() <= 112, "default-fields frame is compact: {}", frame.len());
+        assert!(
+            frame.len() <= 112,
+            "default-fields frame is compact: {}",
+            frame.len()
+        );
     }
 
     #[test]

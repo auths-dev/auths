@@ -16,7 +16,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use murmur_core::{DepositOutcome, MailboxId, MailboxStore, OuterEnvelope, RelayLimits, RelayRequest};
+use murmur_core::{
+    DepositOutcome, MailboxId, MailboxStore, OuterEnvelope, RelayLimits, RelayRequest,
+};
 use redis::aio::ConnectionManager;
 use sha2::{Digest, Sha256};
 
@@ -89,20 +91,37 @@ impl RelayConfig {
     pub fn from_env() -> Self {
         let d = RelayConfig::default();
         fn env_u64(key: &str, default: u64) -> u64 {
-            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
         }
         fn env_usize(key: &str, default: usize) -> usize {
-            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
         }
         RelayConfig {
-            redis_url: std::env::var("MURMUR_RELAY_REDIS_URL").ok().filter(|s| !s.is_empty()),
+            redis_url: std::env::var("MURMUR_RELAY_REDIS_URL")
+                .ok()
+                .filter(|s| !s.is_empty()),
             msg_ttl_secs: env_u64("MURMUR_RELAY_MSG_TTL_SECS", d.msg_ttl_secs),
             dedup_ttl_secs: env_u64("MURMUR_RELAY_DEDUP_TTL_SECS", d.dedup_ttl_secs),
             dedup_window: env_usize("MURMUR_RELAY_DEDUP_WINDOW", d.dedup_window),
             prekey_ttl_secs: env_u64("MURMUR_RELAY_PREKEY_TTL_SECS", d.prekey_ttl_secs),
-            max_msgs_per_mailbox: env_usize("MURMUR_RELAY_MAX_MSGS_PER_MAILBOX", d.max_msgs_per_mailbox),
-            max_bytes_per_mailbox: env_usize("MURMUR_RELAY_MAX_BYTES_PER_MAILBOX", d.max_bytes_per_mailbox),
-            key_prefix: std::env::var("MURMUR_RELAY_KEY_PREFIX").ok().filter(|s| !s.is_empty()).unwrap_or(d.key_prefix),
+            max_msgs_per_mailbox: env_usize(
+                "MURMUR_RELAY_MAX_MSGS_PER_MAILBOX",
+                d.max_msgs_per_mailbox,
+            ),
+            max_bytes_per_mailbox: env_usize(
+                "MURMUR_RELAY_MAX_BYTES_PER_MAILBOX",
+                d.max_bytes_per_mailbox,
+            ),
+            key_prefix: std::env::var("MURMUR_RELAY_KEY_PREFIX")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or(d.key_prefix),
         }
     }
 }
@@ -127,7 +146,9 @@ impl RelayStore {
     /// the first connection fails); otherwise in-memory.
     pub async fn from_config(cfg: RelayConfig) -> Result<Self, String> {
         match &cfg.redis_url {
-            Some(url) => Ok(RelayStore::Redis(RedisStore::connect(url, cfg.clone()).await?)),
+            Some(url) => Ok(RelayStore::Redis(
+                RedisStore::connect(url, cfg.clone()).await?,
+            )),
             None => Ok(RelayStore::memory()),
         }
     }
@@ -196,7 +217,10 @@ impl MemoryStore {
     }
 
     fn deposit(&self, env: &OuterEnvelope) -> DepositOutcome {
-        self.store.lock().expect("relay store poisoned").deposit(env)
+        self.store
+            .lock()
+            .expect("relay store poisoned")
+            .deposit(env)
     }
 
     fn drain(&self, mailbox: &str) -> Vec<OuterEnvelope> {
@@ -207,11 +231,18 @@ impl MemoryStore {
     }
 
     fn put_prekey(&self, aid: &str, bytes: Vec<u8>) {
-        self.prekeys.lock().expect("prekey directory poisoned").insert(aid.to_string(), bytes);
+        self.prekeys
+            .lock()
+            .expect("prekey directory poisoned")
+            .insert(aid.to_string(), bytes);
     }
 
     fn get_prekey(&self, aid: &str) -> Option<Vec<u8>> {
-        self.prekeys.lock().expect("prekey directory poisoned").get(aid).cloned()
+        self.prekeys
+            .lock()
+            .expect("prekey directory poisoned")
+            .get(aid)
+            .cloned()
     }
 }
 
@@ -366,7 +397,9 @@ impl RedisStore {
             "queued" => Ok(DepositOutcome::Queued),
             "deduped" => Ok(DepositOutcome::DedupedReplay),
             "quota" => Ok(DepositOutcome::QuotaExceeded),
-            other => Err(StoreError::Backend(format!("unexpected deposit result: {other}"))),
+            other => Err(StoreError::Backend(format!(
+                "unexpected deposit result: {other}"
+            ))),
         }
     }
 
@@ -420,7 +453,9 @@ impl RedisStore {
         if pong == "PONG" {
             Ok(())
         } else {
-            Err(StoreError::Backend(format!("unexpected PING reply: {pong}")))
+            Err(StoreError::Backend(format!(
+                "unexpected PING reply: {pong}"
+            )))
         }
     }
 }
