@@ -128,6 +128,10 @@ pub struct WrapConfig {
     pub budget: Option<String>,
     /// The grant TTL string (e.g. `"30m"`).
     pub ttl: Option<String>,
+    /// The payment rail the wrapped downstream settles on (`Some("x402")` / `Some("stripe")`).
+    /// When set, every call is metered on this rail from its response — set by the OPERATOR, so an
+    /// agent cannot bypass metering by omitting a per-call declaration. `None` = non-payment.
+    pub rail: Option<String>,
     /// The agent delegation identifier (`did:keri:…`) the durable cross-rail counter is
     /// keyed to — the counter sums ALL rails for THIS delegation. Defaults to a stable
     /// session key when the live-agent harness has not yet bound the agent's delegation
@@ -270,6 +274,10 @@ struct GatewayProxy {
     gate: Arc<auths_mcp_core::PerCallGate>,
     /// Monotonic per-call index; each call's signing work repo is keyed by it.
     next_call: Arc<std::sync::atomic::AtomicUsize>,
+    /// The payment rail the wrapped downstream settles on, set by the operator. When `Some`, every
+    /// call is metered on it (the cost is read from the rail's own response), so an agent cannot
+    /// bypass the cap by omitting a per-call declaration.
+    rail: Option<String>,
 }
 
 impl GatewayProxy {
@@ -284,9 +292,30 @@ impl GatewayProxy {
     /// #281 fixes is the COUNTER SOURCE — whatever cost a call carries is enforced
     /// against the durable `CrossRailBudget`, not a separate RAM tally.
     fn call_cost(&self, request: &CallToolRequestParam) -> CallCost {
-        let args = match &request.arguments {
-            Some(map) => map,
-            None => return CallCost::free(),
+        let args = request.arguments.as_ref();
+
+        // Operator-configured rail: EVERY call is metered on it. The reserve ceiling pre-authorized
+        // before the rail is touched is the agent's intended payment (an x402 `amount_atomic` →
+        // cents, rounded up, or an explicit `_auths_reserve_ceiling_cents`); the amount actually
+        // SETTLED is read from the rail's own response in `call_tool`. Because the OPERATOR sets the
+        // rail, an agent cannot bypass metering by omitting a per-call field.
+        if let Some(rail) = self.rail.as_deref() {
+            let ceiling = args
+                .and_then(|m| m.get("amount_atomic"))
+                .and_then(|v| v.as_u64())
+                .map(atomic_usdc_to_cents_ceiling)
+                .or_else(|| {
+                    args.and_then(|m| m.get("_auths_reserve_ceiling_cents"))
+                        .and_then(|v| v.as_u64())
+                })
+                .unwrap_or(0);
+            return CallCost::metered_with_ceiling(ceiling, ceiling, rail);
+        }
+
+        // No operator rail: a non-payment downstream. Honor an explicit per-call declaration so a
+        // metered downstream config can still drive the durable counter; else non-metered.
+        let Some(args) = args else {
+            return CallCost::free();
         };
         let cost_cents = args
             .get("_auths_cost_cents")
@@ -300,11 +329,7 @@ impl GatewayProxy {
             .and_then(|v| v.as_u64())
             .unwrap_or(cost_cents);
         match args.get("_auths_rail").and_then(|v| v.as_str()) {
-            // Known cost (ceiling == cost) is the common metered case; a bounded-but-
-            // not-yet-known cost reserves a larger ceiling and releases the slack.
-            Some(rail) if reserve_ceiling_cents == cost_cents => {
-                CallCost::metered(cost_cents, rail)
-            }
+            Some(rail) if reserve_ceiling_cents == cost_cents => CallCost::metered(cost_cents, rail),
             Some(rail) => CallCost::metered_with_ceiling(cost_cents, reserve_ceiling_cents, rail),
             None => CallCost {
                 cost_cents,
@@ -313,6 +338,12 @@ impl GatewayProxy {
             },
         }
     }
+}
+
+/// x402 USDC has 6 decimals: 1 cent = 10_000 atomic units. Round UP so the reserved ceiling always
+/// covers the settled cents (the SETTLE uses the exact amount the rail's response reports).
+fn atomic_usdc_to_cents_ceiling(atomic: u64) -> u64 {
+    atomic.div_ceil(10_000)
 }
 
 impl ServerHandler for GatewayProxy {
@@ -399,16 +430,51 @@ impl ServerHandler for GatewayProxy {
         // records it.
         let mut verdict = decision.verdict.clone();
         let mut cumulative = decision.cumulative_cents;
+        // For a metered call the rail's response carries the ACTUAL settled cost + reference; these
+        // are filled in from that response below and persisted, so the audit sums the agent-signed
+        // actual — never a number the agent declared.
+        let mut rail_response: Option<Vec<u8>> = None;
+        let mut settlement_commit: Option<Vec<u8>> = None;
+        let mut settled_charge_ref: Option<String> = None;
         let forwarded = if decision.forwards() {
             let result = self.downstream.call_tool(request).await.map_err(|e| {
                 McpError::internal_error(format!("downstream tools/call failed: {e}"), None)
             })?;
-            // Settle the actual cost into the durable counter, releasing the reservation slack.
+
+            // A metered call's ACTUAL cost is read from the downstream's own response (the rail's
+            // settlement), not a number the agent declared. Extract it and keep the raw response so
+            // the offline audit can re-extract + cross-check the agent-signed amount.
+            let actual_cents = if let Some(rail) = cost.rail.as_deref() {
+                let resp = result
+                    .content
+                    .first()
+                    .and_then(|c| c.as_text())
+                    .map(|t| t.text.clone().into_bytes())
+                    .ok_or_else(|| {
+                        McpError::internal_error(
+                            format!("metered `{rail}` call returned no text response to meter"),
+                            None,
+                        )
+                    })?;
+                let extracted = auths_mcp_core::extract_rail_cost(rail, &resp).map_err(|e| {
+                    McpError::internal_error(
+                        format!("extract `{rail}` cost from the rail response: {e}"),
+                        None,
+                    )
+                })?;
+                rail_response = Some(resp);
+                settled_charge_ref = Some(extracted.reference);
+                extracted.amount_cents
+            } else {
+                cost.cost_cents
+            };
+
+            // Settle the ACTUAL cost into the durable counter, releasing the reservation slack.
             if let Some(hold) = decision.hold {
                 let mut budget = self.budget.lock().await;
                 let (settle_verdict, new_cumulative) = self
                     .gate
-                    .settle(&mut budget, hold, cost.cost_cents)
+                    .settle(&mut budget, hold, actual_cents)
                     .map_err(|e| {
                         McpError::internal_error(
                             format!("settle the cross-rail counter: {e}"),
@@ -417,6 +483,27 @@ impl ServerHandler for GatewayProxy {
                     })?;
                 verdict = settle_verdict;
                 cumulative = new_cumulative;
+            }
+
+            // Sign a settlement commit anchoring the agent-signed actual cost, bound to THIS call by
+            // the hash of its proof, so the audit cannot be handed a settlement from another call.
+            if let (Some(rail), Some(charge_ref)) = (cost.rail.as_deref(), settled_charge_ref.as_deref())
+                && actual_cents > 0
+            {
+                let (bytes, _sha) = self
+                    .chain
+                    .sign_settlement(
+                        idx,
+                        &auths_mcp_core::call_commit_binding(&proof_bytes),
+                        rail,
+                        actual_cents,
+                        charge_ref,
+                        cumulative,
+                    )
+                    .map_err(|e| {
+                        McpError::internal_error(format!("sign the settlement: {e}"), None)
+                    })?;
+                settlement_commit = Some(bytes);
             }
             Some(result)
         } else {
@@ -434,7 +521,7 @@ impl ServerHandler for GatewayProxy {
             &proof_sha,
             verdict.clone(),
             cost.rail.as_deref(),
-            None,
+            settled_charge_ref.as_deref(),
             decision.reserved_cents,
             cumulative,
             now,
@@ -446,8 +533,8 @@ impl ServerHandler for GatewayProxy {
                 call_commit: proof_bytes,
                 receipt,
                 rail: cost.rail.clone(),
-                rail_response: None,
-                settlement_commit: None,
+                rail_response,
+                settlement_commit,
             },
         ) {
             return Err(McpError::internal_error(
@@ -723,6 +810,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         chain: Arc::new(chain),
         gate: Arc::new(gate),
         next_call: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        rail: cfg.rail,
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.

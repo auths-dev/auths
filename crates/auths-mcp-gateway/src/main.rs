@@ -88,6 +88,13 @@ struct WrapArgs {
     #[arg(long = "ttl", value_name = "TTL")]
     ttl: Option<String>,
 
+    /// The payment rail the WRAPPED downstream settles on, e.g. `--rail x402` or `--rail stripe`.
+    /// When set, EVERY call to the downstream is metered on this rail: the gateway reads the ACTUAL
+    /// cost from the rail's own response and meters it into the cross-rail cap, so an agent cannot
+    /// bypass the cap by omitting a per-call declaration. Omit for a non-payment downstream.
+    #[arg(long = "rail", value_name = "RAIL")]
+    rail: Option<String>,
+
     /// Opt into SANDBOX payment rails (Stripe test `sk_test_…`, x402 `base-sepolia`).
     ///
     /// Real money is the DEFAULT: with no flag the gateway resolves to live Stripe
@@ -198,6 +205,7 @@ async fn run_wrap(args: WrapArgs) -> ExitCode {
         scope: args.scope,
         budget: args.budget,
         ttl: args.ttl,
+        rail: args.rail,
         agent_delegation: args.agent_delegation,
         custody,
         downstream: args.downstream,
