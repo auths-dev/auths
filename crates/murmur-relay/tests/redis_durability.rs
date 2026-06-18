@@ -12,6 +12,17 @@
 //!   MURMUR_RELAY_TEST_REDIS_URL=redis://127.0.0.1:6390 \
 //!     cargo test -p murmur-relay --test redis_durability -- --nocapture --test-threads=1
 
+// Black-box integration test: it reads an env var to find the test Redis, stamps a unique
+// mailbox from the wall clock, spawns the real binary, and unwraps on HTTP — all legitimate
+// for a test harness. Allow the restriction lints here, per the project convention.
+#![allow(
+    clippy::disallowed_methods,
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::unwrap_used,
+    clippy::expect_used
+)]
+
 use std::process::Stdio;
 use std::time::{Duration, Instant, SystemTime};
 

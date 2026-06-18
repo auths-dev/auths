@@ -133,7 +133,7 @@ pub const MAX_PREKEY_BYTES: usize = 8 * 1024;
 #[derive(Clone)]
 pub enum RelayStore {
     Memory(MemoryStore),
-    Redis(RedisStore),
+    Redis(Box<RedisStore>),
 }
 
 impl RelayStore {
@@ -146,9 +146,9 @@ impl RelayStore {
     /// the first connection fails); otherwise in-memory.
     pub async fn from_config(cfg: RelayConfig) -> Result<Self, String> {
         match &cfg.redis_url {
-            Some(url) => Ok(RelayStore::Redis(
+            Some(url) => Ok(RelayStore::Redis(Box::new(
                 RedisStore::connect(url, cfg.clone()).await?,
-            )),
+            ))),
             None => Ok(RelayStore::memory()),
         }
     }
@@ -219,28 +219,28 @@ impl MemoryStore {
     fn deposit(&self, env: &OuterEnvelope) -> DepositOutcome {
         self.store
             .lock()
-            .expect("relay store poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .deposit(env)
     }
 
     fn drain(&self, mailbox: &str) -> Vec<OuterEnvelope> {
         self.store
             .lock()
-            .expect("relay store poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .handle(&RelayRequest::Drain(MailboxId::new(mailbox)))
     }
 
     fn put_prekey(&self, aid: &str, bytes: Vec<u8>) {
         self.prekeys
             .lock()
-            .expect("prekey directory poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(aid.to_string(), bytes);
     }
 
     fn get_prekey(&self, aid: &str) -> Option<Vec<u8>> {
         self.prekeys
             .lock()
-            .expect("prekey directory poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .get(aid)
             .cloned()
     }

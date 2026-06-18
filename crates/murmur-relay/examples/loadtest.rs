@@ -14,6 +14,16 @@
 //!
 //! Args (all optional): --url --concurrency --seconds --payload --mailboxes --mode
 
+// A load/volume harness prints results and unwraps on setup by design — allow the
+// restriction lints here, matching the project's test/example convention.
+#![allow(
+    clippy::disallowed_methods,
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::unwrap_used,
+    clippy::expect_used
+)]
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
