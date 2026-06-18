@@ -276,7 +276,7 @@ impl Chain {
         Ok((raw.stdout, sha))
     }
 
-    /// (B1) Sign a SETTLEMENT commit: the agent attests its OWN settled cost under the dedicated
+    /// Sign a SETTLEMENT commit: the agent attests its OWN settled cost under the dedicated
     /// `settle` capability. The cost lives in SIGNED git trailers (`Auths-Settle-*`), covered by
     /// the same SSH signature `verify_commit_against_kel_scoped` checks — so an offline auditor
     /// reads the agent-signed `actual_cents` straight from the commit bytes (no git, no tree

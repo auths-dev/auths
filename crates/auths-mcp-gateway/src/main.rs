@@ -59,7 +59,7 @@ enum Command {
     /// verdicts the probes assert.
     Replay(ReplayArgs),
 
-    /// Independently audit a persisted spend log OFFLINE (M2 — "the moat"): re-verify every
+    /// Independently audit a persisted spend log OFFLINE: re-verify every
     /// signed proof through the same verifier the gate uses + re-derive the spend, with NO
     /// trust in the operator that produced the log. Exits non-zero on any non-`consistent`
     /// verdict. Needs the issuer's registry to resolve the agent + delegator KELs.
@@ -231,7 +231,7 @@ async fn run_replay(args: ReplayArgs) -> ExitCode {
     }
 }
 
-/// The offline auditor (M2 — "the moat"): re-verify a persisted spend log against the issuer's
+/// The offline auditor: re-verify a persisted spend log against the issuer's
 /// registry with the gate's OWN `verify_commit_against_kel_scoped` + `audit_spend_log` — run by
 /// anyone, with no trust in the operator that produced the log. Exits non-zero on any
 /// non-`consistent` verdict.

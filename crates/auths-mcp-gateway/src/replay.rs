@@ -37,7 +37,7 @@ struct CallCost {
     extracted: bool,
     /// The rail's RAW recorded response bytes the cost was extracted from (`None` when the
     /// cost is the transcript's known number, not rail-extracted). Retained for the spend log
-    /// (M2/A) so the offline audit re-extracts + cross-checks the cost against the signed cost.
+    /// so the offline audit re-extracts + cross-checks the cost against the signed cost.
     rail_response: Option<Vec<u8>>,
 }
 
@@ -116,9 +116,9 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     );
 
     // 1. Build the delegation chain: parent root + delegated scoped agent.
-    // (B1/A) Grant the agent a narrow `settle` capability so it can SIGN its own settlement
-    // commits (attest its spend). It is non-weaponizable — it authorizes no tool call and no rail,
-    // only the settlement attestation — so it does NOT widen tool access (write_file still refused).
+    // Grant the agent a narrow `settle` capability so it can SIGN its own settlement commits
+    // (attest its spend). It is non-weaponizable — it authorizes no tool call and no rail, only
+    // the settlement attestation — so it does NOT widen tool access (write_file still refused).
     let mut scope = transcript.grant.scope.clone();
     if !scope.iter().any(|c| c == "settle") {
         scope.push("settle".to_string());
@@ -183,10 +183,10 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
         println!("▸ replay: a verdict diverged from its transcript expectation — gate caught it");
     }
 
-    // (M2 / 2.3) Self-audit the spend log THIS run just wrote, OFFLINE, with the gate's own
-    // resolved KELs — the moat proven end-to-end: re-verify every signed proof + re-derive spend
-    // with no trust in the run that produced it. A clean run audits `consistent`; with
-    // AUTHS_MCP_REPLAY_TAMPER set, the forged proof in the log is CAUGHT here as `tampered-proof`.
+    // Self-audit the spend log THIS run just wrote, OFFLINE, with the gate's own resolved KELs:
+    // re-verify every signed proof + re-derive spend with no trust in the run that produced it.
+    // A clean run audits `consistent`; with AUTHS_MCP_REPLAY_TAMPER set, the forged proof in the
+    // log is CAUGHT here as `tampered-proof`.
     let log_path = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
     match auths_mcp_core::read_spend_log(&log_path) {
         Ok(records) => {
@@ -314,9 +314,9 @@ async fn drive_call(
         .map_err(|e| anyhow::anyhow!("receipt digest: {e}"))?;
     let receipt_json = serde_json::to_string(&receipt)?;
 
-    // (B1/A) For a metered call that SETTLED, the agent signs a settlement commit anchoring the
-    // ACTUAL cost in signed `Auths-Settle-*` trailers under the `settle` capability — so the audit
-    // sums the AGENT-SIGNED cost (un-forgeable by the operator), not just the rail-attested number.
+    // For a metered call that SETTLED, the agent signs a settlement commit anchoring the ACTUAL
+    // cost in signed `Auths-Settle-*` trailers under the `settle` capability — so the audit sums
+    // the AGENT-SIGNED cost (un-forgeable by the operator), not just the rail-attested number.
     let settlement_commit = match (forwarded_result.is_some(), rail, settled_charge_ref) {
         (true, Some(rail_name), Some(charge)) if cost.settle_cents > 0 => {
             let (bytes, _sha) = chain.sign_settlement(
@@ -332,10 +332,10 @@ async fn drive_call(
         _ => None,
     };
 
-    // (M2 / A) Persist the per-call proof+receipt+rail-response(+settlement) record to the
-    // append-only spend log under `<org_repo>/spend-log/<delegation>.jsonl`, so an offline `auths
-    // verify-spend` re-verifies the SIGNED `call_commit` bytes + sums the AGENT-SIGNED cost (B1)
-    // with NO trust in the operator.
+    // Persist the per-call proof+receipt+rail-response(+settlement) record to the append-only spend
+    // log under `<org_repo>/spend-log/<delegation>.jsonl`, so an offline `auths verify-spend`
+    // re-verifies the SIGNED `call_commit` bytes + sums the AGENT-SIGNED cost with NO trust in the
+    // operator.
     crate::spend_log::append(
         chain.org_repo(),
         &chain.agent_did,

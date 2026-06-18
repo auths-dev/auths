@@ -1,4 +1,4 @@
-//! The independent spend-audit data model (M2 — "the moat").
+//! The independent spend-audit data model.
 //!
 //! The contract an offline `auths verify-spend` reads to re-derive an agent's true spend
 //! WITHOUT trusting the operator: an append-only **spend log** of per-call records the gateway
@@ -8,13 +8,13 @@
 //! gateway (which writes the log) and the offline auditor (which reads + verifies it) share one
 //! definition. Verification itself replays each record's signed proof(s) through the SAME
 //! `auths_verifier::verify_commit_against_kel_scoped` the live gate uses, and sums the
-//! AGENT-SIGNED settled costs (B1) — never the operator's counter (M2 decision: A + B1).
+//! AGENT-SIGNED settled costs — never the operator's counter.
 //!
-//! NOTE (overnight recon finding): the LIVE wrap path does not yet sign a per-call proof — it
-//! does a boolean scope check + budget enforcement (`proxy.rs::call_tool`). PRODUCING these
-//! records on the live wire is a separate MUST-REVIEW change (wiring `chain.rs` signing into the
-//! live path); the audit is first built over the hermetic gate, which already signs + verifies
-//! a real commit per call. This data model is path-agnostic.
+//! NOTE: the LIVE wrap path does not yet sign a per-call proof — it does a boolean scope check +
+//! budget enforcement (`proxy.rs::call_tool`). Producing these records on the live wire is a
+//! separate change (wiring `chain.rs` signing into the live path); the audit is first built over
+//! the hermetic replay gate, which already signs + verifies a real commit per call. This data
+//! model is path-agnostic.
 
 use crate::receipt::Receipt;
 use auths_id::keri::Event;
@@ -32,7 +32,7 @@ use std::path::{Path, PathBuf};
 /// re-extracts the cost via `rail::extract` and cross-checks it against the SIGNED cost.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpendLogRecord {
-    /// Raw bytes of the agent's signed `tools/call` proof commit (A) — retained so the audit
+    /// Raw bytes of the agent's signed `tools/call` proof commit — retained so the audit
     /// re-verifies it offline rather than trusting the receipt's `proof_ref` SHA.
     pub call_commit: Vec<u8>,
     /// The per-call receipt — the operator's CLAIM. An untrusted hint, cross-checked against the
@@ -50,7 +50,7 @@ pub struct SpendLogRecord {
     /// this is a recorded fixture body, which holds no secret.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rail_response: Option<Vec<u8>>,
-    /// (B1) Raw bytes of the agent's signed SETTLEMENT commit anchoring the actual cost
+    /// Raw bytes of the agent's signed SETTLEMENT commit anchoring the actual cost
     /// `{call proof_ref, rail, actual_cents, rail_ref, cumulative}`. `None` for a non-metered
     /// call. The audit sums the cost SIGNED here, never the receipt's claim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -76,7 +76,7 @@ pub enum AuditVerdict {
         /// The proof reference (commit SHA) that failed verification.
         proof_ref: String,
     },
-    /// (B1) A settlement commit's SIGNED cost disagrees with the cost re-extracted from the
+    /// A settlement commit's SIGNED cost disagrees with the cost re-extracted from the
     /// recorded rail response — the operator signed one number but logged another response.
     CostMismatch {
         /// The cost the agent SIGNED in the settlement commit.
@@ -209,19 +209,17 @@ fn safe_key(delegation: &str) -> String {
 /// record's signed `call_commit` through the SAME `verify_commit_against_kel_scoped` the live gate
 /// uses — a forged/tampered proof → [`AuditVerdict::TamperedProof`], a revoked-key proof →
 /// [`AuditVerdict::Revoked`] — so a hostile operator cannot forge or alter a proof undetected. The
-/// SPEND leg is rail-attested pre-B1: sum the cost re-extracted from each settled call's recorded
-/// `rail_response` via [`crate::rail::extract`] and cross-check it against the operator's claimed
-/// cumulative (catching internal inconsistency). B1 (`settlement_commit`) upgrades the cost to
-/// agent-signed — un-forgeable even by a colluding operator.
+/// SPEND leg sums each settled call's cost, re-extracted from its recorded `rail_response` via
+/// [`crate::rail::extract`], and cross-checks it against the operator's claimed cumulative (catching
+/// internal inconsistency). Once a call carries a `settlement_commit`, the cost is taken from the
+/// agent's signature instead — un-forgeable even by a colluding operator.
 ///
 /// `now` is unix-epoch seconds (the auditor's injected clock — the verifier holds none). The
 /// agent/delegator KELs + `pinned_roots` are resolved the SAME way `PerCallGate::resolve` does (from
 /// the issuer's registry), so the audit is the gate's own check, re-run by anyone, offline.
 ///
-/// NOTE (M2 A+B1): until **B1** lands the cost is **rail-attested** (re-extracted from the recorded
-/// response), not agent-signed. B1 upgrades this to summing the cost the AGENT signed in each
-/// record's `settlement_commit` — un-forgeable even by a colluding operator. A legitimately refused
-/// call (out-of-scope / over-cap) carries an AUTHENTIC proof and is NOT a tamper.
+/// A legitimately refused call (out-of-scope / over-cap) carries an AUTHENTIC proof and is NOT a
+/// tamper.
 pub async fn audit_spend_log(
     records: &[SpendLogRecord],
     agent_kel: &[Event],
@@ -261,8 +259,9 @@ pub async fn audit_spend_log(
         // — `Allowed`/`AgentExpired`, both PROOF-DETERMINED, so the operator cannot relabel a settled
         // call as refused without breaking its signature (`OutsideAgentScope` never settled) — AND
         // (b) recorded a rail response (set only for calls that forwarded; see replay.rs).
-        // KNOWN (pre-B1): the *amount* is rail-attested, not yet bound to the signed proof. B1's
-        // `settlement_commit` signs the cost so a colluding operator can't lower it without the key.
+        // The amount is re-extracted from the recorded rail response; once a `settlement_commit` is
+        // present it is read from the agent's signature instead, so a colluding operator cannot lower
+        // it without the key.
         if matches!(
             verdict,
             crate::gate::Verdict::Allowed | crate::gate::Verdict::AgentExpired

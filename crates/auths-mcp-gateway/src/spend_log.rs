@@ -1,9 +1,9 @@
-//! Append-only WRITE side of the per-call spend log (M2 — "the moat", epic 2.0 / A).
+//! Append-only WRITE side of the per-call spend log.
 //!
 //! The gateway appends one [`SpendLogRecord`] per brokered call to
 //! `<repo>/spend-log/<delegation>.jsonl`, so an offline `auths verify-spend` can re-verify every
 //! SIGNED proof and re-derive the true spend **without the operator** — re-running each record's
-//! `call_commit` (and, under B1, `settlement_commit`) through the SAME
+//! `call_commit` (and, when present, `settlement_commit`) through the SAME
 //! `verify_commit_against_kel_scoped` the live gate uses. One JSON object per line; the writer
 //! only ever APPENDS — it never rewrites or truncates a prior record, so a dropped/edited line is
 //! a detectable tamper, not a silent loss.
