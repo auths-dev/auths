@@ -116,7 +116,14 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     );
 
     // 1. Build the delegation chain: parent root + delegated scoped agent.
-    let mut chain = Chain::build(&lab, &transcript.grant.scope)?;
+    // (B1/A) Grant the agent a narrow `settle` capability so it can SIGN its own settlement
+    // commits (attest its spend). It is non-weaponizable — it authorizes no tool call and no rail,
+    // only the settlement attestation — so it does NOT widen tool access (write_file still refused).
+    let mut scope = transcript.grant.scope.clone();
+    if !scope.iter().any(|c| c == "settle") {
+        scope.push("settle".to_string());
+    }
+    let mut chain = Chain::build(&lab, &scope)?;
     println!(
         "▸ chain: identity={} device={}",
         chain.root_did, chain.agent_did
@@ -307,10 +314,28 @@ async fn drive_call(
         .map_err(|e| anyhow::anyhow!("receipt digest: {e}"))?;
     let receipt_json = serde_json::to_string(&receipt)?;
 
-    // (M2 / A) Persist the per-call proof+receipt+rail-response record to the append-only spend
-    // log under `<org_repo>/spend-log/<delegation>.jsonl`, so an offline `auths verify-spend`
-    // re-verifies the SIGNED `call_commit` bytes (not just the SHA) + re-derives spend with NO
-    // trust in the operator. (B1: the `settlement_commit` anchoring the actual cost lands in 2.1.)
+    // (B1/A) For a metered call that SETTLED, the agent signs a settlement commit anchoring the
+    // ACTUAL cost in signed `Auths-Settle-*` trailers under the `settle` capability — so the audit
+    // sums the AGENT-SIGNED cost (un-forgeable by the operator), not just the rail-attested number.
+    let settlement_commit = match (forwarded_result.is_some(), rail, settled_charge_ref) {
+        (true, Some(rail_name), Some(charge)) if cost.settle_cents > 0 => {
+            let (bytes, _sha) = chain.sign_settlement(
+                idx,
+                &proof_sha,
+                rail_name,
+                cost.settle_cents,
+                charge,
+                cumulative,
+            )?;
+            Some(bytes)
+        }
+        _ => None,
+    };
+
+    // (M2 / A) Persist the per-call proof+receipt+rail-response(+settlement) record to the
+    // append-only spend log under `<org_repo>/spend-log/<delegation>.jsonl`, so an offline `auths
+    // verify-spend` re-verifies the SIGNED `call_commit` bytes + sums the AGENT-SIGNED cost (B1)
+    // with NO trust in the operator.
     crate::spend_log::append(
         chain.org_repo(),
         &chain.agent_did,
@@ -326,7 +351,7 @@ async fn drive_call(
             } else {
                 None
             },
-            settlement_commit: None,
+            settlement_commit,
         },
     )?;
 
