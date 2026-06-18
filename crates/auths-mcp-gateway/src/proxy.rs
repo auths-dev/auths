@@ -308,7 +308,7 @@ impl GatewayProxy {
             let ceiling = args
                 .and_then(|m| m.get("amount_atomic"))
                 .and_then(|v| v.as_u64())
-                .map(atomic_usdc_to_cents_ceiling)
+                .map(auths_mcp_core::rail::atomic_usdc_to_cents_ceiling)
                 .or_else(|| {
                     args.and_then(|m| m.get("_auths_reserve_ceiling_cents"))
                         .and_then(|v| v.as_u64())
@@ -343,12 +343,6 @@ impl GatewayProxy {
             },
         }
     }
-}
-
-/// x402 USDC has 6 decimals: 1 cent = 10_000 atomic units. Round UP so the reserved ceiling always
-/// covers the settled cents (the SETTLE uses the exact amount the rail's response reports).
-fn atomic_usdc_to_cents_ceiling(atomic: u64) -> u64 {
-    atomic.div_ceil(10_000)
 }
 
 impl ServerHandler for GatewayProxy {

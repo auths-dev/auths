@@ -132,7 +132,15 @@ pub fn extract_stripe(response_bytes: &[u8]) -> Result<ExtractedCost, RailError>
 /// USDC has 6 decimals: `maxAmountRequired` is in ATOMIC units, so `1_000_000` atomic =
 /// 1 USDC. Cents are USDC's two-decimal minor unit, so 1 USDC = 100 cents and the
 /// atomic-per-cent divisor is `1e6 / 100 = 10_000`.
-const USDC_ATOMIC_PER_CENT: u64 = 10_000;
+pub const USDC_ATOMIC_PER_CENT: u64 = 10_000;
+
+/// Convert an atomic-USDC amount to cents, rounding UP — the reserve ceiling the gateway holds
+/// before a metered call, so the hold always covers the amount the settle reports (the SETTLE reads
+/// the exact cents the rail response carries). Lives beside the rail's decimal count so the
+/// ceiling and the exact-division settle rule stay in the one module that owns the rail's decimals.
+pub fn atomic_usdc_to_cents_ceiling(atomic: u64) -> u64 {
+    atomic.div_ceil(USDC_ATOMIC_PER_CENT)
+}
 
 /// The set of x402 networks this rail meters — **testnets only**. A mainnet network is
 /// refused, not mis-metered (the moat's honesty: the LIVE x402 settle needs a funded

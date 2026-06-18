@@ -10,11 +10,10 @@
 //! `auths_verifier::verify_commit_against_kel_scoped` the live gate uses, and sums the
 //! AGENT-SIGNED settled costs — never the operator's counter.
 //!
-//! NOTE: the LIVE wrap path does not yet sign a per-call proof — it does a boolean scope check +
-//! budget enforcement (`proxy.rs::call_tool`). Producing these records on the live wire is a
-//! separate change (wiring `chain.rs` signing into the live path); the audit is first built over
-//! the hermetic replay gate, which already signs + verifies a real commit per call. This data
-//! model is path-agnostic.
+//! Both the hermetic replay gate (`replay.rs::drive_call`) and the live `wrap` path
+//! (`proxy.rs::call_tool`) sign + gate + persist a real signed commit per brokered call, so the
+//! audit re-verifies the same material regardless of which path produced the log. This data model
+//! is path-agnostic.
 
 use crate::receipt::Receipt;
 use auths_id::keri::Event;
