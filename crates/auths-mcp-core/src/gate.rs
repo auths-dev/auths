@@ -66,6 +66,11 @@ pub enum Verdict {
     /// budget (D8) this is the reservation refusal: `settled + Σ(holds) + ceiling`
     /// would exceed the cap, refused BEFORE the rail is touched.
     UsageCapExceeded { cap_cents: u64, would_be_cents: u64 },
+    /// A payment rail is set but the call declared no amount to meter, so the gate cannot reserve —
+    /// and therefore cannot bound — the charge before the rail is touched. Refused fail-closed: a
+    /// metered call must declare what it intends to spend, so an omitted amount can never let the
+    /// rail charge while the durable cap stays unmoved.
+    MeteredAmountRequired { rail: String },
     /// A settle presented a cumulative SETTLED total *below* the verifier-held
     /// monotonic high-water — a replayed/stale total (e.g. a crashed-and-restored
     /// gateway that reloaded a stale snapshot). Refused so the counter cannot roll
@@ -92,6 +97,7 @@ impl Verdict {
             Verdict::Allowed => "allowed",
             Verdict::OutsideAgentScope { .. } => "outside-agent-scope",
             Verdict::UsageCapExceeded { .. } => "usage-cap-exceeded",
+            Verdict::MeteredAmountRequired { .. } => "metered-amount-required",
             Verdict::UsageCounterRolledBack { .. } => "usage-counter-rolled-back",
             Verdict::AgentExpired => "agent-expired",
             Verdict::Revoked => "revoked",
@@ -283,16 +289,32 @@ impl PerCallGate {
             });
         }
 
-        // Authenticated + in-scope + live. Pre-authorize the spend: a metered call
-        // RESERVES its ceiling against the cross-rail budget BEFORE the rail is touched.
+        // Authenticated + in-scope + live. Pre-authorize the spend BEFORE the rail is touched.
+        // A payment rail is set but no amount was declared → the gate cannot reserve, hence cannot
+        // bound, this charge, so it refuses fail-closed: forwarding would let the rail charge while
+        // the durable cap never advanced. An omitted amount must not skip the meter.
+        if let Some(rail_name) = rail
+            && reserve_ceiling_cents == 0
+        {
+            return Ok(Decision {
+                verdict: Verdict::MeteredAmountRequired {
+                    rail: rail_name.to_string(),
+                },
+                cumulative_cents: settled,
+                reserved_cents: 0,
+                hold: None,
+                rail: Some(rail_name.to_string()),
+            });
+        }
+        // No rail and no declared cost → non-metered (e.g. fs.read): no reservation, nothing to
+        // settle. (A declared cost without a rail name still has ceiling > 0 and reserves below.)
         if reserve_ceiling_cents == 0 {
-            // Non-metered (e.g. fs.read): no reservation, nothing to settle.
             return Ok(Decision {
                 verdict: Verdict::Allowed,
                 cumulative_cents: settled,
                 reserved_cents: 0,
                 hold: None,
-                rail: rail.map(str::to_string),
+                rail: None,
             });
         }
 
