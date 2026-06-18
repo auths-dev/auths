@@ -585,31 +585,6 @@ impl ServerHandler for GatewayProxy {
     }
 }
 
-/// Spawn the wrapped downstream as a credentialed child with the custodied secret
-/// injected from the GATEWAY, and return its stdout — the §12 brokered path proven
-/// directly: the gateway supplies a downstream credential the agent never held.
-///
-/// This is the custody self-check the gateway runs before it serves MCP up to the
-/// agent when it custodies a downstream credential. It demonstrates that the
-/// brokered path (gateway → downstream, credential injected) reaches the
-/// credentialed resource, while the same downstream invoked WITHOUT the gateway
-/// (the agent's bypass) lacks the credential and is refused by the downstream
-/// itself. The custodied secret is injected only into this child's environment; it
-/// is never logged, echoed, or placed in the gateway's own surfaced output.
-async fn brokered_custody_check(
-    downstream: &[String],
-    custody: &CustodyVault,
-) -> anyhow::Result<std::process::Output> {
-    let mut command = tokio::process::Command::new(&downstream[0]);
-    command.args(&downstream[1..]);
-    // Inject the custodied credential into the downstream child from the gateway.
-    custody.inject(&mut command);
-    command
-        .output()
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn downstream `{}`: {e}", downstream.join(" ")))
-}
-
 /// Resolve the payment mode and DISCLOSE it before any rail is touched — the safety
 /// surface for a real-money-by-default gateway.
 ///
@@ -692,49 +667,17 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         .unwrap_or(Budget::Cents(u64::MAX))
         .cap_cents();
 
-    // Custody self-check (PRD §12): if the gateway custodies a downstream
-    // credential, prove the brokered path reaches the credentialed downstream WITH
-    // the injected secret before serving the agent. The credential is sourced from
-    // the gateway and injected into the downstream child's environment; the agent
-    // (and the agent-visible MCP wire) never holds it. We surface only the
-    // downstream's own result — NEVER the secret. A bypass (the same downstream
-    // invoked without the gateway) lacks the credential and the downstream refuses
-    // it; that half is unbypassable by construction of the credentialed resource.
+    // If the gateway custodies a downstream credential, audit which credential(s) by NAME (never
+    // the value). The secret is injected into the long-lived downstream child spawned below — the
+    // agent, and the agent-visible MCP wire, never hold it.
+    // A bypass (the same downstream invoked WITHOUT the gateway) lacks the credential and the
+    // downstream refuses it; that half is unbypassable by construction of the credentialed resource.
     if cfg.custody.is_armed() {
-        // Audit which credential is custodied — by NAME only, never the value.
         eprintln!(
             "auths-mcp-gateway: custody armed — gateway holds downstream credential(s) {:?}; \
              the agent connects with only its delegation and never sees the secret",
             cfg.custody.names(),
         );
-        let out = brokered_custody_check(&cfg.downstream, &cfg.custody).await?;
-        // Forward the downstream's own stdout (its real result) to the brokered
-        // surface so a caller observes the credentialed downstream was reached
-        // THROUGH the gateway. The secret is not in this stream — only the
-        // downstream's response is.
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let stdout = stdout.trim_end();
-        if !out.status.success() {
-            // The downstream refused even WITH the gateway's credential — surface
-            // its refusal (stderr), not the secret. This is a downstream/config
-            // problem, not a custody bypass.
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            anyhow::bail!(
-                "brokered custody check: downstream refused even with the custodied credential: {}",
-                stderr.trim_end()
-            );
-        }
-        println!(
-            "auths-mcp-gateway: brokered (custodied credential injected) → downstream reached: {stdout}"
-        );
-        // The preflight ran the downstream to completion (exit 0) with the
-        // custodied credential injected — a one-shot credentialed tool, not a
-        // long-lived MCP server. The brokered custody path is proven; there is no
-        // persistent server to proxy, so return. (A long-lived MCP-over-stdio
-        // server would not be wrapped through this one-shot preflight surface — it
-        // is served below, with the same credential injected into the proxied
-        // child, which is the always-on §12 mechanism.)
-        return Ok(());
     }
 
     // 1. Connect DOWN to the wrapped downstream MCP server (spawned over stdio),
