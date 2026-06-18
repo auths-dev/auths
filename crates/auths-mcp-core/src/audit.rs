@@ -17,6 +17,7 @@
 //! a real commit per call. This data model is path-agnostic.
 
 use crate::receipt::Receipt;
+use auths_id::keri::Event;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -202,6 +203,100 @@ fn safe_key(delegation: &str) -> String {
             }
         })
         .collect()
+}
+
+/// Independently re-verify an agent's spend log. The PROOF leg is operator-proof: replay each
+/// record's signed `call_commit` through the SAME `verify_commit_against_kel_scoped` the live gate
+/// uses — a forged/tampered proof → [`AuditVerdict::TamperedProof`], a revoked-key proof →
+/// [`AuditVerdict::Revoked`] — so a hostile operator cannot forge or alter a proof undetected. The
+/// SPEND leg is rail-attested pre-B1: sum the cost re-extracted from each settled call's recorded
+/// `rail_response` via [`crate::rail::extract`] and cross-check it against the operator's claimed
+/// cumulative (catching internal inconsistency). B1 (`settlement_commit`) upgrades the cost to
+/// agent-signed — un-forgeable even by a colluding operator.
+///
+/// `now` is unix-epoch seconds (the auditor's injected clock — the verifier holds none). The
+/// agent/delegator KELs + `pinned_roots` are resolved the SAME way `PerCallGate::resolve` does (from
+/// the issuer's registry), so the audit is the gate's own check, re-run by anyone, offline.
+///
+/// NOTE (M2 A+B1): until **B1** lands the cost is **rail-attested** (re-extracted from the recorded
+/// response), not agent-signed. B1 upgrades this to summing the cost the AGENT signed in each
+/// record's `settlement_commit` — un-forgeable even by a colluding operator. A legitimately refused
+/// call (out-of-scope / over-cap) carries an AUTHENTIC proof and is NOT a tamper.
+pub async fn audit_spend_log(
+    records: &[SpendLogRecord],
+    agent_kel: &[Event],
+    delegator_kel: &[Event],
+    pinned_roots: &[String],
+    now: i64,
+) -> AuditVerdict {
+    let provider = auths_crypto::default_provider();
+    let mut settled: u64 = 0;
+    for (i, rec) in records.iter().enumerate() {
+        // Re-verify the SIGNED proof bytes — the gate's own authenticity check, re-run offline.
+        let commit_verdict = auths_verifier::verify_commit_against_kel_scoped(
+            &rec.call_commit,
+            agent_kel,
+            delegator_kel,
+            pinned_roots,
+            provider,
+            now,
+        )
+        .await;
+        // Reuse the EXACT CommitVerdict→Verdict mapping the gate uses (DRY — one source of truth).
+        // The RE-DERIVED verdict is the authority for everything below; the receipt's CLAIMED
+        // verdict is operator-controlled and is NEVER an input here.
+        let verdict = crate::gate::Verdict::from_commit_verdict(&commit_verdict);
+        match &verdict {
+            crate::gate::Verdict::ProofUnauthentic { .. } => {
+                return AuditVerdict::TamperedProof {
+                    proof_ref: rec.receipt.proof_ref.clone(),
+                };
+            }
+            crate::gate::Verdict::Revoked => return AuditVerdict::Revoked { at: i },
+            // Allowed / OutsideAgentScope / AgentExpired are AUTHENTIC proofs — a legit refusal is
+            // not a tamper; only forgery and revocation are audit failures of the proof itself.
+            _ => {}
+        }
+        // Sum the rail-attested settled cost for a call that (a) carries an AUTHENTIC, IN-SCOPE proof
+        // — `Allowed`/`AgentExpired`, both PROOF-DETERMINED, so the operator cannot relabel a settled
+        // call as refused without breaking its signature (`OutsideAgentScope` never settled) — AND
+        // (b) recorded a rail response (set only for calls that forwarded; see replay.rs).
+        // KNOWN (pre-B1): the *amount* is rail-attested, not yet bound to the signed proof. B1's
+        // `settlement_commit` signs the cost so a colluding operator can't lower it without the key.
+        if matches!(
+            verdict,
+            crate::gate::Verdict::Allowed | crate::gate::Verdict::AgentExpired
+        ) && let (Some(rail), Some(resp)) = (rec.rail.as_deref(), rec.rail_response.as_deref())
+        {
+            match crate::rail::extract(rail, resp) {
+                Ok(c) => settled = settled.saturating_add(c.amount_cents),
+                Err(_) => {
+                    // A settled call whose recorded response no longer extracts is a tampered response.
+                    return AuditVerdict::CostMismatch {
+                        signed_cents: 0,
+                        recomputed_cents: 0,
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                }
+            }
+        }
+    }
+    // The operator's claimed cross-rail total is the last record's cumulative — an UNTRUSTED hint we
+    // compare against the cost we re-derived from the rail responses.
+    let claimed = records
+        .last()
+        .map(|r| r.receipt.cumulative_cents)
+        .unwrap_or(0);
+    if settled != claimed {
+        return AuditVerdict::BudgetMismatch {
+            recomputed_cents: settled,
+            claimed_cents: claimed,
+        };
+    }
+    AuditVerdict::Consistent {
+        calls: records.len(),
+        settled_cents: settled,
+    }
 }
 
 #[cfg(test)]

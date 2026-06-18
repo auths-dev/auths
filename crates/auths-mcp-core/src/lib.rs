@@ -39,7 +39,9 @@ pub mod rail;
 pub mod receipt;
 pub mod session;
 
-pub use audit::{AuditVerdict, SpendLogRecord, read_spend_log, spend_log_path};
+pub use audit::{
+    AuditVerdict, SpendLogRecord, audit_spend_log, read_spend_log, spend_log_path,
+};
 pub use budget::{
     BudgetError, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds, SettleOutcome,
     SettledCounter,

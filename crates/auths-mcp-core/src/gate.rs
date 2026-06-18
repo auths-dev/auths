@@ -103,7 +103,7 @@ impl Verdict {
     /// over the signed call) into the gateway's per-call [`Verdict`]. The scope,
     /// expiry, and revocation rejections come straight from the verifier; anything
     /// else non-`Valid` is an unauthentic proof and fails closed.
-    fn from_commit_verdict(v: &CommitVerdict) -> Self {
+    pub(crate) fn from_commit_verdict(v: &CommitVerdict) -> Self {
         match v {
             CommitVerdict::Valid { .. } => Verdict::Allowed,
             CommitVerdict::OutsideAgentScope { capability, .. } => Verdict::OutsideAgentScope {

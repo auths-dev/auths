@@ -295,7 +295,14 @@ async fn drive_call(
             call_commit: proof_bytes,
             receipt,
             rail: rail.map(|r| r.to_string()),
-            rail_response: cost.rail_response.clone(),
+            // Only a call that actually FORWARDED touched the rail, so only it has a response to
+            // re-extract. A refused call (out-of-scope / over-cap / unauthentic) carries none — the
+            // audit relies on `rail_response present ⟺ the call settled` (with the proof re-verified).
+            rail_response: if forwarded_result.is_some() {
+                cost.rail_response.clone()
+            } else {
+                None
+            },
             settlement_commit: None,
         },
     )?;
