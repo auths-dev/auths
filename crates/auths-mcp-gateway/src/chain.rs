@@ -280,14 +280,17 @@ impl Chain {
     /// `settle` capability. The cost lives in SIGNED git trailers (`Auths-Settle-*`), covered by
     /// the same SSH signature `verify_commit_against_kel_scoped` checks — so an offline auditor
     /// reads the agent-signed `actual_cents` straight from the commit bytes (no git, no tree
-    /// hashing) once the signature + `settle ⊆ scope` are verified. Operator can't lower the cost
-    /// without breaking the signature; agent can't inflate a refused call (it carries no settlement
-    /// and the audit cross-checks the rail response). `idx` keys a per-settlement work repo.
+    /// hashing) once the signature + `settle ⊆ scope` are verified. `call_binding` is a hash of the
+    /// call's own commit bytes, carried in the signed `Auths-Settle-Call` trailer so the audit can
+    /// tie this settlement to exactly one call — a settlement cannot be reused on a different call.
+    /// Operator can't lower the cost without breaking the signature; agent can't inflate a refused
+    /// call (it carries no settlement and the audit cross-checks the rail response). `idx` keys a
+    /// per-settlement work repo.
     #[allow(clippy::too_many_arguments)]
     pub fn sign_settlement(
         &self,
         idx: usize,
-        call_proof_ref: &str,
+        call_binding: &str,
         rail: &str,
         actual_cents: u64,
         rail_ref: &str,
@@ -327,7 +330,7 @@ impl Chain {
         must(
             Command::new("git")
                 .args(["commit", "-qm", "tools/settle", "--no-gpg-sign"])
-                .args(["--trailer", &format!("Auths-Settle-Call:{call_proof_ref}")])
+                .args(["--trailer", &format!("Auths-Settle-Call:{call_binding}")])
                 .args(["--trailer", &format!("Auths-Settle-Rail:{rail}")])
                 .args(["--trailer", &format!("Auths-Settle-Cents:{actual_cents}")])
                 .args(["--trailer", &format!("Auths-Settle-Ref:{rail_ref}")])

@@ -321,7 +321,7 @@ async fn drive_call(
         (true, Some(rail_name), Some(charge)) if cost.settle_cents > 0 => {
             let (bytes, _sha) = chain.sign_settlement(
                 idx,
-                &proof_sha,
+                &auths_mcp_core::call_commit_binding(&proof_bytes),
                 rail_name,
                 cost.settle_cents,
                 charge,

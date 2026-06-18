@@ -255,26 +255,97 @@ pub async fn audit_spend_log(
             // not a tamper; only forgery and revocation are audit failures of the proof itself.
             _ => {}
         }
-        // Sum the rail-attested settled cost for a call that (a) carries an AUTHENTIC, IN-SCOPE proof
-        // — `Allowed`/`AgentExpired`, both PROOF-DETERMINED, so the operator cannot relabel a settled
+        // Sum the settled cost for a call that (a) carries an AUTHENTIC, IN-SCOPE proof —
+        // `Allowed`/`AgentExpired`, both PROOF-DETERMINED, so the operator cannot relabel a settled
         // call as refused without breaking its signature (`OutsideAgentScope` never settled) — AND
         // (b) recorded a rail response (set only for calls that forwarded; see replay.rs).
-        // The amount is re-extracted from the recorded rail response; once a `settlement_commit` is
-        // present it is read from the agent's signature instead, so a colluding operator cannot lower
-        // it without the key.
         if matches!(
             verdict,
             crate::gate::Verdict::Allowed | crate::gate::Verdict::AgentExpired
         ) && let (Some(rail), Some(resp)) = (rec.rail.as_deref(), rec.rail_response.as_deref())
         {
-            match crate::rail::extract(rail, resp) {
-                Ok(c) => settled = settled.saturating_add(c.amount_cents),
+            // The cost the rail's own recorded response reports. The response is operator-held and
+            // unsigned, so it is only a cross-check — the authoritative amount is the one the agent
+            // SIGNED in the settlement below.
+            let recomputed = match crate::rail::extract(rail, resp) {
+                Ok(c) => c.amount_cents,
+                // A settled call whose recorded response no longer extracts is a tampered response.
                 Err(_) => {
-                    // A settled call whose recorded response no longer extracts is a tampered response.
                     return AuditVerdict::CostMismatch {
                         signed_cents: 0,
                         recomputed_cents: 0,
                         proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                }
+            };
+            // A non-zero settled cost MUST come from a settlement the agent signed. Requiring it
+            // closes the downgrade where an operator strips the settlement and falls back to a rail
+            // response it authored. (A zero-cost forwarded call settles nothing and needs none.)
+            if recomputed > 0 {
+                let Some(settle_commit) = rec.settlement_commit.as_deref() else {
+                    return AuditVerdict::TamperedProof {
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                };
+                // 1. The settlement is an authentic, in-scope commit by the agent. Its signature
+                //    covers every trailer read below, so a flipped byte anywhere breaks it here.
+                let settle_verdict = auths_verifier::verify_commit_against_kel_scoped(
+                    settle_commit,
+                    agent_kel,
+                    delegator_kel,
+                    pinned_roots,
+                    provider,
+                    now,
+                )
+                .await;
+                if !matches!(
+                    crate::gate::Verdict::from_commit_verdict(&settle_verdict),
+                    crate::gate::Verdict::Allowed | crate::gate::Verdict::AgentExpired
+                ) {
+                    return AuditVerdict::TamperedProof {
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                }
+                // 2. The settlement is BOUND to THIS call: its signed call-binding trailer is the
+                //    hash of this record's own call commit. Without this an operator could move a
+                //    genuinely-signed settlement from a cheap call onto an expensive one.
+                if commit_trailer(settle_commit, "Auths-Settle-Call")
+                    != Some(call_commit_binding(&rec.call_commit).as_str())
+                {
+                    return AuditVerdict::TamperedProof {
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                }
+                // 3. The agent-signed cost, cross-checked against the rail's own response — a
+                //    disagreement means the operator swapped the response (or the signed amount).
+                let Some(signed) = commit_trailer(settle_commit, "Auths-Settle-Cents")
+                    .and_then(|v| v.parse::<u64>().ok())
+                else {
+                    return AuditVerdict::TamperedProof {
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                };
+                if signed != recomputed {
+                    return AuditVerdict::CostMismatch {
+                        signed_cents: signed,
+                        recomputed_cents: recomputed,
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                }
+                settled = settled.saturating_add(signed);
+                // 4. The signed running total ties the cumulative to signed material, so the budget
+                //    leg does not rest on the operator's own (unsigned) receipt cumulative.
+                let Some(signed_cumulative) = commit_trailer(settle_commit, "Auths-Settle-Cumulative")
+                    .and_then(|v| v.parse::<u64>().ok())
+                else {
+                    return AuditVerdict::TamperedProof {
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                };
+                if signed_cumulative != settled {
+                    return AuditVerdict::BudgetMismatch {
+                        recomputed_cents: settled,
+                        claimed_cents: signed_cumulative,
                     };
                 }
             }
@@ -296,6 +367,37 @@ pub async fn audit_spend_log(
         calls: records.len(),
         settled_cents: settled,
     }
+}
+
+/// The hex SHA-256 of a call's signed commit bytes — the value that binds a settlement to the one
+/// call it settles. The gateway stamps this into the settlement's signed `Auths-Settle-Call`
+/// trailer; the audit recomputes it from the record's own `call_commit` and requires a match, so a
+/// settlement signed for a cheap call cannot be moved onto an expensive one.
+pub fn call_commit_binding(call_commit: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(call_commit);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        use std::fmt::Write as _;
+        let _ = write!(hex, "{b:02x}");
+    }
+    hex
+}
+
+/// Read a single signed trailer value (`Token: value`) from a commit's message body. The bytes are
+/// the raw git commit object; the SSH signature covers the message, so the caller verifies the
+/// signature BEFORE trusting any value. The token must be followed immediately by `:` (optionally
+/// after whitespace), so e.g. `Auths-Settle-Cents` never matches `Auths-Settle-Cumulative`. Returns
+/// the FIRST match's trimmed value, or `None` when absent or the bytes are not UTF-8.
+fn commit_trailer<'a>(commit_bytes: &'a [u8], token: &str) -> Option<&'a str> {
+    let text = std::str::from_utf8(commit_bytes).ok()?;
+    text.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix(token)?
+            .trim_start()
+            .strip_prefix(':')
+            .map(str::trim)
+    })
 }
 
 #[cfg(test)]
@@ -431,5 +533,30 @@ mod tests {
         // a corrupted/edited line fails closed, never silently drops a record
         std::fs::write(&path, format!("{line}\nnot json\n")).unwrap();
         assert!(read_spend_log(&path).is_err());
+    }
+
+    #[test]
+    fn commit_trailer_matches_the_token_exactly() {
+        let commit =
+            b"tree abc\n\ntools/settle\n\nAuths-Settle-Call:def\nAuths-Settle-Cents: 175\nAuths-Settle-Cumulative:500\n";
+        // Exact token match, with or without a space after the colon.
+        assert_eq!(commit_trailer(commit, "Auths-Settle-Cents"), Some("175"));
+        assert_eq!(commit_trailer(commit, "Auths-Settle-Call"), Some("def"));
+        // `Auths-Settle-Cents` must NOT match the longer `Auths-Settle-Cumulative` line.
+        assert_eq!(commit_trailer(commit, "Auths-Settle-Cumulative"), Some("500"));
+        // Absent token, or non-UTF-8, yields None.
+        assert_eq!(commit_trailer(b"tree abc\n\ntools/call\n", "Auths-Settle-Cents"), None);
+        assert_eq!(commit_trailer(&[0xff, 0xfe], "Auths-Settle-Cents"), None);
+    }
+
+    #[test]
+    fn call_commit_binding_is_stable_and_distinguishes_calls() {
+        // The binding is the hex SHA-256 of the call bytes: 64 hex chars, deterministic, and
+        // different for different calls — so a settlement cannot be reused across calls.
+        let a = call_commit_binding(b"call-A-commit-bytes");
+        assert_eq!(a.len(), 64);
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(a, call_commit_binding(b"call-A-commit-bytes"));
+        assert_ne!(a, call_commit_binding(b"call-B-commit-bytes"));
     }
 }
