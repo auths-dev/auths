@@ -198,6 +198,25 @@ impl PerCallGate {
         })
     }
 
+    /// Independently re-audit a persisted spend log with THIS gate's resolved KELs — the offline
+    /// [`crate::audit::audit_spend_log`] driven by the same agent/delegator KELs + pinned root the
+    /// gate judges against. Lets the hermetic gate self-prove the moat end-to-end: after a run,
+    /// re-verify the log it wrote and confirm a tampered proof is caught.
+    pub async fn audit_spend_log(
+        &self,
+        records: &[crate::audit::SpendLogRecord],
+        now: i64,
+    ) -> crate::audit::AuditVerdict {
+        crate::audit::audit_spend_log(
+            records,
+            &self.agent_kel,
+            &self.delegator_kel,
+            std::slice::from_ref(&self.delegator_did),
+            now,
+        )
+        .await
+    }
+
     /// Judge one `tools/call`, given the bytes of the agent's signed proof, the rail
     /// it would settle on, the ceiling it reserves, and the cross-rail budget it
     /// PRE-AUTHORIZES against.

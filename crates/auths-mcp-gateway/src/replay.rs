@@ -175,6 +175,20 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     } else {
         println!("▸ replay: a verdict diverged from its transcript expectation — gate caught it");
     }
+
+    // (M2 / 2.3) Self-audit the spend log THIS run just wrote, OFFLINE, with the gate's own
+    // resolved KELs — the moat proven end-to-end: re-verify every signed proof + re-derive spend
+    // with no trust in the run that produced it. A clean run audits `consistent`; with
+    // AUTHS_MCP_REPLAY_TAMPER set, the forged proof in the log is CAUGHT here as `tampered-proof`.
+    let log_path = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
+    match auths_mcp_core::read_spend_log(&log_path) {
+        Ok(records) => {
+            let verdict = gate.audit_spend_log(&records, Utc::now().timestamp()).await;
+            println!("▸ audit: {} — {verdict}", verdict.code());
+        }
+        Err(e) => println!("▸ audit: SKIPPED — no spend log to audit ({e})"),
+    }
+
     Ok(all_matched)
 }
 
