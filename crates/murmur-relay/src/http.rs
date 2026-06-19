@@ -27,7 +27,7 @@
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post, put},
@@ -51,6 +51,12 @@ pub fn app(store: RelayStore) -> Router {
         .route("/deposit", post(deposit))
         .route("/drain/{mailbox}", get(drain))
         .route("/prekey/{aid}", put(put_prekey).get(get_prekey))
+        // Cap the request body the relay will read into memory. A single deposit cannot exceed one
+        // mailbox's byte budget, so a larger body is an abusive request and is rejected before it is
+        // buffered.
+        .layer(DefaultBodyLimit::max(
+            murmur_core::relay::DEFAULT_MAX_BYTES_PER_MAILBOX,
+        ))
         .with_state(store)
 }
 
@@ -316,5 +322,25 @@ mod tests {
             pos += len;
         }
         out
+    }
+
+    #[tokio::test]
+    async fn a_deposit_body_larger_than_a_mailbox_budget_is_rejected() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app(RelayStore::memory()))
+                .await
+                .unwrap();
+        });
+        let base = format!("http://{addr}");
+        let oversized = vec![0u8; murmur_core::relay::DEFAULT_MAX_BYTES_PER_MAILBOX + 1];
+        let resp = reqwest::Client::new()
+            .post(format!("{base}/deposit"))
+            .body(oversized)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::PAYLOAD_TOO_LARGE);
     }
 }
