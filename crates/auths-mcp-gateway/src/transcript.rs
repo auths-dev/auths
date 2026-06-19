@@ -1,4 +1,4 @@
-//! The frozen-transcript schema the replay gate drives the gateway from (PRD §7).
+//! The frozen-transcript schema the replay gate drives the gateway from.
 //!
 //! A transcript captures a prior run's grant and the agent's `tools/call`
 //! sequence, plus the per-call verdict expectation. Replay re-derives each verdict
@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use auths_mcp_core::Cents;
 use serde::Deserialize;
 
 /// One transcript: the grant the agent was delegated and the sequence of steps
@@ -64,20 +65,20 @@ pub struct Call {
     /// The metered cost in cents this call would incur (0 for non-metered tools).
     /// For a metered call this is the *actual* the rail reports on the response —
     /// what gets SETTLED into the monotonic counter after the call returns.
-    #[serde(default)]
-    pub cost_cents: u64,
+    #[serde(default = "Cents::zero")]
+    pub cost_cents: Cents,
     /// The ceiling RESERVED before the rail is touched (the pre-authorization hold,
     /// D8). For a known-cost call this equals `cost_cents`; for a metered call whose
     /// final cost is bounded but not yet known it is the ceiling. The reservation is
     /// what `available = cap − settled − Σ(holds)` is checked against; the slack
     /// (`ceiling − actual`) is RELEASED on settle. Defaults to `cost_cents`.
     #[serde(default)]
-    pub reserve_ceiling_cents: Option<u64>,
+    pub reserve_ceiling_cents: Option<Cents>,
     /// The recorded rail-response fixture the gateway EXTRACTS this call's cost from
     /// (e.g. `stripe-charge.test.json`), resolved under `AUTHS_MCP_RAIL_FIXTURES`. When
     /// present, the cost is NOT taken from `cost_cents` — it is read out of the rail's
     /// own response (the documented charge amount), so an agent under-declaring the cost
-    /// cannot change what is metered (the metered-rail cost extraction, PRD §11). The
+    /// cannot change what is metered (the metered-rail cost extraction). The
     /// reserved ceiling and the settled actual both come from this response.
     #[serde(default)]
     pub response_fixture: Option<String>,
@@ -97,7 +98,7 @@ pub struct Call {
 impl Call {
     /// The ceiling this call reserves before the rail is touched — the metered
     /// `reserve_ceiling_cents` if present, else the known `cost_cents`.
-    pub fn reserve_ceiling(&self) -> u64 {
+    pub fn reserve_ceiling(&self) -> Cents {
         self.reserve_ceiling_cents.unwrap_or(self.cost_cents)
     }
 

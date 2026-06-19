@@ -100,6 +100,9 @@ __pycache__/
 # === Generated SDK API docs ===
 # docs/sdk/node/api/  # now hand-maintained, must be committed
 
+# === Planning docs (local working notes) ===
+docs/plans/
+
 # === Release artifacts & signatures ===
 *.zip
 *.tar

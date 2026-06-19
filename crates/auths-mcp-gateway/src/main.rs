@@ -6,7 +6,7 @@
 
 //! # auths-mcp-gateway — the bounded-agent MCP gateway (the binary)
 //!
-//! The real-MCP proxy (PRD §5, Build item 2). It speaks MCP JSON-RPC up to the
+//! The real-MCP proxy. It speaks MCP JSON-RPC up to the
 //! agent and down to a wrapped downstream server; on each `tools/call` it
 //! canonicalizes + signs the call, runs `auths-mcp-core`'s per-call gate (proof
 //! authenticity + scope ⊆ parent · budget · expiry · revocation), forwards only on
@@ -19,7 +19,7 @@
 //!   config. Speaks MCP up to the agent (an `rmcp` server over stdio) and down to
 //!   the wrapped downstream (an `rmcp` child-process client), proxying `tools/list`
 //!   and `tools/call`, gating each call.
-//! * `replay` — the hermetic gate / `--check` entrypoint (PRD §7). Drives the same
+//! * `replay` — the hermetic gate / `--check` entrypoint. Drives the same
 //!   per-call gate from a frozen transcript of a prior run's `tools/call` sequence —
 //!   no model, no network — to deterministic verdicts the probes assert. It builds
 //!   a throwaway delegation chain in the sandbox registry, has the agent sign each
@@ -33,6 +33,7 @@ use clap::{Parser, Subcommand};
 mod chain;
 mod proxy;
 mod replay;
+mod spend_log;
 mod transcript;
 
 #[derive(Parser)]
@@ -54,9 +55,15 @@ enum Command {
     Wrap(WrapArgs),
 
     /// Drive the gateway from a frozen transcript of a prior live run (the hermetic
-    /// gate / `--check` entrypoint, PRD §7). No model, no network — deterministic
+    /// gate / `--check` entrypoint). No model, no network — deterministic
     /// verdicts the probes assert.
     Replay(ReplayArgs),
+
+    /// Independently audit a persisted spend log OFFLINE: re-verify every
+    /// signed proof through the same verifier the gate uses + re-derive the spend, with NO
+    /// trust in the operator that produced the log. Exits non-zero on any non-`consistent`
+    /// verdict. Needs the issuer's registry to resolve the agent + delegator KELs.
+    VerifySpend(VerifySpendArgs),
 }
 
 #[derive(Parser)]
@@ -81,6 +88,13 @@ struct WrapArgs {
     #[arg(long = "ttl", value_name = "TTL")]
     ttl: Option<String>,
 
+    /// The payment rail the WRAPPED downstream settles on, e.g. `--rail x402` or `--rail stripe`.
+    /// When set, EVERY call to the downstream is metered on this rail: the gateway reads the ACTUAL
+    /// cost from the rail's own response and meters it into the cross-rail cap, so an agent cannot
+    /// bypass the cap by omitting a per-call declaration. Omit for a non-payment downstream.
+    #[arg(long = "rail", value_name = "RAIL")]
+    rail: Option<String>,
+
     /// Opt into SANDBOX payment rails (Stripe test `sk_test_…`, x402 `base-sepolia`).
     ///
     /// Real money is the DEFAULT: with no flag the gateway resolves to live Stripe
@@ -103,16 +117,9 @@ struct WrapArgs {
     #[arg(long = "show-mode")]
     show_mode: bool,
 
-    /// The agent delegation identifier (`did:keri:…`) the durable cross-rail counter is
-    /// keyed to — the verifier-held SETTLED counter sums every rail's spend for THIS
-    /// delegation. Optional: when the live-agent harness has not yet bound the agent's
-    /// delegation on the wire, a stable session key roots the durable counter.
-    #[arg(long = "agent-delegation", value_name = "DID")]
-    agent_delegation: Option<String>,
-
     /// A downstream credential the GATEWAY custodies and injects into the wrapped
     /// downstream (repeatable), e.g. `--custody-credential DOWNSTREAM_API_KEY=sk-…`
-    /// (PRD §12, the custody broker). The gateway holds the downstream tool's
+    /// (the custody broker). The gateway holds the downstream tool's
     /// secret and injects it into the spawned downstream's environment on the
     /// brokered path; the agent connects with only its auths delegation and never
     /// sees or carries this secret. An agent that bypasses the gateway reaches the
@@ -140,6 +147,26 @@ struct ReplayArgs {
     transcript: std::path::PathBuf,
 }
 
+#[derive(Parser)]
+struct VerifySpendArgs {
+    /// The spend log (JSONL) to audit, e.g. `<repo>/spend-log/<delegation>.jsonl`.
+    #[arg(long = "log", value_name = "FILE")]
+    log: std::path::PathBuf,
+
+    /// The issuer's registry the agent + delegator KELs are resolved from — the SAME local KEL
+    /// resolution the live gate uses, run OFFLINE by anyone holding a copy of the registry.
+    #[arg(long = "registry", value_name = "DIR")]
+    registry: std::path::PathBuf,
+
+    /// The agent's delegated `did:keri:…` whose signed proofs are re-verified.
+    #[arg(long = "agent", value_name = "DID")]
+    agent: String,
+
+    /// The delegator/root `did:keri:…` the grant is anchored to (the pinned trust root).
+    #[arg(long = "root", value_name = "DID")]
+    root: String,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let runtime = match tokio::runtime::Runtime::new() {
@@ -152,6 +179,7 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Wrap(args) => runtime.block_on(run_wrap(args)),
         Command::Replay(args) => runtime.block_on(run_replay(args)),
+        Command::VerifySpend(args) => runtime.block_on(run_verify_spend(args)),
     }
 }
 
@@ -170,7 +198,7 @@ async fn run_wrap(args: WrapArgs) -> ExitCode {
         scope: args.scope,
         budget: args.budget,
         ttl: args.ttl,
-        agent_delegation: args.agent_delegation,
+        rail: args.rail,
         custody,
         downstream: args.downstream,
         test_mode: args.test_mode,
@@ -200,5 +228,61 @@ async fn run_replay(args: ReplayArgs) -> ExitCode {
             );
             ExitCode::FAILURE
         }
+    }
+}
+
+/// The offline auditor: re-verify a persisted spend log against the issuer's
+/// registry with the gate's OWN `verify_commit_against_kel_scoped` + `audit_spend_log` — run by
+/// anyone, with no trust in the operator that produced the log. Exits non-zero on any
+/// non-`consistent` verdict.
+async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
+    use auths_mcp_core::PerCallGate;
+    use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
+
+    let records = match auths_mcp_core::read_spend_log(&args.log) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot read spend log `{}`: {e}",
+                args.log.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let registry =
+        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&args.registry));
+    let gate = match PerCallGate::resolve(&registry, &args.agent, &args.root) {
+        Ok(g) => g,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot resolve KELs from registry `{}`: {e}",
+                args.registry.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    // Locate the durable counter the SAME way the wire did (from this --registry + --agent), so the
+    // audit cross-checks the re-derived total against the counter the wire advanced — a tail-truncated
+    // log re-derives below it and is caught.
+    let counter = match auths_mcp_core::CounterRef::for_agent(&args.registry, &args.agent) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot locate the durable counter for agent `{}`: {e}",
+                args.agent
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    // The facilitator key that would verify a captured rail attestation is supplied out-of-band once
+    // the wire captures one (a follow-on); without it the offline audit still re-derives the spend.
+    let verdict = gate
+        .audit_spend_log(&records, chrono::Utc::now().timestamp(), &counter, None)
+        .await;
+    println!("verify-spend: {} — {verdict}", verdict.code());
+    if verdict.is_consistent() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }

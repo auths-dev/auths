@@ -5,6 +5,6 @@ pub mod ports;
 
 pub use error::OidcError;
 pub use ports::{
-    JwksClient, JwtValidator, OidcValidationConfig, OidcValidationConfigBuilder, TimestampClient,
-    TimestampConfig,
+    JwksClient, JwsAlg, JwtValidator, OidcValidationConfig, OidcValidationConfigBuilder,
+    TimestampClient, TimestampConfig, UnsupportedJwsAlg,
 };

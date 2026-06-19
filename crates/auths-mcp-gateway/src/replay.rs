@@ -11,7 +11,8 @@
 use std::path::{Path, PathBuf};
 
 use auths_mcp_core::{
-    Budget, CrossRailBudget, ExtractedCost, PerCallGate, Receipt, ToolCall, Verdict,
+    Budget, Cents, CounterRef, CrossRailBudget, ExtractedCost, Meter, NonZeroCents, PerCallGate,
+    Receipt, SpendLogRecord, ToolCall, Verdict,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -20,20 +21,24 @@ use crate::chain::Chain;
 use crate::transcript::{Call, Step, Transcript};
 
 /// The cost source for a paid call: where the amount the gate RESERVES and SETTLES comes
-/// from. The whole point of the metered-rail cost extraction (PRD §11) is that for a
+/// from. The whole point of the metered-rail cost extraction is that for a
 /// metered rail the amount is read out of the rail's own RESPONSE — never an
 /// agent-declared number.
 struct CallCost {
     /// The ceiling reserved before the rail is touched.
-    reserve_ceiling_cents: u64,
+    reserve_ceiling_cents: Cents,
     /// The actual settled into the monotonic counter after the rail returns.
-    settle_cents: u64,
+    settle_cents: Cents,
     /// The rail-native reference the cost was extracted from (a Stripe charge id),
     /// present only when the cost is rail-response-authoritative.
     charge_ref: Option<String>,
     /// True when the cost was EXTRACTED from the rail's recorded response (vs. read from
     /// the transcript's known `cost_cents`) — drives the receipt's extraction evidence.
     extracted: bool,
+    /// The rail's RAW recorded response bytes the cost was extracted from (`None` when the
+    /// cost is the transcript's known number, not rail-extracted). Retained for the spend log
+    /// so the offline audit re-extracts + cross-checks the cost against the signed cost.
+    rail_response: Option<Vec<u8>>,
 }
 
 /// Resolve a paid call's cost. When the call names a `response_fixture`, the cost is
@@ -48,6 +53,7 @@ fn resolve_call_cost(call: &Call) -> anyhow::Result<CallCost> {
             settle_cents: call.cost_cents,
             charge_ref: None,
             extracted: false,
+            rail_response: None,
         });
     };
 
@@ -83,6 +89,7 @@ fn resolve_call_cost(call: &Call) -> anyhow::Result<CallCost> {
         settle_cents: amount_cents,
         charge_ref: Some(reference),
         extracted: true,
+        rail_response: Some(bytes),
     })
 }
 
@@ -109,7 +116,14 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     );
 
     // 1. Build the delegation chain: parent root + delegated scoped agent.
-    let mut chain = Chain::build(&lab, &transcript.grant.scope)?;
+    // Grant the agent a narrow `settle` capability so it can SIGN its own settlement commits
+    // (attest its spend). It is non-weaponizable — it authorizes no tool call and no rail, only
+    // the settlement attestation — so it does NOT widen tool access (write_file still refused).
+    let mut scope = transcript.grant.scope.clone();
+    if !scope.iter().any(|c| c == "settle") {
+        scope.push("settle".to_string());
+    }
+    let mut chain = Chain::build(&lab, &scope)?;
     println!(
         "▸ chain: identity={} device={}",
         chain.root_did, chain.agent_did
@@ -126,22 +140,25 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     //    rails: the verifier-held monotonic SETTLED counter (persisted under the org
     //    registry the verifier replays, keyed to the AGENT DELEGATION) + the transient
     //    RESERVED holds. `available = cap − settled − Σ(holds)`.
-    let budget_spec = transcript
-        .grant
-        .budget
-        .as_deref()
-        .map(Budget::parse)
-        .unwrap_or(Budget::Cents(u64::MAX));
-    let mut budget =
-        CrossRailBudget::open(chain.org_repo(), &chain.agent_did, budget_spec.cap_cents())?;
+    // A present budget must parse (a malformed one is a hard error, never a silent unbounded cap);
+    // an absent budget is the deliberate unbounded cap.
+    let budget_spec = match transcript.grant.budget.as_deref() {
+        Some(raw) => Budget::parse(raw)?,
+        None => Budget::unbounded(),
+    };
+    let mut budget = CounterRef::for_agent(chain.org_repo(), &chain.agent_did)?
+        .open_budget(budget_spec.cap_cents());
     println!(
         "▸ budget: one ${cap}.{rem:02} cap across ALL rails (verifier-held SETTLED counter keyed to the agent delegation + reserved holds)",
-        cap = budget.cap_cents() / 100,
-        rem = budget.cap_cents() % 100,
+        cap = budget.cap_cents().get() / 100,
+        rem = budget.cap_cents().get() % 100,
     );
 
     let mut all_matched = true;
     let mut call_idx = 0usize;
+    // The hash of the prior persisted record, threaded into each call's signed `Auths-Prev` so the
+    // spend log is a continuous chain; the first record links to the genesis sentinel.
+    let mut prev_binding = auths_mcp_core::SPEND_LOG_GENESIS.to_string();
 
     for step in &transcript.calls {
         match step {
@@ -156,8 +173,10 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
                 println!("▸ event: {event} (ignored)");
             }
             Step::Call(call) => {
-                let matched = drive_call(&gate, &chain, &mut budget, call_idx, call).await?;
+                let (matched, new_binding) =
+                    drive_call(&gate, &chain, &mut budget, call_idx, call, &prev_binding).await?;
                 all_matched &= matched;
+                prev_binding = new_binding;
                 call_idx += 1;
             }
         }
@@ -168,6 +187,37 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     } else {
         println!("▸ replay: a verdict diverged from its transcript expectation — gate caught it");
     }
+
+    // Self-audit the spend log THIS run just wrote, OFFLINE, with the gate's own resolved KELs:
+    // re-verify every signed proof + re-derive spend with no trust in the run that produced it.
+    // A clean run audits `consistent`; with AUTHS_MCP_REPLAY_TAMPER set, the forged proof in the
+    // log is CAUGHT here as `tampered-proof`.
+    let log_path = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
+    match auths_mcp_core::read_spend_log(&log_path) {
+        Ok(records) => {
+            // Open the durable counter the SAME way the standalone verify-spend does (from the
+            // chain's registry + the agent did), so the self-audit cross-checks the re-derived total
+            // against the counter this run advanced.
+            let counter = CounterRef::for_agent(chain.org_repo(), &chain.agent_did)?;
+            // No facilitator key on the hermetic replay path — the attestation leg is exercised by
+            // the standalone verify-spend (with --facilitator-key) once the wire captures one.
+            let verdict = gate
+                .audit_spend_log(&records, Utc::now().timestamp(), &counter, None)
+                .await;
+            println!("▸ audit: {} — {verdict}", verdict.code());
+            // Emit the exact args to re-run the audit as a STANDALONE process (`verify-spend`),
+            // so an external party (and the smoke) can re-derive this verdict from disk alone.
+            println!(
+                "▸ audit-cmd: --log {} --registry {} --agent {} --root {}",
+                log_path.display(),
+                chain.org_repo().display(),
+                chain.agent_did,
+                chain.root_did,
+            );
+        }
+        Err(e) => println!("▸ audit: SKIPPED — no spend log to audit ({e})"),
+    }
+
     Ok(all_matched)
 }
 
@@ -184,9 +234,10 @@ async fn drive_call(
     budget: &mut CrossRailBudget,
     idx: usize,
     call: &Call,
-) -> anyhow::Result<bool> {
+    prev_binding: &str,
+) -> anyhow::Result<(bool, String)> {
     // The cost source: for a metered rail with a recorded response fixture the amount is
-    // EXTRACTED from the rail's own response (the metered-rail cost extraction, PRD §11);
+    // EXTRACTED from the rail's own response (the metered-rail cost extraction);
     // otherwise it is the transcript's known cost. The reserve ceiling and the settled
     // actual both come from this source — for an extracted call, from the response,
     // never an agent number.
@@ -199,10 +250,26 @@ async fn drive_call(
     let capability = tool_call.capability();
     let canonical = tool_call.canonical_bytes();
     let rail = call.rail();
-    let reserve_ceiling = cost.reserve_ceiling_cents;
+    // The reservation the gate enforces, as a type: non-metered (no rail, no cost) or fully metered
+    // (a rail AND a non-zero ceiling, together). A rail with no amount, or an amount with no rail, is
+    // a malformed transcript — fail closed rather than guess. The fixture path always yields one or
+    // the other, so this never trips in practice.
+    let meter = match (rail, NonZeroCents::new(cost.reserve_ceiling_cents)) {
+        (None, None) => Meter::Unmetered,
+        (Some(rail_name), Some(ceiling)) => Meter::Metered {
+            rail: rail_name.to_string(),
+            ceiling,
+        },
+        _ => anyhow::bail!(
+            "a replay call must be either non-metered (no rail, no cost) or fully metered \
+             (rail + non-zero ceiling): rail={rail:?} reserve_ceiling_cents={}",
+            cost.reserve_ceiling_cents.get()
+        ),
+    };
 
     // The agent signs the canonical call as an auths artifact (its delegated key).
-    let (mut proof_bytes, proof_sha) = chain.sign_call(idx, &canonical, capability.as_str())?;
+    let (mut proof_bytes, proof_sha) =
+        chain.sign_call(idx, &canonical, capability.as_str(), prev_binding)?;
 
     // Adversarial harness hook: when AUTHS_MCP_REPLAY_TAMPER is set, flip a byte of
     // the signed proof AFTER signing. The downstream tool must never be invoked on a
@@ -219,9 +286,7 @@ async fn drive_call(
     // a forged/tampered proof OR a reservation that would cross the cap yields a
     // non-Allowed verdict here, BEFORE any downstream tool/rail is invoked.
     let now = Utc::now();
-    let decision = gate
-        .judge(rail, reserve_ceiling, &proof_bytes, now, budget)
-        .await?;
+    let decision = gate.judge(&meter, &proof_bytes, now, budget).await?;
 
     // Track the verdict + the running cross-rail total to record. For a forwarded paid
     // call these are updated by the SETTLE below (the actual, not the reservation).
@@ -277,11 +342,78 @@ async fn drive_call(
         .map_err(|e| anyhow::anyhow!("receipt digest: {e}"))?;
     let receipt_json = serde_json::to_string(&receipt)?;
 
+    // For a metered call that SETTLED, the agent signs a settlement commit anchoring the ACTUAL
+    // cost in signed `Auths-Settle-*` trailers under the `settle` capability — so the audit sums
+    // the AGENT-SIGNED cost (un-forgeable by the operator), not just the rail-attested number.
+    let settlement_commit = match (forwarded_result.is_some(), rail, settled_charge_ref) {
+        (true, Some(rail_name), Some(charge)) if !cost.settle_cents.is_zero() => {
+            // Bind the settlement to THIS call by the hash of its signed commit bytes.
+            let call_binding = if std::env::var_os("AUTHS_MCP_SETTLE_REBIND").is_some() {
+                // Adversarial harness hook: stamp a binding for a DIFFERENT call — simulating an
+                // operator that moves a genuinely-signed (cheaper) settlement onto another call.
+                // The settlement signature stays VALID, but its binding no longer matches this
+                // call, so the audit must reject it on the binding check. Never set in normal use.
+                auths_mcp_core::call_commit_binding(b"a different call commit")
+            } else {
+                auths_mcp_core::call_commit_binding(&proof_bytes)
+            };
+            let (mut bytes, _sha) = chain.sign_settlement(
+                idx,
+                &call_binding,
+                rail_name,
+                cost.settle_cents,
+                charge,
+                cumulative,
+            )?;
+            // Adversarial harness hook: when AUTHS_MCP_SETTLE_TAMPER is set, flip a byte of the
+            // SIGNED settlement after signing — simulating an operator that alters the agent's
+            // settled cost. The signature no longer matches, so the offline audit catches it.
+            // Never set in normal operation.
+            if std::env::var_os("AUTHS_MCP_SETTLE_TAMPER").is_some()
+                && let Some(b) = bytes.iter_mut().find(|b| **b == b'a')
+            {
+                *b = b'b';
+            }
+            Some(bytes)
+        }
+        _ => None,
+    };
+
+    // This record's binding — what the NEXT call's `Auths-Prev` links to, so the audit can verify
+    // the log is a continuous chain. Computed from the bytes about to be stored.
+    let new_binding = auths_mcp_core::call_commit_binding(&proof_bytes);
+
+    // Persist the per-call proof+receipt+rail-response(+settlement) record to the append-only spend
+    // log under `<org_repo>/spend-log/<delegation>.jsonl`, so an offline `auths verify-spend`
+    // re-verifies the SIGNED `call_commit` bytes + sums the AGENT-SIGNED cost with NO trust in the
+    // operator.
+    crate::spend_log::append(
+        chain.org_repo(),
+        &chain.agent_did,
+        &SpendLogRecord {
+            call_commit: proof_bytes,
+            receipt,
+            rail: rail.map(|r| r.to_string()),
+            // Only a call that actually FORWARDED touched the rail, so only it has a response to
+            // re-extract. A refused call (out-of-scope / over-cap / unauthentic) carries none — the
+            // audit relies on `rail_response present ⟺ the call settled` (with the proof re-verified).
+            rail_response: if forwarded_result.is_some() {
+                cost.rail_response.clone()
+            } else {
+                None
+            },
+            settlement_commit,
+            // The facilitator attestation is not captured on the replay path yet (a follow-on); the
+            // offline audit runs without it.
+            rail_attestation: None,
+        },
+    )?;
+
     let rail_tag = rail.map(|r| format!(" rail={r}")).unwrap_or_default();
     // When the cost was EXTRACTED from the rail's response, name the charge id it was
     // extracted from + the extracted amount — the receipt-grade evidence that the metered
     // cost came from the response (the `ch_…` a stranger re-derives the cost by), not an
-    // agent-declared number (the metered-rail cost extraction, PRD §11).
+    // agent-declared number (the metered-rail cost extraction).
     let charge_tag = match (&cost.charge_ref, cost.extracted) {
         (Some(reference), true) => format!(
             " charge={reference} extracted={amt}",
@@ -318,13 +450,19 @@ async fn drive_call(
                 cap_cents,
                 would_be_cents,
             } => format!(
-                " cap_cents={cap_cents} would_be_cents={would_be_cents} \
-                 (cross-rail reservation refused BEFORE the rail was touched)"
+                " cap_cents={} would_be_cents={} \
+                 (cross-rail reservation refused BEFORE the rail was touched)",
+                cap_cents.get(),
+                would_be_cents.get()
             ),
             Verdict::UsageCounterRolledBack {
                 presented_cents,
                 high_water_cents,
-            } => format!(" presented_cents={presented_cents} high_water_cents={high_water_cents}"),
+            } => format!(
+                " presented_cents={} high_water_cents={}",
+                presented_cents.get(),
+                high_water_cents.get()
+            ),
             Verdict::ProofUnauthentic { reason } => format!(" reason={reason}"),
             _ => String::new(),
         };
@@ -353,12 +491,12 @@ async fn drive_call(
             verdict_code,
         );
     }
-    Ok(matched)
+    Ok((matched, new_binding))
 }
 
 /// Format cents as `$D.CC` for the human verdict line.
-fn fmt_cents(cents: u64) -> String {
-    format!("${}.{:02}", cents / 100, cents % 100)
+fn fmt_cents(cents: Cents) -> String {
+    format!("${}.{:02}", cents.get() / 100, cents.get() % 100)
 }
 
 /// The replay-stub downstream result for an allowed call — what a real wrapped MCP

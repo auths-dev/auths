@@ -1,6 +1,6 @@
 //! # auths-mcp-core — the reusable per-tool-call enforcement
 //!
-//! The engine half of the bounded-agent MCP gateway (PRD §5, Build item 1). This
+//! The engine half of the bounded-agent MCP gateway. This
 //! crate harvests the KERI-presentation auth core from `auths-mcp-server` (offline
 //! delegated-credential verify + revocation + the capability gate) and adds the
 //! **one per-`tools/call` gate** that every brokered call passes through:
@@ -31,25 +31,34 @@
 //! A forged or tampered proof yields a non-`Valid` verdict, so the gateway refuses
 //! the call before the downstream tool is ever invoked.
 
+pub mod attestation;
+pub mod audit;
 pub mod budget;
 pub mod gate;
+pub mod money;
 pub mod paymode;
 pub mod rail;
 pub mod receipt;
 pub mod session;
 
-pub use budget::{
-    BudgetError, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds, SettleOutcome,
-    SettledCounter,
+pub use attestation::{AttestationError, Attested, RailAttestation};
+pub use audit::{
+    AuditVerdict, ConsistentProof, SPEND_LOG_GENESIS, SpendLogRecord, audit_spend_log,
+    call_commit_binding, read_spend_log, spend_log_path,
 };
-pub use gate::{Decision, GateError, PerCallGate, ToolCall, Verdict};
+pub use budget::{
+    BudgetError, CounterKey, CounterRef, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds,
+    SettleOutcome, SettledCounter,
+};
+pub use gate::{Decision, GateError, Meter, PerCallGate, ToolCall, Verdict};
+pub use money::{AtomicUsdc, Cents, NonZeroCents};
 pub use paymode::{
     BudgetRequired, ModeDisclosure, PaymentMode, StripeRail, TEST_MODE_ENV, X402Rail,
     env_opts_into_test, require_budget,
 };
 pub use rail::{ExtractedCost, RailError, extract as extract_rail_cost, extract_stripe};
 pub use receipt::{Receipt, ReceiptError};
-pub use session::Budget;
+pub use session::{Budget, BudgetParseError};
 
 /// A capability string a downstream tool maps to (e.g. `fs.read`, `fs.write`,
 /// `github.comment`). The gate enforces that the capability a `tools/call`

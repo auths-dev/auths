@@ -208,7 +208,8 @@ impl KeyStorage for LinuxSecretServiceStorage {
                 let parts: Vec<&str> = secret_str.splitn(3, '|').collect();
                 let (identity_did, role, key_b64) = match parts.len() {
                     3 => {
-                        let role = parts[1].parse::<KeyRole>().unwrap_or(KeyRole::Primary);
+                        let role = KeyRole::from_persisted(parts[1])
+                            .map_err(|e| AgentError::SecurityError(e.to_string()))?;
                         (
                             #[allow(clippy::disallowed_methods)]
                             // INVARIANT: DID was stored by this keychain impl, already validated on write

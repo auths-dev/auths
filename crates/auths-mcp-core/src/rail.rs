@@ -11,7 +11,7 @@
 //! the cost the gateway reserves and settles is read out of the bytes the rail itself
 //! returned, so the settle is authoritative regardless of what the agent declared.
 //!
-//! ## Bound, don't build (PRD §11)
+//! ## Bound, don't build
 //!
 //! `auths-mcp-core` holds **zero** payment code beyond reading a rail's documented
 //! response shape. Each rail is a wrapped downstream MCP server; this module is the
@@ -21,7 +21,7 @@
 //! receipt-grade reference (the charge id) a stranger can use to re-derive the metered
 //! cost from that same response.
 //!
-//! ## Stripe (the Stripe-test rail, PRD §11)
+//! ## Stripe (the Stripe-test rail)
 //!
 //! The Stripe rail returns a Charge object
 //! ([docs.stripe.com/api/charges/object](https://docs.stripe.com/api/charges/object)).
@@ -30,7 +30,7 @@
 //! the documented shape so adding a real `sk_test_…` key (the live evidence leg) makes
 //! the same code path read a real test-mode charge with minimal reconciliation.
 //!
-//! ## x402 / USDC (the second rail — cross-rail summing, PRD §11)
+//! ## x402 / USDC (the second rail — cross-rail summing)
 //!
 //! The x402 rail settles a metered tool call in USDC and returns an x402
 //! `SettlementResponse` alongside the `PaymentRequirements` it was settled against
@@ -46,6 +46,7 @@
 //! settles into the **same** [`crate::budget::CrossRailBudget`] as Stripe — one cap
 //! across both rails (the moat a per-rail silo cannot express).
 
+use crate::money::{AtomicUsdc, Cents};
 use serde::Deserialize;
 
 /// The cost EXTRACTED from a rail's response: the settled amount in cents, the rail it
@@ -55,7 +56,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtractedCost {
     /// The settled amount in cents, read from the rail's response.
-    pub amount_cents: u64,
+    pub amount_cents: Cents,
     /// The rail this response settled on (e.g. `stripe`).
     pub rail: String,
     /// The rail-native reference the receipt names so the metered cost is re-derivable
@@ -123,16 +124,11 @@ pub fn extract_stripe(response_bytes: &[u8]) -> Result<ExtractedCost, RailError>
         ));
     }
     Ok(ExtractedCost {
-        amount_cents: charge.amount_captured,
+        amount_cents: Cents::new(charge.amount_captured),
         rail: "stripe".to_string(),
         reference: charge.id,
     })
 }
-
-/// USDC has 6 decimals: `maxAmountRequired` is in ATOMIC units, so `1_000_000` atomic =
-/// 1 USDC. Cents are USDC's two-decimal minor unit, so 1 USDC = 100 cents and the
-/// atomic-per-cent divisor is `1e6 / 100 = 10_000`.
-const USDC_ATOMIC_PER_CENT: u64 = 10_000;
 
 /// The set of x402 networks this rail meters — **testnets only**. A mainnet network is
 /// refused, not mis-metered (the moat's honesty: the LIVE x402 settle needs a funded
@@ -215,26 +211,28 @@ pub fn extract_x402(response_bytes: &[u8]) -> Result<ExtractedCost, RailError> {
     }
 
     // maxAmountRequired is ATOMIC USDC (6 decimals) as a decimal string.
-    let atomic: u64 = parsed
-        .requirements
-        .max_amount_required
-        .parse()
-        .map_err(|e| {
-            RailError::MissingField(format!(
-                "x402 maxAmountRequired `{}` is not a non-negative atomic-USDC integer: {e}",
-                parsed.requirements.max_amount_required
-            ))
-        })?;
+    let atomic = AtomicUsdc::new(
+        parsed
+            .requirements
+            .max_amount_required
+            .parse()
+            .map_err(|e| {
+                RailError::MissingField(format!(
+                    "x402 maxAmountRequired `{}` is not a non-negative atomic-USDC integer: {e}",
+                    parsed.requirements.max_amount_required
+                ))
+            })?,
+    );
 
-    // atomic-USDC → cents, exact-division only: a sub-cent residue is refused so the
-    // metered cost equals the settled amount exactly (never silently truncated).
-    if !atomic.is_multiple_of(USDC_ATOMIC_PER_CENT) {
-        return Err(RailError::MissingField(format!(
-            "x402 maxAmountRequired {atomic} atomic USDC is a sub-cent amount \
-             (not a whole number of cents) — refusing rather than truncating"
-        )));
-    }
-    let amount_cents = atomic / USDC_ATOMIC_PER_CENT;
+    // atomic-USDC → cents, exact only: a sub-cent residue is refused so the metered cost equals the
+    // settled amount exactly (never silently truncated).
+    let amount_cents = atomic.to_cents_exact().ok_or_else(|| {
+        RailError::MissingField(format!(
+            "x402 maxAmountRequired {} atomic USDC is a sub-cent amount \
+             (not a whole number of cents) — refusing rather than truncating",
+            atomic.get()
+        ))
+    })?;
 
     Ok(ExtractedCost {
         amount_cents,
@@ -280,7 +278,8 @@ mod tests {
     fn extracts_amount_captured_and_charge_id_from_the_response() {
         let cost = extract_stripe(STRIPE_CHARGE_3USD.as_bytes()).unwrap();
         assert_eq!(
-            cost.amount_cents, 300,
+            cost.amount_cents,
+            Cents::new(300),
             "the cost is read from amount_captured"
         );
         assert_eq!(cost.rail, "stripe");
@@ -295,7 +294,7 @@ mod tests {
         let over =
             STRIPE_CHARGE_3USD.replace("\"amount_captured\": 300", "\"amount_captured\": 600");
         let cost = extract_stripe(over.as_bytes()).unwrap();
-        assert_eq!(cost.amount_cents, 600);
+        assert_eq!(cost.amount_cents, Cents::new(600));
     }
 
     #[test]
@@ -313,7 +312,7 @@ mod tests {
     #[test]
     fn dispatch_by_rail_name() {
         let cost = extract("stripe", STRIPE_CHARGE_3USD.as_bytes()).unwrap();
-        assert_eq!(cost.amount_cents, 300);
+        assert_eq!(cost.amount_cents, Cents::new(300));
         // x402 is now a registered rail (PAY-2): a stripe-shaped body handed to it fails
         // on the missing x402 fields (Parse), NOT UnknownRail.
         assert!(matches!(
@@ -321,7 +320,7 @@ mod tests {
             Err(RailError::Parse(_))
         ));
         let x402 = extract("x402", X402_SETTLE_150C.as_bytes()).unwrap();
-        assert_eq!(x402.amount_cents, 150);
+        assert_eq!(x402.amount_cents, Cents::new(150));
         assert_eq!(x402.rail, "x402");
         // An unknown rail still has no extractor.
         assert!(matches!(
@@ -357,7 +356,8 @@ mod tests {
         // 1500000 atomic USDC (6 decimals) → 1.50 USDC → 150 cents; reference is the tx.
         let cost = extract_x402(X402_SETTLE_150C.as_bytes()).unwrap();
         assert_eq!(
-            cost.amount_cents, 150,
+            cost.amount_cents,
+            Cents::new(150),
             "atomic-USDC → cents: 1500000 / 10000 = 150"
         );
         assert_eq!(cost.rail, "x402");
@@ -374,7 +374,11 @@ mod tests {
         // from the RESPONSE, so an agent that under-declared cannot change it.
         let small = X402_SETTLE_150C.replace("\"1500000\"", "\"600000\"");
         let cost = extract_x402(small.as_bytes()).unwrap();
-        assert_eq!(cost.amount_cents, 60, "600000 / 10000 = 60 cents");
+        assert_eq!(
+            cost.amount_cents,
+            Cents::new(60),
+            "600000 / 10000 = 60 cents"
+        );
     }
 
     #[test]

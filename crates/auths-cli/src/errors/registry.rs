@@ -476,6 +476,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E6104" => Some("# AUTHS-E6104\n\n**Crate:** `auths-sdk`\n\n**Type:** `CredentialError::KtThresholdUnsupported`\n\n## Message\n\nissuer is multi-signature (kt≥2); credential anchoring is single-author only\n"),
         "AUTHS-E6105" => Some("# AUTHS-E6105\n\n**Crate:** `auths-sdk`\n\n**Type:** `CredentialError::SchemaUnknown`\n\n## Message\n\ncapability schema unknown or uncomputable\n"),
         "AUTHS-E6106" => Some("# AUTHS-E6106\n\n**Crate:** `auths-sdk`\n\n**Type:** `CredentialError::StaleOrUnresolvable`\n\n## Message\n\ncredential status is stale or unresolvable: {reason}\n"),
+        "AUTHS-E6107" => Some("# AUTHS-E6107\n\n**Crate:** `auths-sdk`\n\n**Type:** `CredentialError::MalformedUsageCap`\n\n## Message\n\nmalformed quantitative usage cap '{cap}': a calls: capability must carry a non-negative integer bound (e.g. calls:3)\n"),
 
         // --- auths-oidc-port (OidcError) ---
         "AUTHS-E8001" => Some("# AUTHS-E8001\n\n**Crate:** `auths-oidc-port`\n\n**Type:** `OidcError::JwtDecode`\n\n## Message\n\nJWT decode failed: {0}\n"),
@@ -855,6 +856,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E6104",
         "AUTHS-E6105",
         "AUTHS-E6106",
+        "AUTHS-E6107",
         "AUTHS-E8001",
         "AUTHS-E8002",
         "AUTHS-E8003",
@@ -904,6 +906,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 366);
+        assert_eq!(all_codes().len(), 367);
     }
 }

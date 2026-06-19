@@ -16,6 +16,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use auths_mcp_core::Cents;
+
 /// A built delegation chain in a sandbox registry: the parent root and a delegated
 /// scoped agent, both resolvable from the org registry the verifier replays.
 pub struct Chain {
@@ -210,6 +212,7 @@ impl Chain {
         idx: usize,
         canonical: &[u8],
         capability: &str,
+        prev_binding: &str,
     ) -> anyhow::Result<(Vec<u8>, String)> {
         let work = self.work_root.join(format!("call-{idx}"));
         std::fs::create_dir_all(&work)?;
@@ -244,9 +247,14 @@ impl Chain {
                 .current_dir(&work),
             "git add",
         )?;
+        // The signed `Auths-Prev` trailer links this call to the prior spend-log record (the hash of
+        // its commit), or a fixed genesis sentinel for the first — so the offline audit can verify
+        // the log is a continuous chain and catch a DROPPED or reordered record, not only an edited
+        // one. The SSH signature applied below covers it.
         must(
             Command::new("git")
                 .args(["commit", "-qm", "tools/call", "--no-gpg-sign"])
+                .args(["--trailer", &format!("Auths-Prev:{prev_binding}")])
                 .current_dir(&work),
             "git commit",
         )?;
@@ -267,6 +275,99 @@ impl Chain {
         )?;
         let sha = String::from_utf8_lossy(&sha.stdout).trim().to_string();
         // The raw commit object text the verifier parses (gpgsig + trailers).
+        let raw = must(
+            Command::new("git")
+                .args(["cat-file", "commit", &sha])
+                .current_dir(&work),
+            "git cat-file commit",
+        )?;
+        Ok((raw.stdout, sha))
+    }
+
+    /// Sign a SETTLEMENT commit: the agent attests its OWN settled cost under the dedicated
+    /// `settle` capability. The cost lives in SIGNED git trailers (`Auths-Settle-*`), covered by
+    /// the same SSH signature `verify_commit_against_kel_scoped` checks — so an offline auditor
+    /// reads the agent-signed `actual_cents` straight from the commit bytes (no git, no tree
+    /// hashing) once the signature + `settle ⊆ scope` are verified. `call_binding` is a hash of the
+    /// call's own commit bytes, carried in the signed `Auths-Settle-Call` trailer so the audit can
+    /// tie this settlement to exactly one call — a settlement cannot be reused on a different call.
+    /// Operator can't lower the cost without breaking the signature; agent can't inflate a refused
+    /// call (it carries no settlement and the audit cross-checks the rail response). `idx` keys a
+    /// per-settlement work repo.
+    #[allow(clippy::too_many_arguments)]
+    pub fn sign_settlement(
+        &self,
+        idx: usize,
+        call_binding: &str,
+        rail: &str,
+        actual_cents: Cents,
+        rail_ref: &str,
+        cumulative_cents: Cents,
+    ) -> anyhow::Result<(Vec<u8>, String)> {
+        let work = self.work_root.join(format!("settle-{idx}"));
+        std::fs::create_dir_all(&work)?;
+        // A minimal payload so the commit has a tree; the cost lives in the SIGNED trailers below.
+        std::fs::write(work.join("settle.json"), b"{}")?;
+        must(
+            Command::new("git").arg("init").arg("-q").current_dir(&work),
+            "git init (per-settlement work repo)",
+        )?;
+        let sign_prog = locate_auths_sign(&self.auths_bin)?;
+        for (k, v) in [
+            ("gpg.format", "ssh".to_string()),
+            ("gpg.ssh.program", sign_prog.to_string_lossy().to_string()),
+            ("user.signingkey", format!("auths:{}", self.agent_alias)),
+            ("commit.gpgsign", "true".to_string()),
+            ("user.name", self.agent_alias.clone()),
+            ("user.email", format!("{}@auths.local", self.agent_alias)),
+        ] {
+            must(
+                Command::new("git")
+                    .args(["config", k, &v])
+                    .current_dir(&work),
+                "git config (agent signer)",
+            )?;
+        }
+        must(
+            Command::new("git")
+                .args(["add", "settle.json"])
+                .current_dir(&work),
+            "git add",
+        )?;
+        // The settled cost as SIGNED trailers — the SSH signature covers the whole message.
+        must(
+            Command::new("git")
+                .args(["commit", "-qm", "tools/settle", "--no-gpg-sign"])
+                .args(["--trailer", &format!("Auths-Settle-Call:{call_binding}")])
+                .args(["--trailer", &format!("Auths-Settle-Rail:{rail}")])
+                // The settled cost/cumulative are stamped as raw cent integers (the audit parses
+                // them back with `parse::<u64>()`) — unwrap Cents at this trailer-format boundary.
+                .args([
+                    "--trailer",
+                    &format!("Auths-Settle-Cents:{}", actual_cents.get()),
+                ])
+                .args(["--trailer", &format!("Auths-Settle-Ref:{rail_ref}")])
+                .args([
+                    "--trailer",
+                    &format!("Auths-Settle-Cumulative:{}", cumulative_cents.get()),
+                ])
+                .current_dir(&work),
+            "git commit (settlement, signed cost trailers)",
+        )?;
+        must(
+            Command::new(&self.auths_bin)
+                .args(["--repo", &self.agent_repo.to_string_lossy(), "sign", "HEAD"])
+                .args(["--scope", &to_auths_capability("settle")])
+                .current_dir(&work),
+            "auths sign HEAD --scope settle",
+        )?;
+        let sha = must(
+            Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(&work),
+            "git rev-parse HEAD",
+        )?;
+        let sha = String::from_utf8_lossy(&sha.stdout).trim().to_string();
         let raw = must(
             Command::new("git")
                 .args(["cat-file", "commit", &sha])

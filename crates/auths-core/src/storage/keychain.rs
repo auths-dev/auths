@@ -80,6 +80,29 @@ impl std::str::FromStr for KeyRole {
     }
 }
 
+/// A role token read from persistent storage is not a recognized role. Returned (never defaulted) so
+/// a corrupt or unknown stored role fails closed instead of silently becoming the most-privileged key.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("stored key role {0:?} is not a recognized role")]
+pub struct UnknownKeyRole(String);
+
+impl KeyRole {
+    /// Parse a role token read back from a keychain/credential store. An unrecognized token is
+    /// refused ([`UnknownKeyRole`]) rather than defaulted, so a corrupt store entry cannot load a key
+    /// as the most-privileged `Primary` role. Every backend decodes a stored role here.
+    ///
+    /// Args:
+    /// * `token`: the role string read from the store (e.g. `"primary"`, `"delegated_agent"`).
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let role = KeyRole::from_persisted(stored_token)?;
+    /// ```
+    pub fn from_persisted(token: &str) -> Result<KeyRole, UnknownKeyRole> {
+        token.parse().map_err(|_| UnknownKeyRole(token.to_string()))
+    }
+}
+
 /// Validated alias for a stored key.
 ///
 /// Invariants: non-empty and contains no null bytes.
@@ -828,6 +851,20 @@ mod tests {
             KeyRole::DelegatedAgent
         );
         assert!("unknown".parse::<KeyRole>().is_err());
+    }
+
+    #[test]
+    fn a_corrupt_persisted_role_is_refused_not_elevated_to_primary() {
+        // A role token that is not one of the known roles is rejected, not loaded as Primary, so a
+        // corrupt or tampered store entry cannot become the most-privileged key.
+        assert_eq!(KeyRole::from_persisted("primary"), Ok(KeyRole::Primary));
+        assert_eq!(
+            KeyRole::from_persisted("delegated_agent"),
+            Ok(KeyRole::DelegatedAgent)
+        );
+        assert!(KeyRole::from_persisted("bogus").is_err());
+        assert!(KeyRole::from_persisted("").is_err());
+        assert!(KeyRole::from_persisted("PRIMARY").is_err());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! The real-MCP `wrap` proxy (PRD §5 Build item 2 / D1).
+//! The real-MCP `wrap` proxy (D1).
 //!
 //! Speaks MCP JSON-RPC **up** to the agent (an `rmcp` server over stdio) and
 //! **down** to the wrapped downstream server (an `rmcp` child-process client over
@@ -9,22 +9,26 @@
 //! This is the transport the scripted demos cannot reach: a stock MCP client
 //! (Claude Desktop, the Agents SDK, Cursor) connects to the gateway exactly as it
 //! would to the raw downstream, and the enforcement is additive middleware (a
-//! non-auths client still works, unauthenticated, no receipt — PRD §6).
+//! non-auths client still works, unauthenticated, no receipt).
 //!
-//! The transport + proxy + receipt are real and live here; the *cryptographic
-//! per-call proof* on the live wire — the agent presenting its delegation per
-//! `tools/call` — is exercised end-to-end by the hermetic **replay** path
-//! (`replay.rs`), which carries the full native authenticity check. Binding that
-//! same proof to the live `wrap` wire rides with the live-agent harness. The proxy
-//! never fakes a receipt and never silently widens authority.
+//! Each brokered `tools/call` is SIGNED as the agent and authenticated through the
+//! same `PerCallGate::judge` the hermetic replay path runs — scope ⊆ grant, live,
+//! unrevoked, and reserved against the durable cross-rail budget — before it reaches
+//! the downstream. The signed proof + receipt are appended to a spend log the offline
+//! `verify-spend` re-verifies, so a live run is auditable by anyone, trusting neither
+//! this gateway nor its operator. The proxy never fakes a receipt and never silently
+//! widens authority.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_mcp_core::budget::{CrossRailBudget, ReserveOutcome, SettleOutcome};
+use auths_mcp_core::budget::CrossRailBudget;
 use auths_mcp_core::{
-    Budget, Capability, PaymentMode, TEST_MODE_ENV, env_opts_into_test, require_budget,
+    AtomicUsdc, Budget, Capability, Cents, Decision, Meter, NonZeroCents, PaymentMode, Receipt,
+    SpendLogRecord, TEST_MODE_ENV, ToolCall, Verdict, env_opts_into_test, require_budget,
 };
+use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
+use chrono::Utc;
 use rmcp::model::{
     CallToolRequestParam, CallToolResult, ListToolsResult, PaginatedRequestParam,
     ServerCapabilities, ServerInfo,
@@ -36,9 +40,9 @@ use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use tokio::sync::Mutex;
 
 /// The gateway's custody vault: the downstream tool's secret(s) the gateway holds
-/// and injects into the wrapped downstream, and which the agent never sees (PRD
-/// §12). Each entry is an environment variable the downstream reads to authenticate
-/// to its credentialed resource — exactly the "API key in an env var" majority §12
+/// and injects into the wrapped downstream, and which the agent never sees.
+/// Each entry is an environment variable the downstream reads to authenticate
+/// to its credentialed resource — exactly the "API key in an env var" majority this
 /// flips into the strongest pitch.
 ///
 /// The vault is sourced ONLY from the gateway's own config/environment (the `wrap`
@@ -107,7 +111,7 @@ impl CustodyVault {
     }
 
     /// Inject the custodied secrets into a downstream child's environment, sourced
-    /// from the GATEWAY. This is the §12 mechanism: the spawned downstream reads its
+    /// from the GATEWAY. This is the mechanism: the spawned downstream reads its
     /// key from its env, the agent's own process never holds it.
     fn inject(&self, command: &mut tokio::process::Command) {
         for (name, value) in &self.entries {
@@ -124,13 +128,12 @@ pub struct WrapConfig {
     pub budget: Option<String>,
     /// The grant TTL string (e.g. `"30m"`).
     pub ttl: Option<String>,
-    /// The agent delegation identifier (`did:keri:…`) the durable cross-rail counter is
-    /// keyed to — the counter sums ALL rails for THIS delegation. Defaults to a stable
-    /// session key when the live-agent harness has not yet bound the agent's delegation
-    /// on the wire (the deferred live leg); the counter SOURCE is durable regardless.
-    pub agent_delegation: Option<String>,
+    /// The payment rail the wrapped downstream settles on (`Some("x402")` / `Some("stripe")`).
+    /// When set, every call is metered on this rail from its response — set by the OPERATOR, so an
+    /// agent cannot bypass metering by omitting a per-call declaration. `None` = non-payment.
+    pub rail: Option<String>,
     /// The downstream credential(s) the gateway custodies and injects into the
-    /// wrapped downstream — the agent never holds them (PRD §12).
+    /// wrapped downstream — the agent never holds them.
     pub custody: CustodyVault,
     /// The downstream MCP server command (everything after `--`).
     pub downstream: Vec<String>,
@@ -153,184 +156,89 @@ impl WrapConfig {
     }
 }
 
-/// The repo path the verifier holds the durable cross-rail counter under (the same
-/// `budget-ledger` placement the gate persists to, alongside the KELs/registry the
-/// verifier replays). Sourced from the gateway's own environment (`AUTHS_REPO`, then
-/// `AUTHS_HOME`), never from the agent's request; falls back to `.auths` under the cwd.
-fn verifier_repo_path() -> PathBuf {
-    for var in ["AUTHS_REPO", "AUTHS_HOME"] {
+/// The directory the live wire builds its signing chain + registry under (org root, the
+/// delegated agent, the scope seal, and the spend log). Honors `AUTHS_MCP_LIVE_DIR` (then
+/// `LAB_DIR`) so a demo/harness can point the chain + log at a known path it later audits
+/// with `verify-spend`; otherwise a per-process temp dir.
+fn live_chain_dir() -> PathBuf {
+    for var in ["AUTHS_MCP_LIVE_DIR", "LAB_DIR"] {
         if let Ok(p) = std::env::var(var)
             && !p.is_empty()
         {
             return PathBuf::from(p);
         }
     }
-    PathBuf::from(".auths")
+    std::env::temp_dir().join(format!("auths-mcp-live-{}", std::process::id()))
 }
 
-/// The delegation key the durable counter is keyed to on the live wire. Until the
-/// live-agent harness binds the agent's `did:keri:` per session (the deferred live
-/// leg), a stable filesystem-safe session key keeps the durable counter rooted; the
-/// COUNTER SOURCE (durable, cross-rail, verifier-held) is what #281 wires.
-fn wire_delegation_key(cfg: &WrapConfig) -> String {
-    cfg.agent_delegation
-        .clone()
-        .unwrap_or_else(|| "wrap-session".to_string())
-}
-
-/// The metered cost of one brokered `tools/call`, plus the rail it settles on — the
-/// inputs the wire's budget enforcement reserves/settles against the durable
-/// cross-rail counter. A non-metered call (e.g. `fs.read`) carries a zero cost and no
-/// rail; a metered call (e.g. `paid_call`) carries its known cost and its rail.
-///
-/// On the live wire the per-call *cost extraction* from a rail's charge response is
-/// the metered-rail wiring (a follow-on); what #281 wires is that whatever cost a call
-/// carries is enforced against the SAME durable verifier-held [`CrossRailBudget`] the
-/// hermetic gate uses — not a separate in-memory tally.
-#[derive(Debug, Clone, Default)]
-pub struct CallCost {
-    /// The cents this call would settle against the cross-rail cap (0 = non-metered).
-    pub cost_cents: u64,
-    /// The pre-authorization ceiling reserved before the rail is touched. Defaults to
-    /// `cost_cents` for a known-cost call.
-    pub reserve_ceiling_cents: u64,
-    /// The payment rail this metered call settles on (cross-rail attribution).
-    pub rail: Option<String>,
-}
-
-impl CallCost {
-    /// A non-metered call: nothing to reserve or settle (e.g. `fs.read`).
-    pub fn free() -> Self {
-        Self::default()
-    }
-
-    /// A metered call with a known cost on `rail`: reserve and settle the same amount.
-    pub fn metered(cost_cents: u64, rail: impl Into<String>) -> Self {
-        Self::metered_with_ceiling(cost_cents, cost_cents, rail)
-    }
-
-    /// A metered call on `rail` that reserves a `reserve_ceiling_cents` ceiling before
-    /// the rail is touched and settles `cost_cents` after (the slack is released). For a
-    /// known-cost call the two are equal; a metered call whose final cost is bounded but
-    /// not yet known reserves the ceiling.
-    pub fn metered_with_ceiling(
-        cost_cents: u64,
-        reserve_ceiling_cents: u64,
-        rail: impl Into<String>,
-    ) -> Self {
-        Self {
-            cost_cents,
-            reserve_ceiling_cents,
-            rail: Some(rail.into()),
-        }
-    }
-
-    /// The ceiling reserved before the rail is touched — the metered ceiling if set,
-    /// else the known cost.
-    fn reserve_ceiling(&self) -> u64 {
-        if self.reserve_ceiling_cents > 0 {
-            self.reserve_ceiling_cents
-        } else {
-            self.cost_cents
-        }
-    }
-}
-
-/// The outcome of enforcing one brokered call's spend against the durable cross-rail
-/// budget on the live `wrap` wire — the same reserve/settle/release decision the
-/// hermetic gate ([`auths_mcp_core::PerCallGate`]) makes over the same counter, so the
-/// two produce identical verdicts for the same call sequence (#281).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WireBudgetOutcome {
-    /// The call fits the cross-rail cap and was settled into the durable counter. The
-    /// running cross-rail total after this call.
-    Allowed { cross_rail_cumulative_cents: u64 },
-    /// The reservation would push `settled + Σ(holds) + ceiling` past the cap — refused
-    /// BEFORE the rail is touched (the durable counter refuses, exactly as the gate
-    /// does). Maps the `usage-cap-exceeded` verdict.
-    UsageCapExceeded { cap_cents: u64, would_be_cents: u64 },
-    /// A settle presented a cumulative total below the verifier-held monotonic
-    /// high-water — a replayed/stale total refused by the durable counter (maps
-    /// `usage-counter-rolled-back`, the D8 monotonicity guard).
-    UsageCounterRolledBack {
-        presented_cents: u64,
-        high_water_cents: u64,
+/// The metered shape of one brokered `tools/call`, parsed from the agent's request at the wire
+/// boundary. A metered call ALWAYS carries a non-zero ceiling AND a rail, so "metered with a
+/// zero/absent amount" is not a constructible state — the cap-bypass class is gone at the type
+/// level. An operator rail with no declared amount parses to [`CallCost::AmountRequired`], which
+/// the caller refuses BEFORE the gate (the charge cannot be bounded, so forwarding would let the
+/// rail charge while the durable cap stayed put).
+#[derive(Debug, Clone)]
+enum CallCost {
+    /// Non-metered (no operator rail, no declared cost): nothing reserved or settled (e.g. `fs.read`).
+    Free,
+    /// Metered on `rail`, reserving `ceiling` before the rail is touched. `settle` says WHERE the
+    /// actual settled cost comes from once the call forwards.
+    Metered {
+        /// The payment rail this call settles on.
+        rail: String,
+        /// The non-zero ceiling pre-authorized before the rail is touched.
+        ceiling: NonZeroCents,
+        /// Where the ACTUAL settled cost is read from after the call forwards.
+        settle: SettleSource,
+    },
+    /// An operator rail is set but the call declared no non-zero amount, so the gate could not bound
+    /// the charge. Refused fail-closed at the wire boundary, before the rail is touched.
+    AmountRequired {
+        /// The operator rail the undeclared call would have settled on.
+        rail: String,
     },
 }
 
-impl WireBudgetOutcome {
-    /// The stable kebab-case verdict code, identical to the gate's
-    /// [`auths_mcp_core::Verdict::code`] for the same outcome — the parity surface.
-    pub fn code(&self) -> &'static str {
-        match self {
-            WireBudgetOutcome::Allowed { .. } => "allowed",
-            WireBudgetOutcome::UsageCapExceeded { .. } => "usage-cap-exceeded",
-            WireBudgetOutcome::UsageCounterRolledBack { .. } => "usage-counter-rolled-back",
-        }
-    }
-
-    /// Whether the gateway should forward this call to the downstream server.
-    fn forwards(&self) -> bool {
-        matches!(self, WireBudgetOutcome::Allowed { .. })
-    }
+/// Where a metered call's ACTUAL settled cost is read from once it forwards — modeled explicitly so
+/// neither settle source is a silent fallthrough of the other.
+#[derive(Debug, Clone)]
+enum SettleSource {
+    /// The operator configured the rail (`--rail`); the actual cost is read from the rail's OWN
+    /// response once the downstream returns — never an agent-declared number.
+    RailResponse,
+    /// A per-call declaration drove the meter (`_auths_cost_cents` + `_auths_rail`, with no operator
+    /// rail); settle exactly this declared cost.
+    Declared(Cents),
 }
 
-/// Enforce one metered call's spend against the durable cross-rail budget — the live
-/// `wrap` wire's budget boundary, sourced from the SAME verifier-held
-/// [`CrossRailBudget`] the hermetic gate drives (#281, D8).
-///
-/// This is pre-authorization: RESERVE the call's ceiling against `available = cap −
-/// settled − Σ(holds)` BEFORE the rail is touched; if the reservation would cross the
-/// cap it is refused [`WireBudgetOutcome::UsageCapExceeded`] and no hold is taken (the
-/// metered downstream is never invoked). On a fitting reservation the call is allowed,
-/// then its ACTUAL cost is SETTLED into the monotonic verifier-held counter and the
-/// slack released. A non-metered call (`reserve_ceiling == 0`) reserves and settles
-/// nothing.
-///
-/// The single source of truth: this drives `auths_mcp_core::budget::CrossRailBudget`,
-/// the identical engine `PerCallGate::judge`/`settle` drive, so the live wire's budget
-/// verdicts match the gate's for the same call sequence.
-pub fn enforce_wire_budget(
-    budget: &mut CrossRailBudget,
-    cost: &CallCost,
-) -> Result<WireBudgetOutcome, auths_mcp_core::BudgetError> {
-    let ceiling = cost.reserve_ceiling();
-    if ceiling == 0 {
-        // Non-metered: nothing to reserve or settle; the call is allowed at the
-        // unchanged cross-rail total.
-        return Ok(WireBudgetOutcome::Allowed {
-            cross_rail_cumulative_cents: budget.settled_cents()?,
-        });
+impl CallCost {
+    /// The cost the agent's signed call body records — informational (the canonical signed bytes
+    /// cover `{tool, args}`, not the cost). For an operator rail the ACTUAL settled cost is read
+    /// from the response after forwarding, so the body records the declared ceiling; zero for a
+    /// non-metered or refused call.
+    fn declared_cost(&self) -> Cents {
+        match self {
+            CallCost::Free | CallCost::AmountRequired { .. } => Cents::ZERO,
+            CallCost::Metered {
+                settle: SettleSource::Declared(cost),
+                ..
+            } => *cost,
+            CallCost::Metered {
+                ceiling,
+                settle: SettleSource::RailResponse,
+                ..
+            } => ceiling.get(),
+        }
     }
 
-    // 1. RESERVE the ceiling against the durable cross-rail counter BEFORE the rail is
-    //    touched. A reservation that crosses the cap is refused here.
-    let hold = match budget.reserve(ceiling)? {
-        ReserveOutcome::Reserved { hold, .. } => hold,
-        ReserveOutcome::Refused {
-            cap_cents,
-            would_be_cents,
-        } => {
-            return Ok(WireBudgetOutcome::UsageCapExceeded {
-                cap_cents,
-                would_be_cents,
-            });
+    /// The payment rail this call settles (or would have settled) on, for receipt attribution.
+    fn rail(&self) -> Option<&str> {
+        match self {
+            CallCost::Free => None,
+            CallCost::Metered { rail, .. } | CallCost::AmountRequired { rail } => {
+                Some(rail.as_str())
+            }
         }
-    };
-
-    // 2. The reservation fit — the call is forwarded to the rail. SETTLE the actual
-    //    cost into the monotonic verifier-held counter and release the hold's slack.
-    match budget.settle(hold, cost.cost_cents)? {
-        SettleOutcome::Advanced { new_settled_cents } => Ok(WireBudgetOutcome::Allowed {
-            cross_rail_cumulative_cents: new_settled_cents,
-        }),
-        SettleOutcome::RolledBack {
-            presented_cents,
-            high_water_cents,
-        } => Ok(WireBudgetOutcome::UsageCounterRolledBack {
-            presented_cents,
-            high_water_cents,
-        }),
     }
 }
 
@@ -339,8 +247,6 @@ pub fn enforce_wire_budget(
 struct GatewayProxy {
     /// The connected downstream MCP server (the wrapped tool).
     downstream: RunningService<RoleClient, ()>,
-    /// The capabilities the agent was granted.
-    scope: Vec<String>,
     /// The session's DURABLE cross-rail budget — the verifier-held monotonic SETTLED
     /// counter (persisted under `<repo>/budget-ledger`, keyed to the agent delegation,
     /// summed across rails) + the transient RESERVED holds. This is the SAME
@@ -350,6 +256,26 @@ struct GatewayProxy {
     /// in-memory per-session tally, which metered nothing per rail and could diverge
     /// from the durable gate.
     budget: Arc<Mutex<CrossRailBudget>>,
+    /// The agent's delegation chain — its delegated signing key plus the registry the
+    /// verifier replays. Every brokered call is signed under this, so the offline audit
+    /// re-verifies the live wire's proofs exactly as it does the hermetic gate's. Shared
+    /// (`Arc`) because the async MCP handler signs from `&self`.
+    chain: Arc<crate::chain::Chain>,
+    /// The per-call gate resolved over the chain's registry: it authenticates each signed
+    /// call (proof + scope ⊆ grant + expiry + revocation) and reserves/settles against the
+    /// budget — the SAME [`auths_mcp_core::PerCallGate`] the hermetic gate drives.
+    gate: Arc<auths_mcp_core::PerCallGate>,
+    /// Monotonic per-call index; each call's signing work repo is keyed by it.
+    next_call: Arc<std::sync::atomic::AtomicUsize>,
+    /// The payment rail the wrapped downstream settles on, set by the operator. When `Some`, every
+    /// call is metered on it (the cost is read from the rail's own response), so an agent cannot
+    /// bypass the cap by omitting a per-call declaration.
+    rail: Option<String>,
+    /// The hash of the last persisted spend-log record — threaded into the next call's signed
+    /// `Auths-Prev` so the log is a continuous chain the audit can verify is complete. Correct for
+    /// the sequential single-agent flow; concurrent persists from multiple agents on one gateway
+    /// would need this serialized across sign+append (a follow-on).
+    prev_binding: Arc<Mutex<String>>,
 }
 
 impl GatewayProxy {
@@ -364,33 +290,70 @@ impl GatewayProxy {
     /// #281 fixes is the COUNTER SOURCE — whatever cost a call carries is enforced
     /// against the durable `CrossRailBudget`, not a separate RAM tally.
     fn call_cost(&self, request: &CallToolRequestParam) -> CallCost {
-        let args = match &request.arguments {
-            Some(map) => map,
-            None => return CallCost::free(),
+        let args = request.arguments.as_ref();
+
+        // Operator-configured rail: EVERY call is metered on it. The reserve ceiling pre-authorized
+        // before the rail is touched is the agent's intended payment (an x402 `amount_atomic` →
+        // cents, rounded up, or an explicit `_auths_reserve_ceiling_cents`); the amount actually
+        // SETTLED is read from the rail's own response in `call_tool`. Because the OPERATOR sets the
+        // rail, an agent cannot bypass metering by omitting a per-call field: with no non-zero amount
+        // the call is `AmountRequired` and refused before the rail is touched.
+        if let Some(rail) = self.rail.as_deref() {
+            // `amount_atomic` is atomic USDC read from the agent's arg (a genuine boundary) →
+            // reserve ceiling rounded UP; `_auths_reserve_ceiling_cents` is a raw cent count.
+            let ceiling_cents = args
+                .and_then(|m| m.get("amount_atomic"))
+                .and_then(|v| v.as_u64())
+                .map(|a| AtomicUsdc::new(a).to_cents_ceiling())
+                .or_else(|| {
+                    args.and_then(|m| m.get("_auths_reserve_ceiling_cents"))
+                        .and_then(|v| v.as_u64())
+                        .map(Cents::new)
+                })
+                .unwrap_or(Cents::ZERO);
+            return match NonZeroCents::new(ceiling_cents) {
+                Some(ceiling) => CallCost::Metered {
+                    rail: rail.to_string(),
+                    ceiling,
+                    settle: SettleSource::RailResponse,
+                },
+                None => CallCost::AmountRequired {
+                    rail: rail.to_string(),
+                },
+            };
+        }
+
+        // No operator rail: a non-payment downstream. Honor an explicit per-call declaration so a
+        // metered downstream config can still drive the durable counter; else non-metered. A declared
+        // cost is metered ONLY when it also names its rail — without one there is nothing to settle on
+        // or attribute to, so it is non-metered (a metered call always carries a rail).
+        let Some(args) = args else {
+            return CallCost::Free;
         };
+        // `_auths_cost_cents` is a raw cent count read from the agent's arg (a genuine boundary).
         let cost_cents = args
             .get("_auths_cost_cents")
             .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        if cost_cents == 0 {
-            return CallCost::free();
-        }
-        let reserve_ceiling_cents = args
+            .map(Cents::new)
+            .unwrap_or(Cents::ZERO);
+        let (Some(cost), Some(rail)) = (
+            NonZeroCents::new(cost_cents),
+            args.get("_auths_rail").and_then(|v| v.as_str()),
+        ) else {
+            return CallCost::Free;
+        };
+        // The ceiling is the explicit `_auths_reserve_ceiling_cents` when it is non-zero, else the
+        // declared cost (itself non-zero) — so the metered ceiling is always non-zero.
+        let ceiling = args
             .get("_auths_reserve_ceiling_cents")
             .and_then(|v| v.as_u64())
-            .unwrap_or(cost_cents);
-        match args.get("_auths_rail").and_then(|v| v.as_str()) {
-            // Known cost (ceiling == cost) is the common metered case; a bounded-but-
-            // not-yet-known cost reserves a larger ceiling and releases the slack.
-            Some(rail) if reserve_ceiling_cents == cost_cents => {
-                CallCost::metered(cost_cents, rail)
-            }
-            Some(rail) => CallCost::metered_with_ceiling(cost_cents, reserve_ceiling_cents, rail),
-            None => CallCost {
-                cost_cents,
-                reserve_ceiling_cents,
-                rail: None,
-            },
+            .map(Cents::new)
+            .and_then(NonZeroCents::new)
+            .unwrap_or(cost);
+        CallCost::Metered {
+            rail: rail.to_string(),
+            ceiling,
+            settle: SettleSource::Declared(cost.get()),
         }
     }
 }
@@ -428,100 +391,251 @@ impl ServerHandler for GatewayProxy {
         _ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         let tool = request.name.to_string();
-        let cap = Capability::for_tool(&tool);
 
-        // Scope ⊆ parent: the requested capability must lie inside the agent's
-        // granted scope. (On the live wire this is the boolean projection of the
-        // full chain check; the cryptographic per-call proof is carried end-to-end
-        // by the replay gate — see the module docs.)
-        if !self.scope.iter().any(|c| c == cap.as_str()) {
-            return Err(McpError::invalid_request(
-                format!(
-                    "outside-agent-scope: the agent was not granted `{}`",
-                    cap.as_str()
-                ),
-                None,
-            ));
-        }
-
-        // Budget (live wire, D8): enforce the cross-rail cap from the DURABLE
-        // verifier-held CrossRailBudget — the SAME counter the hermetic gate drives —
-        // by pre-authorization. RESERVE this call's ceiling against `available = cap −
-        // settled − Σ(holds)` BEFORE the rail is touched; a reservation that would cross
-        // the cap is refused here (`usage-cap-exceeded`) and the downstream is never
-        // invoked, so the live wire cannot allow a cross-rail call the gate refuses
-        // (#281). On a fitting reservation the actual cost is settled into the monotonic
-        // counter and the slack released.
+        // Canonicalize the call the way the offline audit re-derives it, and SIGN it as the
+        // agent — the per-call proof `verify-spend` re-verifies. The cost/rail are the call's
+        // declared metering; extracting a metered rail's actual cost from its response and
+        // signing a settlement over it is the metered follow-on below.
         let cost = self.call_cost(&request);
-        let outcome = {
-            let mut budget = self.budget.lock().await;
-            enforce_wire_budget(&mut budget, &cost).map_err(|e| {
-                McpError::internal_error(format!("cross-rail budget accounting failed: {e}"), None)
-            })?
+        let args_value = request
+            .arguments
+            .clone()
+            .map(serde_json::Value::Object)
+            .unwrap_or(serde_json::Value::Null);
+        let tool_call = ToolCall {
+            tool: tool.clone(),
+            args: args_value,
+            cost_cents: cost.declared_cost(),
         };
-        if !outcome.forwards() {
-            // Fail-closed: the rail/downstream was never touched. Surface the durable
-            // counter's verdict code (identical to the gate's).
-            return Err(McpError::invalid_request(
-                format!(
-                    "{}: the cross-rail budget cap refused this call before the rail was touched",
-                    outcome.code()
-                ),
+        let capability = tool_call.capability();
+        let canonical = tool_call.canonical_bytes();
+        let idx = self
+            .next_call
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // Link this call to the prior persisted record (the genesis sentinel for the first) via the
+        // signed `Auths-Prev` trailer, so the audit can verify the spend log is a complete chain.
+        let prev_binding = self.prev_binding.lock().await.clone();
+        let (proof_bytes, proof_sha) = self
+            .chain
+            .sign_call(idx, &canonical, capability.as_str(), &prev_binding)
+            .map_err(|e| McpError::internal_error(format!("sign the brokered call: {e}"), None))?;
+
+        // Authenticate + pre-authorize over the SIGNED proof: the gate verifies the proof
+        // (scope ⊆ grant, live, unrevoked) AND reserves the ceiling against the durable
+        // cross-rail counter BEFORE the downstream/rail is touched. A non-Allowed verdict
+        // fails closed here — the downstream is never invoked. This is the SAME
+        // `PerCallGate::judge` the hermetic gate runs, now on the live wire.
+        //
+        // An operator rail with no declared amount (`AmountRequired`) is refused HERE, before the
+        // gate: the charge cannot be bounded, so the only safe outcome is a fail-closed
+        // metered-amount-required — the call is still signed + persisted (below) as a refused record.
+        let now = Utc::now();
+        let decision = match &cost {
+            CallCost::AmountRequired { rail } => {
+                let cumulative = {
+                    let budget = self.budget.lock().await;
+                    budget.settled_cents().map_err(|e| {
+                        McpError::internal_error(format!("read the cross-rail counter: {e}"), None)
+                    })?
+                };
+                Decision {
+                    verdict: Verdict::MeteredAmountRequired { rail: rail.clone() },
+                    cumulative_cents: cumulative,
+                    reserved_cents: Cents::ZERO,
+                    hold: None,
+                    rail: Some(rail.clone()),
+                }
+            }
+            CallCost::Free => {
+                let mut budget = self.budget.lock().await;
+                self.gate
+                    .judge(&Meter::Unmetered, &proof_bytes, now, &mut budget)
+                    .await
+                    .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
+            }
+            CallCost::Metered { rail, ceiling, .. } => {
+                let meter = Meter::Metered {
+                    rail: rail.clone(),
+                    ceiling: *ceiling,
+                };
+                let mut budget = self.budget.lock().await;
+                self.gate
+                    .judge(&meter, &proof_bytes, now, &mut budget)
+                    .await
+                    .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
+            }
+        };
+        // Forward to the downstream ONLY on a forwarding verdict — a refused call never touches
+        // it. Either way the signed proof + receipt are persisted below, so an out-of-scope or
+        // over-budget ATTEMPT is recorded too (not silently dropped), exactly as the replay gate
+        // records it.
+        let mut verdict = decision.verdict.clone();
+        let mut cumulative = decision.cumulative_cents;
+        // For a metered call the rail's response carries the ACTUAL settled cost + reference; these
+        // are filled in from that response below and persisted, so the audit sums the agent-signed
+        // actual — never a number the agent declared.
+        let mut rail_response: Option<Vec<u8>> = None;
+        let mut settlement_commit: Option<Vec<u8>> = None;
+        let mut settled_charge_ref: Option<String> = None;
+        let forwarded = if decision.forwards() {
+            let result = self.downstream.call_tool(request).await.map_err(|e| {
+                McpError::internal_error(format!("downstream tools/call failed: {e}"), None)
+            })?;
+
+            // A metered call's ACTUAL cost comes from its settle source: an operator rail reads it
+            // from the downstream's OWN response (never a number the agent declared) and keeps the
+            // raw response so the offline audit can re-extract + cross-check the agent-signed amount;
+            // a per-call declaration settles exactly the declared cost. A non-metered call holds
+            // nothing, so its settle below is skipped and this amount is unused.
+            let actual_cents = match &cost {
+                CallCost::Metered {
+                    rail,
+                    settle: SettleSource::RailResponse,
+                    ..
+                } => {
+                    let resp = result
+                        .content
+                        .first()
+                        .and_then(|c| c.as_text())
+                        .map(|t| t.text.clone().into_bytes())
+                        .ok_or_else(|| {
+                            McpError::internal_error(
+                                format!("metered `{rail}` call returned no text response to meter"),
+                                None,
+                            )
+                        })?;
+                    let extracted =
+                        auths_mcp_core::extract_rail_cost(rail, &resp).map_err(|e| {
+                            McpError::internal_error(
+                                format!("extract `{rail}` cost from the rail response: {e}"),
+                                None,
+                            )
+                        })?;
+                    rail_response = Some(resp);
+                    settled_charge_ref = Some(extracted.reference);
+                    extracted.amount_cents
+                }
+                CallCost::Metered {
+                    settle: SettleSource::Declared(declared),
+                    ..
+                } => *declared,
+                CallCost::Free | CallCost::AmountRequired { .. } => Cents::ZERO,
+            };
+
+            // Settle the ACTUAL cost into the durable counter, releasing the reservation slack.
+            if let Some(hold) = decision.hold {
+                let mut budget = self.budget.lock().await;
+                let (settle_verdict, new_cumulative) = self
+                    .gate
+                    .settle(&mut budget, hold, actual_cents)
+                    .map_err(|e| {
+                        McpError::internal_error(
+                            format!("settle the cross-rail counter: {e}"),
+                            None,
+                        )
+                    })?;
+                verdict = settle_verdict;
+                cumulative = new_cumulative;
+            }
+
+            // Sign a settlement commit anchoring the agent-signed actual cost, bound to THIS call by
+            // the hash of its proof, so the audit cannot be handed a settlement from another call.
+            if let (Some(rail), Some(charge_ref)) = (cost.rail(), settled_charge_ref.as_deref())
+                && !actual_cents.is_zero()
+            {
+                let (bytes, _sha) = self
+                    .chain
+                    .sign_settlement(
+                        idx,
+                        &auths_mcp_core::call_commit_binding(&proof_bytes),
+                        rail,
+                        actual_cents,
+                        charge_ref,
+                        cumulative,
+                    )
+                    .map_err(|e| {
+                        McpError::internal_error(format!("sign the settlement: {e}"), None)
+                    })?;
+                settlement_commit = Some(bytes);
+            }
+            Some(result)
+        } else {
+            None
+        };
+
+        // Persist the SIGNED per-call record (forwarded OR refused) so `verify-spend` re-derives
+        // the spend — and the refusals — offline, trusting neither this gateway nor its operator.
+        // (The agent-signed settlement of a metered rail's actual cost rides on the live
+        // rail-response extraction, a follow-on.)
+        let receipt = Receipt::for_call(
+            &self.chain.agent_did,
+            &self.chain.root_did,
+            &tool_call,
+            &proof_sha,
+            verdict.clone(),
+            cost.rail(),
+            settled_charge_ref.as_deref(),
+            decision.reserved_cents,
+            cumulative,
+            now,
+        );
+        // This record's binding — what the NEXT call's `Auths-Prev` links to. Computed from the
+        // bytes about to be stored, before they move into the record.
+        let new_binding = auths_mcp_core::call_commit_binding(&proof_bytes);
+        if let Err(e) = crate::spend_log::append(
+            self.chain.org_repo(),
+            &self.chain.agent_did,
+            &SpendLogRecord {
+                call_commit: proof_bytes,
+                receipt,
+                rail: cost.rail().map(str::to_string),
+                rail_response,
+                settlement_commit,
+                // The facilitator attestation is not captured on the live wire yet (a follow-on); the
+                // offline audit runs without it.
+                rail_attestation: None,
+            },
+        ) {
+            return Err(McpError::internal_error(
+                format!("persist the signed spend-log record: {e}"),
                 None,
             ));
         }
+        // Advance the chain head so the next brokered call links to this record.
+        *self.prev_binding.lock().await = new_binding;
 
-        // Forward to the real downstream and return its real result.
-        let result = self.downstream.call_tool(request).await.map_err(|e| {
-            McpError::internal_error(format!("downstream tools/call failed: {e}"), None)
-        })?;
-
-        let cross_rail_cumulative = match outcome {
-            WireBudgetOutcome::Allowed {
-                cross_rail_cumulative_cents,
-            } => cross_rail_cumulative_cents,
-            _ => unreachable!("a non-forwarding outcome returned above"),
-        };
         let rail_tag = cost
-            .rail
-            .as_deref()
+            .rail()
             .map(|r| format!(" rail={r}"))
             .unwrap_or_default();
-        eprintln!(
-            "auths-mcp-gateway: brokered tools/call `{tool}`{rail_tag} (cap={}) — forwarded, \
-             receipted; cross-rail settled total now ${}.{:02} (durable verifier-held counter, \
-             summed across ALL rails)",
-            cap.as_str(),
-            cross_rail_cumulative / 100,
-            cross_rail_cumulative % 100,
-        );
-        Ok(result)
+        let proof_short = &proof_sha[..proof_sha.len().min(12)];
+        match forwarded {
+            Some(result) => {
+                eprintln!(
+                    "auths-mcp-gateway: brokered + SIGNED tools/call `{tool}`{rail_tag} (cap={}) — \
+                     forwarded; cross-rail settled total ${}.{:02}; proof={proof_short}",
+                    capability.as_str(),
+                    cumulative.get() / 100,
+                    cumulative.get() % 100,
+                );
+                Ok(result)
+            }
+            None => {
+                eprintln!(
+                    "auths-mcp-gateway: REFUSED + SIGNED tools/call `{tool}`{rail_tag} ({}) — \
+                     downstream NOT touched; proof={proof_short}",
+                    verdict.code(),
+                );
+                Err(McpError::invalid_request(
+                    format!(
+                        "{}: the per-call gate refused this call before the downstream was touched",
+                        verdict.code()
+                    ),
+                    None,
+                ))
+            }
+        }
     }
-}
-
-/// Spawn the wrapped downstream as a credentialed child with the custodied secret
-/// injected from the GATEWAY, and return its stdout — the §12 brokered path proven
-/// directly: the gateway supplies a downstream credential the agent never held.
-///
-/// This is the custody self-check the gateway runs before it serves MCP up to the
-/// agent when it custodies a downstream credential. It demonstrates that the
-/// brokered path (gateway → downstream, credential injected) reaches the
-/// credentialed resource, while the same downstream invoked WITHOUT the gateway
-/// (the agent's bypass) lacks the credential and is refused by the downstream
-/// itself. The custodied secret is injected only into this child's environment; it
-/// is never logged, echoed, or placed in the gateway's own surfaced output.
-async fn brokered_custody_check(
-    downstream: &[String],
-    custody: &CustodyVault,
-) -> anyhow::Result<std::process::Output> {
-    let mut command = tokio::process::Command::new(&downstream[0]);
-    command.args(&downstream[1..]);
-    // Inject the custodied credential into the downstream child from the gateway.
-    custody.inject(&mut command);
-    command
-        .output()
-        .await
-        .map_err(|e| anyhow::anyhow!("spawn downstream `{}`: {e}", downstream.join(" ")))
 }
 
 /// Resolve the payment mode and DISCLOSE it before any rail is touched — the safety
@@ -599,56 +713,27 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let cap_cents = cfg
-        .budget
-        .as_deref()
-        .map(Budget::parse)
-        .unwrap_or(Budget::Cents(u64::MAX))
-        .cap_cents();
+    // A PRESENT budget must parse — a malformed `--budget` is refused fail-closed, never silently
+    // treated as an unbounded cap (a payment wrap with no budget was already refused above). Only an
+    // ABSENT budget on a non-payment wrap is the deliberate unbounded cap.
+    let cap_cents = match cfg.budget.as_deref() {
+        Some(raw) => Budget::parse(raw)
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .cap_cents(),
+        None => Budget::unbounded().cap_cents(),
+    };
 
-    // Custody self-check (PRD §12): if the gateway custodies a downstream
-    // credential, prove the brokered path reaches the credentialed downstream WITH
-    // the injected secret before serving the agent. The credential is sourced from
-    // the gateway and injected into the downstream child's environment; the agent
-    // (and the agent-visible MCP wire) never holds it. We surface only the
-    // downstream's own result — NEVER the secret. A bypass (the same downstream
-    // invoked without the gateway) lacks the credential and the downstream refuses
-    // it; that half is unbypassable by construction of the credentialed resource.
+    // If the gateway custodies a downstream credential, audit which credential(s) by NAME (never
+    // the value). The secret is injected into the long-lived downstream child spawned below — the
+    // agent, and the agent-visible MCP wire, never hold it.
+    // A bypass (the same downstream invoked WITHOUT the gateway) lacks the credential and the
+    // downstream refuses it; that half is unbypassable by construction of the credentialed resource.
     if cfg.custody.is_armed() {
-        // Audit which credential is custodied — by NAME only, never the value.
         eprintln!(
             "auths-mcp-gateway: custody armed — gateway holds downstream credential(s) {:?}; \
              the agent connects with only its delegation and never sees the secret",
             cfg.custody.names(),
         );
-        let out = brokered_custody_check(&cfg.downstream, &cfg.custody).await?;
-        // Forward the downstream's own stdout (its real result) to the brokered
-        // surface so a caller observes the credentialed downstream was reached
-        // THROUGH the gateway. The secret is not in this stream — only the
-        // downstream's response is.
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let stdout = stdout.trim_end();
-        if !out.status.success() {
-            // The downstream refused even WITH the gateway's credential — surface
-            // its refusal (stderr), not the secret. This is a downstream/config
-            // problem, not a custody bypass.
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            anyhow::bail!(
-                "brokered custody check: downstream refused even with the custodied credential: {}",
-                stderr.trim_end()
-            );
-        }
-        println!(
-            "auths-mcp-gateway: brokered (custodied credential injected) → downstream reached: {stdout}"
-        );
-        // The preflight ran the downstream to completion (exit 0) with the
-        // custodied credential injected — a one-shot credentialed tool, not a
-        // long-lived MCP server. The brokered custody path is proven; there is no
-        // persistent server to proxy, so return. (A long-lived MCP-over-stdio
-        // server would not be wrapped through this one-shot preflight surface — it
-        // is served below, with the same credential injected into the proxied
-        // child, which is the always-on §12 mechanism.)
-        return Ok(());
     }
 
     // 1. Connect DOWN to the wrapped downstream MCP server (spawned over stdio),
@@ -673,29 +758,80 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         cfg.ttl,
     );
 
-    // Open the DURABLE cross-rail budget the live wire enforces against — the SAME
-    // verifier-held CrossRailBudget (D8) the hermetic gate drives: the monotonic SETTLED
-    // counter persisted under `<repo>/budget-ledger`, keyed to the agent delegation,
-    // summed across all rails, plus the transient reserved holds. This replaces the v0
-    // in-memory per-session tally, so the live `wrap` wire cannot allow a cross-rail call
-    // the gate refuses (#281).
-    let repo = verifier_repo_path();
-    let delegation = wire_delegation_key(&cfg);
-    let budget = CrossRailBudget::open(&repo, &delegation, cap_cents)
-        .map_err(|e| anyhow::anyhow!("open durable cross-rail budget counter: {e}"))?;
+    // Build the agent's delegation chain (its delegated signing key + the registry the
+    // verifier replays) so every brokered call is signed on the live wire exactly as the
+    // hermetic gate signs it. The agent also holds a narrow `settle` capability to sign its
+    // own settlement commits. The gate resolves the agent + delegator KELs from the chain's
+    // registry — the same resolution `verify-spend` runs offline over the persisted log.
+    // The chain is built BEFORE the budget so the durable counter can be keyed to the REAL
+    // agent delegation under the chain's own registry — the same place the spend log and the
+    // printed verify-spend command point — so the offline audit opens the counter the wire advanced.
+    let lab = live_chain_dir();
+    std::fs::create_dir_all(&lab)
+        .map_err(|e| anyhow::anyhow!("create the live signing directory {lab:?}: {e}"))?;
+    let mut signing_scope = cfg.scope.clone();
+    if !signing_scope.iter().any(|c| c == "settle") {
+        signing_scope.push("settle".to_string());
+    }
+    let chain = crate::chain::Chain::build(&lab, &signing_scope)
+        .map_err(|e| anyhow::anyhow!("build the agent delegation chain for live signing: {e}"))?;
+    let registry =
+        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(chain.org_repo()));
+    let gate = auths_mcp_core::PerCallGate::resolve(&registry, &chain.agent_did, &chain.root_did)
+        .map_err(|e| {
+        anyhow::anyhow!("resolve the per-call gate over the live registry: {e}")
+    })?;
+
+    // Open the DURABLE cross-rail budget the live wire enforces against — the SAME verifier-held
+    // CrossRailBudget (D8) the hermetic gate drives: the monotonic SETTLED counter (summed across
+    // all rails) plus the transient reserved holds. It is LOCATED by a CounterRef derived from the
+    // chain's registry + the real agent `did:keri:`, so the standalone `verify-spend` (handed the
+    // same --registry/--agent the wire prints below) opens the SAME counter — no separate verifier
+    // repo, no session-key sentinel.
+    let counter = auths_mcp_core::CounterRef::for_agent(chain.org_repo(), &chain.agent_did)
+        .map_err(|e| anyhow::anyhow!("locate the durable cross-rail counter: {e}"))?;
+    let budget = counter.open_budget(cap_cents);
     eprintln!(
         "auths-mcp-gateway: budget enforced from the DURABLE verifier-held cross-rail counter \
-         (budget-ledger under {repo:?}, keyed to the agent delegation, one ${cap}.{rem:02} cap \
-         summed across ALL rails) — the SAME counter the hermetic gate uses",
-        repo = repo,
-        cap = cap_cents / 100,
-        rem = cap_cents % 100,
+         ({record:?}, keyed to the agent delegation, one ${cap}.{rem:02} cap summed across ALL \
+         rails) — the SAME counter the hermetic gate and the offline verify-spend open",
+        record = counter.record_path(),
+        cap = cap_cents.get() / 100,
+        rem = cap_cents.get() % 100,
     );
+
+    let spend_log = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
+    eprintln!(
+        "auths-mcp-gateway: live-wire signing ON — agent={} root={}; every brokered call is signed. \
+         Re-verify the spend log offline (trusting neither this gateway nor its operator) with:",
+        chain.agent_did, chain.root_did,
+    );
+    eprintln!(
+        "auths-mcp-gateway: verify-spend-cmd: verify-spend --log {} --registry {} --agent {} --root {}",
+        spend_log.display(),
+        chain.org_repo().display(),
+        chain.agent_did,
+        chain.root_did,
+    );
+
+    // Continue the spend log's hash chain across restarts: the first call this session signs links
+    // its `Auths-Prev` to the LAST record already on disk (or the genesis sentinel for a fresh log).
+    let prev_binding = match auths_mcp_core::read_spend_log(&spend_log) {
+        Ok(records) => records
+            .last()
+            .map(|r| auths_mcp_core::call_commit_binding(&r.call_commit))
+            .unwrap_or_else(|| auths_mcp_core::SPEND_LOG_GENESIS.to_string()),
+        Err(_) => auths_mcp_core::SPEND_LOG_GENESIS.to_string(),
+    };
 
     let proxy = GatewayProxy {
         downstream,
-        scope: cfg.scope,
         budget: Arc::new(Mutex::new(budget)),
+        chain: Arc::new(chain),
+        gate: Arc::new(gate),
+        next_call: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        rail: cfg.rail,
+        prev_binding: Arc::new(Mutex::new(prev_binding)),
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.
@@ -761,203 +897,5 @@ mod tests {
         let err = CustodyVault::from_specs(&[absent.to_string()]).unwrap_err();
         assert!(err.contains(absent));
         assert!(err.contains("no value"));
-    }
-
-    // ── Live-wire ↔ gate cross-rail counter parity (#281) ────────────────────────
-    //
-    // A RUNTIME parity test proving the live `wrap` path's budget enforcement
-    // (`enforce_wire_budget`) and the hermetic gate's budget path
-    // (`PerCallGate::judge`/`settle`) — both sourced from the SAME durable
-    // `CrossRailBudget` — produce the SAME verdict stream for the same cross-rail call
-    // sequence. The actual decisions, not a binary-string signature.
-
-    use auths_mcp_core::Verdict;
-    use auths_mcp_core::budget::CrossRailBudget;
-
-    const DLG: &str = "did:keri:EAgentDelegationMCP8";
-
-    /// The cross-rail sequence (the identical sequence the gate's transcript drives):
-    /// $5 cap, stripe $3.00 + x402 $1.50, then the $0.60 x402 call that crosses $5.10
-    /// ACROSS rails. Returns `(CallCost, expected-verdict-code)`.
-    fn cross_rail_sequence() -> [(CallCost, &'static str); 3] {
-        [
-            (CallCost::metered(300, "stripe"), "allowed"),
-            (CallCost::metered(150, "x402"), "allowed"),
-            (CallCost::metered(60, "x402"), "usage-cap-exceeded"),
-        ]
-    }
-
-    /// The verdict code the GATE derives for one paid call against the durable
-    /// `CrossRailBudget`, by exactly the reserve→settle mapping `gate.rs` uses
-    /// (`ReserveOutcome::Refused` → `UsageCapExceeded`; on a reservation that fits,
-    /// `SettleOutcome::Advanced` → `Allowed`, `RolledBack` → `UsageCounterRolledBack`).
-    /// This mirrors `PerCallGate`'s budget half without the KEL/proof machinery — the
-    /// authenticity leg is exercised by the replay gate; here we isolate the COUNTER.
-    fn gate_budget_verdict(budget: &mut CrossRailBudget, cost: &CallCost) -> Verdict {
-        let ceiling = cost.reserve_ceiling_cents.max(cost.cost_cents);
-        if ceiling == 0 {
-            return Verdict::Allowed;
-        }
-        match budget.reserve(ceiling).unwrap() {
-            ReserveOutcome::Refused {
-                cap_cents,
-                would_be_cents,
-            } => Verdict::UsageCapExceeded {
-                cap_cents,
-                would_be_cents,
-            },
-            ReserveOutcome::Reserved { hold, .. } => {
-                match budget.settle(hold, cost.cost_cents).unwrap() {
-                    SettleOutcome::Advanced { .. } => Verdict::Allowed,
-                    SettleOutcome::RolledBack {
-                        presented_cents,
-                        high_water_cents,
-                    } => Verdict::UsageCounterRolledBack {
-                        presented_cents,
-                        high_water_cents,
-                    },
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn wire_budget_matches_gate_for_cross_rail_sequence() {
-        // The headline #281 parity: the live wrap path's `enforce_wire_budget` and the
-        // gate's budget path produce the SAME verdict stream for the identical cross-rail
-        // sequence, BOTH driving an independent durable `CrossRailBudget` opened the same
-        // way. Real runtime parity, not the binary-string signature.
-        let seq = cross_rail_sequence();
-
-        // Live wrap path, against its own durable cross-rail counter.
-        let wire_dir = tempfile::tempdir().unwrap();
-        let mut wire_budget = CrossRailBudget::open(wire_dir.path(), DLG, 500).unwrap();
-        let wire: Vec<String> = seq
-            .iter()
-            .map(|(cost, _)| {
-                enforce_wire_budget(&mut wire_budget, cost)
-                    .unwrap()
-                    .code()
-                    .to_string()
-            })
-            .collect();
-
-        // Gate path, against an independent durable cross-rail counter opened identically.
-        let gate_dir = tempfile::tempdir().unwrap();
-        let mut gate_budget = CrossRailBudget::open(gate_dir.path(), DLG, 500).unwrap();
-        let gate: Vec<String> = seq
-            .iter()
-            .map(|(cost, _)| {
-                gate_budget_verdict(&mut gate_budget, cost)
-                    .code()
-                    .to_string()
-            })
-            .collect();
-
-        // 1. The wrap path's verdicts equal the gate's verdicts, call for call.
-        assert_eq!(
-            wire, gate,
-            "live-wire budget verdicts diverged from the gate's for the same cross-rail sequence \
-             (#281): the live wrap path is NOT enforcing from the same durable counter"
-        );
-        // 2. And both equal the reference verdict stream for this sequence.
-        let expected: Vec<&str> = seq.iter().map(|(_, code)| *code).collect();
-        assert_eq!(
-            wire, expected,
-            "wrap path did not produce the reference stream"
-        );
-        assert_eq!(gate, expected, "gate did not produce the reference stream");
-        // 3. The durable counter settled exactly $4.50 across BOTH rails (the cross-over
-        //    is refused before the rail is touched — settled is unchanged by it).
-        assert_eq!(wire_budget.settled_cents().unwrap(), 450);
-        assert_eq!(gate_budget.settled_cents().unwrap(), 450);
-    }
-
-    #[test]
-    fn wire_budget_is_durable_and_cross_rail() {
-        // The counter is durable (verifier-held under budget-ledger), not a RAM tally:
-        // a resumed wrap session over the SAME ledger continues from the persisted
-        // high-water, so a later cross-rail call is refused even though THIS session's
-        // first call alone is in budget — the property a per-session in-memory guard
-        // (the replaced v0) cannot express.
-        let dir = tempfile::tempdir().unwrap();
-        // Session A: settle $3.00 (stripe) + $1.50 (x402) = $4.50 across rails.
-        {
-            let mut b = CrossRailBudget::open(dir.path(), DLG, 500).unwrap();
-            assert_eq!(
-                enforce_wire_budget(&mut b, &CallCost::metered(300, "stripe"))
-                    .unwrap()
-                    .code(),
-                "allowed"
-            );
-            assert_eq!(
-                enforce_wire_budget(&mut b, &CallCost::metered(150, "x402"))
-                    .unwrap()
-                    .code(),
-                "allowed"
-            );
-        }
-        // Session B (a fresh wrap, fresh in-memory state) over the SAME durable ledger:
-        // a $0.60 x402 call crosses $5.10 across rails and is refused from the PERSISTED
-        // high-water — proof the source is durable, not per-session RAM.
-        {
-            let mut b = CrossRailBudget::open(dir.path(), DLG, 500).unwrap();
-            assert_eq!(
-                b.settled_cents().unwrap(),
-                450,
-                "resumed from durable counter"
-            );
-            let outcome = enforce_wire_budget(&mut b, &CallCost::metered(60, "x402")).unwrap();
-            assert_eq!(outcome.code(), "usage-cap-exceeded");
-            assert!(matches!(
-                outcome,
-                WireBudgetOutcome::UsageCapExceeded {
-                    cap_cents: 500,
-                    would_be_cents: 510
-                }
-            ));
-        }
-    }
-
-    #[test]
-    fn wire_budget_releases_slack_like_the_gate() {
-        // A call reserving a $2.00 ceiling but settling $1.50 releases the $0.50 slack —
-        // a later in-budget call is not starved (the gate's reserve/settle/release flow,
-        // now the live wire's too).
-        let dir = tempfile::tempdir().unwrap();
-        let mut b = CrossRailBudget::open(dir.path(), DLG, 500).unwrap();
-        // $3.00 stripe.
-        enforce_wire_budget(&mut b, &CallCost::metered(300, "stripe")).unwrap();
-        // Over-reserve $2.00 ceiling, settle $1.50 actual.
-        let over = CallCost {
-            cost_cents: 150,
-            reserve_ceiling_cents: 200,
-            rail: Some("x402".into()),
-        };
-        assert_eq!(
-            enforce_wire_budget(&mut b, &over).unwrap().code(),
-            "allowed"
-        );
-        // settled = 450; the $0.50 slack came back, so a $0.50 call still fits exactly.
-        assert_eq!(b.settled_cents().unwrap(), 450);
-        assert_eq!(b.available_cents().unwrap(), 50);
-        assert_eq!(
-            enforce_wire_budget(&mut b, &CallCost::metered(50, "stripe"))
-                .unwrap()
-                .code(),
-            "allowed"
-        );
-    }
-
-    #[test]
-    fn non_metered_call_reserves_and_settles_nothing() {
-        // A free call (e.g. fs.read) touches no rail and the durable counter is unchanged
-        // — same as the gate's `reserve_ceiling == 0` path.
-        let dir = tempfile::tempdir().unwrap();
-        let mut b = CrossRailBudget::open(dir.path(), DLG, 500).unwrap();
-        let out = enforce_wire_budget(&mut b, &CallCost::free()).unwrap();
-        assert_eq!(out.code(), "allowed");
-        assert_eq!(b.settled_cents().unwrap(), 0);
-        assert_eq!(b.reserved_cents(), 0);
     }
 }

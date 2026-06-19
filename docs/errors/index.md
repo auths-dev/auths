@@ -356,6 +356,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E6104](AUTHS-E6104.md) | `auths-sdk` | `CredentialError::KtThresholdUnsupported` | issuer is multi-signature (kt≥2); credential anchoring is single-author only |
 | [AUTHS-E6105](AUTHS-E6105.md) | `auths-sdk` | `CredentialError::SchemaUnknown` | capability schema unknown or uncomputable |
 | [AUTHS-E6106](AUTHS-E6106.md) | `auths-sdk` | `CredentialError::StaleOrUnresolvable` | credential status is stale or unresolvable: {reason} |
+| [AUTHS-E6107](AUTHS-E6107.md) | `auths-sdk` | `CredentialError::MalformedUsageCap` | malformed quantitative usage cap '{cap}': a calls: capability must carry a non-negative integer bound (e.g. calls:3) |
 | [AUTHS-E8001](AUTHS-E8001.md) | `auths-oidc-port` | `OidcError::JwtDecode` | JWT decode failed: {0} |
 | [AUTHS-E8002](AUTHS-E8002.md) | `auths-oidc-port` | `OidcError::SignatureVerificationFailed` | signature verification failed |
 | [AUTHS-E8003](AUTHS-E8003.md) | `auths-oidc-port` | `OidcError::ClaimsValidationFailed` | claim validation failed - {claim}: {reason} |
