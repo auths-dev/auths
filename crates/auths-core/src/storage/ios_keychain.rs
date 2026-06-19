@@ -233,9 +233,12 @@ impl KeyStorage for IOSKeychain {
         };
 
         debug!("Successfully loaded key for alias '{}'", alias);
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: loaded from iOS Keychain which stores validated DIDs
-        Ok((IdentityDID::new_unchecked(identity_did_str), role, key_data))
+        let identity_did = IdentityDID::parse(&identity_did_str).map_err(|e| {
+            AgentError::SecurityError(format!(
+                "keychain item for '{alias}' has a malformed identity DID: {e}"
+            ))
+        })?;
+        Ok((identity_did, role, key_data))
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
@@ -459,9 +462,11 @@ impl KeyStorage for IOSKeychain {
         })?;
 
         debug!("Found identity DID for alias '{}'", alias);
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: loaded from iOS Keychain which stores validated DIDs
-        Ok(IdentityDID::new_unchecked(identity_did))
+        IdentityDID::parse(&identity_did).map_err(|e| {
+            AgentError::SecurityError(format!(
+                "keychain item for '{alias}' has a malformed identity DID: {e}"
+            ))
+        })
     }
 
     fn backend_name(&self) -> &'static str {

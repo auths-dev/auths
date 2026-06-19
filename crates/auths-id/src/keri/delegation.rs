@@ -190,9 +190,7 @@ pub fn build_device_dip(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: device_prefix is from finalize_dip_event, a valid did:keri prefix.
-    let device_did = IdentityDID::new_unchecked(format!("did:keri:{}", device_prefix));
+    let device_did = crate::keri::types::prefix_to_did(&device_prefix);
 
     Ok(DeviceDipBundle {
         dip,
@@ -278,9 +276,7 @@ pub fn anchor_received_dip(
         .append_signed_event(&device_prefix, &Event::Dip(anchored_dip), &attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: device_prefix is from a validated dip, a valid did:keri prefix.
-    let device_did = IdentityDID::new_unchecked(format!("did:keri:{}", device_prefix));
+    let device_did = crate::keri::types::prefix_to_did(&device_prefix);
     Ok((device_did, anchor_ixn))
 }
 
@@ -1025,9 +1021,7 @@ pub fn rotate_delegated_device(
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
     // Persist the device's new current (the revealed key) + fresh next.
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: device_prefix is a valid did:keri prefix.
-    let device_did = IdentityDID::new_unchecked(format!("did:keri:{}", device_prefix));
+    let device_did = crate::keri::types::prefix_to_did(device_prefix);
     let store_pass = passphrase_provider.get_passphrase(&format!(
         "Create passphrase for rotated device key '{}':",
         device_alias

@@ -228,7 +228,12 @@ impl KeyStorage for WindowsCredentialStorage {
             .decode(&password)
             .map_err(|e| AgentError::StorageError(format!("Invalid key encoding: {}", e)))?;
 
-        Ok((IdentityDID::new_unchecked(identity_did), role, key_data))
+        let parsed_did = IdentityDID::parse(&identity_did).map_err(|e| {
+            AgentError::SecurityError(format!(
+                "credential store entry has a malformed identity DID: {e}"
+            ))
+        })?;
+        Ok((parsed_did, role, key_data))
     }
 
     fn delete_key(&self, alias: &KeyAlias) -> Result<(), AgentError> {
@@ -284,11 +289,12 @@ impl KeyStorage for WindowsCredentialStorage {
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
         let alias = alias.as_str();
         let index = self.load_index();
-        index
-            .aliases
-            .get(alias)
-            .map(|entry| IdentityDID::new_unchecked(entry.did().to_string()))
-            .ok_or(AgentError::KeyNotFound)
+        let entry = index.aliases.get(alias).ok_or(AgentError::KeyNotFound)?;
+        IdentityDID::parse(entry.did()).map_err(|e| {
+            AgentError::SecurityError(format!(
+                "credential store entry has a malformed identity DID: {e}"
+            ))
+        })
     }
 
     fn backend_name(&self) -> &'static str {

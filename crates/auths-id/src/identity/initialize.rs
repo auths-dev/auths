@@ -201,9 +201,7 @@ pub fn initialize_registry_identity(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format
-    let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
+    let controller_did = crate::keri::types::prefix_to_did(&prefix);
 
     // Keys land first, then the registry append is the commit point. A failure
     // at any step rolls back the keys already stored, so a failed init leaves
@@ -366,9 +364,7 @@ fn incept_with_hardware_keys(
         .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format
-    let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
+    let controller_did = crate::keri::types::prefix_to_did(&prefix);
 
     keychain.rebind_identity(local_key_alias, &controller_did)?;
     keychain.rebind_identity(next_alias, &controller_did)?;
@@ -476,9 +472,7 @@ pub fn initialize_registry_identity_multi(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: prefix is from finalize_icp_event, guaranteed valid did:keri format.
-    let controller_did = IdentityDID::new_unchecked(format!("did:keri:{}", prefix));
+    let controller_did = crate::keri::types::prefix_to_did(&prefix);
 
     let is_hardware_backend = keychain.is_hardware_backend();
     // One passphrase for every slot — prompt once, not once per device slot.

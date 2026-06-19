@@ -271,6 +271,41 @@ impl TryFrom<String> for IdentityDID {
     }
 }
 
+/// Builds an `IdentityDID` from a validated KERI [`Prefix`].
+///
+/// A `Prefix` may still be empty (the placeholder used during event construction),
+/// which is not a legal identity identifier — that one case is rejected as
+/// [`DidParseError::EmptyIdentifier`]. Every non-empty prefix yields `did:keri:{prefix}`.
+/// This is the single door that replaces hand-built
+/// `IdentityDID::new_unchecked(format!("did:keri:{prefix}"))` round-trips.
+///
+/// Args:
+/// * `prefix`: A KERI identity prefix.
+///
+/// Usage:
+/// ```rust
+/// # use auths_verifier::IdentityDID;
+/// # use auths_keri::Prefix;
+/// let prefix = Prefix::new("EOrg123".to_string()).unwrap();
+/// let did = IdentityDID::try_from(&prefix).unwrap();
+/// assert_eq!(did.as_str(), "did:keri:EOrg123");
+/// ```
+impl TryFrom<&auths_keri::Prefix> for IdentityDID {
+    type Error = DidParseError;
+
+    fn try_from(prefix: &auths_keri::Prefix) -> Result<Self, Self::Error> {
+        Self::from_prefix(prefix.as_str())
+    }
+}
+
+impl TryFrom<auths_keri::Prefix> for IdentityDID {
+    type Error = DidParseError;
+
+    fn try_from(prefix: auths_keri::Prefix) -> Result<Self, Self::Error> {
+        Self::from_prefix(prefix.as_str())
+    }
+}
+
 impl From<IdentityDID> for String {
     fn from(did: IdentityDID) -> String {
         did.0
@@ -704,7 +739,23 @@ impl FromStr for AssuranceLevel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use auths_keri::Said;
+    use auths_keri::{Prefix, Said};
+
+    #[test]
+    fn identity_did_from_validated_prefix() {
+        let prefix = Prefix::new_unchecked("EOrg123".to_string());
+        let did = IdentityDID::try_from(&prefix).expect("non-empty prefix converts");
+        assert_eq!(did.as_str(), "did:keri:EOrg123");
+    }
+
+    #[test]
+    fn identity_did_try_from_rejects_empty_prefix() {
+        let empty = Prefix::default();
+        assert!(matches!(
+            IdentityDID::try_from(&empty),
+            Err(DidParseError::EmptyIdentifier)
+        ));
+    }
 
     #[test]
     fn report_without_witness_quorum_deserializes() {
