@@ -211,12 +211,18 @@ pub fn extract_x402(response_bytes: &[u8]) -> Result<ExtractedCost, RailError> {
     }
 
     // maxAmountRequired is ATOMIC USDC (6 decimals) as a decimal string.
-    let atomic = AtomicUsdc::new(parsed.requirements.max_amount_required.parse().map_err(|e| {
-        RailError::MissingField(format!(
-            "x402 maxAmountRequired `{}` is not a non-negative atomic-USDC integer: {e}",
-            parsed.requirements.max_amount_required
-        ))
-    })?);
+    let atomic = AtomicUsdc::new(
+        parsed
+            .requirements
+            .max_amount_required
+            .parse()
+            .map_err(|e| {
+                RailError::MissingField(format!(
+                    "x402 maxAmountRequired `{}` is not a non-negative atomic-USDC integer: {e}",
+                    parsed.requirements.max_amount_required
+                ))
+            })?,
+    );
 
     // atomic-USDC → cents, exact only: a sub-cent residue is refused so the metered cost equals the
     // settled amount exactly (never silently truncated).
@@ -272,7 +278,8 @@ mod tests {
     fn extracts_amount_captured_and_charge_id_from_the_response() {
         let cost = extract_stripe(STRIPE_CHARGE_3USD.as_bytes()).unwrap();
         assert_eq!(
-            cost.amount_cents, Cents::new(300),
+            cost.amount_cents,
+            Cents::new(300),
             "the cost is read from amount_captured"
         );
         assert_eq!(cost.rail, "stripe");
@@ -349,7 +356,8 @@ mod tests {
         // 1500000 atomic USDC (6 decimals) → 1.50 USDC → 150 cents; reference is the tx.
         let cost = extract_x402(X402_SETTLE_150C.as_bytes()).unwrap();
         assert_eq!(
-            cost.amount_cents, Cents::new(150),
+            cost.amount_cents,
+            Cents::new(150),
             "atomic-USDC → cents: 1500000 / 10000 = 150"
         );
         assert_eq!(cost.rail, "x402");
@@ -366,7 +374,11 @@ mod tests {
         // from the RESPONSE, so an agent that under-declared cannot change it.
         let small = X402_SETTLE_150C.replace("\"1500000\"", "\"600000\"");
         let cost = extract_x402(small.as_bytes()).unwrap();
-        assert_eq!(cost.amount_cents, Cents::new(60), "600000 / 10000 = 60 cents");
+        assert_eq!(
+            cost.amount_cents,
+            Cents::new(60),
+            "600000 / 10000 = 60 cents"
+        );
     }
 
     #[test]

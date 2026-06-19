@@ -360,6 +360,7 @@ AUTHS-E6103 = auths-sdk::CredentialError::AlreadyRevoked
 AUTHS-E6104 = auths-sdk::CredentialError::KtThresholdUnsupported
 AUTHS-E6105 = auths-sdk::CredentialError::SchemaUnknown
 AUTHS-E6106 = auths-sdk::CredentialError::StaleOrUnresolvable
+AUTHS-E6107 = auths-sdk::CredentialError::MalformedUsageCap
 AUTHS-E8001 = auths-oidc-port::OidcError::JwtDecode
 AUTHS-E8002 = auths-oidc-port::OidcError::SignatureVerificationFailed
 AUTHS-E8003 = auths-oidc-port::OidcError::ClaimsValidationFailed

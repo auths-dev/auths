@@ -342,9 +342,15 @@ impl Chain {
                 .args(["--trailer", &format!("Auths-Settle-Rail:{rail}")])
                 // The settled cost/cumulative are stamped as raw cent integers (the audit parses
                 // them back with `parse::<u64>()`) — unwrap Cents at this trailer-format boundary.
-                .args(["--trailer", &format!("Auths-Settle-Cents:{}", actual_cents.get())])
+                .args([
+                    "--trailer",
+                    &format!("Auths-Settle-Cents:{}", actual_cents.get()),
+                ])
                 .args(["--trailer", &format!("Auths-Settle-Ref:{rail_ref}")])
-                .args(["--trailer", &format!("Auths-Settle-Cumulative:{}", cumulative_cents.get())])
+                .args([
+                    "--trailer",
+                    &format!("Auths-Settle-Cumulative:{}", cumulative_cents.get()),
+                ])
                 .current_dir(&work),
             "git commit (settlement, signed cost trailers)",
         )?;

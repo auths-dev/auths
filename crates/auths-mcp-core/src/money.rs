@@ -16,9 +16,7 @@ use serde::{Deserialize, Serialize};
 /// A monetary amount in whole cents — the canonical money unit. Serializes transparently as its
 /// inner number, so the spend-log and receipt JSON shape is unchanged. No `Default`: a zero amount
 /// is written explicitly with [`Cents::ZERO`], never conjured by a derive.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Cents(u64);
 
@@ -148,22 +146,37 @@ mod tests {
 
     #[test]
     fn cents_add_saturates_not_wraps() {
-        assert_eq!(Cents::new(u64::MAX).saturating_add(Cents::new(10)), Cents::new(u64::MAX));
+        assert_eq!(
+            Cents::new(u64::MAX).saturating_add(Cents::new(10)),
+            Cents::new(u64::MAX)
+        );
         assert_eq!(Cents::new(u64::MAX).checked_add(Cents::new(1)), None);
     }
 
     #[test]
     fn nonzero_cents_rejects_zero() {
         assert!(NonZeroCents::new(Cents::ZERO).is_none());
-        assert_eq!(NonZeroCents::new(Cents::new(3)).map(|c| c.get()), Some(Cents::new(3)));
+        assert_eq!(
+            NonZeroCents::new(Cents::new(3)).map(|c| c.get()),
+            Some(Cents::new(3))
+        );
     }
 
     #[test]
     fn atomic_usdc_ceiling_and_exact() {
-        assert_eq!(AtomicUsdc::new(1_500_000).to_cents_ceiling(), Cents::new(150));
-        assert_eq!(AtomicUsdc::new(1_500_000).to_cents_exact(), Some(Cents::new(150)));
+        assert_eq!(
+            AtomicUsdc::new(1_500_000).to_cents_ceiling(),
+            Cents::new(150)
+        );
+        assert_eq!(
+            AtomicUsdc::new(1_500_000).to_cents_exact(),
+            Some(Cents::new(150))
+        );
         // A sub-cent residue: rounds up for the ceiling, refused for the exact settle.
-        assert_eq!(AtomicUsdc::new(1_505_000).to_cents_ceiling(), Cents::new(151));
+        assert_eq!(
+            AtomicUsdc::new(1_505_000).to_cents_ceiling(),
+            Cents::new(151)
+        );
         assert_eq!(AtomicUsdc::new(1_505_000).to_cents_exact(), None);
     }
 }
