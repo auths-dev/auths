@@ -37,12 +37,67 @@ struct ConsumedNonce {
     expires_at: DateTime<Utc>,
 }
 
-fn pending_ref(request_hash: &str) -> String {
-    format!("refs/auths/approvals/pending/{}", request_hash)
+/// A lowercase hex SHA-256 — exactly 64 hex characters. Parsing rejects anything else, so a request
+/// hash used as a git ref path segment cannot carry a `/` or `..` that would escape the approvals
+/// namespace or overwrite an unrelated ref.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sha256Hex(String);
+
+impl Sha256Hex {
+    /// Parse a 64-character lowercase hex string, or reject it.
+    pub fn parse(s: &str) -> Result<Sha256Hex, StorageError> {
+        if s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+            Ok(Sha256Hex(s.to_string()))
+        } else {
+            Err(StorageError::InvalidData(format!(
+                "approval request hash is not 64-character lowercase hex: {s:?}"
+            )))
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
-fn consumed_ref(jti: &str) -> String {
-    format!("refs/auths/approvals/consumed/{}", jti)
+/// A consumed-nonce identifier safe to use as a single git ref path segment: non-empty, with no path
+/// separator or traversal, so a hostile `jti` cannot forge or overwrite a ref.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonceId(String);
+
+impl NonceId {
+    /// Parse a nonce identifier, rejecting anything that is not a safe ref segment.
+    pub fn parse(s: &str) -> Result<NonceId, StorageError> {
+        if is_safe_ref_segment(s) {
+            Ok(NonceId(s.to_string()))
+        } else {
+            Err(StorageError::InvalidData(format!(
+                "nonce id is not a safe ref segment: {s:?}"
+            )))
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Whether `s` is a single safe git ref path component: non-empty, not `.` or `..`, with no `/` and
+/// no control or whitespace character that could escape or corrupt the ref namespace.
+fn is_safe_ref_segment(s: &str) -> bool {
+    !s.is_empty()
+        && s != "."
+        && s != ".."
+        && !s.contains('/')
+        && s.chars().all(|c| !c.is_control() && !c.is_whitespace())
+}
+
+fn pending_ref(request_hash: &Sha256Hex) -> String {
+    format!("refs/auths/approvals/pending/{}", request_hash.as_str())
+}
+
+fn consumed_ref(jti: &NonceId) -> String {
+    format!("refs/auths/approvals/consumed/{}", jti.as_str())
 }
 
 fn write_json_blob(repo: &Repository, ref_name: &str, data: &[u8]) -> Result<(), StorageError> {
@@ -81,7 +136,8 @@ pub fn store_approval_request(
     request: &ApprovalRequest,
 ) -> Result<(), StorageError> {
     let json = serde_json::to_vec(request)?;
-    let ref_name = pending_ref(&request.request_hash);
+    let request_hash = Sha256Hex::parse(&request.request_hash)?;
+    let ref_name = pending_ref(&request_hash);
     write_json_blob(repo, &ref_name, &json)
 }
 
@@ -99,7 +155,7 @@ pub fn load_approval_request(
     repo: &Repository,
     request_hash: &str,
 ) -> Result<Option<ApprovalRequest>, StorageError> {
-    let ref_name = pending_ref(request_hash);
+    let ref_name = pending_ref(&Sha256Hex::parse(request_hash)?);
     match read_json_blob(repo, &ref_name)? {
         Some(data) => Ok(Some(serde_json::from_slice(&data)?)),
         None => Ok(None),
@@ -160,7 +216,7 @@ pub fn mark_nonce_consumed(
 ) -> Result<(), StorageError> {
     let nonce = ConsumedNonce { expires_at };
     let json = serde_json::to_vec(&nonce)?;
-    let ref_name = consumed_ref(jti);
+    let ref_name = consumed_ref(&NonceId::parse(jti)?);
     write_json_blob(repo, &ref_name, &json)
 }
 
@@ -177,7 +233,7 @@ pub fn mark_nonce_consumed(
 /// }
 /// ```
 pub fn is_nonce_consumed(repo: &Repository, jti: &str) -> Result<bool, StorageError> {
-    let ref_name = consumed_ref(jti);
+    let ref_name = consumed_ref(&NonceId::parse(jti)?);
     Ok(read_json_blob(repo, &ref_name)?.is_some())
 }
 
@@ -192,7 +248,7 @@ pub fn is_nonce_consumed(repo: &Repository, jti: &str) -> Result<bool, StorageEr
 /// remove_approval_request(&repo, "abc123")?;
 /// ```
 pub fn remove_approval_request(repo: &Repository, request_hash: &str) -> Result<(), StorageError> {
-    let ref_name = pending_ref(request_hash);
+    let ref_name = pending_ref(&Sha256Hex::parse(request_hash)?);
     match repo.find_reference(&ref_name) {
         Ok(mut r) => {
             r.delete()?;
