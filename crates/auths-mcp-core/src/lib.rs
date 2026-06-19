@@ -48,7 +48,7 @@ pub use budget::{
     BudgetError, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds, SettleOutcome,
     SettledCounter,
 };
-pub use gate::{Decision, GateError, PerCallGate, ToolCall, Verdict};
+pub use gate::{Decision, GateError, Meter, PerCallGate, ToolCall, Verdict};
 pub use money::{AtomicUsdc, Cents, NonZeroCents};
 pub use paymode::{
     BudgetRequired, ModeDisclosure, PaymentMode, StripeRail, TEST_MODE_ENV, X402Rail,

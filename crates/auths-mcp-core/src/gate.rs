@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 
 use crate::Capability;
 use crate::budget::{CrossRailBudget, Hold, ReserveOutcome};
-use crate::money::Cents;
+use crate::money::{Cents, NonZeroCents};
 
 /// A serialized MCP `tools/call` the gate judges. The canonical bytes (tool name
 /// + sorted args) are what gets signed as the auths artifact.
@@ -66,7 +66,10 @@ pub enum Verdict {
     /// The call would cross the session budget cap (maps AGT-4). For the cross-rail
     /// budget (D8) this is the reservation refusal: `settled + Σ(holds) + ceiling`
     /// would exceed the cap, refused BEFORE the rail is touched.
-    UsageCapExceeded { cap_cents: Cents, would_be_cents: Cents },
+    UsageCapExceeded {
+        cap_cents: Cents,
+        would_be_cents: Cents,
+    },
     /// A payment rail is set but the call declared no amount to meter, so the gate cannot reserve —
     /// and therefore cannot bound — the charge before the rail is touched. Refused fail-closed: a
     /// metered call must declare what it intends to spend, so an omitted amount can never let the
@@ -123,6 +126,36 @@ impl Verdict {
             other => Verdict::ProofUnauthentic {
                 reason: other.code().to_string(),
             },
+        }
+    }
+}
+
+/// The reservation a brokered `tools/call` carries into the gate: either it is non-metered (no
+/// rail, nothing to reserve or settle) or it is metered on a named rail with a NON-ZERO ceiling
+/// reserved before the rail is touched. The rail and the ceiling move together, so "a rail with no
+/// amount" and "an amount with no rail" are both unrepresentable — the gate can no longer treat a
+/// zero ceiling as a non-metered call, which is the gap that let an undeclared metered call skip the
+/// cap. An operator rail with no declared amount is parsed to a fail-closed refusal at the wire
+/// boundary (before the gate), so it never reaches the gate as a `Meter`.
+#[derive(Debug, Clone)]
+pub enum Meter {
+    /// Non-metered (e.g. `fs.read`): no rail, no reservation, nothing to settle.
+    Unmetered,
+    /// Metered on `rail`, reserving `ceiling` cents before the rail is touched.
+    Metered {
+        /// The payment rail this call settles on (cross-rail attribution).
+        rail: String,
+        /// The non-zero ceiling reserved before the rail is touched.
+        ceiling: NonZeroCents,
+    },
+}
+
+impl Meter {
+    /// The rail this call settles on, for receipt attribution — `None` when non-metered.
+    pub fn rail(&self) -> Option<&str> {
+        match self {
+            Meter::Unmetered => None,
+            Meter::Metered { rail, .. } => Some(rail.as_str()),
         }
     }
 }
@@ -224,9 +257,9 @@ impl PerCallGate {
         .await
     }
 
-    /// Judge one `tools/call`, given the bytes of the agent's signed proof, the rail
-    /// it would settle on, the ceiling it reserves, and the cross-rail budget it
-    /// PRE-AUTHORIZES against.
+    /// Judge one `tools/call`, given the bytes of the agent's signed proof, the
+    /// [`Meter`] it carries (non-metered, or metered on a rail with a non-zero ceiling),
+    /// and the cross-rail budget it PRE-AUTHORIZES against.
     ///
     /// `signed_proof` is the raw git-commit object the agent produced over the
     /// canonical call (with the `Auths-Scope` trailer naming the exercised
@@ -238,14 +271,18 @@ impl PerCallGate {
     ///    verdict is a fail-closed [`Verdict`] (scope/expiry/revocation) or, for
     ///    anything else, [`Verdict::ProofUnauthentic`];
     /// 2. **budget (pre-authorization, D8)** — only when the proof authenticated AND
-    ///    the call is metered (`reserve_ceiling > 0`), RESERVE the ceiling against the
-    ///    cross-rail budget's `available = cap − settled − Σ(holds)` BEFORE the rail is
-    ///    touched. A reservation that would cross the cap is refused
-    ///    [`Verdict::UsageCapExceeded`] and **no hold is taken** (the metered
-    ///    downstream is never invoked). On success the verdict is [`Verdict::Allowed`]
-    ///    and the [`Decision`] carries the [`Hold`] the caller SETTLES after the
-    ///    downstream returns (advancing the monotonic SETTLED counter by the *actual*
-    ///    and releasing the slack).
+    ///    the call is [`Meter::Metered`], RESERVE the ceiling against the cross-rail
+    ///    budget's `available = cap − settled − Σ(holds)` BEFORE the rail is touched. A
+    ///    reservation that would cross the cap is refused [`Verdict::UsageCapExceeded`]
+    ///    and **no hold is taken** (the metered downstream is never invoked). On success
+    ///    the verdict is [`Verdict::Allowed`] and the [`Decision`] carries the [`Hold`]
+    ///    the caller SETTLES after the downstream returns (advancing the monotonic
+    ///    SETTLED counter by the *actual* and releasing the slack).
+    ///
+    /// The metered ceiling is a [`NonZeroCents`] by construction, so a zero ceiling can no
+    /// longer be mistaken for a non-metered call. The "metered rail with no declared amount"
+    /// case is parsed to a fail-closed refusal at the wire boundary BEFORE this gate (see
+    /// [`Verdict::MeteredAmountRequired`]) and never reaches `judge`.
     ///
     /// The cap-crossing refusal is computed against the ONE cross-rail counter, so a
     /// call that would exceed the cap across rails is refused even when a per-rail silo
@@ -253,8 +290,7 @@ impl PerCallGate {
     /// caller's post-downstream step ([`PerCallGate::settle`]).
     pub async fn judge(
         &self,
-        rail: Option<&str>,
-        reserve_ceiling_cents: Cents,
+        meter: &Meter,
         signed_proof: &[u8],
         now: DateTime<Utc>,
         budget: &mut CrossRailBudget,
@@ -286,30 +322,12 @@ impl PerCallGate {
                 cumulative_cents: settled,
                 reserved_cents: Cents::ZERO,
                 hold: None,
-                rail: rail.map(str::to_string),
+                rail: meter.rail().map(str::to_string),
             });
         }
 
-        // Authenticated + in-scope + live. Pre-authorize the spend BEFORE the rail is touched.
-        // A payment rail is set but no amount was declared → the gate cannot reserve, hence cannot
-        // bound, this charge, so it refuses fail-closed: forwarding would let the rail charge while
-        // the durable cap never advanced. An omitted amount must not skip the meter.
-        if let Some(rail_name) = rail
-            && reserve_ceiling_cents.is_zero()
-        {
-            return Ok(Decision {
-                verdict: Verdict::MeteredAmountRequired {
-                    rail: rail_name.to_string(),
-                },
-                cumulative_cents: settled,
-                reserved_cents: Cents::ZERO,
-                hold: None,
-                rail: Some(rail_name.to_string()),
-            });
-        }
-        // No rail and no declared cost → non-metered (e.g. fs.read): no reservation, nothing to
-        // settle. (A declared cost without a rail name still has ceiling > 0 and reserves below.)
-        if reserve_ceiling_cents.is_zero() {
+        // Authenticated + in-scope + live. A non-metered call reserves nothing and settles nothing.
+        let Meter::Metered { rail, ceiling } = meter else {
             return Ok(Decision {
                 verdict: Verdict::Allowed,
                 cumulative_cents: settled,
@@ -317,18 +335,21 @@ impl PerCallGate {
                 hold: None,
                 rail: None,
             });
-        }
+        };
 
+        // Pre-authorize the spend BEFORE the rail is touched. The ceiling is NON-ZERO by type — a
+        // metered rail with no declared amount was refused at the parse boundary, before this gate —
+        // so there is no zero-ceiling case here to mistake for a non-metered call.
         let outcome = budget
-            .reserve(reserve_ceiling_cents)
+            .reserve(ceiling.get())
             .map_err(|e| GateError::Registry(format!("reserve: {e}")))?;
         match outcome {
             ReserveOutcome::Reserved { hold, .. } => Ok(Decision {
                 verdict: Verdict::Allowed,
                 cumulative_cents: settled,
-                reserved_cents: reserve_ceiling_cents,
+                reserved_cents: ceiling.get(),
                 hold: Some(hold),
-                rail: rail.map(str::to_string),
+                rail: Some(rail.clone()),
             }),
             ReserveOutcome::Refused {
                 cap_cents,
@@ -341,7 +362,7 @@ impl PerCallGate {
                 cumulative_cents: settled,
                 reserved_cents: Cents::ZERO,
                 hold: None,
-                rail: rail.map(str::to_string),
+                rail: Some(rail.clone()),
             }),
         }
     }

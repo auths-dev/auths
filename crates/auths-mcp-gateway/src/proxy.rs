@@ -24,8 +24,8 @@ use std::sync::Arc;
 
 use auths_mcp_core::budget::CrossRailBudget;
 use auths_mcp_core::{
-    AtomicUsdc, Budget, Capability, Cents, PaymentMode, Receipt, SpendLogRecord, TEST_MODE_ENV,
-    ToolCall, env_opts_into_test, require_budget,
+    AtomicUsdc, Budget, Capability, Cents, Decision, Meter, NonZeroCents, PaymentMode, Receipt,
+    SpendLogRecord, TEST_MODE_ENV, ToolCall, Verdict, env_opts_into_test, require_budget,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -201,54 +201,73 @@ fn wire_delegation_key(cfg: &WrapConfig) -> String {
         .unwrap_or_else(|| "wrap-session".to_string())
 }
 
-/// The metered cost of one brokered `tools/call`, plus the rail it settles on — the
-/// inputs the wire's budget enforcement reserves/settles against the durable
-/// cross-rail counter. A non-metered call (e.g. `fs.read`) carries a zero cost and no
-/// rail; a metered call (e.g. `paid_call`) carries its known cost and its rail.
-///
-/// On the live wire the per-call *cost extraction* from a rail's charge response is
-/// the metered-rail wiring (a follow-on); what #281 wires is that whatever cost a call
-/// carries is enforced against the SAME durable verifier-held [`CrossRailBudget`] the
-/// hermetic gate uses — not a separate in-memory tally.
+/// The metered shape of one brokered `tools/call`, parsed from the agent's request at the wire
+/// boundary. A metered call ALWAYS carries a non-zero ceiling AND a rail, so "metered with a
+/// zero/absent amount" is not a constructible state — the cap-bypass class is gone at the type
+/// level. An operator rail with no declared amount parses to [`CallCost::AmountRequired`], which
+/// the caller refuses BEFORE the gate (the charge cannot be bounded, so forwarding would let the
+/// rail charge while the durable cap stayed put).
 #[derive(Debug, Clone)]
-pub struct CallCost {
-    /// The cents this call would settle against the cross-rail cap (zero = non-metered).
-    pub cost_cents: Cents,
-    /// The pre-authorization ceiling reserved before the rail is touched. Defaults to
-    /// `cost_cents` for a known-cost call.
-    pub reserve_ceiling_cents: Cents,
-    /// The payment rail this metered call settles on (cross-rail attribution).
-    pub rail: Option<String>,
+enum CallCost {
+    /// Non-metered (no operator rail, no declared cost): nothing reserved or settled (e.g. `fs.read`).
+    Free,
+    /// Metered on `rail`, reserving `ceiling` before the rail is touched. `settle` says WHERE the
+    /// actual settled cost comes from once the call forwards.
+    Metered {
+        /// The payment rail this call settles on.
+        rail: String,
+        /// The non-zero ceiling pre-authorized before the rail is touched.
+        ceiling: NonZeroCents,
+        /// Where the ACTUAL settled cost is read from after the call forwards.
+        settle: SettleSource,
+    },
+    /// An operator rail is set but the call declared no non-zero amount, so the gate could not bound
+    /// the charge. Refused fail-closed at the wire boundary, before the rail is touched.
+    AmountRequired {
+        /// The operator rail the undeclared call would have settled on.
+        rail: String,
+    },
+}
+
+/// Where a metered call's ACTUAL settled cost is read from once it forwards — modeled explicitly so
+/// neither settle source is a silent fallthrough of the other.
+#[derive(Debug, Clone)]
+enum SettleSource {
+    /// The operator configured the rail (`--rail`); the actual cost is read from the rail's OWN
+    /// response once the downstream returns — never an agent-declared number.
+    RailResponse,
+    /// A per-call declaration drove the meter (`_auths_cost_cents` + `_auths_rail`, with no operator
+    /// rail); settle exactly this declared cost.
+    Declared(Cents),
 }
 
 impl CallCost {
-    /// A non-metered call: nothing to reserve or settle (e.g. `fs.read`).
-    pub fn free() -> Self {
-        Self {
-            cost_cents: Cents::ZERO,
-            reserve_ceiling_cents: Cents::ZERO,
-            rail: None,
+    /// The cost the agent's signed call body records — informational (the canonical signed bytes
+    /// cover `{tool, args}`, not the cost). For an operator rail the ACTUAL settled cost is read
+    /// from the response after forwarding, so the body records the declared ceiling; zero for a
+    /// non-metered or refused call.
+    fn declared_cost(&self) -> Cents {
+        match self {
+            CallCost::Free | CallCost::AmountRequired { .. } => Cents::ZERO,
+            CallCost::Metered {
+                settle: SettleSource::Declared(cost),
+                ..
+            } => *cost,
+            CallCost::Metered {
+                ceiling,
+                settle: SettleSource::RailResponse,
+                ..
+            } => ceiling.get(),
         }
     }
 
-    /// A metered call with a known cost on `rail`: reserve and settle the same amount.
-    pub fn metered(cost_cents: Cents, rail: impl Into<String>) -> Self {
-        Self::metered_with_ceiling(cost_cents, cost_cents, rail)
-    }
-
-    /// A metered call on `rail` that reserves a `reserve_ceiling_cents` ceiling before
-    /// the rail is touched and settles `cost_cents` after (the slack is released). For a
-    /// known-cost call the two are equal; a metered call whose final cost is bounded but
-    /// not yet known reserves the ceiling.
-    pub fn metered_with_ceiling(
-        cost_cents: Cents,
-        reserve_ceiling_cents: Cents,
-        rail: impl Into<String>,
-    ) -> Self {
-        Self {
-            cost_cents,
-            reserve_ceiling_cents,
-            rail: Some(rail.into()),
+    /// The payment rail this call settles (or would have settled) on, for receipt attribution.
+    fn rail(&self) -> Option<&str> {
+        match self {
+            CallCost::Free => None,
+            CallCost::Metered { rail, .. } | CallCost::AmountRequired { rail } => {
+                Some(rail.as_str())
+            }
         }
     }
 }
@@ -307,11 +326,12 @@ impl GatewayProxy {
         // before the rail is touched is the agent's intended payment (an x402 `amount_atomic` →
         // cents, rounded up, or an explicit `_auths_reserve_ceiling_cents`); the amount actually
         // SETTLED is read from the rail's own response in `call_tool`. Because the OPERATOR sets the
-        // rail, an agent cannot bypass metering by omitting a per-call field.
+        // rail, an agent cannot bypass metering by omitting a per-call field: with no non-zero amount
+        // the call is `AmountRequired` and refused before the rail is touched.
         if let Some(rail) = self.rail.as_deref() {
             // `amount_atomic` is atomic USDC read from the agent's arg (a genuine boundary) →
             // reserve ceiling rounded UP; `_auths_reserve_ceiling_cents` is a raw cent count.
-            let ceiling = args
+            let ceiling_cents = args
                 .and_then(|m| m.get("amount_atomic"))
                 .and_then(|v| v.as_u64())
                 .map(|a| AtomicUsdc::new(a).to_cents_ceiling())
@@ -321,13 +341,24 @@ impl GatewayProxy {
                         .map(Cents::new)
                 })
                 .unwrap_or(Cents::ZERO);
-            return CallCost::metered_with_ceiling(ceiling, ceiling, rail);
+            return match NonZeroCents::new(ceiling_cents) {
+                Some(ceiling) => CallCost::Metered {
+                    rail: rail.to_string(),
+                    ceiling,
+                    settle: SettleSource::RailResponse,
+                },
+                None => CallCost::AmountRequired {
+                    rail: rail.to_string(),
+                },
+            };
         }
 
         // No operator rail: a non-payment downstream. Honor an explicit per-call declaration so a
-        // metered downstream config can still drive the durable counter; else non-metered.
+        // metered downstream config can still drive the durable counter; else non-metered. A declared
+        // cost is metered ONLY when it also names its rail — without one there is nothing to settle on
+        // or attribute to, so it is non-metered (a metered call always carries a rail).
         let Some(args) = args else {
-            return CallCost::free();
+            return CallCost::Free;
         };
         // `_auths_cost_cents` is a raw cent count read from the agent's arg (a genuine boundary).
         let cost_cents = args
@@ -335,22 +366,24 @@ impl GatewayProxy {
             .and_then(|v| v.as_u64())
             .map(Cents::new)
             .unwrap_or(Cents::ZERO);
-        if cost_cents.is_zero() {
-            return CallCost::free();
-        }
-        let reserve_ceiling_cents = args
+        let (Some(cost), Some(rail)) = (
+            NonZeroCents::new(cost_cents),
+            args.get("_auths_rail").and_then(|v| v.as_str()),
+        ) else {
+            return CallCost::Free;
+        };
+        // The ceiling is the explicit `_auths_reserve_ceiling_cents` when it is non-zero, else the
+        // declared cost (itself non-zero) — so the metered ceiling is always non-zero.
+        let ceiling = args
             .get("_auths_reserve_ceiling_cents")
             .and_then(|v| v.as_u64())
             .map(Cents::new)
-            .unwrap_or(cost_cents);
-        match args.get("_auths_rail").and_then(|v| v.as_str()) {
-            Some(rail) if reserve_ceiling_cents == cost_cents => CallCost::metered(cost_cents, rail),
-            Some(rail) => CallCost::metered_with_ceiling(cost_cents, reserve_ceiling_cents, rail),
-            None => CallCost {
-                cost_cents,
-                reserve_ceiling_cents,
-                rail: None,
-            },
+            .and_then(NonZeroCents::new)
+            .unwrap_or(cost);
+        CallCost::Metered {
+            rail: rail.to_string(),
+            ceiling,
+            settle: SettleSource::Declared(cost.get()),
         }
     }
 }
@@ -402,7 +435,7 @@ impl ServerHandler for GatewayProxy {
         let tool_call = ToolCall {
             tool: tool.clone(),
             args: args_value,
-            cost_cents: cost.cost_cents,
+            cost_cents: cost.declared_cost(),
         };
         let capability = tool_call.capability();
         let canonical = tool_call.canonical_bytes();
@@ -422,19 +455,45 @@ impl ServerHandler for GatewayProxy {
         // cross-rail counter BEFORE the downstream/rail is touched. A non-Allowed verdict
         // fails closed here — the downstream is never invoked. This is the SAME
         // `PerCallGate::judge` the hermetic gate runs, now on the live wire.
+        //
+        // An operator rail with no declared amount (`AmountRequired`) is refused HERE, before the
+        // gate: the charge cannot be bounded, so the only safe outcome is a fail-closed
+        // metered-amount-required — the call is still signed + persisted (below) as a refused record.
         let now = Utc::now();
-        let decision = {
-            let mut budget = self.budget.lock().await;
-            self.gate
-                .judge(
-                    cost.rail.as_deref(),
-                    cost.reserve_ceiling_cents,
-                    &proof_bytes,
-                    now,
-                    &mut budget,
-                )
-                .await
-                .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
+        let decision = match &cost {
+            CallCost::AmountRequired { rail } => {
+                let cumulative = {
+                    let budget = self.budget.lock().await;
+                    budget.settled_cents().map_err(|e| {
+                        McpError::internal_error(format!("read the cross-rail counter: {e}"), None)
+                    })?
+                };
+                Decision {
+                    verdict: Verdict::MeteredAmountRequired { rail: rail.clone() },
+                    cumulative_cents: cumulative,
+                    reserved_cents: Cents::ZERO,
+                    hold: None,
+                    rail: Some(rail.clone()),
+                }
+            }
+            CallCost::Free => {
+                let mut budget = self.budget.lock().await;
+                self.gate
+                    .judge(&Meter::Unmetered, &proof_bytes, now, &mut budget)
+                    .await
+                    .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
+            }
+            CallCost::Metered { rail, ceiling, .. } => {
+                let meter = Meter::Metered {
+                    rail: rail.clone(),
+                    ceiling: *ceiling,
+                };
+                let mut budget = self.budget.lock().await;
+                self.gate
+                    .judge(&meter, &proof_bytes, now, &mut budget)
+                    .await
+                    .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
+            }
         };
         // Forward to the downstream ONLY on a forwarding verdict — a refused call never touches
         // it. Either way the signed proof + receipt are persisted below, so an out-of-scope or
@@ -453,32 +512,44 @@ impl ServerHandler for GatewayProxy {
                 McpError::internal_error(format!("downstream tools/call failed: {e}"), None)
             })?;
 
-            // A metered call's ACTUAL cost is read from the downstream's own response (the rail's
-            // settlement), not a number the agent declared. Extract it and keep the raw response so
-            // the offline audit can re-extract + cross-check the agent-signed amount.
-            let actual_cents = if let Some(rail) = cost.rail.as_deref() {
-                let resp = result
-                    .content
-                    .first()
-                    .and_then(|c| c.as_text())
-                    .map(|t| t.text.clone().into_bytes())
-                    .ok_or_else(|| {
-                        McpError::internal_error(
-                            format!("metered `{rail}` call returned no text response to meter"),
-                            None,
-                        )
-                    })?;
-                let extracted = auths_mcp_core::extract_rail_cost(rail, &resp).map_err(|e| {
-                    McpError::internal_error(
-                        format!("extract `{rail}` cost from the rail response: {e}"),
-                        None,
-                    )
-                })?;
-                rail_response = Some(resp);
-                settled_charge_ref = Some(extracted.reference);
-                extracted.amount_cents
-            } else {
-                cost.cost_cents
+            // A metered call's ACTUAL cost comes from its settle source: an operator rail reads it
+            // from the downstream's OWN response (never a number the agent declared) and keeps the
+            // raw response so the offline audit can re-extract + cross-check the agent-signed amount;
+            // a per-call declaration settles exactly the declared cost. A non-metered call holds
+            // nothing, so its settle below is skipped and this amount is unused.
+            let actual_cents = match &cost {
+                CallCost::Metered {
+                    rail,
+                    settle: SettleSource::RailResponse,
+                    ..
+                } => {
+                    let resp = result
+                        .content
+                        .first()
+                        .and_then(|c| c.as_text())
+                        .map(|t| t.text.clone().into_bytes())
+                        .ok_or_else(|| {
+                            McpError::internal_error(
+                                format!("metered `{rail}` call returned no text response to meter"),
+                                None,
+                            )
+                        })?;
+                    let extracted =
+                        auths_mcp_core::extract_rail_cost(rail, &resp).map_err(|e| {
+                            McpError::internal_error(
+                                format!("extract `{rail}` cost from the rail response: {e}"),
+                                None,
+                            )
+                        })?;
+                    rail_response = Some(resp);
+                    settled_charge_ref = Some(extracted.reference);
+                    extracted.amount_cents
+                }
+                CallCost::Metered {
+                    settle: SettleSource::Declared(declared),
+                    ..
+                } => *declared,
+                CallCost::Free | CallCost::AmountRequired { .. } => Cents::ZERO,
             };
 
             // Settle the ACTUAL cost into the durable counter, releasing the reservation slack.
@@ -499,7 +570,7 @@ impl ServerHandler for GatewayProxy {
 
             // Sign a settlement commit anchoring the agent-signed actual cost, bound to THIS call by
             // the hash of its proof, so the audit cannot be handed a settlement from another call.
-            if let (Some(rail), Some(charge_ref)) = (cost.rail.as_deref(), settled_charge_ref.as_deref())
+            if let (Some(rail), Some(charge_ref)) = (cost.rail(), settled_charge_ref.as_deref())
                 && !actual_cents.is_zero()
             {
                 let (bytes, _sha) = self
@@ -532,7 +603,7 @@ impl ServerHandler for GatewayProxy {
             &tool_call,
             &proof_sha,
             verdict.clone(),
-            cost.rail.as_deref(),
+            cost.rail(),
             settled_charge_ref.as_deref(),
             decision.reserved_cents,
             cumulative,
@@ -547,7 +618,7 @@ impl ServerHandler for GatewayProxy {
             &SpendLogRecord {
                 call_commit: proof_bytes,
                 receipt,
-                rail: cost.rail.clone(),
+                rail: cost.rail().map(str::to_string),
                 rail_response,
                 settlement_commit,
             },
@@ -561,8 +632,7 @@ impl ServerHandler for GatewayProxy {
         *self.prev_binding.lock().await = new_binding;
 
         let rail_tag = cost
-            .rail
-            .as_deref()
+            .rail()
             .map(|r| format!(" rail={r}"))
             .unwrap_or_default();
         let proof_short = &proof_sha[..proof_sha.len().min(12)];
@@ -747,9 +817,10 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("build the agent delegation chain for live signing: {e}"))?;
     let registry =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(chain.org_repo()));
-    let gate =
-        auths_mcp_core::PerCallGate::resolve(&registry, &chain.agent_did, &chain.root_did)
-            .map_err(|e| anyhow::anyhow!("resolve the per-call gate over the live registry: {e}"))?;
+    let gate = auths_mcp_core::PerCallGate::resolve(&registry, &chain.agent_did, &chain.root_did)
+        .map_err(|e| {
+        anyhow::anyhow!("resolve the per-call gate over the live registry: {e}")
+    })?;
     let spend_log = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
     eprintln!(
         "auths-mcp-gateway: live-wire signing ON — agent={} root={}; every brokered call is signed. \

@@ -11,8 +11,8 @@
 use std::path::{Path, PathBuf};
 
 use auths_mcp_core::{
-    Budget, Cents, CrossRailBudget, ExtractedCost, PerCallGate, Receipt, SpendLogRecord, ToolCall,
-    Verdict,
+    Budget, Cents, CrossRailBudget, ExtractedCost, Meter, NonZeroCents, PerCallGate, Receipt,
+    SpendLogRecord, ToolCall, Verdict,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -242,7 +242,22 @@ async fn drive_call(
     let capability = tool_call.capability();
     let canonical = tool_call.canonical_bytes();
     let rail = call.rail();
-    let reserve_ceiling = cost.reserve_ceiling_cents;
+    // The reservation the gate enforces, as a type: non-metered (no rail, no cost) or fully metered
+    // (a rail AND a non-zero ceiling, together). A rail with no amount, or an amount with no rail, is
+    // a malformed transcript — fail closed rather than guess. The fixture path always yields one or
+    // the other, so this never trips in practice.
+    let meter = match (rail, NonZeroCents::new(cost.reserve_ceiling_cents)) {
+        (None, None) => Meter::Unmetered,
+        (Some(rail_name), Some(ceiling)) => Meter::Metered {
+            rail: rail_name.to_string(),
+            ceiling,
+        },
+        _ => anyhow::bail!(
+            "a replay call must be either non-metered (no rail, no cost) or fully metered \
+             (rail + non-zero ceiling): rail={rail:?} reserve_ceiling_cents={}",
+            cost.reserve_ceiling_cents.get()
+        ),
+    };
 
     // The agent signs the canonical call as an auths artifact (its delegated key).
     let (mut proof_bytes, proof_sha) =
@@ -263,9 +278,7 @@ async fn drive_call(
     // a forged/tampered proof OR a reservation that would cross the cap yields a
     // non-Allowed verdict here, BEFORE any downstream tool/rail is invoked.
     let now = Utc::now();
-    let decision = gate
-        .judge(rail, reserve_ceiling, &proof_bytes, now, budget)
-        .await?;
+    let decision = gate.judge(&meter, &proof_bytes, now, budget).await?;
 
     // Track the verdict + the running cross-rail total to record. For a forwarded paid
     // call these are updated by the SETTLE below (the actual, not the reservation).
