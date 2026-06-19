@@ -246,6 +246,7 @@ impl PerCallGate {
         &self,
         records: &[crate::audit::SpendLogRecord],
         now: i64,
+        counter: &crate::budget::CounterRef,
     ) -> crate::audit::AuditVerdict {
         crate::audit::audit_spend_log(
             records,
@@ -253,6 +254,7 @@ impl PerCallGate {
             &self.delegator_kel,
             std::slice::from_ref(&self.delegator_did),
             now,
+            counter,
         )
         .await
     }

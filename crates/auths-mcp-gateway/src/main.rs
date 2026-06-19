@@ -261,8 +261,21 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // Locate the durable counter the SAME way the wire did (from this --registry + --agent), so the
+    // audit cross-checks the re-derived total against the counter the wire advanced — a tail-truncated
+    // log re-derives below it and is caught.
+    let counter = match auths_mcp_core::CounterRef::for_agent(&args.registry, &args.agent) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot locate the durable counter for agent `{}`: {e}",
+                args.agent
+            );
+            return ExitCode::FAILURE;
+        }
+    };
     let verdict = gate
-        .audit_spend_log(&records, chrono::Utc::now().timestamp())
+        .audit_spend_log(&records, chrono::Utc::now().timestamp(), &counter)
         .await;
     println!("verify-spend: {} — {verdict}", verdict.code());
     if verdict.is_consistent() {

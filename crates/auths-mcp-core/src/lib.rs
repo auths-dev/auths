@@ -41,8 +41,8 @@ pub mod receipt;
 pub mod session;
 
 pub use audit::{
-    AuditVerdict, SPEND_LOG_GENESIS, SpendLogRecord, audit_spend_log, call_commit_binding,
-    read_spend_log, spend_log_path,
+    AuditVerdict, ConsistentProof, SPEND_LOG_GENESIS, SpendLogRecord, audit_spend_log,
+    call_commit_binding, read_spend_log, spend_log_path,
 };
 pub use budget::{
     BudgetError, CounterKey, CounterRef, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds,

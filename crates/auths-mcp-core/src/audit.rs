@@ -15,6 +15,7 @@
 //! audit re-verifies the same material regardless of which path produced the log. This data model
 //! is path-agnostic.
 
+use crate::budget::CounterRef;
 use crate::money::Cents;
 use crate::receipt::Receipt;
 use auths_id::keri::Event;
@@ -57,19 +58,63 @@ pub struct SpendLogRecord {
     pub settlement_commit: Option<Vec<u8>>,
 }
 
+/// The settled high-water read from the verifier-held DURABLE counter — the figure the audit
+/// cross-checks the re-derived total against. A newtype so "the durable counter's settled" cannot be
+/// confused with "the total re-derived from the log"; the two are compared, never swapped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DurableSettled(Cents);
+
+impl DurableSettled {
+    /// The durable settled amount.
+    pub fn get(self) -> Cents {
+        self.0
+    }
+}
+
+/// Proof that a spend log re-derived CONSISTENT — minted only by [`audit_spend_log`] after the
+/// per-record proof checks, the back-link continuity check, AND the durable-counter cross-check all
+/// pass. Its fields are private and it has no public constructor, so a "consistent" verdict cannot be
+/// fabricated from a bare number: holding a [`ConsistentProof`] means a real audit produced it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[must_use]
+pub struct ConsistentProof {
+    calls: usize,
+    settled_cents: Cents,
+}
+
+impl ConsistentProof {
+    /// Mint a proof — `pub(crate)` so ONLY this crate's audit, after every check has passed, can
+    /// construct one.
+    pub(crate) fn new(calls: usize, settled_cents: Cents) -> Self {
+        Self {
+            calls,
+            settled_cents,
+        }
+    }
+
+    /// Number of brokered calls the audit covered.
+    pub fn calls(&self) -> usize {
+        self.calls
+    }
+
+    /// The proven cross-rail settled total (equal to both the signed cumulative and the durable
+    /// counter).
+    pub fn settled_cents(&self) -> Cents {
+        self.settled_cents
+    }
+}
+
 /// The typed result of an offline spend audit. Every failure mode is a NAMED case the caller
-/// must handle — never a bool. Only [`AuditVerdict::Consistent`] passes.
+/// must handle — never a bool. Only [`AuditVerdict::Consistent`] passes, and it carries a
+/// [`ConsistentProof`] only the audit can mint.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "verdict", rename_all = "kebab-case")]
+#[must_use]
 pub enum AuditVerdict {
-    /// Every proof verified, every signed cost matched its rail response, and the re-derived
-    /// cross-rail total equals the claimed cumulative.
-    Consistent {
-        /// Number of brokered calls audited.
-        calls: usize,
-        /// The true cross-rail total, re-derived by summing the SIGNED settled costs.
-        settled_cents: Cents,
-    },
+    /// Every proof verified, the back-link chain is complete, every signed cost matched its rail
+    /// response, and the re-derived cross-rail total equals BOTH the claimed cumulative AND the
+    /// durable verifier-held counter. Carries the proof of that re-derivation.
+    Consistent(ConsistentProof),
     /// A call or settlement proof failed `verify_commit_against_kel_scoped` (forged, altered, or
     /// signed-after-revocation). `proof_ref` is the offending commit.
     TamperedProof {
@@ -110,13 +155,13 @@ pub enum AuditVerdict {
 impl AuditVerdict {
     /// True ONLY for [`AuditVerdict::Consistent`] — the audit passed.
     pub fn is_consistent(&self) -> bool {
-        matches!(self, AuditVerdict::Consistent { .. })
+        matches!(self, AuditVerdict::Consistent(_))
     }
 
     /// A stable kebab-case code (for logs, the CLI, and exit-code mapping).
     pub fn code(&self) -> &'static str {
         match self {
-            AuditVerdict::Consistent { .. } => "consistent",
+            AuditVerdict::Consistent(_) => "consistent",
             AuditVerdict::TamperedProof { .. } => "tampered-proof",
             AuditVerdict::CostMismatch { .. } => "cost-mismatch",
             AuditVerdict::BudgetMismatch { .. } => "budget-mismatch",
@@ -129,14 +174,12 @@ impl AuditVerdict {
 impl fmt::Display for AuditVerdict {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AuditVerdict::Consistent {
-                calls,
-                settled_cents,
-            } => write!(
+            AuditVerdict::Consistent(proof) => write!(
                 f,
-                "consistent — {calls} call(s), ${}.{:02} re-derived from signed costs",
-                settled_cents.get() / 100,
-                settled_cents.get() % 100
+                "consistent — {} call(s), ${}.{:02} re-derived from signed costs",
+                proof.calls(),
+                proof.settled_cents().get() / 100,
+                proof.settled_cents().get() % 100
             ),
             AuditVerdict::TamperedProof { proof_ref } => {
                 write!(f, "tampered-proof — {proof_ref} failed verification")
@@ -160,7 +203,9 @@ impl fmt::Display for AuditVerdict {
                 recomputed_cents.get(),
                 claimed_cents.get()
             ),
-            AuditVerdict::DroppedCall { at } => write!(f, "dropped-call — chain gap at record {at}"),
+            AuditVerdict::DroppedCall { at } => {
+                write!(f, "dropped-call — chain gap at record {at}")
+            }
             AuditVerdict::Revoked { at } => {
                 write!(f, "revoked — delegation revoked as of record {at}")
             }
@@ -230,6 +275,7 @@ pub async fn audit_spend_log(
     delegator_kel: &[Event],
     pinned_roots: &[String],
     now: i64,
+    counter: &CounterRef,
 ) -> AuditVerdict {
     let provider = auths_crypto::default_provider();
     let mut settled = Cents::ZERO;
@@ -355,9 +401,10 @@ pub async fn audit_spend_log(
                 // 4. The signed running total ties the cumulative to signed material, so the budget
                 //    leg does not rest on the operator's own (unsigned) receipt cumulative. The
                 //    trailer is a decimal string — parse to u64 then wrap at this boundary.
-                let Some(signed_cumulative) = commit_trailer(settle_commit, "Auths-Settle-Cumulative")
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .map(Cents::new)
+                let Some(signed_cumulative) =
+                    commit_trailer(settle_commit, "Auths-Settle-Cumulative")
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .map(Cents::new)
                 else {
                     return AuditVerdict::TamperedProof {
                         proof_ref: rec.receipt.proof_ref.clone(),
@@ -384,10 +431,28 @@ pub async fn audit_spend_log(
             claimed_cents: claimed,
         };
     }
-    AuditVerdict::Consistent {
-        calls: records.len(),
-        settled_cents: settled,
+    // Cross-check the re-derived total against the DURABLE verifier-held counter the wire advanced —
+    // which truncating the LOG does not touch. Dropping the tail lowers the re-derived total AND the
+    // claimed cumulative above together (so that check passes), but the counter still holds the full
+    // settled high-water, so a truncated tail makes re-derived < durable → caught here. A counter
+    // that cannot be read confirms nothing, so it fails closed. (Caveat: an operator who ALSO holds
+    // the counter could roll it back to match a truncated log — see the residual note in spend_log.)
+    let durable = match counter.open_counter().settled_cents() {
+        Ok(cents) => DurableSettled(cents),
+        Err(_) => {
+            return AuditVerdict::BudgetMismatch {
+                recomputed_cents: settled,
+                claimed_cents: Cents::ZERO,
+            };
+        }
+    };
+    if settled != durable.get() {
+        return AuditVerdict::BudgetMismatch {
+            recomputed_cents: settled,
+            claimed_cents: durable.get(),
+        };
     }
+    AuditVerdict::Consistent(ConsistentProof::new(records.len(), settled))
 }
 
 /// The first record in a spend log has no predecessor; its signed `Auths-Prev` trailer carries this
@@ -456,10 +521,7 @@ mod tests {
 
     #[test]
     fn audit_verdict_code_and_is_consistent() {
-        let ok = AuditVerdict::Consistent {
-            calls: 3,
-            settled_cents: Cents::new(450),
-        };
+        let ok = AuditVerdict::Consistent(ConsistentProof::new(3, Cents::new(450)));
         assert!(ok.is_consistent());
         assert_eq!(ok.code(), "consistent");
 
@@ -570,9 +632,15 @@ mod tests {
         assert_eq!(commit_trailer(commit, "Auths-Settle-Cents"), Some("175"));
         assert_eq!(commit_trailer(commit, "Auths-Settle-Call"), Some("def"));
         // `Auths-Settle-Cents` must NOT match the longer `Auths-Settle-Cumulative` line.
-        assert_eq!(commit_trailer(commit, "Auths-Settle-Cumulative"), Some("500"));
+        assert_eq!(
+            commit_trailer(commit, "Auths-Settle-Cumulative"),
+            Some("500")
+        );
         // Absent token, or non-UTF-8, yields None.
-        assert_eq!(commit_trailer(b"tree abc\n\ntools/call\n", "Auths-Settle-Cents"), None);
+        assert_eq!(
+            commit_trailer(b"tree abc\n\ntools/call\n", "Auths-Settle-Cents"),
+            None
+        );
         assert_eq!(commit_trailer(&[0xff, 0xfe], "Auths-Settle-Cents"), None);
     }
 

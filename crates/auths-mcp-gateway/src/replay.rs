@@ -195,7 +195,13 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     let log_path = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
     match auths_mcp_core::read_spend_log(&log_path) {
         Ok(records) => {
-            let verdict = gate.audit_spend_log(&records, Utc::now().timestamp()).await;
+            // Open the durable counter the SAME way the standalone verify-spend does (from the
+            // chain's registry + the agent did), so the self-audit cross-checks the re-derived total
+            // against the counter this run advanced.
+            let counter = CounterRef::for_agent(chain.org_repo(), &chain.agent_did)?;
+            let verdict = gate
+                .audit_spend_log(&records, Utc::now().timestamp(), &counter)
+                .await;
             println!("▸ audit: {} — {verdict}", verdict.code());
             // Emit the exact args to re-run the audit as a STANDALONE process (`verify-spend`),
             // so an external party (and the smoke) can re-derive this verdict from disk alone.

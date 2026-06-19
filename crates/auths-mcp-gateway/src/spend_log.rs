@@ -11,10 +11,15 @@
 //! sentinel for the first), so the audit verifies the log is a continuous chain — a gap or a
 //! relinked-out-of-order record → dropped-call.
 //!
-//! Residual: truncating the TAIL (dropping the most-recent records) is not yet caught here — the
-//! back-link proves each record points at a real predecessor, not that the chain is the WHOLE log.
-//! Catching tail-truncation needs a signed running HEAD/count anchor (or, for metered spend,
-//! cross-checking the re-derived total against the durable cross-rail counter) — a follow-on.
+//! Truncating the TAIL (dropping the most-recent records) is caught by the audit's cross-check of
+//! the re-derived total against the durable cross-rail counter, which truncating the log does not
+//! touch: a dropped tail re-derives BELOW the counter's high-water → budget-mismatch. The back-link
+//! alone could not catch this (it proves each record points at a real predecessor, not that the
+//! chain is the WHOLE log). Residual: an operator who ALSO holds the verifier counter could roll it
+//! back to match a truncated log; the cryptographically complete defence anchors a signed running
+//! {count, cumulative} OUTSIDE the operator's control (a witness / transparency log / on-chain) — a
+//! follow-on. The per-settlement agent-signed cumulative already raises the bar — the operator
+//! cannot forge a lower signed cumulative without the agent key, only drop tail records.
 //!
 //! The path layout and the READ side (`spend_log_path` / `read_spend_log`) live in
 //! `auths_mcp_core` so the gateway (writer) and the `auths-cli` auditor (reader) share ONE
@@ -47,8 +52,8 @@ mod tests {
     use super::*;
     use auths_mcp_core::Cents;
     use auths_mcp_core::gate::{ToolCall, Verdict};
-    use auths_mcp_core::receipt::Receipt;
     use auths_mcp_core::read_spend_log;
+    use auths_mcp_core::receipt::Receipt;
     use chrono::DateTime;
 
     fn record(cumulative: u64) -> SpendLogRecord {
@@ -89,7 +94,11 @@ mod tests {
 
         let path = spend_log_path(repo, dlg);
         let back = read_spend_log(&path).unwrap();
-        assert_eq!(back.len(), 2, "the second append must NOT clobber the first");
+        assert_eq!(
+            back.len(),
+            2,
+            "the second append must NOT clobber the first"
+        );
         assert_eq!(back[0].receipt.cumulative_cents, Cents::new(100));
         assert_eq!(back[1].receipt.cumulative_cents, Cents::new(250));
     }
