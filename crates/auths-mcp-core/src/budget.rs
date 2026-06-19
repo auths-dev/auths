@@ -60,6 +60,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::money::Cents;
+
 /// The repo-relative directory holding the per-delegation settled-cents high-water
 /// records — the verifier-held counter, alongside the KELs/registry the verifier
 /// replays (the same placement `usage_ledger.rs` uses for its per-credential marks).
@@ -99,6 +101,8 @@ struct SettledRecord {
     /// The agent-delegation key this record bounds.
     delegation: String,
     /// The highest cumulative cents this verifier has ever settled for the delegation.
+    /// The on-disk ledger value is a plain `u64`; it is wrapped into [`Cents`] at the
+    /// read boundary and unwrapped at the write boundary.
     settled_high_water_cents: u64,
 }
 
@@ -106,13 +110,13 @@ struct SettledRecord {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettleOutcome {
     /// The cumulative total advanced (or held steady) — the new monotonic high-water.
-    Advanced { new_settled_cents: u64 },
+    Advanced { new_settled_cents: Cents },
     /// The presented cumulative total was *below* the recorded high-water: a
     /// replayed/stale settled total. Refused so a crashed-and-restored gateway cannot
     /// roll the spend back (the D8 rollback guard → `usage-counter-rolled-back`).
     RolledBack {
-        presented_cents: u64,
-        high_water_cents: u64,
+        presented_cents: Cents,
+        high_water_cents: Cents,
     },
 }
 
@@ -129,16 +133,16 @@ impl SettledCounter {
         })
     }
 
-    /// The current settled high-water for this delegation (0 if unseen).
-    pub fn settled_cents(&self) -> Result<u64, BudgetError> {
-        Ok(self.read_high_water()?.unwrap_or(0))
+    /// The current settled high-water for this delegation (zero if unseen).
+    pub fn settled_cents(&self) -> Result<Cents, BudgetError> {
+        Ok(self.read_high_water()?.unwrap_or(Cents::ZERO))
     }
 
     fn record_path(&self) -> PathBuf {
         self.dir.join(format!("{}.json", self.key))
     }
 
-    fn read_high_water(&self) -> Result<Option<u64>, BudgetError> {
+    fn read_high_water(&self) -> Result<Option<Cents>, BudgetError> {
         let path = self.record_path();
         let bytes = match fs::read(&path) {
             Ok(b) => b,
@@ -147,18 +151,20 @@ impl SettledCounter {
         };
         let record: SettledRecord = serde_json::from_slice(&bytes)
             .map_err(|e| BudgetError::Persistence(format!("parse {path:?}: {e}")))?;
-        Ok(Some(record.settled_high_water_cents))
+        // The on-disk ledger value is a plain `u64` — wrap it into Cents at this read boundary.
+        Ok(Some(Cents::new(record.settled_high_water_cents)))
     }
 
     /// Atomically publish a new high-water mark (temp-write + rename), exactly the
     /// crash-safe publish `usage_ledger.rs` uses: a concurrent reader sees either the
     /// old record or the complete new one, never a half-written mark.
-    fn write_high_water(&self, cents: u64) -> Result<(), BudgetError> {
+    fn write_high_water(&self, cents: Cents) -> Result<(), BudgetError> {
         fs::create_dir_all(&self.dir)
             .map_err(|e| BudgetError::Persistence(format!("mkdir {:?}: {e}", self.dir)))?;
         let record = SettledRecord {
             delegation: self.key.clone(),
-            settled_high_water_cents: cents,
+            // The on-disk ledger value is a plain `u64` — unwrap Cents at this write boundary.
+            settled_high_water_cents: cents.get(),
         };
         let body = serde_json::to_vec_pretty(&record)
             .map_err(|e| BudgetError::Persistence(format!("encode: {e}")))?;
@@ -181,7 +187,7 @@ impl SettledCounter {
     ///
     /// The caller is responsible for the cap/reservation check *before* the rail is
     /// touched (see [`available`]); this method only enforces monotonicity on settle.
-    pub fn settle(&self, new_cumulative_cents: u64) -> Result<SettleOutcome, BudgetError> {
+    pub fn settle(&self, new_cumulative_cents: Cents) -> Result<SettleOutcome, BudgetError> {
         if let Some(mark) = self.read_high_water()?
             && new_cumulative_cents < mark
         {
@@ -205,7 +211,8 @@ impl SettledCounter {
         let mut h = Sha256::new();
         h.update(self.key.as_bytes());
         h.update(b":");
-        h.update(cents.to_le_bytes());
+        // The digest is built over the raw cent count — unwrap at this byte boundary.
+        h.update(cents.get().to_le_bytes());
         Ok(hex_lower(&h.finalize()))
     }
 }
@@ -217,7 +224,7 @@ pub struct Hold {
     /// An opaque id so a settle/release targets the right hold.
     pub id: u64,
     /// The ceiling reserved (the call's known cost, or its metered ceiling).
-    pub ceiling_cents: u64,
+    pub ceiling_cents: Cents,
 }
 
 /// The transient set of active RESERVED holds for one session. Pure in-memory — a hold
@@ -236,15 +243,15 @@ impl ReservedHolds {
     }
 
     /// Total cents currently held (the `Σ(active holds)` term of `available`).
-    pub fn reserved_cents(&self) -> u64 {
+    pub fn reserved_cents(&self) -> Cents {
         self.holds
             .iter()
-            .fold(0u64, |acc, h| acc.saturating_add(h.ceiling_cents))
+            .fold(Cents::ZERO, |acc, h| acc.saturating_add(h.ceiling_cents))
     }
 
     /// Take a hold for `ceiling_cents` (the caller must have checked `available`
     /// first). Returns the hold so the caller can settle/release it.
-    pub fn reserve(&mut self, ceiling_cents: u64) -> Hold {
+    pub fn reserve(&mut self, ceiling_cents: Cents) -> Hold {
         let hold = Hold {
             id: self.next_id,
             ceiling_cents,
@@ -271,10 +278,13 @@ impl ReservedHolds {
 /// `available = cap − settled − Σ(active holds)`, saturating at 0 — the cents this
 /// delegation may still RESERVE. The cross-rail invariant: one `cap`, one `settled`
 /// (summed across rails), one holds set.
-pub fn available(cap_cents: u64, settled_cents: u64, reserved_cents: u64) -> u64 {
-    cap_cents
-        .saturating_sub(settled_cents)
-        .saturating_sub(reserved_cents)
+pub fn available(cap_cents: Cents, settled_cents: Cents, reserved_cents: Cents) -> Cents {
+    Cents::new(
+        cap_cents
+            .get()
+            .saturating_sub(settled_cents.get())
+            .saturating_sub(reserved_cents.get()),
+    )
 }
 
 /// The outcome of pre-authorizing (reserving) a paid call against the cross-rail
@@ -283,11 +293,11 @@ pub fn available(cap_cents: u64, settled_cents: u64, reserved_cents: u64) -> u64
 pub enum ReserveOutcome {
     /// The reservation fits within `available` — the hold is taken and the call may
     /// proceed to the rail.
-    Reserved { hold: Hold, available_after: u64 },
+    Reserved { hold: Hold, available_after: Cents },
     /// The reservation would push `settled + Σ(holds) + ceiling` past the cap —
     /// refused BEFORE the rail is touched (the metered downstream is never charged).
     /// Carries the cap and the would-be cross-rail total for the verdict.
-    Refused { cap_cents: u64, would_be_cents: u64 },
+    Refused { cap_cents: Cents, would_be_cents: Cents },
 }
 
 /// The cross-rail budget for one agent delegation across one session: the durable
@@ -295,7 +305,7 @@ pub enum ReserveOutcome {
 /// by pre-authorization. This is the D8 engine the gate drives per paid call.
 #[derive(Debug, Clone)]
 pub struct CrossRailBudget {
-    cap_cents: u64,
+    cap_cents: Cents,
     settled: SettledCounter,
     holds: ReservedHolds,
 }
@@ -305,7 +315,7 @@ impl CrossRailBudget {
     /// verifier's repo path (where the SETTLED counter persists). The holds start
     /// empty; the settled total is whatever the persisted high-water already records
     /// (so a resumed session continues from the durable counter, never below it).
-    pub fn open(repo_path: &Path, delegation: &str, cap_cents: u64) -> Result<Self, BudgetError> {
+    pub fn open(repo_path: &Path, delegation: &str, cap_cents: Cents) -> Result<Self, BudgetError> {
         Ok(Self {
             cap_cents,
             settled: SettledCounter::open(repo_path, delegation)?,
@@ -314,22 +324,22 @@ impl CrossRailBudget {
     }
 
     /// The cap, in cents.
-    pub fn cap_cents(&self) -> u64 {
+    pub fn cap_cents(&self) -> Cents {
         self.cap_cents
     }
 
     /// The current durable SETTLED total (summed across all rails).
-    pub fn settled_cents(&self) -> Result<u64, BudgetError> {
+    pub fn settled_cents(&self) -> Result<Cents, BudgetError> {
         self.settled.settled_cents()
     }
 
     /// `Σ(active holds)` — the transient reserved cents.
-    pub fn reserved_cents(&self) -> u64 {
+    pub fn reserved_cents(&self) -> Cents {
         self.holds.reserved_cents()
     }
 
     /// `available = cap − settled − Σ(holds)`.
-    pub fn available_cents(&self) -> Result<u64, BudgetError> {
+    pub fn available_cents(&self) -> Result<Cents, BudgetError> {
         Ok(available(
             self.cap_cents,
             self.settled.settled_cents()?,
@@ -348,7 +358,7 @@ impl CrossRailBudget {
     /// touched); otherwise the hold is taken and returned in [`ReserveOutcome::
     /// Reserved`]. This is the cap-enforcement boundary — refusing here is the
     /// `usage-cap-exceeded` the gate surfaces before the downstream is invoked.
-    pub fn reserve(&mut self, ceiling_cents: u64) -> Result<ReserveOutcome, BudgetError> {
+    pub fn reserve(&mut self, ceiling_cents: Cents) -> Result<ReserveOutcome, BudgetError> {
         let settled = self.settled.settled_cents()?;
         let reserved = self.holds.reserved_cents();
         let would_be = settled
@@ -373,7 +383,7 @@ impl CrossRailBudget {
     /// refused [`SettleOutcome::RolledBack`] if the new cumulative would fall below the
     /// recorded high-water). The hold is released REGARDLESS of the monotonicity
     /// outcome so a rolled-back settle does not leak the reservation.
-    pub fn settle(&mut self, hold: Hold, actual_cents: u64) -> Result<SettleOutcome, BudgetError> {
+    pub fn settle(&mut self, hold: Hold, actual_cents: Cents) -> Result<SettleOutcome, BudgetError> {
         // Release the auth-hold first: the slack (ceiling − actual) returns to
         // available, and a rolled-back settle below does not strand the reservation.
         self.holds.release(hold);
@@ -422,7 +432,7 @@ mod tests {
     const DLG: &str = "did:keri:EAgentDelegationXYZ";
 
     fn budget(dir: &Path, cap: u64) -> CrossRailBudget {
-        CrossRailBudget::open(dir, DLG, cap).unwrap()
+        CrossRailBudget::open(dir, DLG, Cents::new(cap)).unwrap()
     }
 
     #[test]
@@ -434,45 +444,45 @@ mod tests {
         let mut b = budget(dir.path(), 500);
 
         // Rail 1 (stripe): reserve $3.00, settle $3.00.
-        let h0 = match b.reserve(300).unwrap() {
+        let h0 = match b.reserve(Cents::new(300)).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("call 0 should reserve, got {o:?}"),
         };
         assert!(matches!(
-            b.settle(h0, 300).unwrap(),
+            b.settle(h0, Cents::new(300)).unwrap(),
             SettleOutcome::Advanced {
-                new_settled_cents: 300
-            }
+                new_settled_cents
+            } if new_settled_cents == Cents::new(300)
         ));
 
         // Rail 2 (x402): reserve $1.50, settle $1.50.
-        let h1 = match b.reserve(150).unwrap() {
+        let h1 = match b.reserve(Cents::new(150)).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("call 1 should reserve, got {o:?}"),
         };
         assert!(matches!(
-            b.settle(h1, 150).unwrap(),
+            b.settle(h1, Cents::new(150)).unwrap(),
             SettleOutcome::Advanced {
-                new_settled_cents: 450
-            }
+                new_settled_cents
+            } if new_settled_cents == Cents::new(450)
         ));
-        assert_eq!(b.settled_cents().unwrap(), 450);
+        assert_eq!(b.settled_cents().unwrap(), Cents::new(450));
 
         // Rail 2 again (x402): $0.60 would reserve to $5.10 across rails — refused,
         // before the rail is touched, even though x402-only spend is just $1.50.
-        match b.reserve(60).unwrap() {
+        match b.reserve(Cents::new(60)).unwrap() {
             ReserveOutcome::Refused {
                 cap_cents,
                 would_be_cents,
             } => {
-                assert_eq!(cap_cents, 500);
-                assert_eq!(would_be_cents, 510);
+                assert_eq!(cap_cents, Cents::new(500));
+                assert_eq!(would_be_cents, Cents::new(510));
             }
             o => panic!("the cross-rail over-cap call must be refused, got {o:?}"),
         }
         // The refused reservation took no hold and never advanced settled.
-        assert_eq!(b.reserved_cents(), 0);
-        assert_eq!(b.settled_cents().unwrap(), 450);
+        assert_eq!(b.reserved_cents(), Cents::ZERO);
+        assert_eq!(b.settled_cents().unwrap(), Cents::new(450));
     }
 
     #[test]
@@ -500,14 +510,14 @@ mod tests {
                 std::thread::spawn(move || {
                     // RESERVE under the lock — the pre-auth boundary. The guard drops at the
                     // end of this statement, releasing the lock before the "rail".
-                    let hold = match b.lock().unwrap().reserve(amount).unwrap() {
+                    let hold = match b.lock().unwrap().reserve(Cents::new(amount)).unwrap() {
                         ReserveOutcome::Reserved { hold, .. } => Some(hold),
                         ReserveOutcome::Refused { .. } => None,
                     };
                     match hold {
                         Some(hold) => {
                             std::thread::yield_now(); // "rail" touched WITHOUT the lock
-                            match b.lock().unwrap().settle(hold, amount).unwrap() {
+                            match b.lock().unwrap().settle(hold, Cents::new(amount)).unwrap() {
                                 SettleOutcome::Advanced { .. } => {
                                     settled.fetch_add(1, Ordering::SeqCst);
                                 }
@@ -530,14 +540,14 @@ mod tests {
         let g = b.lock().unwrap();
         // The hard invariant: the cross-rail total NEVER exceeds the cap, under any race.
         assert!(
-            g.settled_cents().unwrap() <= cap,
+            g.settled_cents().unwrap() <= Cents::new(cap),
             "cross-rail cap exceeded under concurrency"
         );
         // And it is fully + exactly consumed: cap/amount settle, the rest refused, none stranded.
-        assert_eq!(g.settled_cents().unwrap(), cap);
+        assert_eq!(g.settled_cents().unwrap(), Cents::new(cap));
         assert_eq!(settled.load(Ordering::SeqCst), cap / amount);
         assert_eq!(refused.load(Ordering::SeqCst), agents - cap / amount);
-        assert_eq!(g.reserved_cents(), 0);
+        assert_eq!(g.reserved_cents(), Cents::ZERO);
     }
 
     #[test]
@@ -547,30 +557,30 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut b = budget(dir.path(), 500);
 
-        let h0 = match b.reserve(300).unwrap() {
+        let h0 = match b.reserve(Cents::new(300)).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("got {o:?}"),
         };
-        b.settle(h0, 300).unwrap(); // settled = 300
+        b.settle(h0, Cents::new(300)).unwrap(); // settled = 300
 
         // Over-reserve: ceiling $2.00, actual $1.50.
-        let h1 = match b.reserve(200).unwrap() {
+        let h1 = match b.reserve(Cents::new(200)).unwrap() {
             ReserveOutcome::Reserved {
                 hold,
                 available_after,
             } => {
-                assert_eq!(available_after, 0); // 500 − 300 − 200
+                assert_eq!(available_after, Cents::ZERO); // 500 − 300 − 200
                 hold
             }
             o => panic!("got {o:?}"),
         };
-        b.settle(h1, 150).unwrap(); // settled = 450; the $0.50 slack released
+        b.settle(h1, Cents::new(150)).unwrap(); // settled = 450; the $0.50 slack released
 
         // available is now 500 − 450 = 50 (the slack came back, not permanently lost):
-        assert_eq!(b.available_cents().unwrap(), 50);
+        assert_eq!(b.available_cents().unwrap(), Cents::new(50));
         // A $0.50 call fits exactly — it would NOT fit if the slack were consumed.
         assert!(matches!(
-            b.reserve(50).unwrap(),
+            b.reserve(Cents::new(50)).unwrap(),
             ReserveOutcome::Reserved { .. }
         ));
     }
@@ -584,36 +594,36 @@ mod tests {
         let counter = SettledCounter::open(dir.path(), DLG).unwrap();
 
         assert!(matches!(
-            counter.settle(300).unwrap(),
+            counter.settle(Cents::new(300)).unwrap(),
             SettleOutcome::Advanced {
-                new_settled_cents: 300
-            }
+                new_settled_cents
+            } if new_settled_cents == Cents::new(300)
         ));
         assert!(matches!(
-            counter.settle(450).unwrap(),
+            counter.settle(Cents::new(450)).unwrap(),
             SettleOutcome::Advanced {
-                new_settled_cents: 450
-            }
+                new_settled_cents
+            } if new_settled_cents == Cents::new(450)
         ));
         // Replay a lower cumulative (the stale-snapshot rollback): refused.
-        match counter.settle(400).unwrap() {
+        match counter.settle(Cents::new(400)).unwrap() {
             SettleOutcome::RolledBack {
                 presented_cents,
                 high_water_cents,
             } => {
-                assert_eq!(presented_cents, 400);
-                assert_eq!(high_water_cents, 450);
+                assert_eq!(presented_cents, Cents::new(400));
+                assert_eq!(high_water_cents, Cents::new(450));
             }
             o => panic!("a lower settle must be rolled-back, got {o:?}"),
         }
         // The high-water was NOT lowered by the refused rollback.
-        assert_eq!(counter.settled_cents().unwrap(), 450);
+        assert_eq!(counter.settled_cents().unwrap(), Cents::new(450));
         // Re-presenting the exact high-water is admitted (not a rollback).
         assert!(matches!(
-            counter.settle(450).unwrap(),
+            counter.settle(Cents::new(450)).unwrap(),
             SettleOutcome::Advanced {
-                new_settled_cents: 450
-            }
+                new_settled_cents
+            } if new_settled_cents == Cents::new(450)
         ));
     }
 
@@ -624,26 +634,26 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         {
             let c = SettledCounter::open(dir.path(), DLG).unwrap();
-            c.settle(420).unwrap();
+            c.settle(Cents::new(420)).unwrap();
         }
         let c2 = SettledCounter::open(dir.path(), DLG).unwrap();
-        assert_eq!(c2.settled_cents().unwrap(), 420);
+        assert_eq!(c2.settled_cents().unwrap(), Cents::new(420));
     }
 
     #[test]
     fn holds_sum_and_release() {
         let mut h = ReservedHolds::new();
-        let a = h.reserve(300);
-        let b = h.reserve(200);
-        assert_eq!(h.reserved_cents(), 500);
+        let a = h.reserve(Cents::new(300));
+        let b = h.reserve(Cents::new(200));
+        assert_eq!(h.reserved_cents(), Cents::new(500));
         assert_eq!(h.active(), 2);
         h.release(a);
-        assert_eq!(h.reserved_cents(), 200);
+        assert_eq!(h.reserved_cents(), Cents::new(200));
         h.release(b);
-        assert_eq!(h.reserved_cents(), 0);
+        assert_eq!(h.reserved_cents(), Cents::ZERO);
         // Releasing an already-released hold is a no-op.
         h.release(a);
-        assert_eq!(h.reserved_cents(), 0);
+        assert_eq!(h.reserved_cents(), Cents::ZERO);
     }
 
     #[test]
@@ -652,14 +662,14 @@ mod tests {
         // and nothing is added to the monotonic settled total.
         let dir = tempfile::tempdir().unwrap();
         let mut b = budget(dir.path(), 500);
-        let h = match b.reserve(400).unwrap() {
+        let h = match b.reserve(Cents::new(400)).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("got {o:?}"),
         };
-        assert_eq!(b.available_cents().unwrap(), 100);
+        assert_eq!(b.available_cents().unwrap(), Cents::new(100));
         b.expire(h);
-        assert_eq!(b.available_cents().unwrap(), 500);
-        assert_eq!(b.settled_cents().unwrap(), 0);
+        assert_eq!(b.available_cents().unwrap(), Cents::new(500));
+        assert_eq!(b.settled_cents().unwrap(), Cents::ZERO);
     }
 
     #[test]

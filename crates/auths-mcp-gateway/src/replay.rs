@@ -11,7 +11,7 @@
 use std::path::{Path, PathBuf};
 
 use auths_mcp_core::{
-    Budget, CrossRailBudget, ExtractedCost, PerCallGate, Receipt, SpendLogRecord, ToolCall,
+    Budget, Cents, CrossRailBudget, ExtractedCost, PerCallGate, Receipt, SpendLogRecord, ToolCall,
     Verdict,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
@@ -26,9 +26,9 @@ use crate::transcript::{Call, Step, Transcript};
 /// agent-declared number.
 struct CallCost {
     /// The ceiling reserved before the rail is touched.
-    reserve_ceiling_cents: u64,
+    reserve_ceiling_cents: Cents,
     /// The actual settled into the monotonic counter after the rail returns.
-    settle_cents: u64,
+    settle_cents: Cents,
     /// The rail-native reference the cost was extracted from (a Stripe charge id),
     /// present only when the cost is rail-response-authoritative.
     charge_ref: Option<String>,
@@ -85,8 +85,8 @@ fn resolve_call_cost(call: &Call) -> anyhow::Result<CallCost> {
     // ceiling BEFORE the rail's settle is metered, so the over-cap charge is never
     // settled into the counter.
     Ok(CallCost {
-        reserve_ceiling_cents: amount_cents.get(),
-        settle_cents: amount_cents.get(),
+        reserve_ceiling_cents: amount_cents,
+        settle_cents: amount_cents,
         charge_ref: Some(reference),
         extracted: true,
         rail_response: Some(bytes),
@@ -145,13 +145,13 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
         .budget
         .as_deref()
         .map(Budget::parse)
-        .unwrap_or(Budget::Cents(u64::MAX));
+        .unwrap_or(Budget::Cents(Cents::new(u64::MAX)));
     let mut budget =
         CrossRailBudget::open(chain.org_repo(), &chain.agent_did, budget_spec.cap_cents())?;
     println!(
         "▸ budget: one ${cap}.{rem:02} cap across ALL rails (verifier-held SETTLED counter keyed to the agent delegation + reserved holds)",
-        cap = budget.cap_cents() / 100,
-        rem = budget.cap_cents() % 100,
+        cap = budget.cap_cents().get() / 100,
+        rem = budget.cap_cents().get() % 100,
     );
 
     let mut all_matched = true;
@@ -325,7 +325,7 @@ async fn drive_call(
     // cost in signed `Auths-Settle-*` trailers under the `settle` capability — so the audit sums
     // the AGENT-SIGNED cost (un-forgeable by the operator), not just the rail-attested number.
     let settlement_commit = match (forwarded_result.is_some(), rail, settled_charge_ref) {
-        (true, Some(rail_name), Some(charge)) if cost.settle_cents > 0 => {
+        (true, Some(rail_name), Some(charge)) if !cost.settle_cents.is_zero() => {
             // Bind the settlement to THIS call by the hash of its signed commit bytes.
             let call_binding = if std::env::var_os("AUTHS_MCP_SETTLE_REBIND").is_some() {
                 // Adversarial harness hook: stamp a binding for a DIFFERENT call — simulating an
@@ -426,13 +426,19 @@ async fn drive_call(
                 cap_cents,
                 would_be_cents,
             } => format!(
-                " cap_cents={cap_cents} would_be_cents={would_be_cents} \
-                 (cross-rail reservation refused BEFORE the rail was touched)"
+                " cap_cents={} would_be_cents={} \
+                 (cross-rail reservation refused BEFORE the rail was touched)",
+                cap_cents.get(),
+                would_be_cents.get()
             ),
             Verdict::UsageCounterRolledBack {
                 presented_cents,
                 high_water_cents,
-            } => format!(" presented_cents={presented_cents} high_water_cents={high_water_cents}"),
+            } => format!(
+                " presented_cents={} high_water_cents={}",
+                presented_cents.get(),
+                high_water_cents.get()
+            ),
             Verdict::ProofUnauthentic { reason } => format!(" reason={reason}"),
             _ => String::new(),
         };
@@ -465,8 +471,8 @@ async fn drive_call(
 }
 
 /// Format cents as `$D.CC` for the human verdict line.
-fn fmt_cents(cents: u64) -> String {
-    format!("${}.{:02}", cents / 100, cents % 100)
+fn fmt_cents(cents: Cents) -> String {
+    format!("${}.{:02}", cents.get() / 100, cents.get() % 100)
 }
 
 /// The replay-stub downstream result for an allowed call — what a real wrapped MCP

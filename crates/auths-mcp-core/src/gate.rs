@@ -16,6 +16,7 @@ use chrono::{DateTime, Utc};
 
 use crate::Capability;
 use crate::budget::{CrossRailBudget, Hold, ReserveOutcome};
+use crate::money::Cents;
 
 /// A serialized MCP `tools/call` the gate judges. The canonical bytes (tool name
 /// + sorted args) are what gets signed as the auths artifact.
@@ -26,8 +27,8 @@ pub struct ToolCall {
     /// The canonical JSON of the call arguments.
     pub args: serde_json::Value,
     /// The metered cost this call would incur (cents), if the tool is metered.
-    #[serde(default)]
-    pub cost_cents: u64,
+    #[serde(default = "Cents::zero")]
+    pub cost_cents: Cents,
 }
 
 impl ToolCall {
@@ -65,7 +66,7 @@ pub enum Verdict {
     /// The call would cross the session budget cap (maps AGT-4). For the cross-rail
     /// budget (D8) this is the reservation refusal: `settled + Σ(holds) + ceiling`
     /// would exceed the cap, refused BEFORE the rail is touched.
-    UsageCapExceeded { cap_cents: u64, would_be_cents: u64 },
+    UsageCapExceeded { cap_cents: Cents, would_be_cents: Cents },
     /// A payment rail is set but the call declared no amount to meter, so the gate cannot reserve —
     /// and therefore cannot bound — the charge before the rail is touched. Refused fail-closed: a
     /// metered call must declare what it intends to spend, so an omitted amount can never let the
@@ -76,8 +77,8 @@ pub enum Verdict {
     /// gateway that reloaded a stale snapshot). Refused so the counter cannot roll
     /// back (the D8 monotonicity guard; maps AGT-4's `UsageCounterRolledBack`).
     UsageCounterRolledBack {
-        presented_cents: u64,
-        high_water_cents: u64,
+        presented_cents: Cents,
+        high_water_cents: Cents,
     },
     /// The grant is past its anchored expiry at the injected `now`.
     AgentExpired,
@@ -136,9 +137,9 @@ pub struct Decision {
     pub verdict: Verdict,
     /// The running cross-rail SETTLED total this call's receipt reports (the durable
     /// counter the moment the decision was made, before this call settles).
-    pub cumulative_cents: u64,
-    /// The reserved ceiling the pre-authorization took (0 for a non-paid/refused call).
-    pub reserved_cents: u64,
+    pub cumulative_cents: Cents,
+    /// The reserved ceiling the pre-authorization took (zero for a non-paid/refused call).
+    pub reserved_cents: Cents,
     /// The pre-authorization hold to settle after the downstream returns — `Some` only
     /// when the call was authorized (reserved). `None` for a refused or non-paid call.
     pub hold: Option<Hold>,
@@ -253,7 +254,7 @@ impl PerCallGate {
     pub async fn judge(
         &self,
         rail: Option<&str>,
-        reserve_ceiling_cents: u64,
+        reserve_ceiling_cents: Cents,
         signed_proof: &[u8],
         now: DateTime<Utc>,
         budget: &mut CrossRailBudget,
@@ -283,7 +284,7 @@ impl PerCallGate {
             return Ok(Decision {
                 verdict: auth_verdict,
                 cumulative_cents: settled,
-                reserved_cents: 0,
+                reserved_cents: Cents::ZERO,
                 hold: None,
                 rail: rail.map(str::to_string),
             });
@@ -294,25 +295,25 @@ impl PerCallGate {
         // bound, this charge, so it refuses fail-closed: forwarding would let the rail charge while
         // the durable cap never advanced. An omitted amount must not skip the meter.
         if let Some(rail_name) = rail
-            && reserve_ceiling_cents == 0
+            && reserve_ceiling_cents.is_zero()
         {
             return Ok(Decision {
                 verdict: Verdict::MeteredAmountRequired {
                     rail: rail_name.to_string(),
                 },
                 cumulative_cents: settled,
-                reserved_cents: 0,
+                reserved_cents: Cents::ZERO,
                 hold: None,
                 rail: Some(rail_name.to_string()),
             });
         }
         // No rail and no declared cost → non-metered (e.g. fs.read): no reservation, nothing to
         // settle. (A declared cost without a rail name still has ceiling > 0 and reserves below.)
-        if reserve_ceiling_cents == 0 {
+        if reserve_ceiling_cents.is_zero() {
             return Ok(Decision {
                 verdict: Verdict::Allowed,
                 cumulative_cents: settled,
-                reserved_cents: 0,
+                reserved_cents: Cents::ZERO,
                 hold: None,
                 rail: None,
             });
@@ -338,7 +339,7 @@ impl PerCallGate {
                     would_be_cents,
                 },
                 cumulative_cents: settled,
-                reserved_cents: 0,
+                reserved_cents: Cents::ZERO,
                 hold: None,
                 rail: rail.map(str::to_string),
             }),
@@ -355,8 +356,8 @@ impl PerCallGate {
         &self,
         budget: &mut CrossRailBudget,
         hold: Hold,
-        actual_cents: u64,
-    ) -> Result<(Verdict, u64), GateError> {
+        actual_cents: Cents,
+    ) -> Result<(Verdict, Cents), GateError> {
         use crate::budget::SettleOutcome;
         let outcome = budget
             .settle(hold, actual_cents)
@@ -389,7 +390,7 @@ mod tests {
             ToolCall {
                 tool: "read_file".into(),
                 args: serde_json::json!({}),
-                cost_cents: 0,
+                cost_cents: Cents::ZERO,
             }
             .capability(),
             Capability("fs.read".into())
@@ -398,7 +399,7 @@ mod tests {
             ToolCall {
                 tool: "write_file".into(),
                 args: serde_json::json!({}),
-                cost_cents: 0,
+                cost_cents: Cents::ZERO,
             }
             .capability(),
             Capability("fs.write".into())
@@ -408,7 +409,7 @@ mod tests {
             ToolCall {
                 tool: "rm_rf".into(),
                 args: serde_json::json!({}),
-                cost_cents: 0,
+                cost_cents: Cents::ZERO,
             }
             .capability(),
             Capability("tool.rm_rf".into())
@@ -420,13 +421,13 @@ mod tests {
         let a = ToolCall {
             tool: "read_file".into(),
             args: serde_json::json!({ "path": "README.md", "a": 1 }),
-            cost_cents: 0,
+            cost_cents: Cents::ZERO,
         };
         let b = ToolCall {
             tool: "read_file".into(),
             // Different key order — canonicalization must collapse to the same bytes.
             args: serde_json::json!({ "a": 1, "path": "README.md" }),
-            cost_cents: 0,
+            cost_cents: Cents::ZERO,
         };
         assert_eq!(a.canonical_bytes(), b.canonical_bytes());
     }

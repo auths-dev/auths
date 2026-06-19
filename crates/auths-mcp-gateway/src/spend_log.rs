@@ -45,6 +45,7 @@ pub fn append(repo: &Path, delegation: &str, record: &SpendLogRecord) -> anyhow:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auths_mcp_core::Cents;
     use auths_mcp_core::gate::{ToolCall, Verdict};
     use auths_mcp_core::receipt::Receipt;
     use auths_mcp_core::read_spend_log;
@@ -54,7 +55,7 @@ mod tests {
         let call = ToolCall {
             tool: "paid_call".to_string(),
             args: serde_json::json!({ "q": "x" }),
-            cost_cents: 0,
+            cost_cents: Cents::ZERO,
         };
         let receipt = Receipt::for_call(
             "did:keri:Eagent",
@@ -64,8 +65,8 @@ mod tests {
             Verdict::Allowed,
             Some("x402"),
             Some("0xtx"),
-            0,
-            cumulative,
+            Cents::ZERO,
+            Cents::new(cumulative),
             DateTime::from_timestamp(0, 0).unwrap(),
         );
         SpendLogRecord {
@@ -89,7 +90,7 @@ mod tests {
         let path = spend_log_path(repo, dlg);
         let back = read_spend_log(&path).unwrap();
         assert_eq!(back.len(), 2, "the second append must NOT clobber the first");
-        assert_eq!(back[0].receipt.cumulative_cents, 100);
-        assert_eq!(back[1].receipt.cumulative_cents, 250);
+        assert_eq!(back[0].receipt.cumulative_cents, Cents::new(100));
+        assert_eq!(back[1].receipt.cumulative_cents, Cents::new(250));
     }
 }

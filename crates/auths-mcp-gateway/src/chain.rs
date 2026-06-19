@@ -16,6 +16,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use auths_mcp_core::Cents;
+
 /// A built delegation chain in a sandbox registry: the parent root and a delegated
 /// scoped agent, both resolvable from the org registry the verifier replays.
 pub struct Chain {
@@ -298,9 +300,9 @@ impl Chain {
         idx: usize,
         call_binding: &str,
         rail: &str,
-        actual_cents: u64,
+        actual_cents: Cents,
         rail_ref: &str,
-        cumulative_cents: u64,
+        cumulative_cents: Cents,
     ) -> anyhow::Result<(Vec<u8>, String)> {
         let work = self.work_root.join(format!("settle-{idx}"));
         std::fs::create_dir_all(&work)?;
@@ -338,9 +340,11 @@ impl Chain {
                 .args(["commit", "-qm", "tools/settle", "--no-gpg-sign"])
                 .args(["--trailer", &format!("Auths-Settle-Call:{call_binding}")])
                 .args(["--trailer", &format!("Auths-Settle-Rail:{rail}")])
-                .args(["--trailer", &format!("Auths-Settle-Cents:{actual_cents}")])
+                // The settled cost/cumulative are stamped as raw cent integers (the audit parses
+                // them back with `parse::<u64>()`) — unwrap Cents at this trailer-format boundary.
+                .args(["--trailer", &format!("Auths-Settle-Cents:{}", actual_cents.get())])
                 .args(["--trailer", &format!("Auths-Settle-Ref:{rail_ref}")])
-                .args(["--trailer", &format!("Auths-Settle-Cumulative:{cumulative_cents}")])
+                .args(["--trailer", &format!("Auths-Settle-Cumulative:{}", cumulative_cents.get())])
                 .current_dir(&work),
             "git commit (settlement, signed cost trailers)",
         )?;

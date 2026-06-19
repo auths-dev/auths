@@ -26,6 +26,13 @@ impl Cents {
     /// The zero amount — a non-metered call's cost.
     pub const ZERO: Cents = Cents(0);
 
+    /// The zero amount, as a function — the `#[serde(default)]` for an optional cents
+    /// field (e.g. a `tools/call`'s `cost_cents` defaulting to non-metered). `Cents`
+    /// has no `Default` derive on purpose, so a zero is always written explicitly.
+    pub const fn zero() -> Cents {
+        Cents::ZERO
+    }
+
     /// Wrap a raw cent count.
     pub const fn new(cents: u64) -> Cents {
         Cents(cents)

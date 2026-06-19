@@ -11,12 +11,14 @@
 //! the gateway uses to read the cap off the grant before opening the cross-rail
 //! budget at that cap.
 
+use crate::money::Cents;
+
 /// A quantitative budget on an agent's session (maps AGT-4). Either a spend cap in
 /// cents or a call-count cap — the boolean-scope incumbents cannot express either.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Budget {
     /// A monetary cap, in cents (e.g. `$5.00` → `Cents(500)`).
-    Cents(u64),
+    Cents(Cents),
     /// A maximum number of brokered calls.
     Calls(u64),
 }
@@ -34,19 +36,20 @@ impl Budget {
         }
         let dollars = raw.trim_start_matches('$');
         if let Ok(cents) = parse_dollars_to_cents(dollars) {
-            return Budget::Cents(cents);
+            // Wrap the parsed cent count at this string-parse boundary.
+            return Budget::Cents(Cents::new(cents));
         }
-        // Permissive default: a budget we cannot read does not block MCP-1.
-        Budget::Cents(u64::MAX)
+        // Permissive default: a budget we cannot read does not block a non-payment wrap.
+        Budget::Cents(Cents::new(u64::MAX))
     }
 
     /// The cap expressed in cents — the value the cross-rail budget is opened at. A
     /// call cap reports its count directly (the cross-rail engine is for the metered,
     /// cents-denominated path; the call-cap path is non-metered and reserves nothing).
-    pub fn cap_cents(&self) -> u64 {
+    pub fn cap_cents(&self) -> Cents {
         match self {
             Budget::Cents(c) => *c,
-            Budget::Calls(c) => *c,
+            Budget::Calls(c) => Cents::new(*c),
         }
     }
 }
@@ -80,15 +83,15 @@ mod tests {
 
     #[test]
     fn parses_dollar_budgets() {
-        assert_eq!(Budget::parse("$5.00"), Budget::Cents(500));
-        assert_eq!(Budget::parse("$5"), Budget::Cents(500));
-        assert_eq!(Budget::parse("$4.99"), Budget::Cents(499));
+        assert_eq!(Budget::parse("$5.00"), Budget::Cents(Cents::new(500)));
+        assert_eq!(Budget::parse("$5"), Budget::Cents(Cents::new(500)));
+        assert_eq!(Budget::parse("$4.99"), Budget::Cents(Cents::new(499)));
         assert_eq!(Budget::parse("20calls"), Budget::Calls(20));
     }
 
     #[test]
     fn cap_cents_reads_the_bound() {
-        assert_eq!(Budget::parse("$5.00").cap_cents(), 500);
-        assert_eq!(Budget::parse("20calls").cap_cents(), 20);
+        assert_eq!(Budget::parse("$5.00").cap_cents(), Cents::new(500));
+        assert_eq!(Budget::parse("20calls").cap_cents(), Cents::new(20));
     }
 }

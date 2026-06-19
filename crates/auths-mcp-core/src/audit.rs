@@ -15,6 +15,7 @@
 //! audit re-verifies the same material regardless of which path produced the log. This data model
 //! is path-agnostic.
 
+use crate::money::Cents;
 use crate::receipt::Receipt;
 use auths_id::keri::Event;
 use serde::{Deserialize, Serialize};
@@ -67,7 +68,7 @@ pub enum AuditVerdict {
         /// Number of brokered calls audited.
         calls: usize,
         /// The true cross-rail total, re-derived by summing the SIGNED settled costs.
-        settled_cents: u64,
+        settled_cents: Cents,
     },
     /// A call or settlement proof failed `verify_commit_against_kel_scoped` (forged, altered, or
     /// signed-after-revocation). `proof_ref` is the offending commit.
@@ -79,9 +80,9 @@ pub enum AuditVerdict {
     /// recorded rail response — the operator signed one number but logged another response.
     CostMismatch {
         /// The cost the agent SIGNED in the settlement commit.
-        signed_cents: u64,
+        signed_cents: Cents,
         /// The cost re-extracted from the recorded rail response.
-        recomputed_cents: u64,
+        recomputed_cents: Cents,
         /// The settlement commit at fault.
         proof_ref: String,
     },
@@ -89,9 +90,9 @@ pub enum AuditVerdict {
     /// operator's claimed cumulative.
     BudgetMismatch {
         /// The true total re-derived from the signed costs.
-        recomputed_cents: u64,
+        recomputed_cents: Cents,
         /// The cumulative the operator's counter/receipt claimed.
-        claimed_cents: u64,
+        claimed_cents: Cents,
     },
     /// The signed proof chain has a gap at record index `at` — a call was dropped or reordered.
     DroppedCall {
@@ -134,8 +135,8 @@ impl fmt::Display for AuditVerdict {
             } => write!(
                 f,
                 "consistent — {calls} call(s), ${}.{:02} re-derived from signed costs",
-                settled_cents / 100,
-                settled_cents % 100
+                settled_cents.get() / 100,
+                settled_cents.get() % 100
             ),
             AuditVerdict::TamperedProof { proof_ref } => {
                 write!(f, "tampered-proof — {proof_ref} failed verification")
@@ -146,14 +147,18 @@ impl fmt::Display for AuditVerdict {
                 proof_ref,
             } => write!(
                 f,
-                "cost-mismatch — {proof_ref} signed {signed_cents}c but the rail response is {recomputed_cents}c"
+                "cost-mismatch — {proof_ref} signed {}c but the rail response is {}c",
+                signed_cents.get(),
+                recomputed_cents.get()
             ),
             AuditVerdict::BudgetMismatch {
                 recomputed_cents,
                 claimed_cents,
             } => write!(
                 f,
-                "budget-mismatch — re-derived {recomputed_cents}c, operator claimed {claimed_cents}c"
+                "budget-mismatch — re-derived {}c, operator claimed {}c",
+                recomputed_cents.get(),
+                claimed_cents.get()
             ),
             AuditVerdict::DroppedCall { at } => write!(f, "dropped-call — chain gap at record {at}"),
             AuditVerdict::Revoked { at } => {
@@ -227,7 +232,7 @@ pub async fn audit_spend_log(
     now: i64,
 ) -> AuditVerdict {
     let provider = auths_crypto::default_provider();
-    let mut settled: u64 = 0;
+    let mut settled = Cents::ZERO;
     // The binding each record's `Auths-Prev` must match — the prior record's commit hash, or the
     // genesis sentinel for the first record.
     let mut expected_prev = SPEND_LOG_GENESIS.to_string();
@@ -279,12 +284,12 @@ pub async fn audit_spend_log(
             // unsigned, so it is only a cross-check — the authoritative amount is the one the agent
             // SIGNED in the settlement below.
             let recomputed = match crate::rail::extract(rail, resp) {
-                Ok(c) => c.amount_cents.get(),
+                Ok(c) => c.amount_cents,
                 // A settled call whose recorded response no longer extracts is a tampered response.
                 Err(_) => {
                     return AuditVerdict::CostMismatch {
-                        signed_cents: 0,
-                        recomputed_cents: 0,
+                        signed_cents: Cents::ZERO,
+                        recomputed_cents: Cents::ZERO,
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 }
@@ -292,7 +297,7 @@ pub async fn audit_spend_log(
             // A non-zero settled cost MUST come from a settlement the agent signed. Requiring it
             // closes the downgrade where an operator strips the settlement and falls back to a rail
             // response it authored. (A zero-cost forwarded call settles nothing and needs none.)
-            if recomputed > 0 {
+            if !recomputed.is_zero() {
                 let Some(settle_commit) = rec.settlement_commit.as_deref() else {
                     return AuditVerdict::TamperedProof {
                         proof_ref: rec.receipt.proof_ref.clone(),
@@ -329,8 +334,11 @@ pub async fn audit_spend_log(
                 }
                 // 3. The agent-signed cost, cross-checked against the rail's own response — a
                 //    disagreement means the operator swapped the response (or the signed amount).
+                // The signed cents trailer is a decimal string — parse to u64 then wrap at this
+                // commit-trailer boundary.
                 let Some(signed) = commit_trailer(settle_commit, "Auths-Settle-Cents")
                     .and_then(|v| v.parse::<u64>().ok())
+                    .map(Cents::new)
                 else {
                     return AuditVerdict::TamperedProof {
                         proof_ref: rec.receipt.proof_ref.clone(),
@@ -345,9 +353,11 @@ pub async fn audit_spend_log(
                 }
                 settled = settled.saturating_add(signed);
                 // 4. The signed running total ties the cumulative to signed material, so the budget
-                //    leg does not rest on the operator's own (unsigned) receipt cumulative.
+                //    leg does not rest on the operator's own (unsigned) receipt cumulative. The
+                //    trailer is a decimal string — parse to u64 then wrap at this boundary.
                 let Some(signed_cumulative) = commit_trailer(settle_commit, "Auths-Settle-Cumulative")
                     .and_then(|v| v.parse::<u64>().ok())
+                    .map(Cents::new)
                 else {
                     return AuditVerdict::TamperedProof {
                         proof_ref: rec.receipt.proof_ref.clone(),
@@ -367,7 +377,7 @@ pub async fn audit_spend_log(
     let claimed = records
         .last()
         .map(|r| r.receipt.cumulative_cents)
-        .unwrap_or(0);
+        .unwrap_or(Cents::ZERO);
     if settled != claimed {
         return AuditVerdict::BudgetMismatch {
             recomputed_cents: settled,
@@ -428,7 +438,7 @@ mod tests {
         let call = ToolCall {
             tool: "read_file".to_string(),
             args: serde_json::json!({ "path": "src/lib.rs" }),
-            cost_cents: 0,
+            cost_cents: Cents::ZERO,
         };
         Receipt::for_call(
             "did:keri:Eagent",
@@ -438,8 +448,8 @@ mod tests {
             Verdict::Allowed,
             Some("x402"),
             Some("0xtx"),
-            0,
-            150,
+            Cents::ZERO,
+            Cents::new(150),
             DateTime::from_timestamp(0, 0).unwrap(),
         )
     }
@@ -448,7 +458,7 @@ mod tests {
     fn audit_verdict_code_and_is_consistent() {
         let ok = AuditVerdict::Consistent {
             calls: 3,
-            settled_cents: 450,
+            settled_cents: Cents::new(450),
         };
         assert!(ok.is_consistent());
         assert_eq!(ok.code(), "consistent");
@@ -460,8 +470,8 @@ mod tests {
         assert_eq!(bad.code(), "tampered-proof");
         assert_eq!(
             AuditVerdict::CostMismatch {
-                signed_cents: 10,
-                recomputed_cents: 5,
+                signed_cents: Cents::new(10),
+                recomputed_cents: Cents::new(5),
                 proof_ref: "s".into()
             }
             .code(),
@@ -474,8 +484,8 @@ mod tests {
     #[test]
     fn audit_verdict_serde_roundtrips_tagged_kebab() {
         let v = AuditVerdict::CostMismatch {
-            signed_cents: 60,
-            recomputed_cents: 50,
+            signed_cents: Cents::new(60),
+            recomputed_cents: Cents::new(50),
             proof_ref: "p".into(),
         };
         let json = serde_json::to_string(&v).unwrap();

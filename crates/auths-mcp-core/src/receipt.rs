@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 
 use crate::gate::{ToolCall, Verdict};
+use crate::money::Cents;
 
 /// One receipt for a brokered `tools/call`. It records the authenticated identity
 /// (device = the delegated agent, identity = the parent root the grant is anchored
@@ -47,12 +48,12 @@ pub struct Receipt {
     /// The ceiling RESERVED for this call before the rail was touched (the
     /// pre-authorization hold). `0` for a non-metered call. The reserved-vs-settled
     /// split proves the slack (`reserved − settled-delta`) was released, not consumed.
-    #[serde(default)]
-    pub reserved_cents: u64,
+    #[serde(default = "Cents::zero")]
+    pub reserved_cents: Cents,
     /// Cumulative CROSS-RAIL SETTLED spend (cents) after this call — the running total
     /// summed across all rails (the verifier-held monotonic counter). This is the
     /// `cross_rail_cumulative` the receipt reports.
-    pub cumulative_cents: u64,
+    pub cumulative_cents: Cents,
     /// When the call was judged.
     pub at: DateTime<Utc>,
 }
@@ -82,8 +83,8 @@ impl Receipt {
         verdict: Verdict,
         rail: Option<&str>,
         charge_ref: Option<&str>,
-        reserved_cents: u64,
-        cumulative_cents: u64,
+        reserved_cents: Cents,
+        cumulative_cents: Cents,
         at: DateTime<Utc>,
     ) -> Self {
         let action_hash = hex_sha256(&call.canonical_bytes());
@@ -138,7 +139,7 @@ mod tests {
         ToolCall {
             tool: "read_file".into(),
             args: serde_json::json!({ "path": "README.md" }),
-            cost_cents: 0,
+            cost_cents: Cents::ZERO,
         }
     }
 
@@ -152,8 +153,8 @@ mod tests {
             Verdict::Allowed,
             None,
             None,
-            0,
-            0,
+            Cents::ZERO,
+            Cents::ZERO,
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         );
         assert_eq!(r.device, "did:keri:Eagent");
@@ -170,7 +171,7 @@ mod tests {
         let call = ToolCall {
             tool: "paid_call".into(),
             args: serde_json::json!({ "q": "b" }),
-            cost_cents: 150,
+            cost_cents: Cents::new(150),
         };
         let r = Receipt::for_call(
             "did:keri:Eagent",
@@ -180,13 +181,13 @@ mod tests {
             Verdict::Allowed,
             Some("x402"),
             None,
-            200, // reserved a $2.00 ceiling
-            450, // cross-rail settled total after this call
+            Cents::new(200), // reserved a $2.00 ceiling
+            Cents::new(450), // cross-rail settled total after this call
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         );
         assert_eq!(r.rail.as_deref(), Some("x402"));
-        assert_eq!(r.reserved_cents, 200);
-        assert_eq!(r.cumulative_cents, 450);
+        assert_eq!(r.reserved_cents, Cents::new(200));
+        assert_eq!(r.cumulative_cents, Cents::new(450));
         // The rail survives the canonical round-trip the verifier re-derives over.
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("\"rail\":\"x402\""));
@@ -201,7 +202,7 @@ mod tests {
         let call = ToolCall {
             tool: "paid_call".into(),
             args: serde_json::json!({ "endpoint": "/charge" }),
-            cost_cents: 300,
+            cost_cents: Cents::new(300),
         };
         let r = Receipt::for_call(
             "did:keri:Eagent",
@@ -211,8 +212,8 @@ mod tests {
             Verdict::Allowed,
             Some("stripe"),
             Some("ch_3MmlLrLkdIwHu7ix0snN0B15"),
-            300,
-            300,
+            Cents::new(300),
+            Cents::new(300),
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         );
         assert_eq!(r.charge_ref.as_deref(), Some("ch_3MmlLrLkdIwHu7ix0snN0B15"));
@@ -232,8 +233,8 @@ mod tests {
             Verdict::Allowed,
             None,
             None,
-            0,
-            0,
+            Cents::ZERO,
+            Cents::ZERO,
             DateTime::from_timestamp(1_700_000_000, 0).unwrap(),
         );
         let d1 = r.digest().unwrap();

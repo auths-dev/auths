@@ -24,8 +24,8 @@ use std::sync::Arc;
 
 use auths_mcp_core::budget::CrossRailBudget;
 use auths_mcp_core::{
-    Budget, Capability, PaymentMode, Receipt, SpendLogRecord, TEST_MODE_ENV, ToolCall,
-    env_opts_into_test, require_budget,
+    AtomicUsdc, Budget, Capability, Cents, PaymentMode, Receipt, SpendLogRecord, TEST_MODE_ENV,
+    ToolCall, env_opts_into_test, require_budget,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -210,13 +210,13 @@ fn wire_delegation_key(cfg: &WrapConfig) -> String {
 /// the metered-rail wiring (a follow-on); what #281 wires is that whatever cost a call
 /// carries is enforced against the SAME durable verifier-held [`CrossRailBudget`] the
 /// hermetic gate uses — not a separate in-memory tally.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct CallCost {
-    /// The cents this call would settle against the cross-rail cap (0 = non-metered).
-    pub cost_cents: u64,
+    /// The cents this call would settle against the cross-rail cap (zero = non-metered).
+    pub cost_cents: Cents,
     /// The pre-authorization ceiling reserved before the rail is touched. Defaults to
     /// `cost_cents` for a known-cost call.
-    pub reserve_ceiling_cents: u64,
+    pub reserve_ceiling_cents: Cents,
     /// The payment rail this metered call settles on (cross-rail attribution).
     pub rail: Option<String>,
 }
@@ -224,11 +224,15 @@ pub struct CallCost {
 impl CallCost {
     /// A non-metered call: nothing to reserve or settle (e.g. `fs.read`).
     pub fn free() -> Self {
-        Self::default()
+        Self {
+            cost_cents: Cents::ZERO,
+            reserve_ceiling_cents: Cents::ZERO,
+            rail: None,
+        }
     }
 
     /// A metered call with a known cost on `rail`: reserve and settle the same amount.
-    pub fn metered(cost_cents: u64, rail: impl Into<String>) -> Self {
+    pub fn metered(cost_cents: Cents, rail: impl Into<String>) -> Self {
         Self::metered_with_ceiling(cost_cents, cost_cents, rail)
     }
 
@@ -237,8 +241,8 @@ impl CallCost {
     /// known-cost call the two are equal; a metered call whose final cost is bounded but
     /// not yet known reserves the ceiling.
     pub fn metered_with_ceiling(
-        cost_cents: u64,
-        reserve_ceiling_cents: u64,
+        cost_cents: Cents,
+        reserve_ceiling_cents: Cents,
         rail: impl Into<String>,
     ) -> Self {
         Self {
@@ -305,15 +309,18 @@ impl GatewayProxy {
         // SETTLED is read from the rail's own response in `call_tool`. Because the OPERATOR sets the
         // rail, an agent cannot bypass metering by omitting a per-call field.
         if let Some(rail) = self.rail.as_deref() {
+            // `amount_atomic` is atomic USDC read from the agent's arg (a genuine boundary) →
+            // reserve ceiling rounded UP; `_auths_reserve_ceiling_cents` is a raw cent count.
             let ceiling = args
                 .and_then(|m| m.get("amount_atomic"))
                 .and_then(|v| v.as_u64())
-                .map(|a| auths_mcp_core::AtomicUsdc::new(a).to_cents_ceiling().get())
+                .map(|a| AtomicUsdc::new(a).to_cents_ceiling())
                 .or_else(|| {
                     args.and_then(|m| m.get("_auths_reserve_ceiling_cents"))
                         .and_then(|v| v.as_u64())
+                        .map(Cents::new)
                 })
-                .unwrap_or(0);
+                .unwrap_or(Cents::ZERO);
             return CallCost::metered_with_ceiling(ceiling, ceiling, rail);
         }
 
@@ -322,16 +329,19 @@ impl GatewayProxy {
         let Some(args) = args else {
             return CallCost::free();
         };
+        // `_auths_cost_cents` is a raw cent count read from the agent's arg (a genuine boundary).
         let cost_cents = args
             .get("_auths_cost_cents")
             .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        if cost_cents == 0 {
+            .map(Cents::new)
+            .unwrap_or(Cents::ZERO);
+        if cost_cents.is_zero() {
             return CallCost::free();
         }
         let reserve_ceiling_cents = args
             .get("_auths_reserve_ceiling_cents")
             .and_then(|v| v.as_u64())
+            .map(Cents::new)
             .unwrap_or(cost_cents);
         match args.get("_auths_rail").and_then(|v| v.as_str()) {
             Some(rail) if reserve_ceiling_cents == cost_cents => CallCost::metered(cost_cents, rail),
@@ -466,7 +476,7 @@ impl ServerHandler for GatewayProxy {
                 })?;
                 rail_response = Some(resp);
                 settled_charge_ref = Some(extracted.reference);
-                extracted.amount_cents.get()
+                extracted.amount_cents
             } else {
                 cost.cost_cents
             };
@@ -490,7 +500,7 @@ impl ServerHandler for GatewayProxy {
             // Sign a settlement commit anchoring the agent-signed actual cost, bound to THIS call by
             // the hash of its proof, so the audit cannot be handed a settlement from another call.
             if let (Some(rail), Some(charge_ref)) = (cost.rail.as_deref(), settled_charge_ref.as_deref())
-                && actual_cents > 0
+                && !actual_cents.is_zero()
             {
                 let (bytes, _sha) = self
                     .chain
@@ -562,8 +572,8 @@ impl ServerHandler for GatewayProxy {
                     "auths-mcp-gateway: brokered + SIGNED tools/call `{tool}`{rail_tag} (cap={}) — \
                      forwarded; cross-rail settled total ${}.{:02}; proof={proof_short}",
                     capability.as_str(),
-                    cumulative / 100,
-                    cumulative % 100,
+                    cumulative.get() / 100,
+                    cumulative.get() % 100,
                 );
                 Ok(result)
             }
@@ -664,7 +674,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         .budget
         .as_deref()
         .map(Budget::parse)
-        .unwrap_or(Budget::Cents(u64::MAX))
+        .unwrap_or(Budget::Cents(Cents::new(u64::MAX)))
         .cap_cents();
 
     // If the gateway custodies a downstream credential, audit which credential(s) by NAME (never
@@ -717,8 +727,8 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
          (budget-ledger under {repo:?}, keyed to the agent delegation, one ${cap}.{rem:02} cap \
          summed across ALL rails) — the SAME counter the hermetic gate uses",
         repo = repo,
-        cap = cap_cents / 100,
-        rem = cap_cents % 100,
+        cap = cap_cents.get() / 100,
+        rem = cap_cents.get() % 100,
     );
 
     // Build the agent's delegation chain (its delegated signing key + the registry the
