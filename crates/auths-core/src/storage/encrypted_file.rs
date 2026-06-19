@@ -292,6 +292,19 @@ impl EncryptedFileStorage {
     }
 }
 
+/// Parses a DID string loaded from the encrypted store into a validated `IdentityDID`.
+///
+/// A corrupted or hand-edited keystore entry is rejected as a security error rather
+/// than wrapped unchecked — a stored DID is untrusted input on the read path.
+fn parse_stored_did(did: &str, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
+    IdentityDID::parse(did).map_err(|e| {
+        AgentError::SecurityError(format!(
+            "key '{}': malformed identity DID in keystore: {e}",
+            alias.as_str()
+        ))
+    })
+}
+
 #[allow(clippy::disallowed_methods)] // INVARIANT: file-backed keychain adapter
 #[allow(clippy::disallowed_types)]
 impl KeyStorage for EncryptedFileStorage {
@@ -328,17 +341,13 @@ impl KeyStorage for EncryptedFileStorage {
                 let key_bytes = BASE64.decode(b64).map_err(|e| {
                     AgentError::StorageError(format!("Invalid key encoding: {}", e))
                 })?;
-                Ok((IdentityDID::new_unchecked(did.clone()), role, key_bytes))
+                Ok((parse_stored_did(did, alias)?, role, key_bytes))
             }
             KeyEntry::Legacy(did, b64) => {
                 let key_bytes = BASE64.decode(b64).map_err(|e| {
                     AgentError::StorageError(format!("Invalid key encoding: {}", e))
                 })?;
-                Ok((
-                    IdentityDID::new_unchecked(did.clone()),
-                    KeyRole::Primary,
-                    key_bytes,
-                ))
+                Ok((parse_stored_did(did, alias)?, KeyRole::Primary, key_bytes))
             }
         }
     }
@@ -382,15 +391,14 @@ impl KeyStorage for EncryptedFileStorage {
 
     fn get_identity_for_alias(&self, alias: &KeyAlias) -> Result<IdentityDID, AgentError> {
         let data = self.read_data()?;
-        data.keys
+        let entry = data
+            .keys
             .get(alias.as_str())
-            .map(|entry| {
-                let did_str = match entry {
-                    KeyEntry::WithRole(did, _, _) | KeyEntry::Legacy(did, _) => did,
-                };
-                IdentityDID::new_unchecked(did_str.clone())
-            })
-            .ok_or(AgentError::KeyNotFound)
+            .ok_or(AgentError::KeyNotFound)?;
+        let did_str = match entry {
+            KeyEntry::WithRole(did, _, _) | KeyEntry::Legacy(did, _) => did,
+        };
+        parse_stored_did(did_str, alias)
     }
 
     fn backend_name(&self) -> &'static str {
@@ -456,6 +464,26 @@ mod tests {
         assert_eq!(loaded_did, identity_did);
         assert_eq!(loaded_role, KeyRole::Primary);
         assert_eq!(loaded_data, encrypted_data);
+    }
+
+    #[test]
+    fn load_rejects_tampered_identity_did() {
+        let (storage, _temp) = create_test_storage();
+        let alias = KeyAlias::new("tampered").unwrap();
+        // A corrupted or hand-edited keystore entry: a DID string that never passed parse().
+        let tampered = IdentityDID::new_unchecked("not-a-did");
+        storage
+            .store_key(&alias, &tampered, KeyRole::Primary, b"x")
+            .unwrap();
+
+        assert!(matches!(
+            storage.load_key(&alias),
+            Err(AgentError::SecurityError(_))
+        ));
+        assert!(matches!(
+            storage.get_identity_for_alias(&alias),
+            Err(AgentError::SecurityError(_))
+        ));
     }
 
     #[test]

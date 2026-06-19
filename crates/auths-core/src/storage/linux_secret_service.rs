@@ -20,6 +20,16 @@ const ATTR_IDENTITY: &str = "identity";
 /// Attribute key for the key role
 const ATTR_ROLE: &str = "role";
 
+/// Parses a DID read out of a stored secret into a validated `IdentityDID`.
+///
+/// A corrupted or hand-edited secret is rejected as a security error rather than
+/// wrapped unchecked — the stored DID is untrusted input on the read path.
+fn parse_secret_did(did: &str) -> Result<IdentityDID, AgentError> {
+    IdentityDID::parse(did).map_err(|e| {
+        AgentError::SecurityError(format!("malformed identity DID in secret store: {e}"))
+    })
+}
+
 /// Linux Secret Service storage backend.
 ///
 /// Uses D-Bus to communicate with a Secret Service provider (GNOME Keyring,
@@ -210,23 +220,11 @@ impl KeyStorage for LinuxSecretServiceStorage {
                     3 => {
                         let role = KeyRole::from_persisted(parts[1])
                             .map_err(|e| AgentError::SecurityError(e.to_string()))?;
-                        (
-                            #[allow(clippy::disallowed_methods)]
-                            // INVARIANT: DID was stored by this keychain impl, already validated on write
-                            IdentityDID::new_unchecked(parts[0].to_string()),
-                            role,
-                            parts[2],
-                        )
+                        (parse_secret_did(parts[0])?, role, parts[2])
                     }
                     2 => {
                         // Legacy format: did|base64_key_data
-                        (
-                            #[allow(clippy::disallowed_methods)]
-                            // INVARIANT: DID was stored by this keychain impl, already validated on write
-                            IdentityDID::new_unchecked(parts[0].to_string()),
-                            KeyRole::Primary,
-                            parts[1],
-                        )
+                        (parse_secret_did(parts[0])?, KeyRole::Primary, parts[1])
                     }
                     _ => {
                         return Err(AgentError::StorageError(
