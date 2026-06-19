@@ -3,17 +3,98 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::OidcError;
 
+/// A JSON Web Signature algorithm accepted for token verification. Only asymmetric algorithms are
+/// representable: there is deliberately no `none` variant (which would accept an unsigned token) and
+/// no symmetric `HS*` variant (which a public-key verifier can be tricked into using as an HMAC key).
+/// An algorithm allowlist therefore cannot be configured to permit either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum JwsAlg {
+    #[serde(rename = "RS256")]
+    Rs256,
+    #[serde(rename = "RS384")]
+    Rs384,
+    #[serde(rename = "RS512")]
+    Rs512,
+    #[serde(rename = "ES256")]
+    Es256,
+    #[serde(rename = "ES384")]
+    Es384,
+    #[serde(rename = "ES512")]
+    Es512,
+    #[serde(rename = "PS256")]
+    Ps256,
+    #[serde(rename = "PS384")]
+    Ps384,
+    #[serde(rename = "PS512")]
+    Ps512,
+}
+
+/// A JWS algorithm name that is not an accepted asymmetric algorithm.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unsupported or unsafe JWS algorithm: {0:?}")]
+pub struct UnsupportedJwsAlg(pub String);
+
+impl JwsAlg {
+    /// Parse a JWS algorithm name (e.g. `"RS256"`). The match is exact and case-sensitive, so
+    /// `"none"`, a symmetric `HS*` name, an unknown name, or a case variant is refused.
+    ///
+    /// Args:
+    /// * `name`: the algorithm name from a JWT header or an allowlist entry.
+    ///
+    /// Usage:
+    /// ```
+    /// use auths_oidc_port::JwsAlg;
+    /// assert_eq!(JwsAlg::parse("RS256").unwrap(), JwsAlg::Rs256);
+    /// assert!(JwsAlg::parse("none").is_err());
+    /// ```
+    pub fn parse(name: &str) -> Result<JwsAlg, UnsupportedJwsAlg> {
+        match name {
+            "RS256" => Ok(JwsAlg::Rs256),
+            "RS384" => Ok(JwsAlg::Rs384),
+            "RS512" => Ok(JwsAlg::Rs512),
+            "ES256" => Ok(JwsAlg::Es256),
+            "ES384" => Ok(JwsAlg::Es384),
+            "ES512" => Ok(JwsAlg::Es512),
+            "PS256" => Ok(JwsAlg::Ps256),
+            "PS384" => Ok(JwsAlg::Ps384),
+            "PS512" => Ok(JwsAlg::Ps512),
+            other => Err(UnsupportedJwsAlg(other.to_string())),
+        }
+    }
+
+    /// The algorithm's JWS name (e.g. `"RS256"`).
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            JwsAlg::Rs256 => "RS256",
+            JwsAlg::Rs384 => "RS384",
+            JwsAlg::Rs512 => "RS512",
+            JwsAlg::Es256 => "ES256",
+            JwsAlg::Es384 => "ES384",
+            JwsAlg::Es512 => "ES512",
+            JwsAlg::Ps256 => "PS256",
+            JwsAlg::Ps384 => "PS384",
+            JwsAlg::Ps512 => "PS512",
+        }
+    }
+}
+
+impl std::fmt::Display for JwsAlg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Configuration for OIDC token validation.
 ///
 /// # Usage
 ///
 /// ```ignore
-/// use auths_oidc_port::{OidcValidationConfig, OidcValidationConfigBuilder};
+/// use auths_oidc_port::{JwsAlg, OidcValidationConfig, OidcValidationConfigBuilder};
 ///
 /// let config = OidcValidationConfig::builder()
 ///     .issuer("https://token.actions.githubusercontent.com")
 ///     .audience("sigstore")
-///     .allowed_algorithms(vec!["RS256".to_string()])
+///     .allowed_algorithms(vec![JwsAlg::Rs256])
 ///     .max_clock_skew_secs(60)
 ///     .jwks_cache_ttl_secs(3600)
 ///     .build();
@@ -24,8 +105,8 @@ pub struct OidcValidationConfig {
     pub issuer: String,
     /// The expected JWT audience (e.g., "sigstore")
     pub audience: String,
-    /// Allowed JWT algorithms (e.g., vec!["RS256"])
-    pub allowed_algorithms: Vec<String>,
+    /// Allowed JWT algorithms (e.g., vec![JwsAlg::Rs256])
+    pub allowed_algorithms: Vec<JwsAlg>,
     /// Maximum clock skew tolerance in seconds
     pub max_clock_skew_secs: i64,
     /// JWKS cache TTL in seconds
@@ -44,7 +125,7 @@ impl OidcValidationConfig {
 pub struct OidcValidationConfigBuilder {
     issuer: Option<String>,
     audience: Option<String>,
-    allowed_algorithms: Option<Vec<String>>,
+    allowed_algorithms: Option<Vec<JwsAlg>>,
     max_clock_skew_secs: Option<i64>,
     jwks_cache_ttl_secs: Option<u64>,
 }
@@ -63,7 +144,7 @@ impl OidcValidationConfigBuilder {
     }
 
     /// Set the allowed JWT algorithms.
-    pub fn allowed_algorithms(mut self, algorithms: Vec<String>) -> Self {
+    pub fn allowed_algorithms(mut self, algorithms: Vec<JwsAlg>) -> Self {
         self.allowed_algorithms = Some(algorithms);
         self
     }
@@ -91,7 +172,7 @@ impl OidcValidationConfigBuilder {
                 .ok_or_else(|| "audience is required".to_string())?,
             allowed_algorithms: self
                 .allowed_algorithms
-                .unwrap_or_else(|| vec!["RS256".to_string(), "ES256".to_string()]),
+                .unwrap_or_else(|| vec![JwsAlg::Rs256, JwsAlg::Es256]),
             max_clock_skew_secs: self.max_clock_skew_secs.unwrap_or(60),
             jwks_cache_ttl_secs: self.jwks_cache_ttl_secs.unwrap_or(3600),
         })
@@ -245,11 +326,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_unsigned_symmetric_or_unknown_algorithm_is_not_an_accepted_jws_algorithm() {
+        assert_eq!(JwsAlg::parse("RS256").unwrap(), JwsAlg::Rs256);
+        assert_eq!(JwsAlg::parse("ES256").unwrap(), JwsAlg::Es256);
+        assert!(JwsAlg::parse("none").is_err());
+        assert!(JwsAlg::parse("None").is_err());
+        assert!(JwsAlg::parse("HS256").is_err());
+        assert!(JwsAlg::parse("rs256").is_err());
+        assert!(JwsAlg::parse("").is_err());
+    }
+
+    #[test]
     fn test_oidc_validation_config_builder() {
         let config = OidcValidationConfig::builder()
             .issuer("https://token.actions.githubusercontent.com")
             .audience("sigstore")
-            .allowed_algorithms(vec!["RS256".to_string()])
+            .allowed_algorithms(vec![JwsAlg::Rs256])
             .max_clock_skew_secs(120)
             .jwks_cache_ttl_secs(7200)
             .build();
@@ -258,7 +350,7 @@ mod tests {
         let cfg = config.unwrap();
         assert_eq!(cfg.issuer, "https://token.actions.githubusercontent.com");
         assert_eq!(cfg.audience, "sigstore");
-        assert_eq!(cfg.allowed_algorithms, vec!["RS256"]);
+        assert_eq!(cfg.allowed_algorithms, vec![JwsAlg::Rs256]);
         assert_eq!(cfg.max_clock_skew_secs, 120);
         assert_eq!(cfg.jwks_cache_ttl_secs, 7200);
     }
@@ -274,10 +366,7 @@ mod tests {
         let cfg = config.unwrap();
         assert_eq!(cfg.max_clock_skew_secs, 60);
         assert_eq!(cfg.jwks_cache_ttl_secs, 3600);
-        assert_eq!(
-            cfg.allowed_algorithms,
-            vec!["RS256".to_string(), "ES256".to_string()]
-        );
+        assert_eq!(cfg.allowed_algorithms, vec![JwsAlg::Rs256, JwsAlg::Es256]);
     }
 
     #[test]

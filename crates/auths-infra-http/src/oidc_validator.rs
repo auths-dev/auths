@@ -8,7 +8,7 @@ use std::time::Duration;
 use zeroize::Zeroize;
 
 use crate::default_http_client;
-use auths_oidc_port::{JwksClient, JwtValidator, OidcError, OidcValidationConfig};
+use auths_oidc_port::{JwksClient, JwsAlg, JwtValidator, OidcError, OidcValidationConfig};
 
 /// OIDC claims structure with standard JWT fields.
 ///
@@ -98,20 +98,19 @@ impl JwtValidator for HttpJwtValidator {
             .ok_or_else(|| OidcError::JwtDecode("JWT header missing 'kid' field".to_string()))?;
 
         let alg_str = format!("{:?}", header.alg);
-        if alg_str.to_uppercase() == "NONE" {
-            return Err(OidcError::AlgorithmMismatch {
-                expected: "RS256 or ES256".to_string(),
-                got: "none".to_string(),
-            });
-        }
-
-        if !config
+        let expected = config
             .allowed_algorithms
             .iter()
-            .any(|allowed| allowed.to_uppercase() == alg_str.to_uppercase())
-        {
+            .map(|alg| alg.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let presented_alg = JwsAlg::parse(&alg_str).map_err(|_| OidcError::AlgorithmMismatch {
+            expected: expected.clone(),
+            got: alg_str.clone(),
+        })?;
+        if !config.allowed_algorithms.contains(&presented_alg) {
             return Err(OidcError::AlgorithmMismatch {
-                expected: config.allowed_algorithms.join(", "),
+                expected,
                 got: alg_str.clone(),
             });
         }
