@@ -24,13 +24,56 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+/// The settlement state of a brokered call: either it touched no rail, or it is metered on a
+/// rail and carries whatever settlement artifacts it reached (a refused call has none; a
+/// forwarded call records the rail response; a non-zero charge adds the agent-signed settlement
+/// commit; an attested charge adds the facilitator attestation).
+///
+/// Collapsing these into one enum makes a partial state unrepresentable: a `settlement_commit`
+/// can only exist alongside a `rail`, never on its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Settlement {
+    /// The call touched no payment rail (refused, or a non-metered tool).
+    #[default]
+    Unmetered,
+    /// The call is metered on `rail`, carrying whatever settlement artifacts it reached.
+    Metered {
+        /// The payment rail this call settled on.
+        rail: String,
+        /// The rail's RAW response bytes, retained so the audit re-extracts the cost via
+        /// `rail::extract` and cross-checks it against the signed settlement (`None` for a refused
+        /// metered call that never forwarded).
+        ///
+        /// ⚠️ LIVE-WIRING CAVEAT (must-review when the live path populates this): capture the
+        /// response **body only** — NEVER request/response auth headers. An `Authorization: Bearer
+        /// …` or the gateway's custodied downstream credential must never land in the spend log.
+        /// (Hermetic today: this is a recorded fixture body, which holds no secret.)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rail_response: Option<Vec<u8>>,
+        /// Raw bytes of the agent's signed SETTLEMENT commit anchoring the actual cost
+        /// `{call proof_ref, rail, actual_cents, rail_ref, cumulative}`. `None` for a zero-cost
+        /// forwarded call. The audit sums the cost SIGNED here, never the receipt's claim.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        settlement_commit: Option<Vec<u8>>,
+        /// The rail FACILITATOR's signed attestation of the charged amount — the rail's OWN
+        /// statement of what it charged, independent of the operator/agent. When present (and a
+        /// facilitator key is configured) the audit re-verifies it offline and sums the
+        /// FACILITATOR-attested amount, so an operator who is also the agent cannot enter an
+        /// un-attested number. `None` until the wire captures it (a follow-on).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rail_attestation: Option<RailAttestation>,
+    },
+}
+
 /// One append-only record in the spend log — everything an offline audit needs to re-verify
 /// ONE brokered call without the operator's cooperation. Persisted as one JSON object per line
 /// (JSONL) under `<repo>/spend-log/<delegation>.jsonl`.
 ///
-/// `call_commit` / `settlement_commit` are the RAW signed git-commit bytes (not just the SHA),
-/// so the auditor replays them through `verify_commit_against_kel_scoped` offline rather than
-/// trusting the receipt's `proof_ref`. `rail_response` is the rail's raw response, so the audit
+/// `call_commit` (and the `settlement_commit` inside [`Settlement::Metered`]) are the RAW signed
+/// git-commit bytes (not just the SHA), so the auditor replays them through
+/// `verify_commit_against_kel_scoped` offline rather than trusting the receipt's `proof_ref`. The
+/// `rail_response` inside [`Settlement::Metered`] is the rail's raw response, so the audit
 /// re-extracts the cost via `rail::extract` and cross-checks it against the SIGNED cost.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpendLogRecord {
@@ -40,30 +83,10 @@ pub struct SpendLogRecord {
     /// The per-call receipt — the operator's CLAIM. An untrusted hint, cross-checked against the
     /// signed material; never an input to the audited total.
     pub receipt: Receipt,
-    /// The payment rail this call settled on (`None` for a non-metered call).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail: Option<String>,
-    /// The rail's RAW response bytes, retained so the audit re-extracts the cost via
-    /// `rail::extract` and cross-checks it against the signed settlement (`None` if non-metered).
-    ///
-    /// ⚠️ LIVE-WIRING CAVEAT (must-review when the live path populates this): capture the response
-    /// **body only** — NEVER request/response auth headers. An `Authorization: Bearer …` or the
-    /// gateway's custodied downstream credential must never land in the spend log. (Hermetic today:
-    /// this is a recorded fixture body, which holds no secret.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail_response: Option<Vec<u8>>,
-    /// Raw bytes of the agent's signed SETTLEMENT commit anchoring the actual cost
-    /// `{call proof_ref, rail, actual_cents, rail_ref, cumulative}`. `None` for a non-metered
-    /// call. The audit sums the cost SIGNED here, never the receipt's claim.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub settlement_commit: Option<Vec<u8>>,
-    /// The rail FACILITATOR's signed attestation of the charged amount — the rail's OWN statement of
-    /// what it charged, independent of the operator/agent. When present (and a facilitator key is
-    /// configured) the audit re-verifies it offline and sums the FACILITATOR-attested amount, so an
-    /// operator who is also the agent cannot enter an un-attested number. `None` until the wire
-    /// captures it (a follow-on); a non-metered call carries none.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rail_attestation: Option<RailAttestation>,
+    /// The settlement state of this call: [`Settlement::Unmetered`] when it touched no rail, else
+    /// [`Settlement::Metered`] carrying the rail and whatever settlement artifacts it reached.
+    #[serde(default)]
+    pub settlement: Settlement,
 }
 
 /// The settled high-water read from the verifier-held DURABLE counter — the figure the audit
@@ -329,12 +352,21 @@ pub async fn audit_spend_log(
         // Sum the settled cost for a call that (a) carries an AUTHENTIC, IN-SCOPE proof —
         // `Allowed`/`AgentExpired`, both PROOF-DETERMINED, so the operator cannot relabel a settled
         // call as refused without breaking its signature (`OutsideAgentScope` never settled) — AND
-        // (b) recorded a rail response (set only for calls that forwarded; see replay.rs).
-        if matches!(
-            verdict,
-            crate::gate::Verdict::Allowed | crate::gate::Verdict::AgentExpired
-        ) && let (Some(rail), Some(resp)) = (rec.rail.as_deref(), rec.rail_response.as_deref())
+        // (b) is metered with a recorded rail response (set only for calls that forwarded; see
+        // replay.rs). Unmetered, or metered without a response, skips this branch.
+        if let Settlement::Metered {
+            rail,
+            rail_response: Some(resp),
+            settlement_commit,
+            rail_attestation,
+        } = &rec.settlement
+            && matches!(
+                verdict,
+                crate::gate::Verdict::Allowed | crate::gate::Verdict::AgentExpired
+            )
         {
+            let rail = rail.as_str();
+            let resp = resp.as_slice();
             // The cost the rail's own recorded response reports. The response is operator-held and
             // unsigned, so it is only a cross-check — the authoritative amount is the one the agent
             // SIGNED in the settlement below.
@@ -353,7 +385,7 @@ pub async fn audit_spend_log(
             // closes the downgrade where an operator strips the settlement and falls back to a rail
             // response it authored. (A zero-cost forwarded call settles nothing and needs none.)
             if !recomputed.is_zero() {
-                let Some(settle_commit) = rec.settlement_commit.as_deref() else {
+                let Some(settle_commit) = settlement_commit.as_deref() else {
                     return AuditVerdict::TamperedProof {
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
@@ -413,7 +445,7 @@ pub async fn audit_spend_log(
                 // With no facilitator key configured the attestation leg is skipped (the offline audit
                 // still runs; capturing the attestation on the wire is a follow-on), so the summand is
                 // the agent-signed cost — already cross-checked against the rail response above.
-                let summand = match (rec.rail_attestation.as_ref(), facilitator_pubkey) {
+                let summand = match (rail_attestation.as_ref(), facilitator_pubkey) {
                     (Some(attestation), Some(key)) => {
                         let attested = match crate::attestation::Attested::from_facilitator(
                             attestation,
@@ -603,10 +635,12 @@ mod tests {
         let rec = SpendLogRecord {
             call_commit: b"signed call commit bytes".to_vec(),
             receipt: sample_receipt(),
-            rail: Some("x402".to_string()),
-            rail_response: Some(b"{\"requirements\":{}}".to_vec()),
-            settlement_commit: Some(b"signed settlement commit bytes".to_vec()),
-            rail_attestation: None,
+            settlement: Settlement::Metered {
+                rail: "x402".to_string(),
+                rail_response: Some(b"{\"requirements\":{}}".to_vec()),
+                settlement_commit: Some(b"signed settlement commit bytes".to_vec()),
+                rail_attestation: None,
+            },
         };
         let line = serde_json::to_string(&rec).unwrap();
         assert!(
@@ -623,15 +657,12 @@ mod tests {
         let rec = SpendLogRecord {
             call_commit: b"c".to_vec(),
             receipt: sample_receipt(),
-            rail: None,
-            rail_response: None,
-            settlement_commit: None,
-            rail_attestation: None,
+            settlement: Settlement::Unmetered,
         };
         let json = serde_json::to_string(&rec).unwrap();
         assert!(
             !json.contains("rail_response") && !json.contains("settlement_commit"),
-            "None rail/settlement fields are skipped: {json}"
+            "an unmetered call carries no rail/settlement artifacts: {json}"
         );
         let back: SpendLogRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(serde_json::to_string(&back).unwrap(), json);
@@ -653,10 +684,7 @@ mod tests {
         let line = serde_json::to_string(&SpendLogRecord {
             call_commit: b"a".to_vec(),
             receipt: sample_receipt(),
-            rail: None,
-            rail_response: None,
-            settlement_commit: None,
-            rail_attestation: None,
+            settlement: Settlement::Unmetered,
         })
         .unwrap();
         // two records + a blank line (ignored)

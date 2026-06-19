@@ -51,6 +51,7 @@ pub fn append(repo: &Path, delegation: &str, record: &SpendLogRecord) -> anyhow:
 mod tests {
     use super::*;
     use auths_mcp_core::Cents;
+    use auths_mcp_core::Settlement;
     use auths_mcp_core::gate::{ToolCall, Verdict};
     use auths_mcp_core::read_spend_log;
     use auths_mcp_core::receipt::Receipt;
@@ -77,10 +78,12 @@ mod tests {
         SpendLogRecord {
             call_commit: b"signed call commit".to_vec(),
             receipt,
-            rail: Some("x402".to_string()),
-            rail_response: Some(b"{\"requirements\":{}}".to_vec()),
-            settlement_commit: None,
-            rail_attestation: None,
+            settlement: Settlement::Metered {
+                rail: "x402".to_string(),
+                rail_response: Some(b"{\"requirements\":{}}".to_vec()),
+                settlement_commit: None,
+                rail_attestation: None,
+            },
         }
     }
 

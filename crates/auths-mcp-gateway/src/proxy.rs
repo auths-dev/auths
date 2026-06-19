@@ -24,8 +24,9 @@ use std::sync::Arc;
 
 use auths_mcp_core::budget::CrossRailBudget;
 use auths_mcp_core::{
-    AtomicUsdc, Budget, Capability, Cents, Decision, Meter, NonZeroCents, PaymentMode, Receipt,
-    SpendLogRecord, TEST_MODE_ENV, ToolCall, Verdict, env_opts_into_test, require_budget,
+    Actual, AtomicUsdc, Budget, Capability, Cents, Decision, Meter, NonZeroCents, PaymentMode,
+    Receipt, Settlement, SpendLogRecord, TEST_MODE_ENV, ToolCall, Verdict, env_opts_into_test,
+    require_budget,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -527,7 +528,7 @@ impl ServerHandler for GatewayProxy {
                 let mut budget = self.budget.lock().await;
                 let (settle_verdict, new_cumulative) = self
                     .gate
-                    .settle(&mut budget, hold, actual_cents)
+                    .settle(&mut budget, hold, Actual::new(actual_cents))
                     .map_err(|e| {
                         McpError::internal_error(
                             format!("settle the cross-rail counter: {e}"),
@@ -540,16 +541,18 @@ impl ServerHandler for GatewayProxy {
 
             // Sign a settlement commit anchoring the agent-signed actual cost, bound to THIS call by
             // the hash of its proof, so the audit cannot be handed a settlement from another call.
-            if let (Some(rail), Some(charge_ref)) = (cost.rail(), settled_charge_ref.as_deref())
-                && !actual_cents.is_zero()
-            {
+            if let (Some(rail), Some(charge_ref), Some(actual)) = (
+                cost.rail(),
+                settled_charge_ref.as_deref(),
+                NonZeroCents::new(actual_cents),
+            ) {
                 let (bytes, _sha) = self
                     .chain
                     .sign_settlement(
                         idx,
                         &auths_mcp_core::call_commit_binding(&proof_bytes),
                         rail,
-                        actual_cents,
+                        actual,
                         charge_ref,
                         cumulative,
                     )
@@ -588,12 +591,17 @@ impl ServerHandler for GatewayProxy {
             &SpendLogRecord {
                 call_commit: proof_bytes,
                 receipt,
-                rail: cost.rail().map(str::to_string),
-                rail_response,
-                settlement_commit,
                 // The facilitator attestation is not captured on the live wire yet (a follow-on); the
                 // offline audit runs without it.
-                rail_attestation: None,
+                settlement: match cost.rail() {
+                    Some(rail) => Settlement::Metered {
+                        rail: rail.to_string(),
+                        rail_response,
+                        settlement_commit,
+                        rail_attestation: None,
+                    },
+                    None => Settlement::Unmetered,
+                },
             },
         ) {
             return Err(McpError::internal_error(

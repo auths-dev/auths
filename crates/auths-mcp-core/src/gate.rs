@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 
 use crate::Capability;
 use crate::budget::{CrossRailBudget, Hold, ReserveOutcome};
-use crate::money::{Cents, NonZeroCents};
+use crate::money::{Actual, Ceiling, Cents, NonZeroCents};
 
 /// A serialized MCP `tools/call` the gate judges. The canonical bytes (tool name
 /// + sorted args) are what gets signed as the auths artifact.
@@ -345,7 +345,7 @@ impl PerCallGate {
         // metered rail with no declared amount was refused at the parse boundary, before this gate —
         // so there is no zero-ceiling case here to mistake for a non-metered call.
         let outcome = budget
-            .reserve(ceiling.get())
+            .reserve(Ceiling::new(ceiling.get()))
             .map_err(|e| GateError::Registry(format!("reserve: {e}")))?;
         match outcome {
             ReserveOutcome::Reserved { hold, .. } => Ok(Decision {
@@ -381,11 +381,11 @@ impl PerCallGate {
         &self,
         budget: &mut CrossRailBudget,
         hold: Hold,
-        actual_cents: Cents,
+        actual: Actual,
     ) -> Result<(Verdict, Cents), GateError> {
         use crate::budget::SettleOutcome;
         let outcome = budget
-            .settle(hold, actual_cents)
+            .settle(hold, actual)
             .map_err(|e| GateError::Registry(format!("settle: {e}")))?;
         match outcome {
             SettleOutcome::Advanced { new_settled_cents } => {

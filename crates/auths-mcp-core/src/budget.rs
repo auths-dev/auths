@@ -60,7 +60,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::money::Cents;
+use crate::money::{Actual, Ceiling, Cents};
 
 /// The repo-relative directory holding the per-delegation settled-cents high-water
 /// records — the verifier-held counter, alongside the KELs/registry the verifier
@@ -223,7 +223,7 @@ pub struct Hold {
     /// An opaque id so a settle/release targets the right hold.
     pub id: u64,
     /// The ceiling reserved (the call's known cost, or its metered ceiling).
-    pub ceiling_cents: Cents,
+    pub ceiling_cents: Ceiling,
 }
 
 /// The transient set of active RESERVED holds for one session. Pure in-memory — a hold
@@ -245,15 +245,15 @@ impl ReservedHolds {
     pub fn reserved_cents(&self) -> Cents {
         self.holds
             .iter()
-            .fold(Cents::ZERO, |acc, h| acc.saturating_add(h.ceiling_cents))
+            .fold(Cents::ZERO, |acc, h| acc.saturating_add(h.ceiling_cents.cents()))
     }
 
-    /// Take a hold for `ceiling_cents` (the caller must have checked `available`
+    /// Take a hold for `ceiling` (the caller must have checked `available`
     /// first). Returns the hold so the caller can settle/release it.
-    pub fn reserve(&mut self, ceiling_cents: Cents) -> Hold {
+    pub fn reserve(&mut self, ceiling: Ceiling) -> Hold {
         let hold = Hold {
             id: self.next_id,
-            ceiling_cents,
+            ceiling_cents: ceiling,
         };
         self.next_id = self.next_id.wrapping_add(1);
         self.holds.push(hold);
@@ -348,19 +348,19 @@ impl CrossRailBudget {
     /// touched); otherwise the hold is taken and returned in [`ReserveOutcome::
     /// Reserved`]. This is the cap-enforcement boundary — refusing here is the
     /// `usage-cap-exceeded` the gate surfaces before the downstream is invoked.
-    pub fn reserve(&mut self, ceiling_cents: Cents) -> Result<ReserveOutcome, BudgetError> {
+    pub fn reserve(&mut self, ceiling: Ceiling) -> Result<ReserveOutcome, BudgetError> {
         let settled = self.settled.settled_cents()?;
         let reserved = self.holds.reserved_cents();
         let would_be = settled
             .saturating_add(reserved)
-            .saturating_add(ceiling_cents);
+            .saturating_add(ceiling.cents());
         if would_be > self.cap_cents {
             return Ok(ReserveOutcome::Refused {
                 cap_cents: self.cap_cents,
                 would_be_cents: would_be,
             });
         }
-        let hold = self.holds.reserve(ceiling_cents);
+        let hold = self.holds.reserve(ceiling);
         Ok(ReserveOutcome::Reserved {
             hold,
             available_after: available(self.cap_cents, settled, self.holds.reserved_cents()),
@@ -376,12 +376,12 @@ impl CrossRailBudget {
     pub fn settle(
         &mut self,
         hold: Hold,
-        actual_cents: Cents,
+        actual: Actual,
     ) -> Result<SettleOutcome, BudgetError> {
         // Release the auth-hold first: the slack (ceiling − actual) returns to
         // available, and a rolled-back settle below does not strand the reservation.
         self.holds.release(hold);
-        let new_cumulative = self.settled.settled_cents()?.saturating_add(actual_cents);
+        let new_cumulative = self.settled.settled_cents()?.saturating_add(actual.cents());
         self.settled.settle(new_cumulative)
     }
 
@@ -506,24 +506,24 @@ mod tests {
         let mut b = budget(dir.path(), 500);
 
         // Rail 1 (stripe): reserve $3.00, settle $3.00.
-        let h0 = match b.reserve(Cents::new(300)).unwrap() {
+        let h0 = match b.reserve(Ceiling::new(Cents::new(300))).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("call 0 should reserve, got {o:?}"),
         };
         assert!(matches!(
-            b.settle(h0, Cents::new(300)).unwrap(),
+            b.settle(h0, Actual::new(Cents::new(300))).unwrap(),
             SettleOutcome::Advanced {
                 new_settled_cents
             } if new_settled_cents == Cents::new(300)
         ));
 
         // Rail 2 (x402): reserve $1.50, settle $1.50.
-        let h1 = match b.reserve(Cents::new(150)).unwrap() {
+        let h1 = match b.reserve(Ceiling::new(Cents::new(150))).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("call 1 should reserve, got {o:?}"),
         };
         assert!(matches!(
-            b.settle(h1, Cents::new(150)).unwrap(),
+            b.settle(h1, Actual::new(Cents::new(150))).unwrap(),
             SettleOutcome::Advanced {
                 new_settled_cents
             } if new_settled_cents == Cents::new(450)
@@ -532,7 +532,7 @@ mod tests {
 
         // Rail 2 again (x402): $0.60 would reserve to $5.10 across rails — refused,
         // before the rail is touched, even though x402-only spend is just $1.50.
-        match b.reserve(Cents::new(60)).unwrap() {
+        match b.reserve(Ceiling::new(Cents::new(60))).unwrap() {
             ReserveOutcome::Refused {
                 cap_cents,
                 would_be_cents,
@@ -572,14 +572,14 @@ mod tests {
                 std::thread::spawn(move || {
                     // RESERVE under the lock — the pre-auth boundary. The guard drops at the
                     // end of this statement, releasing the lock before the "rail".
-                    let hold = match b.lock().unwrap().reserve(Cents::new(amount)).unwrap() {
+                    let hold = match b.lock().unwrap().reserve(Ceiling::new(Cents::new(amount))).unwrap() {
                         ReserveOutcome::Reserved { hold, .. } => Some(hold),
                         ReserveOutcome::Refused { .. } => None,
                     };
                     match hold {
                         Some(hold) => {
                             std::thread::yield_now(); // "rail" touched WITHOUT the lock
-                            match b.lock().unwrap().settle(hold, Cents::new(amount)).unwrap() {
+                            match b.lock().unwrap().settle(hold, Actual::new(Cents::new(amount))).unwrap() {
                                 SettleOutcome::Advanced { .. } => {
                                     settled.fetch_add(1, Ordering::SeqCst);
                                 }
@@ -619,14 +619,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut b = budget(dir.path(), 500);
 
-        let h0 = match b.reserve(Cents::new(300)).unwrap() {
+        let h0 = match b.reserve(Ceiling::new(Cents::new(300))).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("got {o:?}"),
         };
-        b.settle(h0, Cents::new(300)).unwrap(); // settled = 300
+        b.settle(h0, Actual::new(Cents::new(300))).unwrap(); // settled = 300
 
         // Over-reserve: ceiling $2.00, actual $1.50.
-        let h1 = match b.reserve(Cents::new(200)).unwrap() {
+        let h1 = match b.reserve(Ceiling::new(Cents::new(200))).unwrap() {
             ReserveOutcome::Reserved {
                 hold,
                 available_after,
@@ -636,15 +636,36 @@ mod tests {
             }
             o => panic!("got {o:?}"),
         };
-        b.settle(h1, Cents::new(150)).unwrap(); // settled = 450; the $0.50 slack released
+        b.settle(h1, Actual::new(Cents::new(150))).unwrap(); // settled = 450; the $0.50 slack released
 
         // available is now 500 − 450 = 50 (the slack came back, not permanently lost):
         assert_eq!(b.available_cents().unwrap(), Cents::new(50));
         // A $0.50 call fits exactly — it would NOT fit if the slack were consumed.
         assert!(matches!(
-            b.reserve(Cents::new(50)).unwrap(),
+            b.reserve(Ceiling::new(Cents::new(50))).unwrap(),
             ReserveOutcome::Reserved { .. }
         ));
+    }
+
+    #[test]
+    fn a_zero_actual_settle_still_releases_the_hold() {
+        // A metered call that ends up costing nothing still RELEASES its reserve hold: the slack
+        // returns to available and the monotonic counter does not advance. (The writer signs no
+        // settlement for a zero actual — that is enforced by the non-zero settlement type, not here.)
+        let dir = tempfile::tempdir().unwrap();
+        let mut b = budget(dir.path(), 500);
+        let h = match b.reserve(Ceiling::new(Cents::new(200))).unwrap() {
+            ReserveOutcome::Reserved { hold, .. } => hold,
+            o => panic!("got {o:?}"),
+        };
+        assert_eq!(b.reserved_cents(), Cents::new(200));
+        b.settle(h, Actual::new(Cents::ZERO)).unwrap();
+        assert_eq!(b.reserved_cents(), Cents::ZERO, "the hold must be released");
+        assert_eq!(
+            b.settled_cents().unwrap(),
+            Cents::ZERO,
+            "a zero actual advances nothing"
+        );
     }
 
     #[test]
@@ -711,8 +732,8 @@ mod tests {
     #[test]
     fn holds_sum_and_release() {
         let mut h = ReservedHolds::new();
-        let a = h.reserve(Cents::new(300));
-        let b = h.reserve(Cents::new(200));
+        let a = h.reserve(Ceiling::new(Cents::new(300)));
+        let b = h.reserve(Ceiling::new(Cents::new(200)));
         assert_eq!(h.reserved_cents(), Cents::new(500));
         assert_eq!(h.active(), 2);
         h.release(a);
@@ -730,7 +751,7 @@ mod tests {
         // and nothing is added to the monotonic settled total.
         let dir = tempfile::tempdir().unwrap();
         let mut b = budget(dir.path(), 500);
-        let h = match b.reserve(Cents::new(400)).unwrap() {
+        let h = match b.reserve(Ceiling::new(Cents::new(400))).unwrap() {
             ReserveOutcome::Reserved { hold, .. } => hold,
             o => panic!("got {o:?}"),
         };

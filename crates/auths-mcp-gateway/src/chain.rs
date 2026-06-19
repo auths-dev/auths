@@ -16,7 +16,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use auths_mcp_core::Cents;
+use auths_mcp_core::{Cents, NonZeroCents};
 
 /// A built delegation chain in a sandbox registry: the parent root and a delegated
 /// scoped agent, both resolvable from the org registry the verifier replays.
@@ -300,7 +300,7 @@ impl Chain {
         idx: usize,
         call_binding: &str,
         rail: &str,
-        actual_cents: Cents,
+        actual: NonZeroCents,
         rail_ref: &str,
         cumulative_cents: Cents,
     ) -> anyhow::Result<(Vec<u8>, String)> {
@@ -344,7 +344,7 @@ impl Chain {
                 // them back with `parse::<u64>()`) — unwrap Cents at this trailer-format boundary.
                 .args([
                     "--trailer",
-                    &format!("Auths-Settle-Cents:{}", actual_cents.get()),
+                    &format!("Auths-Settle-Cents:{}", actual.get().get()),
                 ])
                 .args(["--trailer", &format!("Auths-Settle-Ref:{rail_ref}")])
                 .args([

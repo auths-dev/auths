@@ -43,7 +43,7 @@ pub mod session;
 
 pub use attestation::{AttestationError, Attested, RailAttestation};
 pub use audit::{
-    AuditVerdict, ConsistentProof, SPEND_LOG_GENESIS, SpendLogRecord, audit_spend_log,
+    AuditVerdict, ConsistentProof, SPEND_LOG_GENESIS, Settlement, SpendLogRecord, audit_spend_log,
     call_commit_binding, read_spend_log, spend_log_path,
 };
 pub use budget::{
@@ -51,7 +51,7 @@ pub use budget::{
     SettleOutcome, SettledCounter,
 };
 pub use gate::{Decision, GateError, Meter, PerCallGate, ToolCall, Verdict};
-pub use money::{AtomicUsdc, Cents, NonZeroCents};
+pub use money::{Actual, AtomicUsdc, Ceiling, Cents, NonZeroCents};
 pub use paymode::{
     BudgetRequired, ModeDisclosure, PaymentMode, StripeRail, TEST_MODE_ENV, X402Rail,
     env_opts_into_test, require_budget,

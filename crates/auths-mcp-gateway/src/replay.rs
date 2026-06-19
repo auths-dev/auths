@@ -11,8 +11,8 @@
 use std::path::{Path, PathBuf};
 
 use auths_mcp_core::{
-    Budget, Cents, CounterRef, CrossRailBudget, ExtractedCost, Meter, NonZeroCents, PerCallGate,
-    Receipt, SpendLogRecord, ToolCall, Verdict,
+    Actual, Budget, Cents, CounterRef, CrossRailBudget, ExtractedCost, Meter, NonZeroCents,
+    PerCallGate, Receipt, Settlement, SpendLogRecord, ToolCall, Verdict,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -309,7 +309,7 @@ async fn drive_call(
         if let Some(hold) = decision.hold {
             // Settle the ACTUAL the rail's response reports — for an extracted call this
             // is `charge.amount_captured` read from the response, not an agent number.
-            let (settle_verdict, new_cumulative) = gate.settle(budget, hold, cost.settle_cents)?;
+            let (settle_verdict, new_cumulative) = gate.settle(budget, hold, Actual::new(cost.settle_cents))?;
             // A clean settle keeps Allowed; a rollback (replayed/stale total) flips the
             // verdict to usage-counter-rolled-back (the D8 monotonicity guard).
             verdict = settle_verdict;
@@ -345,8 +345,13 @@ async fn drive_call(
     // For a metered call that SETTLED, the agent signs a settlement commit anchoring the ACTUAL
     // cost in signed `Auths-Settle-*` trailers under the `settle` capability — so the audit sums
     // the AGENT-SIGNED cost (un-forgeable by the operator), not just the rail-attested number.
-    let settlement_commit = match (forwarded_result.is_some(), rail, settled_charge_ref) {
-        (true, Some(rail_name), Some(charge)) if !cost.settle_cents.is_zero() => {
+    let settlement_commit = match (
+        forwarded_result.is_some(),
+        rail,
+        settled_charge_ref,
+        NonZeroCents::new(cost.settle_cents),
+    ) {
+        (true, Some(rail_name), Some(charge), Some(settle)) => {
             // Bind the settlement to THIS call by the hash of its signed commit bytes.
             let call_binding = if std::env::var_os("AUTHS_MCP_SETTLE_REBIND").is_some() {
                 // Adversarial harness hook: stamp a binding for a DIFFERENT call — simulating an
@@ -361,7 +366,7 @@ async fn drive_call(
                 idx,
                 &call_binding,
                 rail_name,
-                cost.settle_cents,
+                settle,
                 charge,
                 cumulative,
             )?;
@@ -393,19 +398,25 @@ async fn drive_call(
         &SpendLogRecord {
             call_commit: proof_bytes,
             receipt,
-            rail: rail.map(|r| r.to_string()),
-            // Only a call that actually FORWARDED touched the rail, so only it has a response to
-            // re-extract. A refused call (out-of-scope / over-cap / unauthentic) carries none — the
-            // audit relies on `rail_response present ⟺ the call settled` (with the proof re-verified).
-            rail_response: if forwarded_result.is_some() {
-                cost.rail_response.clone()
-            } else {
-                None
-            },
-            settlement_commit,
             // The facilitator attestation is not captured on the replay path yet (a follow-on); the
             // offline audit runs without it.
-            rail_attestation: None,
+            settlement: match rail {
+                Some(rail) => Settlement::Metered {
+                    rail: rail.to_string(),
+                    // Only a call that actually FORWARDED touched the rail, so only it has a response
+                    // to re-extract. A refused call (out-of-scope / over-cap / unauthentic) carries
+                    // none — the audit relies on `rail_response present ⟺ the call settled` (with the
+                    // proof re-verified).
+                    rail_response: if forwarded_result.is_some() {
+                        cost.rail_response.clone()
+                    } else {
+                        None
+                    },
+                    settlement_commit,
+                    rail_attestation: None,
+                },
+                None => Settlement::Unmetered,
+            },
         },
     )?;
 

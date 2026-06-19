@@ -132,6 +132,68 @@ impl AtomicUsdc {
             None
         }
     }
+
+    /// The reserve ceiling (rounds UP), carried as a [`Ceiling`] so it cannot be settled by
+    /// mistake — the typed form of [`AtomicUsdc::to_cents_ceiling`].
+    pub const fn to_ceiling(self) -> Ceiling {
+        Ceiling::new(self.to_cents_ceiling())
+    }
+
+    /// The settle actual (EXACT, or `None` on a sub-cent residue), carried as an [`Actual`] so it
+    /// cannot be reserved by mistake — the typed form of [`AtomicUsdc::to_cents_exact`].
+    pub fn to_actual(self) -> Option<Actual> {
+        self.to_cents_exact().map(Actual::new)
+    }
+}
+
+/// The amount a metered call RESERVES before the rail is touched — the upper bound the
+/// pre-authorization hold covers. A distinct type from [`Actual`] so a reserve ceiling can never
+/// be passed where a settled actual is expected, and vice versa: a reserve↔settle swap is a
+/// compile error, not a silent money bug.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Ceiling(Cents);
+
+impl Ceiling {
+    /// Carry a cents amount as a reserve ceiling.
+    pub const fn new(cents: Cents) -> Ceiling {
+        Ceiling(cents)
+    }
+
+    /// The ceiling as a plain amount, for arithmetic against the cap.
+    pub const fn cents(self) -> Cents {
+        self.0
+    }
+}
+
+impl fmt::Display for Ceiling {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// The ACTUAL cost a metered call SETTLES after the downstream returns. A distinct type from
+/// [`Ceiling`] so a settled actual can never be reserved, nor a ceiling settled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Actual(Cents);
+
+impl Actual {
+    /// Carry a cents amount as a settled actual.
+    pub const fn new(cents: Cents) -> Actual {
+        Actual(cents)
+    }
+
+    /// The actual as a plain amount, for the counter advance and receipt.
+    pub const fn cents(self) -> Cents {
+        self.0
+    }
+}
+
+impl fmt::Display for Actual {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
 #[cfg(test)]
@@ -178,5 +240,24 @@ mod tests {
             Cents::new(151)
         );
         assert_eq!(AtomicUsdc::new(1_505_000).to_cents_exact(), None);
+    }
+
+    #[test]
+    fn ceiling_and_actual_are_distinct_typed_views_of_cents() {
+        assert_eq!(Ceiling::new(Cents::new(150)).cents(), Cents::new(150));
+        assert_eq!(Actual::new(Cents::new(120)).cents(), Cents::new(120));
+    }
+
+    #[test]
+    fn atomic_usdc_produces_a_typed_ceiling_and_actual() {
+        // The reserve ceiling rounds up; the settle actual is exact-or-refused — the same split as
+        // the bare-cents conversions, but now carried in distinct types.
+        assert_eq!(AtomicUsdc::new(1_500_000).to_ceiling().cents(), Cents::new(150));
+        assert_eq!(
+            AtomicUsdc::new(1_500_000).to_actual().map(Actual::cents),
+            Some(Cents::new(150))
+        );
+        assert_eq!(AtomicUsdc::new(1_505_000).to_ceiling().cents(), Cents::new(151));
+        assert_eq!(AtomicUsdc::new(1_505_000).to_actual(), None);
     }
 }
