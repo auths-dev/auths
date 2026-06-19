@@ -31,6 +31,7 @@
 //! A forged or tampered proof yields a non-`Valid` verdict, so the gateway refuses
 //! the call before the downstream tool is ever invoked.
 
+pub mod attestation;
 pub mod audit;
 pub mod budget;
 pub mod gate;
@@ -40,6 +41,7 @@ pub mod rail;
 pub mod receipt;
 pub mod session;
 
+pub use attestation::{AttestationError, Attested, RailAttestation};
 pub use audit::{
     AuditVerdict, ConsistentProof, SPEND_LOG_GENESIS, SpendLogRecord, audit_spend_log,
     call_commit_binding, read_spend_log, spend_log_path,

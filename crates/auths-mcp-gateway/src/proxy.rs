@@ -591,6 +591,9 @@ impl ServerHandler for GatewayProxy {
                 rail: cost.rail().map(str::to_string),
                 rail_response,
                 settlement_commit,
+                // The facilitator attestation is not captured on the live wire yet (a follow-on); the
+                // offline audit runs without it.
+                rail_attestation: None,
             },
         ) {
             return Err(McpError::internal_error(

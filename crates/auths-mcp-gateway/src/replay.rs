@@ -199,8 +199,10 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
             // chain's registry + the agent did), so the self-audit cross-checks the re-derived total
             // against the counter this run advanced.
             let counter = CounterRef::for_agent(chain.org_repo(), &chain.agent_did)?;
+            // No facilitator key on the hermetic replay path — the attestation leg is exercised by
+            // the standalone verify-spend (with --facilitator-key) once the wire captures one.
             let verdict = gate
-                .audit_spend_log(&records, Utc::now().timestamp(), &counter)
+                .audit_spend_log(&records, Utc::now().timestamp(), &counter, None)
                 .await;
             println!("▸ audit: {} — {verdict}", verdict.code());
             // Emit the exact args to re-run the audit as a STANDALONE process (`verify-spend`),
@@ -401,6 +403,9 @@ async fn drive_call(
                 None
             },
             settlement_commit,
+            // The facilitator attestation is not captured on the replay path yet (a follow-on); the
+            // offline audit runs without it.
+            rail_attestation: None,
         },
     )?;
 

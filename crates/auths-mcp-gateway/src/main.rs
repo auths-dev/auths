@@ -274,8 +274,10 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // The facilitator key that would verify a captured rail attestation is supplied out-of-band once
+    // the wire captures one (a follow-on); without it the offline audit still re-derives the spend.
     let verdict = gate
-        .audit_spend_log(&records, chrono::Utc::now().timestamp(), &counter)
+        .audit_spend_log(&records, chrono::Utc::now().timestamp(), &counter, None)
         .await;
     println!("verify-spend: {} — {verdict}", verdict.code());
     if verdict.is_consistent() {

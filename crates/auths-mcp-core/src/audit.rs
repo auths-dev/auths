@@ -15,6 +15,7 @@
 //! audit re-verifies the same material regardless of which path produced the log. This data model
 //! is path-agnostic.
 
+use crate::attestation::RailAttestation;
 use crate::budget::CounterRef;
 use crate::money::Cents;
 use crate::receipt::Receipt;
@@ -56,6 +57,13 @@ pub struct SpendLogRecord {
     /// call. The audit sums the cost SIGNED here, never the receipt's claim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settlement_commit: Option<Vec<u8>>,
+    /// The rail FACILITATOR's signed attestation of the charged amount — the rail's OWN statement of
+    /// what it charged, independent of the operator/agent. When present (and a facilitator key is
+    /// configured) the audit re-verifies it offline and sums the FACILITATOR-attested amount, so an
+    /// operator who is also the agent cannot enter an un-attested number. `None` until the wire
+    /// captures it (a follow-on); a non-metered call carries none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail_attestation: Option<RailAttestation>,
 }
 
 /// The settled high-water read from the verifier-held DURABLE counter — the figure the audit
@@ -276,6 +284,7 @@ pub async fn audit_spend_log(
     pinned_roots: &[String],
     now: i64,
     counter: &CounterRef,
+    facilitator_pubkey: Option<&[u8]>,
 ) -> AuditVerdict {
     let provider = auths_crypto::default_provider();
     let mut settled = Cents::ZERO;
@@ -397,7 +406,38 @@ pub async fn audit_spend_log(
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 }
-                settled = settled.saturating_add(signed);
+                // When the rail FACILITATOR independently attested this charge, the audited cost must
+                // be the facilitator-attested amount — a value the operator cannot mint — not just the
+                // agent-signed number. Verify it offline against the pinned facilitator key and require
+                // it agrees with the signed cost; an altered attestation or a disagreement fails closed.
+                // With no facilitator key configured the attestation leg is skipped (the offline audit
+                // still runs; capturing the attestation on the wire is a follow-on), so the summand is
+                // the agent-signed cost — already cross-checked against the rail response above.
+                let summand = match (rec.rail_attestation.as_ref(), facilitator_pubkey) {
+                    (Some(attestation), Some(key)) => {
+                        let attested = match crate::attestation::Attested::from_facilitator(
+                            attestation,
+                            key,
+                        ) {
+                            Ok(a) => a,
+                            Err(_) => {
+                                return AuditVerdict::TamperedProof {
+                                    proof_ref: rec.receipt.proof_ref.clone(),
+                                };
+                            }
+                        };
+                        if attested.amount() != signed {
+                            return AuditVerdict::CostMismatch {
+                                signed_cents: signed,
+                                recomputed_cents: attested.amount(),
+                                proof_ref: rec.receipt.proof_ref.clone(),
+                            };
+                        }
+                        attested.amount()
+                    }
+                    _ => signed,
+                };
+                settled = settled.saturating_add(summand);
                 // 4. The signed running total ties the cumulative to signed material, so the budget
                 //    leg does not rest on the operator's own (unsigned) receipt cumulative. The
                 //    trailer is a decimal string — parse to u64 then wrap at this boundary.
@@ -566,6 +606,7 @@ mod tests {
             rail: Some("x402".to_string()),
             rail_response: Some(b"{\"requirements\":{}}".to_vec()),
             settlement_commit: Some(b"signed settlement commit bytes".to_vec()),
+            rail_attestation: None,
         };
         let line = serde_json::to_string(&rec).unwrap();
         assert!(
@@ -585,6 +626,7 @@ mod tests {
             rail: None,
             rail_response: None,
             settlement_commit: None,
+            rail_attestation: None,
         };
         let json = serde_json::to_string(&rec).unwrap();
         assert!(
@@ -614,6 +656,7 @@ mod tests {
             rail: None,
             rail_response: None,
             settlement_commit: None,
+            rail_attestation: None,
         })
         .unwrap();
         // two records + a blank line (ignored)

@@ -80,6 +80,7 @@ mod tests {
             rail: Some("x402".to_string()),
             rail_response: Some(b"{\"requirements\":{}}".to_vec()),
             settlement_commit: None,
+            rail_attestation: None,
         }
     }
 
