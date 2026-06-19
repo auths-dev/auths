@@ -23,23 +23,44 @@ pub enum Budget {
     Calls(u64),
 }
 
+/// A budget string that is neither a dollar amount nor a call count. Parsing a budget returns this
+/// rather than defaulting, so a malformed budget can never silently become an unbounded cap on the
+/// real-money path — the caller decides (the payment path refuses fail-closed).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("budget {0:?} is neither a dollar amount (e.g. $5.00) nor a call count (e.g. 20calls)")]
+pub struct BudgetParseError(String);
+
 impl Budget {
-    /// Parse a budget from the grant string in a transcript (e.g. `"$5.00"`,
-    /// `"$5"`, `"20calls"`). Defaults to a generous cap when unparseable so a
-    /// malformed budget never silently blocks an in-scope call.
-    pub fn parse(raw: &str) -> Self {
-        let raw = raw.trim();
-        if let Some(rest) = raw.strip_suffix("calls")
+    /// Parse a budget from the grant string (e.g. `"$5.00"`, `"$5"`, `"20calls"`), or
+    /// [`BudgetParseError`] when it is neither. A PRESENT-but-malformed budget is an error, never a
+    /// silent cap — so a typo on a payment wrap cannot disable the spend cap.
+    ///
+    /// Args:
+    /// * `raw`: the budget string from the grant/CLI.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let cap = Budget::parse("$5.00")?.cap_cents();
+    /// ```
+    pub fn parse(raw: &str) -> Result<Self, BudgetParseError> {
+        let trimmed = raw.trim();
+        if let Some(rest) = trimmed.strip_suffix("calls")
             && let Ok(n) = rest.trim().parse::<u64>()
         {
-            return Budget::Calls(n);
+            return Ok(Budget::Calls(n));
         }
-        let dollars = raw.trim_start_matches('$');
+        let dollars = trimmed.trim_start_matches('$');
         if let Ok(cents) = parse_dollars_to_cents(dollars) {
             // Wrap the parsed cent count at this string-parse boundary.
-            return Budget::Cents(Cents::new(cents));
+            return Ok(Budget::Cents(Cents::new(cents)));
         }
-        // Permissive default: a budget we cannot read does not block a non-payment wrap.
+        Err(BudgetParseError(raw.to_string()))
+    }
+
+    /// An explicit unbounded cap — the non-payment path's deliberate choice when no budget is set.
+    /// Named so an "infinite cap" is always a decision a caller makes on purpose, never the silent
+    /// fallback of a parse failure.
+    pub fn unbounded() -> Self {
         Budget::Cents(Cents::new(u64::MAX))
     }
 
@@ -83,15 +104,30 @@ mod tests {
 
     #[test]
     fn parses_dollar_budgets() {
-        assert_eq!(Budget::parse("$5.00"), Budget::Cents(Cents::new(500)));
-        assert_eq!(Budget::parse("$5"), Budget::Cents(Cents::new(500)));
-        assert_eq!(Budget::parse("$4.99"), Budget::Cents(Cents::new(499)));
-        assert_eq!(Budget::parse("20calls"), Budget::Calls(20));
+        assert_eq!(Budget::parse("$5.00"), Ok(Budget::Cents(Cents::new(500))));
+        assert_eq!(Budget::parse("$5"), Ok(Budget::Cents(Cents::new(500))));
+        assert_eq!(Budget::parse("$4.99"), Ok(Budget::Cents(Cents::new(499))));
+        assert_eq!(Budget::parse("20calls"), Ok(Budget::Calls(20)));
     }
 
     #[test]
     fn cap_cents_reads_the_bound() {
-        assert_eq!(Budget::parse("$5.00").cap_cents(), Cents::new(500));
-        assert_eq!(Budget::parse("20calls").cap_cents(), Cents::new(20));
+        assert_eq!(Budget::parse("$5.00").unwrap().cap_cents(), Cents::new(500));
+        assert_eq!(
+            Budget::parse("20calls").unwrap().cap_cents(),
+            Cents::new(20)
+        );
+    }
+
+    #[test]
+    fn a_malformed_budget_is_refused_not_an_infinite_cap() {
+        // A budget that parses to neither dollars nor calls is an ERROR — never a silent u64::MAX
+        // cap, which on a payment wrap would be unbounded spend. Reverting parse to a default makes
+        // these `is_ok()` and the cap infinite.
+        assert!(Budget::parse("garbage").is_err());
+        assert!(Budget::parse("$").is_err());
+        assert!(Budget::parse("12cows").is_err());
+        // The unbounded cap is a deliberate, named choice — not a parse fallback.
+        assert_eq!(Budget::unbounded(), Budget::Cents(Cents::new(u64::MAX)));
     }
 }

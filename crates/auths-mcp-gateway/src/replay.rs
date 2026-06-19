@@ -140,12 +140,12 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     //    rails: the verifier-held monotonic SETTLED counter (persisted under the org
     //    registry the verifier replays, keyed to the AGENT DELEGATION) + the transient
     //    RESERVED holds. `available = cap − settled − Σ(holds)`.
-    let budget_spec = transcript
-        .grant
-        .budget
-        .as_deref()
-        .map(Budget::parse)
-        .unwrap_or(Budget::Cents(Cents::new(u64::MAX)));
+    // A present budget must parse (a malformed one is a hard error, never a silent unbounded cap);
+    // an absent budget is the deliberate unbounded cap.
+    let budget_spec = match transcript.grant.budget.as_deref() {
+        Some(raw) => Budget::parse(raw)?,
+        None => Budget::unbounded(),
+    };
     let mut budget = CounterRef::for_agent(chain.org_repo(), &chain.agent_did)?
         .open_budget(budget_spec.cap_cents());
     println!(

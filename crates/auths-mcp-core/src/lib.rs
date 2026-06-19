@@ -58,7 +58,7 @@ pub use paymode::{
 };
 pub use rail::{ExtractedCost, RailError, extract as extract_rail_cost, extract_stripe};
 pub use receipt::{Receipt, ReceiptError};
-pub use session::Budget;
+pub use session::{Budget, BudgetParseError};
 
 /// A capability string a downstream tool maps to (e.g. `fs.read`, `fs.write`,
 /// `github.comment`). The gate enforces that the capability a `tools/call`

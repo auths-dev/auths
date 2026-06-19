@@ -713,12 +713,15 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let cap_cents = cfg
-        .budget
-        .as_deref()
-        .map(Budget::parse)
-        .unwrap_or(Budget::Cents(Cents::new(u64::MAX)))
-        .cap_cents();
+    // A PRESENT budget must parse — a malformed `--budget` is refused fail-closed, never silently
+    // treated as an unbounded cap (a payment wrap with no budget was already refused above). Only an
+    // ABSENT budget on a non-payment wrap is the deliberate unbounded cap.
+    let cap_cents = match cfg.budget.as_deref() {
+        Some(raw) => Budget::parse(raw)
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .cap_cents(),
+        None => Budget::unbounded().cap_cents(),
+    };
 
     // If the gateway custodies a downstream credential, audit which credential(s) by NAME (never
     // the value). The secret is injected into the long-lived downstream child spawned below — the
