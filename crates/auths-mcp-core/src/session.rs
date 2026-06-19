@@ -121,9 +121,8 @@ mod tests {
 
     #[test]
     fn a_malformed_budget_is_refused_not_an_infinite_cap() {
-        // A budget that parses to neither dollars nor calls is an ERROR — never a silent u64::MAX
-        // cap, which on a payment wrap would be unbounded spend. Reverting parse to a default makes
-        // these `is_ok()` and the cap infinite.
+        // A budget that parses to neither dollars nor calls is an error, not a silent u64::MAX cap,
+        // which on a payment wrap would be unbounded spend.
         assert!(Budget::parse("garbage").is_err());
         assert!(Budget::parse("$").is_err());
         assert!(Budget::parse("12cows").is_err());
