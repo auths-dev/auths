@@ -146,8 +146,12 @@ fn render_commit_row(c: &CommitRecord) -> String {
 }
 
 fn classify_signature(status: &SignatureStatus) -> (&'static str, bool, bool) {
+    // The third element is "verified", which means the signature was cryptographically checked. The
+    // audit view only identifies who a commit declares as its signer; it does not replay KELs or
+    // check the signature, so auths-signed commits report signed-but-not-verified here. Verification
+    // is a separate verdict produced by the commit-verify path.
     match status {
-        SignatureStatus::AuthsSigned { .. } => ("auths", true, true),
+        SignatureStatus::AuthsSigned { .. } => ("auths", true, false),
         SignatureStatus::SshSigned => ("ssh", true, false),
         SignatureStatus::GpgSigned { verified } => ("gpg", true, *verified),
         SignatureStatus::Unsigned => ("none", false, false),

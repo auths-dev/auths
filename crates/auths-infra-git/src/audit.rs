@@ -3,6 +3,7 @@
 //! Reads commit history using libgit2 instead of subprocess calls.
 
 use auths_sdk::ports::git::{CommitRecord, GitLogProvider, GitProviderError, SignatureStatus};
+use auths_sdk::workflows::commit_trust::commit_signer_trailers;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -95,29 +96,39 @@ impl GitLogProvider for Git2LogProvider {
 }
 
 fn classify_signature(repo: &git2::Repository, commit: &git2::Commit) -> SignatureStatus {
-    match repo.extract_signature(&commit.id(), None) {
-        Ok(sig_buf) => {
-            let sig_bytes = sig_buf.0;
-            let sig_str = String::from_utf8_lossy(sig_bytes.as_ref());
+    let signature = repo.extract_signature(&commit.id(), None).ok();
+    classify_commit_signature(
+        commit.message().unwrap_or_default(),
+        signature.as_ref().map(|sig| sig.0.as_ref()),
+    )
+}
 
-            if sig_str.contains("-----BEGIN SSH SIGNATURE-----") {
-                // SSH signature — check if it's auths-signed by looking for auths namespace
-                if sig_str.contains("auths") {
-                    SignatureStatus::AuthsSigned {
-                        signer_did: String::new(),
-                    }
-                } else {
-                    SignatureStatus::SshSigned
-                }
-            } else if sig_str.contains("-----BEGIN PGP SIGNATURE-----") {
-                SignatureStatus::GpgSigned { verified: false }
-            } else {
-                SignatureStatus::InvalidSignature {
-                    reason: "unknown signature format".to_string(),
-                }
-            }
+/// Classify a commit's signature for the audit view. An auths-signed commit names its signer in the
+/// in-band `Auths-Id` / `Auths-Device` trailers, so the signer DID is read from those trailers rather
+/// than by scanning the signature bytes. The remaining arms describe the signature format only; they
+/// do not assert that the signature verifies.
+///
+/// Args:
+/// * `message`: the commit message (the trailers live in its body).
+/// * `signature`: the raw signature bytes if the commit is signed.
+fn classify_commit_signature(message: &str, signature: Option<&[u8]>) -> SignatureStatus {
+    if let Some((_id_did, device_did)) = commit_signer_trailers(message) {
+        return SignatureStatus::AuthsSigned {
+            signer_did: device_did,
+        };
+    }
+    let Some(sig_bytes) = signature else {
+        return SignatureStatus::Unsigned;
+    };
+    let sig_str = String::from_utf8_lossy(sig_bytes);
+    if sig_str.contains("-----BEGIN SSH SIGNATURE-----") {
+        SignatureStatus::SshSigned
+    } else if sig_str.contains("-----BEGIN PGP SIGNATURE-----") {
+        SignatureStatus::GpgSigned { verified: false }
+    } else {
+        SignatureStatus::InvalidSignature {
+            reason: "unknown signature format".to_string(),
         }
-        Err(_) => SignatureStatus::Unsigned,
     }
 }
 
@@ -140,4 +151,31 @@ fn format_commit_time(commit: &git2::Commit) -> String {
         offset_hours.abs(),
         offset_mins
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_signature_whose_bytes_contain_auths_is_not_auths_signed_without_trailers() {
+        let ssh_signature =
+            b"-----BEGIN SSH SIGNATURE-----\nU1NIU0lHauthsZZ\n-----END SSH SIGNATURE-----\n";
+        assert!(matches!(
+            classify_commit_signature("a commit\n\njust a message", Some(ssh_signature)),
+            SignatureStatus::SshSigned
+        ));
+    }
+
+    #[test]
+    fn the_auths_trailers_name_the_signer() {
+        let message =
+            "a commit\n\nbody text\n\nAuths-Id: did:keri:root\nAuths-Device: did:keri:device";
+        match classify_commit_signature(message, None) {
+            SignatureStatus::AuthsSigned { signer_did } => {
+                assert_eq!(signer_did, "did:keri:device");
+            }
+            other => panic!("expected AuthsSigned, got {other:?}"),
+        }
+    }
 }
