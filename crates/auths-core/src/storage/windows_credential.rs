@@ -48,12 +48,11 @@ impl AliasEntry {
         }
     }
 
-    fn role(&self) -> KeyRole {
+    fn role(&self) -> Result<KeyRole, AgentError> {
         match self {
-            AliasEntry::WithRole(_, role_str) => {
-                role_str.parse::<KeyRole>().unwrap_or(KeyRole::Primary)
-            }
-            AliasEntry::Legacy(_) => KeyRole::Primary,
+            AliasEntry::WithRole(_, role_str) => KeyRole::from_persisted(role_str)
+                .map_err(|e| AgentError::SecurityError(e.to_string())),
+            AliasEntry::Legacy(_) => Ok(KeyRole::Primary),
         }
     }
 }
@@ -205,7 +204,7 @@ impl KeyStorage for WindowsCredentialStorage {
         let index = self.load_index();
         let entry = index.aliases.get(alias).ok_or(AgentError::KeyNotFound)?;
         let identity_did = entry.did().to_string();
-        let role = entry.role();
+        let role = entry.role()?;
 
         let resource = self.resource_name(alias);
         let resource_hstring = HSTRING::from(&resource);

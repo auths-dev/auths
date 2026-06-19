@@ -221,9 +221,16 @@ impl KeyStorage for IOSKeychain {
             ))
         })?;
 
-        let role = role_str_opt
-            .and_then(|s| s.parse::<KeyRole>().ok())
-            .unwrap_or(KeyRole::Primary);
+        let role = match role_str_opt {
+            Some(s) => {
+                KeyRole::from_persisted(&s).map_err(|e| AgentError::SecurityError(e.to_string()))?
+            }
+            None => {
+                return Err(AgentError::SecurityError(format!(
+                    "keychain item for alias '{alias}' has no stored role"
+                )));
+            }
+        };
 
         debug!("Successfully loaded key for alias '{}'", alias);
         #[allow(clippy::disallowed_methods)]

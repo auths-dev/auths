@@ -322,7 +322,9 @@ impl KeyStorage for EncryptedFileStorage {
             .ok_or(AgentError::KeyNotFound)?;
         match entry {
             KeyEntry::WithRole(did, role_str, b64) => {
-                let role = role_str.parse::<KeyRole>().unwrap_or(KeyRole::Primary);
+                let role = KeyRole::from_persisted(role_str).map_err(|e| {
+                    AgentError::SecurityError(format!("key '{}': {e}", alias.as_str()))
+                })?;
                 let key_bytes = BASE64.decode(b64).map_err(|e| {
                     AgentError::StorageError(format!("Invalid key encoding: {}", e))
                 })?;
