@@ -12,23 +12,25 @@ use auths_keri::witness::SignedReceipt;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-/// Decode a hex-encoded public key and infer its curve from length.
+/// Decode a hex-encoded public key and construct a typed key with an explicit curve tag.
 ///
-/// Accepts 32 bytes (Ed25519), 33 or 65 bytes (P-256).
-fn pk_from_hex_wasm(pk_hex: &str) -> Result<DevicePublicKey, AttestationError> {
+/// The curve is supplied by the caller — it is never inferred from `bytes.len()` (32 is
+/// ambiguous between Ed25519 and X25519, 33 between P-256 and secp256k1, the silent-
+/// misrouting hazard `CLAUDE.md` forbids).
+fn pk_from_hex_wasm(curve: CurveType, pk_hex: &str) -> Result<DevicePublicKey, AttestationError> {
     let bytes = hex::decode(pk_hex)
         .map_err(|e| AttestationError::InvalidInput(format!("Invalid public key hex: {}", e)))?;
-    let curve = match bytes.len() {
-        32 => auths_crypto::CurveType::Ed25519,
-        33 | 65 => auths_crypto::CurveType::P256,
-        n => {
-            return Err(AttestationError::InvalidInput(format!(
-                "Invalid public key length: expected 32 (Ed25519) or 33/65 (P-256), got {n}"
-            )));
-        }
-    };
     DevicePublicKey::try_new(curve, &bytes)
         .map_err(|e| AttestationError::InvalidInput(e.to_string()))
+}
+
+/// Resolve an optional curve-name string to a [`CurveType`], defaulting to P-256 when the
+/// tag is absent or unrecognized (the workspace wire default; see `CLAUDE.md`).
+fn curve_from_opt(curve: Option<&str>) -> CurveType {
+    match curve {
+        Some("ed25519") | Some("Ed25519") => CurveType::Ed25519,
+        _ => CurveType::P256,
+    }
 }
 
 #[wasm_bindgen]
@@ -60,6 +62,7 @@ pub struct WasmVerificationResult {
 pub async fn wasm_verify_attestation_json(
     attestation_json_str: &str,
     issuer_pk_hex: &str,
+    issuer_pk_curve: Option<String>,
 ) -> Result<(), JsValue> {
     console_log!("WASM: Verifying attestation...");
 
@@ -71,8 +74,8 @@ pub async fn wasm_verify_attestation_json(
         )));
     }
 
-    let issuer_pk =
-        pk_from_hex_wasm(issuer_pk_hex).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let issuer_pk = pk_from_hex_wasm(curve_from_opt(issuer_pk_curve.as_deref()), issuer_pk_hex)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let att: Attestation = serde_json::from_str(attestation_json_str)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse attestation JSON: {}", e)))?;
@@ -95,9 +98,13 @@ pub async fn wasm_verify_attestation_json(
 pub async fn wasm_verify_attestation_with_result(
     attestation_json_str: &str,
     issuer_pk_hex: &str,
+    issuer_pk_curve: Option<String>,
 ) -> String {
+    let curve = curve_from_opt(issuer_pk_curve.as_deref());
     let result =
-        match verify_attestation_internal(attestation_json_str, issuer_pk_hex, &provider()).await {
+        match verify_attestation_internal(attestation_json_str, issuer_pk_hex, curve, &provider())
+            .await
+        {
             Ok(()) => WasmVerificationResult {
                 valid: true,
                 error: None,
@@ -116,6 +123,7 @@ pub async fn wasm_verify_attestation_with_result(
 async fn verify_attestation_internal(
     attestation_json_str: &str,
     issuer_pk_hex: &str,
+    curve: CurveType,
     provider: &dyn CryptoProvider,
 ) -> Result<(), AttestationError> {
     if attestation_json_str.len() > MAX_ATTESTATION_JSON_SIZE {
@@ -126,7 +134,7 @@ async fn verify_attestation_internal(
         )));
     }
 
-    let issuer_pk = pk_from_hex_wasm(issuer_pk_hex)?;
+    let issuer_pk = pk_from_hex_wasm(curve, issuer_pk_hex)?;
 
     let att: Attestation = serde_json::from_str(attestation_json_str).map_err(|e| {
         AttestationError::SerializationError(format!("Failed to parse attestation JSON: {}", e))
@@ -166,10 +174,7 @@ pub async fn wasm_verify_artifact_signature(
         return false;
     };
 
-    let curve_type = match curve.as_deref() {
-        Some("ed25519") | Some("Ed25519") => CurveType::Ed25519,
-        _ => CurveType::P256,
-    };
+    let curve_type = curve_from_opt(curve.as_deref());
 
     if sig_bytes.len() != 64 {
         return false;
@@ -187,8 +192,13 @@ pub async fn wasm_verify_artifact_signature(
 
 /// Verifies a chain of attestations and returns a VerificationReport as JSON.
 #[wasm_bindgen(js_name = verifyChainJson)]
-pub async fn wasm_verify_chain_json(attestations_json_array: &str, root_pk_hex: &str) -> String {
-    match verify_chain_internal(attestations_json_array, root_pk_hex, &provider()).await {
+pub async fn wasm_verify_chain_json(
+    attestations_json_array: &str,
+    root_pk_hex: &str,
+    root_pk_curve: Option<String>,
+) -> String {
+    let curve = curve_from_opt(root_pk_curve.as_deref());
+    match verify_chain_internal(attestations_json_array, root_pk_hex, curve, &provider()).await {
         Ok(report) => serde_json::to_string(&report)
             .unwrap_or_else(|_| r#"{"status":{"type":"BrokenChain","missingLink":"Serialization failed"},"chain":[],"warnings":[]}"#.to_string()),
         Err(e) => {
@@ -206,6 +216,7 @@ pub async fn wasm_verify_chain_json(attestations_json_array: &str, root_pk_hex: 
 async fn verify_chain_internal(
     attestations_json_array: &str,
     root_pk_hex: &str,
+    curve: CurveType,
     provider: &dyn CryptoProvider,
 ) -> Result<VerificationReport, AttestationError> {
     if attestations_json_array.len() > MAX_JSON_BATCH_SIZE {
@@ -216,7 +227,7 @@ async fn verify_chain_internal(
         )));
     }
 
-    let root_pk = pk_from_hex_wasm(root_pk_hex)?;
+    let root_pk = pk_from_hex_wasm(curve, root_pk_hex)?;
 
     let attestations: Vec<Attestation> =
         serde_json::from_str(attestations_json_array).map_err(|e| {
@@ -234,6 +245,7 @@ async fn verify_chain_internal(
 pub async fn wasm_verify_chain_with_witnesses_json(
     chain_json: &str,
     root_pk_hex: &str,
+    root_pk_curve: Option<String>,
     receipts_json: &str,
     witness_keys_json: &str,
     threshold: u32,
@@ -241,6 +253,7 @@ pub async fn wasm_verify_chain_with_witnesses_json(
     match verify_chain_with_witnesses_internal(
         chain_json,
         root_pk_hex,
+        curve_from_opt(root_pk_curve.as_deref()),
         receipts_json,
         witness_keys_json,
         threshold,
@@ -265,6 +278,7 @@ pub async fn wasm_verify_chain_with_witnesses_json(
 async fn verify_chain_with_witnesses_internal(
     chain_json: &str,
     root_pk_hex: &str,
+    curve: CurveType,
     receipts_json: &str,
     witness_keys_json: &str,
     threshold: u32,
@@ -292,7 +306,7 @@ async fn verify_chain_with_witnesses_internal(
         )));
     }
 
-    let root_pk = pk_from_hex_wasm(root_pk_hex)?;
+    let root_pk = pk_from_hex_wasm(curve, root_pk_hex)?;
 
     let attestations: Vec<Attestation> = serde_json::from_str(chain_json).map_err(|e| {
         AttestationError::SerializationError(format!("Failed to parse attestations JSON: {}", e))
