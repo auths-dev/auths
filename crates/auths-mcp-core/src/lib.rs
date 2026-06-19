@@ -34,6 +34,7 @@
 pub mod audit;
 pub mod budget;
 pub mod gate;
+pub mod money;
 pub mod paymode;
 pub mod rail;
 pub mod receipt;
@@ -48,6 +49,7 @@ pub use budget::{
     SettledCounter,
 };
 pub use gate::{Decision, GateError, PerCallGate, ToolCall, Verdict};
+pub use money::{AtomicUsdc, Cents, NonZeroCents};
 pub use paymode::{
     BudgetRequired, ModeDisclosure, PaymentMode, StripeRail, TEST_MODE_ENV, X402Rail,
     env_opts_into_test, require_budget,

@@ -85,8 +85,8 @@ fn resolve_call_cost(call: &Call) -> anyhow::Result<CallCost> {
     // ceiling BEFORE the rail's settle is metered, so the over-cap charge is never
     // settled into the counter.
     Ok(CallCost {
-        reserve_ceiling_cents: amount_cents,
-        settle_cents: amount_cents,
+        reserve_ceiling_cents: amount_cents.get(),
+        settle_cents: amount_cents.get(),
         charge_ref: Some(reference),
         extracted: true,
         rail_response: Some(bytes),

@@ -308,7 +308,7 @@ impl GatewayProxy {
             let ceiling = args
                 .and_then(|m| m.get("amount_atomic"))
                 .and_then(|v| v.as_u64())
-                .map(auths_mcp_core::rail::atomic_usdc_to_cents_ceiling)
+                .map(|a| auths_mcp_core::AtomicUsdc::new(a).to_cents_ceiling().get())
                 .or_else(|| {
                     args.and_then(|m| m.get("_auths_reserve_ceiling_cents"))
                         .and_then(|v| v.as_u64())
@@ -466,7 +466,7 @@ impl ServerHandler for GatewayProxy {
                 })?;
                 rail_response = Some(resp);
                 settled_charge_ref = Some(extracted.reference);
-                extracted.amount_cents
+                extracted.amount_cents.get()
             } else {
                 cost.cost_cents
             };

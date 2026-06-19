@@ -279,7 +279,7 @@ pub async fn audit_spend_log(
             // unsigned, so it is only a cross-check — the authoritative amount is the one the agent
             // SIGNED in the settlement below.
             let recomputed = match crate::rail::extract(rail, resp) {
-                Ok(c) => c.amount_cents,
+                Ok(c) => c.amount_cents.get(),
                 // A settled call whose recorded response no longer extracts is a tampered response.
                 Err(_) => {
                     return AuditVerdict::CostMismatch {
