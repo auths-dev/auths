@@ -25,9 +25,6 @@ use auths_verifier::types::CanonicalDid;
 
 use crate::context::AuthsContext;
 use crate::domains::agents::error::AgentError;
-use crate::domains::agents::scope::{
-    DelegatorScope, RequestedScope, validate_delegation_constraints,
-};
 
 /// Result of adding a delegated agent.
 #[derive(Debug, Clone)]
@@ -314,30 +311,64 @@ fn enforce_scope_subset(
     // agent; the delegator's own grant is keyed by ITS prefix. Read from the loaded
     // root KEL (where this registry anchors every delegation), keyed by the delegator.
     let root_kel = collect_kel(ctx, root_prefix);
-    let Some(delegator_scope) = read_agent_scope(&root_kel, &delegator_prefix) else {
-        return Ok(()); // delegator holds no anchored scope seal → unrestricted
-    };
-    validate_delegation_constraints(
-        &DelegatorScope {
-            capabilities: &delegator_scope.capabilities,
-            remaining_ttl_secs: u64::MAX,
-            depth: 0,
-            max_depth: u32::MAX,
-        },
-        &RequestedScope {
-            capabilities: requested,
-            ttl_secs: 0,
-        },
-    )
-    .map_err(|e| match e {
-        crate::domains::agents::scope::DelegationError::CapabilityNotGranted(cap) => {
-            AgentError::OutsideDelegatorScope { capability: cap }
+    let is_registry_root = delegator_prefix == *root_prefix;
+    match resolve_delegator_authority(
+        is_registry_root,
+        read_agent_scope(&root_kel, &delegator_prefix),
+    ) {
+        // The registry root signing for itself may grant any scope — granted only because the signer
+        // is the root, never because a seal happened to be absent.
+        DelegatorAuthority::Root => Ok(()),
+        // A delegate may only narrow the scope its delegator anchored for it.
+        DelegatorAuthority::Scoped(scope) => {
+            crate::domains::agents::scope::validate_capability_subset(
+                &scope.capabilities,
+                requested,
+            )
+            .map_err(|e| AgentError::OutsideDelegatorScope {
+                capability: match e {
+                    crate::domains::agents::scope::DelegationError::CapabilityNotGranted(cap) => {
+                        cap
+                    }
+                    other => other.to_string(),
+                },
+            })
         }
-        // TTL/depth are not constrained here (set permissively above).
-        other => AgentError::OutsideDelegatorScope {
-            capability: other.to_string(),
-        },
-    })
+        // A delegator that is not the root and presents no anchored seal has no authority to delegate
+        // further, so the request is refused instead of being treated as unrestricted.
+        DelegatorAuthority::NoAuthority => Err(AgentError::OutsideDelegatorScope {
+            capability: format!("delegator {delegator_prefix} presents no anchored scope seal"),
+        }),
+    }
+}
+
+/// What a delegator is permitted to hand out, resolved from the registry. The registry root may grant
+/// any scope; any other delegator is bounded by the scope seal its own delegator anchored for it; a
+/// non-root delegator that presents no anchored seal has no authority to delegate further.
+enum DelegatorAuthority {
+    /// The registry root signing for itself — unrestricted.
+    Root,
+    /// Bounded by the scope seal anchored for this delegate.
+    Scoped(AgentScope),
+    /// Not the root and no anchored seal — the request must be refused.
+    NoAuthority,
+}
+
+/// Resolve a delegator's authority from whether it is the registry root and the anchored seal read for
+/// it. Only the root is unrestricted; a non-root delegator with no seal yields [`DelegatorAuthority::
+/// NoAuthority`] (the caller refuses) rather than being treated as unrestricted.
+fn resolve_delegator_authority(
+    is_registry_root: bool,
+    anchored_seal: Option<AgentScope>,
+) -> DelegatorAuthority {
+    match (is_registry_root, anchored_seal) {
+        // A delegator that presents an anchored seal is bounded by it, whether or not it is the root.
+        (_, Some(scope)) => DelegatorAuthority::Scoped(scope),
+        // The registry root with no anchored seal is unrestricted.
+        (true, None) => DelegatorAuthority::Root,
+        // A non-root delegator with no anchored seal has no authority to delegate further.
+        (false, None) => DelegatorAuthority::NoAuthority,
+    }
 }
 
 /// One agent delegated by the current identity, with its revocation status.
@@ -603,4 +634,25 @@ pub fn rotate(
         ctx.key_storage.as_ref(),
     )
     .map_err(AgentError::DelegationError)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_non_root_delegator_without_a_seal_has_no_authority() {
+        // Only the registry root is unrestricted. A delegator that is not the root and presents no
+        // anchored seal cannot delegate further, so it resolves to NoAuthority and the caller refuses
+        // rather than treating it as unrestricted.
+        assert!(matches!(
+            resolve_delegator_authority(false, None),
+            DelegatorAuthority::NoAuthority
+        ));
+        // The root is unrestricted even with no anchored seal.
+        assert!(matches!(
+            resolve_delegator_authority(true, None),
+            DelegatorAuthority::Root
+        ));
+    }
 }

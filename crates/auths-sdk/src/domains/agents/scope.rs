@@ -47,6 +47,36 @@ pub struct RequestedScope<'a> {
     pub ttl_secs: u64,
 }
 
+/// Validate that the requested capabilities are a subset of the delegator's. The capability-only
+/// half of [`validate_delegation_constraints`], for callers that bound TTL and depth elsewhere (or
+/// not at all) and must not express those bounds as sentinel values.
+///
+/// Args:
+/// * `delegator_capabilities`: capabilities the delegator holds.
+/// * `requested_capabilities`: capabilities the delegate requests.
+///
+/// Usage:
+/// ```
+/// use auths_keri::Capability;
+/// use auths_sdk::domains::agents::scope::validate_capability_subset;
+/// let parent = vec![Capability::parse("read").unwrap(), Capability::parse("write").unwrap()];
+/// let child = vec![Capability::parse("read").unwrap()];
+/// assert!(validate_capability_subset(&parent, &child).is_ok());
+/// ```
+pub fn validate_capability_subset(
+    delegator_capabilities: &[Capability],
+    requested_capabilities: &[Capability],
+) -> Result<(), DelegationError> {
+    for cap in requested_capabilities {
+        if !delegator_capabilities.contains(cap) {
+            return Err(DelegationError::CapabilityNotGranted(
+                cap.as_str().to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Validate that a delegate's requested scope stays within its delegator's:
 /// capability subset, TTL ≤ remaining, and depth below the cap.
 ///
@@ -70,13 +100,7 @@ pub fn validate_delegation_constraints(
     delegator: &DelegatorScope<'_>,
     requested: &RequestedScope<'_>,
 ) -> Result<(), DelegationError> {
-    for cap in requested.capabilities {
-        if !delegator.capabilities.contains(cap) {
-            return Err(DelegationError::CapabilityNotGranted(
-                cap.as_str().to_string(),
-            ));
-        }
-    }
+    validate_capability_subset(delegator.capabilities, requested.capabilities)?;
     if requested.ttl_secs > delegator.remaining_ttl_secs {
         return Err(DelegationError::TtlExceedsParent {
             requested: requested.ttl_secs,
