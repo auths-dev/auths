@@ -11,8 +11,8 @@
 use std::path::{Path, PathBuf};
 
 use auths_mcp_core::{
-    Budget, Cents, CrossRailBudget, ExtractedCost, Meter, NonZeroCents, PerCallGate, Receipt,
-    SpendLogRecord, ToolCall, Verdict,
+    Budget, Cents, CounterRef, CrossRailBudget, ExtractedCost, Meter, NonZeroCents, PerCallGate,
+    Receipt, SpendLogRecord, ToolCall, Verdict,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -146,8 +146,8 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
         .as_deref()
         .map(Budget::parse)
         .unwrap_or(Budget::Cents(Cents::new(u64::MAX)));
-    let mut budget =
-        CrossRailBudget::open(chain.org_repo(), &chain.agent_did, budget_spec.cap_cents())?;
+    let mut budget = CounterRef::for_agent(chain.org_repo(), &chain.agent_did)?
+        .open_budget(budget_spec.cap_cents());
     println!(
         "▸ budget: one ${cap}.{rem:02} cap across ALL rails (verifier-held SETTLED counter keyed to the agent delegation + reserved holds)",
         cap = budget.cap_cents().get() / 100,

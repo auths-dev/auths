@@ -132,11 +132,6 @@ pub struct WrapConfig {
     /// When set, every call is metered on this rail from its response — set by the OPERATOR, so an
     /// agent cannot bypass metering by omitting a per-call declaration. `None` = non-payment.
     pub rail: Option<String>,
-    /// The agent delegation identifier (`did:keri:…`) the durable cross-rail counter is
-    /// keyed to — the counter sums ALL rails for THIS delegation. Defaults to a stable
-    /// session key when the live-agent harness has not yet bound the agent's delegation
-    /// on the wire (the deferred live leg); the counter SOURCE is durable regardless.
-    pub agent_delegation: Option<String>,
     /// The downstream credential(s) the gateway custodies and injects into the
     /// wrapped downstream — the agent never holds them.
     pub custody: CustodyVault,
@@ -161,21 +156,6 @@ impl WrapConfig {
     }
 }
 
-/// The repo path the verifier holds the durable cross-rail counter under (the same
-/// `budget-ledger` placement the gate persists to, alongside the KELs/registry the
-/// verifier replays). Sourced from the gateway's own environment (`AUTHS_REPO`, then
-/// `AUTHS_HOME`), never from the agent's request; falls back to `.auths` under the cwd.
-fn verifier_repo_path() -> PathBuf {
-    for var in ["AUTHS_REPO", "AUTHS_HOME"] {
-        if let Ok(p) = std::env::var(var)
-            && !p.is_empty()
-        {
-            return PathBuf::from(p);
-        }
-    }
-    PathBuf::from(".auths")
-}
-
 /// The directory the live wire builds its signing chain + registry under (org root, the
 /// delegated agent, the scope seal, and the spend log). Honors `AUTHS_MCP_LIVE_DIR` (then
 /// `LAB_DIR`) so a demo/harness can point the chain + log at a known path it later audits
@@ -189,16 +169,6 @@ fn live_chain_dir() -> PathBuf {
         }
     }
     std::env::temp_dir().join(format!("auths-mcp-live-{}", std::process::id()))
-}
-
-/// The delegation key the durable counter is keyed to on the live wire. Until the
-/// live-agent harness binds the agent's `did:keri:` per session (the deferred live
-/// leg), a stable filesystem-safe session key keeps the durable counter rooted; the
-/// COUNTER SOURCE (durable, cross-rail, verifier-held) is what #281 wires.
-fn wire_delegation_key(cfg: &WrapConfig) -> String {
-    cfg.agent_delegation
-        .clone()
-        .unwrap_or_else(|| "wrap-session".to_string())
 }
 
 /// The metered shape of one brokered `tools/call`, parsed from the agent's request at the wire
@@ -782,30 +752,14 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         cfg.ttl,
     );
 
-    // Open the DURABLE cross-rail budget the live wire enforces against — the SAME
-    // verifier-held CrossRailBudget (D8) the hermetic gate drives: the monotonic SETTLED
-    // counter persisted under `<repo>/budget-ledger`, keyed to the agent delegation,
-    // summed across all rails, plus the transient reserved holds. This replaces the v0
-    // in-memory per-session tally, so the live `wrap` wire cannot allow a cross-rail call
-    // the gate refuses (#281).
-    let repo = verifier_repo_path();
-    let delegation = wire_delegation_key(&cfg);
-    let budget = CrossRailBudget::open(&repo, &delegation, cap_cents)
-        .map_err(|e| anyhow::anyhow!("open durable cross-rail budget counter: {e}"))?;
-    eprintln!(
-        "auths-mcp-gateway: budget enforced from the DURABLE verifier-held cross-rail counter \
-         (budget-ledger under {repo:?}, keyed to the agent delegation, one ${cap}.{rem:02} cap \
-         summed across ALL rails) — the SAME counter the hermetic gate uses",
-        repo = repo,
-        cap = cap_cents.get() / 100,
-        rem = cap_cents.get() % 100,
-    );
-
     // Build the agent's delegation chain (its delegated signing key + the registry the
     // verifier replays) so every brokered call is signed on the live wire exactly as the
     // hermetic gate signs it. The agent also holds a narrow `settle` capability to sign its
     // own settlement commits. The gate resolves the agent + delegator KELs from the chain's
     // registry — the same resolution `verify-spend` runs offline over the persisted log.
+    // The chain is built BEFORE the budget so the durable counter can be keyed to the REAL
+    // agent delegation under the chain's own registry — the same place the spend log and the
+    // printed verify-spend command point — so the offline audit opens the counter the wire advanced.
     let lab = live_chain_dir();
     std::fs::create_dir_all(&lab)
         .map_err(|e| anyhow::anyhow!("create the live signing directory {lab:?}: {e}"))?;
@@ -821,6 +775,25 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         .map_err(|e| {
         anyhow::anyhow!("resolve the per-call gate over the live registry: {e}")
     })?;
+
+    // Open the DURABLE cross-rail budget the live wire enforces against — the SAME verifier-held
+    // CrossRailBudget (D8) the hermetic gate drives: the monotonic SETTLED counter (summed across
+    // all rails) plus the transient reserved holds. It is LOCATED by a CounterRef derived from the
+    // chain's registry + the real agent `did:keri:`, so the standalone `verify-spend` (handed the
+    // same --registry/--agent the wire prints below) opens the SAME counter — no separate verifier
+    // repo, no session-key sentinel.
+    let counter = auths_mcp_core::CounterRef::for_agent(chain.org_repo(), &chain.agent_did)
+        .map_err(|e| anyhow::anyhow!("locate the durable cross-rail counter: {e}"))?;
+    let budget = counter.open_budget(cap_cents);
+    eprintln!(
+        "auths-mcp-gateway: budget enforced from the DURABLE verifier-held cross-rail counter \
+         ({record:?}, keyed to the agent delegation, one ${cap}.{rem:02} cap summed across ALL \
+         rails) — the SAME counter the hermetic gate and the offline verify-spend open",
+        record = counter.record_path(),
+        cap = cap_cents.get() / 100,
+        rem = cap_cents.get() % 100,
+    );
+
     let spend_log = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
     eprintln!(
         "auths-mcp-gateway: live-wire signing ON — agent={} root={}; every brokered call is signed. \

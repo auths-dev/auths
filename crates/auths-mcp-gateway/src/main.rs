@@ -117,13 +117,6 @@ struct WrapArgs {
     #[arg(long = "show-mode")]
     show_mode: bool,
 
-    /// The agent delegation identifier (`did:keri:…`) the durable cross-rail counter is
-    /// keyed to — the verifier-held SETTLED counter sums every rail's spend for THIS
-    /// delegation. Optional: when the live-agent harness has not yet bound the agent's
-    /// delegation on the wire, a stable session key roots the durable counter.
-    #[arg(long = "agent-delegation", value_name = "DID")]
-    agent_delegation: Option<String>,
-
     /// A downstream credential the GATEWAY custodies and injects into the wrapped
     /// downstream (repeatable), e.g. `--custody-credential DOWNSTREAM_API_KEY=sk-…`
     /// (the custody broker). The gateway holds the downstream tool's
@@ -206,7 +199,6 @@ async fn run_wrap(args: WrapArgs) -> ExitCode {
         budget: args.budget,
         ttl: args.ttl,
         rail: args.rail,
-        agent_delegation: args.agent_delegation,
         custody,
         downstream: args.downstream,
         test_mode: args.test_mode,

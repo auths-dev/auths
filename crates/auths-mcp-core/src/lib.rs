@@ -45,8 +45,8 @@ pub use audit::{
     read_spend_log, spend_log_path,
 };
 pub use budget::{
-    BudgetError, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds, SettleOutcome,
-    SettledCounter,
+    BudgetError, CounterKey, CounterRef, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds,
+    SettleOutcome, SettledCounter,
 };
 pub use gate::{Decision, GateError, Meter, PerCallGate, ToolCall, Verdict};
 pub use money::{AtomicUsdc, Cents, NonZeroCents};

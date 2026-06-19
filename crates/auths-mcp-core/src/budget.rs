@@ -121,16 +121,15 @@ pub enum SettleOutcome {
 }
 
 impl SettledCounter {
-    /// Open the settled counter for an agent delegation, rooted at the verifier's repo
-    /// path (the same repo the KELs resolve from). `delegation` is the agent
-    /// delegation identifier (e.g. its `did:keri:` / SAID) — the counter is keyed to
-    /// the DELEGATION, summing all rails, never per-credential or per-rail.
-    pub fn open(repo_path: &Path, delegation: &str) -> Result<Self, BudgetError> {
-        let key = safe_key(delegation)?;
-        Ok(Self {
-            dir: repo_path.join(BUDGET_LEDGER_DIR),
-            key,
-        })
+    /// Open the settled counter at a located [`CounterRef`] — the verifier's registry path plus a
+    /// validated [`CounterKey`]. Infallible: the key already carries its proof, so a counter can
+    /// only be opened at a location derived ONE way from an agent delegation (never from a sentinel
+    /// or an arbitrary string). Build a [`CounterRef`] with [`CounterRef::for_agent`].
+    fn at(registry: &Path, key: CounterKey) -> Self {
+        Self {
+            dir: registry.join(BUDGET_LEDGER_DIR),
+            key: key.into_string(),
+        }
     }
 
     /// The current settled high-water for this delegation (zero if unseen).
@@ -297,7 +296,10 @@ pub enum ReserveOutcome {
     /// The reservation would push `settled + Σ(holds) + ceiling` past the cap —
     /// refused BEFORE the rail is touched (the metered downstream is never charged).
     /// Carries the cap and the would-be cross-rail total for the verdict.
-    Refused { cap_cents: Cents, would_be_cents: Cents },
+    Refused {
+        cap_cents: Cents,
+        would_be_cents: Cents,
+    },
 }
 
 /// The cross-rail budget for one agent delegation across one session: the durable
@@ -311,18 +313,6 @@ pub struct CrossRailBudget {
 }
 
 impl CrossRailBudget {
-    /// Open the cross-rail budget for `delegation` with cap `cap_cents`, rooted at the
-    /// verifier's repo path (where the SETTLED counter persists). The holds start
-    /// empty; the settled total is whatever the persisted high-water already records
-    /// (so a resumed session continues from the durable counter, never below it).
-    pub fn open(repo_path: &Path, delegation: &str, cap_cents: Cents) -> Result<Self, BudgetError> {
-        Ok(Self {
-            cap_cents,
-            settled: SettledCounter::open(repo_path, delegation)?,
-            holds: ReservedHolds::new(),
-        })
-    }
-
     /// The cap, in cents.
     pub fn cap_cents(&self) -> Cents {
         self.cap_cents
@@ -383,7 +373,11 @@ impl CrossRailBudget {
     /// refused [`SettleOutcome::RolledBack`] if the new cumulative would fall below the
     /// recorded high-water). The hold is released REGARDLESS of the monotonicity
     /// outcome so a rolled-back settle does not leak the reservation.
-    pub fn settle(&mut self, hold: Hold, actual_cents: Cents) -> Result<SettleOutcome, BudgetError> {
+    pub fn settle(
+        &mut self,
+        hold: Hold,
+        actual_cents: Cents,
+    ) -> Result<SettleOutcome, BudgetError> {
         // Release the auth-hold first: the slack (ceiling − actual) returns to
         // available, and a rolled-back settle below does not strand the reservation.
         self.holds.release(hold);
@@ -396,6 +390,72 @@ impl CrossRailBudget {
     /// to the monotonic settled total (the rail was never charged).
     pub fn expire(&mut self, hold: Hold) {
         self.holds.release(hold);
+    }
+}
+
+/// The filesystem-safe key a durable counter is bound to, derived ONE way from an agent
+/// delegation's `did:keri:` identifier. There is no `Default` and no constructor from an arbitrary
+/// string: a counter can only be keyed to a parsed agent delegation, never to a sentinel (this is
+/// what retires the `"wrap-session"` placeholder the live wire used to key its counter by).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CounterKey(String);
+
+impl CounterKey {
+    /// Derive the counter key for an agent delegation. The `did:keri:` scheme is stripped and the
+    /// tail (base64url) is validated as a single safe path component; anything else is refused
+    /// ([`BudgetError::UnsafeKey`]) so a malformed delegation can neither escape the ledger dir nor
+    /// silently become a different counter.
+    pub fn for_agent(agent_did: &str) -> Result<CounterKey, BudgetError> {
+        Ok(CounterKey(safe_key(agent_did)?))
+    }
+
+    /// Consume into the inner path component (for the on-disk ledger filename).
+    fn into_string(self) -> String {
+        self.0
+    }
+}
+
+/// A located durable counter: the verifier's registry path plus an agent's [`CounterKey`]. The live
+/// wire, the hermetic replay gate, the offline `verify-spend` CLI, and the audit all build this the
+/// SAME way from `(registry, agent_did)`, so every party opens the SAME on-disk counter — the live
+/// counter can no longer be keyed (or rooted) differently from where the audit looks for it.
+#[derive(Debug, Clone)]
+pub struct CounterRef {
+    registry: PathBuf,
+    key: CounterKey,
+}
+
+impl CounterRef {
+    /// Locate the counter for `agent_did` under the verifier's `registry` (the repo the KELs and the
+    /// spend log resolve from). The one derivation every path uses.
+    pub fn for_agent(registry: &Path, agent_did: &str) -> Result<CounterRef, BudgetError> {
+        Ok(CounterRef {
+            registry: registry.to_path_buf(),
+            key: CounterKey::for_agent(agent_did)?,
+        })
+    }
+
+    /// Open the monotonic SETTLED counter at this location.
+    pub fn open_counter(&self) -> SettledCounter {
+        SettledCounter::at(&self.registry, self.key.clone())
+    }
+
+    /// Open the cross-rail budget at this location with cap `cap_cents` — the holds start empty and
+    /// the settled total resumes from the persisted high-water.
+    pub fn open_budget(&self, cap_cents: Cents) -> CrossRailBudget {
+        CrossRailBudget {
+            cap_cents,
+            settled: self.open_counter(),
+            holds: ReservedHolds::new(),
+        }
+    }
+
+    /// The on-disk path of the counter record — so a caller (and the gate's locatability check) can
+    /// confirm the wire advanced the SAME file the `verify-spend` args resolve to.
+    pub fn record_path(&self) -> PathBuf {
+        self.registry
+            .join(BUDGET_LEDGER_DIR)
+            .join(format!("{}.json", self.key.0))
     }
 }
 
@@ -432,7 +492,9 @@ mod tests {
     const DLG: &str = "did:keri:EAgentDelegationXYZ";
 
     fn budget(dir: &Path, cap: u64) -> CrossRailBudget {
-        CrossRailBudget::open(dir, DLG, Cents::new(cap)).unwrap()
+        CounterRef::for_agent(dir, DLG)
+            .unwrap()
+            .open_budget(Cents::new(cap))
     }
 
     #[test]
@@ -591,7 +653,9 @@ mod tests {
         // cumulative total BELOW the recorded high-water — the monotonic counter refuses
         // it (the usage-counter-rolled-back guard D8).
         let dir = tempfile::tempdir().unwrap();
-        let counter = SettledCounter::open(dir.path(), DLG).unwrap();
+        let counter = CounterRef::for_agent(dir.path(), DLG)
+            .unwrap()
+            .open_counter();
 
         assert!(matches!(
             counter.settle(Cents::new(300)).unwrap(),
@@ -633,10 +697,14 @@ mod tests {
         // fresh open of the same delegation sees the persisted high-water.
         let dir = tempfile::tempdir().unwrap();
         {
-            let c = SettledCounter::open(dir.path(), DLG).unwrap();
+            let c = CounterRef::for_agent(dir.path(), DLG)
+                .unwrap()
+                .open_counter();
             c.settle(Cents::new(420)).unwrap();
         }
-        let c2 = SettledCounter::open(dir.path(), DLG).unwrap();
+        let c2 = CounterRef::for_agent(dir.path(), DLG)
+            .unwrap()
+            .open_counter();
         assert_eq!(c2.settled_cents().unwrap(), Cents::new(420));
     }
 
@@ -675,7 +743,7 @@ mod tests {
     #[test]
     fn unsafe_delegation_key_refused() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(SettledCounter::open(dir.path(), "../escape").is_err());
-        assert!(SettledCounter::open(dir.path(), "did:keri:../escape").is_err());
+        assert!(CounterRef::for_agent(dir.path(), "../escape").is_err());
+        assert!(CounterRef::for_agent(dir.path(), "did:keri:../escape").is_err());
     }
 }
