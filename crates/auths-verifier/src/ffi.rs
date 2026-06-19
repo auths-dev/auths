@@ -9,18 +9,27 @@ use std::os::raw::c_int;
 use std::panic;
 use std::slice;
 
-/// Infer curve from byte length at the FFI boundary and construct a typed key.
+/// Maps a C-ABI curve code to a [`CurveType`].
 ///
-/// Accepts:
-/// - 32 bytes → Ed25519
-/// - 33 bytes → P-256 (SEC1 compressed)
-/// - 65 bytes → P-256 (SEC1 uncompressed)
-fn pk_from_bytes_ffi(bytes: &[u8]) -> Result<DevicePublicKey, c_int> {
-    let curve = match bytes.len() {
-        32 => auths_crypto::CurveType::Ed25519,
-        33 | 65 => auths_crypto::CurveType::P256,
-        _ => return Err(ERR_VERIFY_INVALID_PK_LEN),
-    };
+/// The curve is carried in-band as an explicit argument — it is never inferred from key
+/// length (32 bytes is ambiguous between Ed25519 and X25519; 33 between P-256 and
+/// secp256k1, which is the silent-misrouting hazard `CLAUDE.md` forbids). An unrecognized
+/// code is rejected, not coerced.
+fn curve_from_ffi_code(code: c_int) -> Result<auths_crypto::CurveType, c_int> {
+    match code {
+        FFI_CURVE_ED25519 => Ok(auths_crypto::CurveType::Ed25519),
+        FFI_CURVE_P256 => Ok(auths_crypto::CurveType::P256),
+        _ => Err(ERR_VERIFY_UNKNOWN_CURVE),
+    }
+}
+
+/// Constructs a typed public key from raw bytes and an explicit curve tag.
+///
+/// The caller supplies the curve; this boundary does not guess it from `bytes.len()`.
+fn pk_from_bytes_ffi(
+    curve: auths_crypto::CurveType,
+    bytes: &[u8],
+) -> Result<DevicePublicKey, c_int> {
     DevicePublicKey::try_new(curve, bytes).map_err(|_| ERR_VERIFY_INVALID_PK_LEN)
 }
 
@@ -66,6 +75,14 @@ pub const ERR_VERIFY_FUTURE_TIMESTAMP: c_int = -12;
 pub const ERR_VERIFY_BUFFER_TOO_SMALL: c_int = -13;
 /// Request bytes were not valid UTF-8 (the verify-JSON contract is a UTF-8 JSON document).
 pub const ERR_VERIFY_INVALID_UTF8: c_int = -14;
+/// The caller passed a public-key curve code this build does not recognize.
+pub const ERR_VERIFY_UNKNOWN_CURVE: c_int = -15;
+
+/// Curve code for an Ed25519 public key, passed alongside the key bytes across the C ABI.
+pub const FFI_CURVE_ED25519: c_int = 0;
+/// Curve code for a P-256 public key (SEC1 compressed or uncompressed), passed alongside
+/// the key bytes across the C ABI.
+pub const FFI_CURVE_P256: c_int = 1;
 /// Unclassified verification error.
 pub const ERR_VERIFY_OTHER: c_int = -99;
 /// Internal panic occurred
@@ -173,8 +190,9 @@ unsafe fn write_report_to_buffer(
 /// # Arguments
 /// * `attestation_json_ptr` - Pointer to the byte array containing the Attestation JSON data.
 /// * `attestation_json_len` - Length of the Attestation JSON byte array.
-/// * `issuer_pk_ptr` - Pointer to the byte array containing the raw 32-byte Ed25519 issuer public key.
-/// * `issuer_pk_len` - Length of the issuer public key byte array (must be 32).
+/// * `issuer_pk_ptr` - Pointer to the raw issuer public-key bytes (32 for Ed25519, 33/65 for P-256 SEC1).
+/// * `issuer_pk_len` - Length of the issuer public-key byte array.
+/// * `issuer_pk_curve` - Curve tag for the key (`FFI_CURVE_ED25519` or `FFI_CURVE_P256`); the curve is never inferred from length.
 ///
 /// # Returns
 /// * `0` (VERIFY_SUCCESS) on successful verification.
@@ -191,6 +209,7 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
     attestation_json_len: usize,
     issuer_pk_ptr: *const u8,
     issuer_pk_len: usize,
+    issuer_pk_curve: c_int,
 ) -> c_int {
     let result = panic::catch_unwind(|| {
         // --- Input Validation ---
@@ -215,12 +234,14 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
         let issuer_pk_slice = unsafe { slice::from_raw_parts(issuer_pk_ptr, issuer_pk_len) };
 
         // --- Infer curve from length and construct typed key ---
-        let issuer_pk = match pk_from_bytes_ffi(issuer_pk_slice) {
+        let issuer_pk = match curve_from_ffi_code(issuer_pk_curve)
+            .and_then(|curve| pk_from_bytes_ffi(curve, issuer_pk_slice))
+        {
             Ok(pk) => pk,
             Err(code) => {
                 error!(
-                    "FFI verify failed: invalid issuer PK length ({} bytes)",
-                    issuer_pk_len
+                    "FFI verify failed: invalid issuer PK (curve code {}, {} bytes)",
+                    issuer_pk_curve, issuer_pk_len
                 );
                 return code;
             }
@@ -255,7 +276,8 @@ pub unsafe extern "C" fn ffi_verify_attestation_json(
 ///
 /// # Arguments
 /// * `chain_json_ptr` / `chain_json_len` - JSON array of attestations
-/// * `root_pk_ptr` / `root_pk_len` - 32-byte Ed25519 root public key
+/// * `root_pk_ptr` / `root_pk_len` - Raw root public-key bytes (32 Ed25519, 33/65 P-256 SEC1)
+/// * `root_pk_curve` - Curve tag (`FFI_CURVE_ED25519` / `FFI_CURVE_P256`); never inferred from length
 /// * `receipts_json_ptr` / `receipts_json_len` - JSON array of SignedReceipt objects
 /// * `witness_keys_json_ptr` / `witness_keys_json_len` - JSON array of `{"did": "...", "pk_hex": "..."}`
 /// * `threshold` - Minimum number of valid witness receipts required
@@ -273,6 +295,7 @@ pub unsafe extern "C" fn ffi_verify_chain_with_witnesses(
     chain_json_len: usize,
     root_pk_ptr: *const u8,
     root_pk_len: usize,
+    root_pk_curve: c_int,
     receipts_json_ptr: *const u8,
     receipts_json_len: usize,
     witness_keys_json_ptr: *const u8,
@@ -306,12 +329,14 @@ pub unsafe extern "C" fn ffi_verify_chain_with_witnesses(
         let witness_keys_json =
             unsafe { slice::from_raw_parts(witness_keys_json_ptr, witness_keys_json_len) };
 
-        let root_pk = match pk_from_bytes_ffi(root_pk_slice) {
+        let root_pk = match curve_from_ffi_code(root_pk_curve)
+            .and_then(|curve| pk_from_bytes_ffi(curve, root_pk_slice))
+        {
             Ok(pk) => pk,
             Err(code) => {
                 error!(
-                    "FFI verify_chain_with_witnesses: invalid root PK length ({} bytes)",
-                    root_pk_len
+                    "FFI verify_chain_with_witnesses: invalid root PK (curve code {}, {} bytes)",
+                    root_pk_curve, root_pk_len
                 );
                 return code;
             }
@@ -510,7 +535,8 @@ pub unsafe extern "C" fn auths_verify_credential_json(
 ///
 /// # Arguments
 /// * `chain_json_ptr` / `chain_json_len` - JSON array of attestations
-/// * `root_pk_ptr` / `root_pk_len` - 32-byte Ed25519 root public key
+/// * `root_pk_ptr` / `root_pk_len` - Raw root public-key bytes (32 Ed25519, 33/65 P-256 SEC1)
+/// * `root_pk_curve` - Curve tag (`FFI_CURVE_ED25519` / `FFI_CURVE_P256`); never inferred from length
 /// * `result_ptr` / `result_len` - Output buffer for JSON VerificationReport.
 ///   On entry, `*result_len` must hold the buffer capacity.
 ///   On success, `*result_len` is set to the bytes written.
@@ -527,6 +553,7 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
     chain_json_len: usize,
     root_pk_ptr: *const u8,
     root_pk_len: usize,
+    root_pk_curve: c_int,
     result_ptr: *mut u8,
     result_len: *mut usize,
 ) -> c_int {
@@ -551,12 +578,14 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
         let chain_json = unsafe { slice::from_raw_parts(chain_json_ptr, chain_json_len) };
         let root_pk_slice = unsafe { slice::from_raw_parts(root_pk_ptr, root_pk_len) };
 
-        let root_pk = match pk_from_bytes_ffi(root_pk_slice) {
+        let root_pk = match curve_from_ffi_code(root_pk_curve)
+            .and_then(|curve| pk_from_bytes_ffi(curve, root_pk_slice))
+        {
             Ok(pk) => pk,
             Err(code) => {
                 error!(
-                    "FFI verify_chain_json: invalid root PK length ({} bytes)",
-                    root_pk_len
+                    "FFI verify_chain_json: invalid root PK (curve code {}, {} bytes)",
+                    root_pk_curve, root_pk_len
                 );
                 return code;
             }
@@ -595,7 +624,8 @@ pub unsafe extern "C" fn ffi_verify_chain_json(
 /// * `identity_did_ptr` / `identity_did_len` - UTF-8 identity DID string
 /// * `device_did_ptr` / `device_did_len` - UTF-8 device DID string
 /// * `chain_json_ptr` / `chain_json_len` - JSON array of attestations
-/// * `identity_pk_ptr` / `identity_pk_len` - 32-byte Ed25519 identity public key
+/// * `identity_pk_ptr` / `identity_pk_len` - Raw identity public-key bytes (32 Ed25519, 33/65 P-256 SEC1)
+/// * `identity_pk_curve` - Curve tag (`FFI_CURVE_ED25519` / `FFI_CURVE_P256`); never inferred from length
 /// * `result_ptr` / `result_len` - Output buffer for JSON VerificationReport.
 ///   On entry, `*result_len` must hold the buffer capacity.
 ///   On success, `*result_len` is set to the bytes written.
@@ -617,6 +647,7 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
     chain_json_len: usize,
     identity_pk_ptr: *const u8,
     identity_pk_len: usize,
+    identity_pk_curve: c_int,
     result_ptr: *mut u8,
     result_len: *mut usize,
 ) -> c_int {
@@ -646,12 +677,14 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
         let chain_json = unsafe { slice::from_raw_parts(chain_json_ptr, chain_json_len) };
         let identity_pk_slice = unsafe { slice::from_raw_parts(identity_pk_ptr, identity_pk_len) };
 
-        let identity_pk = match pk_from_bytes_ffi(identity_pk_slice) {
+        let identity_pk = match curve_from_ffi_code(identity_pk_curve)
+            .and_then(|curve| pk_from_bytes_ffi(curve, identity_pk_slice))
+        {
             Ok(pk) => pk,
             Err(code) => {
                 error!(
-                    "FFI verify_device_authorization_json: invalid identity PK length ({} bytes)",
-                    identity_pk_len
+                    "FFI verify_device_authorization_json: invalid identity PK (curve code {}, {} bytes)",
+                    identity_pk_curve, identity_pk_len
                 );
                 return code;
             }
@@ -735,6 +768,34 @@ pub unsafe extern "C" fn ffi_verify_device_authorization_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The curve must be taken from the explicit tag, never inferred from byte length.
+    /// 33 bytes is ambiguous (P-256 vs secp256k1); 32 bytes is ambiguous (Ed25519 vs X25519).
+    #[test]
+    fn pk_from_bytes_ffi_tags_curve_from_argument_not_length() {
+        let p256 = pk_from_bytes_ffi(auths_crypto::CurveType::P256, &[2u8; 33])
+            .expect("33-byte key tagged P-256");
+        assert_eq!(p256.curve(), auths_crypto::CurveType::P256);
+
+        let ed = pk_from_bytes_ffi(auths_crypto::CurveType::Ed25519, &[1u8; 32])
+            .expect("32-byte key tagged Ed25519");
+        assert_eq!(ed.curve(), auths_crypto::CurveType::Ed25519);
+    }
+
+    /// The C-ABI curve code maps to a `CurveType`; an unrecognized code is rejected, not
+    /// silently coerced.
+    #[test]
+    fn curve_from_ffi_code_maps_known_and_rejects_unknown() {
+        assert_eq!(
+            curve_from_ffi_code(FFI_CURVE_ED25519),
+            Ok(auths_crypto::CurveType::Ed25519)
+        );
+        assert_eq!(
+            curve_from_ffi_code(FFI_CURVE_P256),
+            Ok(auths_crypto::CurveType::P256)
+        );
+        assert_eq!(curve_from_ffi_code(99), Err(ERR_VERIFY_UNKNOWN_CURVE));
+    }
 
     /// The panic guard each verdict entrypoint uses must map an unwind to `ERR_VERIFY_PANIC`,
     /// never abort. The verify core itself is panic-free, so this proves the boundary contract

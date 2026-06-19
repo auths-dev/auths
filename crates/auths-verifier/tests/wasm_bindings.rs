@@ -23,20 +23,34 @@ const RFC8032_SIGNATURE_HEX: &str = "92a009a9f0d4cab8720e820b5f642540a2b27b54165
 
 #[wasm_bindgen_test]
 async fn attestation_json_happy_path() {
-    wasm_verify_attestation_json(FIXTURE_ATTESTATION_JSON, FIXTURE_ISSUER_PK_HEX)
-        .await
-        .unwrap();
+    wasm_verify_attestation_json(
+        FIXTURE_ATTESTATION_JSON,
+        FIXTURE_ISSUER_PK_HEX,
+        Some("ed25519".to_string()),
+    )
+    .await
+    .unwrap();
 }
 
 #[wasm_bindgen_test]
 async fn attestation_json_malformed_json() {
-    let result = wasm_verify_attestation_json("not valid json {{{{", FIXTURE_ISSUER_PK_HEX).await;
+    let result = wasm_verify_attestation_json(
+        "not valid json {{{{",
+        FIXTURE_ISSUER_PK_HEX,
+        Some("ed25519".to_string()),
+    )
+    .await;
     assert!(result.is_err());
 }
 
 #[wasm_bindgen_test]
 async fn attestation_json_invalid_hex_pubkey() {
-    let result = wasm_verify_attestation_json(FIXTURE_ATTESTATION_JSON, "not-hex!@#$").await;
+    let result = wasm_verify_attestation_json(
+        FIXTURE_ATTESTATION_JSON,
+        "not-hex!@#$",
+        Some("ed25519".to_string()),
+    )
+    .await;
     assert!(result.is_err());
 }
 
@@ -48,6 +62,7 @@ async fn artifact_signature_happy_path() {
         RFC8032_MESSAGE_HEX,
         RFC8032_SIGNATURE_HEX,
         RFC8032_PUBKEY_HEX,
+        Some("ed25519".to_string()),
     )
     .await;
     assert!(valid);
@@ -55,9 +70,13 @@ async fn artifact_signature_happy_path() {
 
 #[wasm_bindgen_test]
 async fn artifact_signature_invalid_signature() {
-    let invalid =
-        wasm_verify_artifact_signature(RFC8032_MESSAGE_HEX, &"00".repeat(64), RFC8032_PUBKEY_HEX)
-            .await;
+    let invalid = wasm_verify_artifact_signature(
+        RFC8032_MESSAGE_HEX,
+        &"00".repeat(64),
+        RFC8032_PUBKEY_HEX,
+        Some("ed25519".to_string()),
+    )
+    .await;
     assert!(!invalid);
 }
 
@@ -67,6 +86,7 @@ async fn artifact_signature_wrong_pubkey() {
         RFC8032_MESSAGE_HEX,
         RFC8032_SIGNATURE_HEX,
         &"00".repeat(32),
+        Some("ed25519".to_string()),
     )
     .await;
     assert!(!wrong);

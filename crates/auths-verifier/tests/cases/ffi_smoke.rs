@@ -24,22 +24,33 @@ fn chain_json() -> Vec<u8> {
 fn attestation_happy_path() {
     let json = FIXTURE_ATTESTATION_JSON.as_bytes();
     let pk = issuer_pk_bytes();
-    let rc =
-        unsafe { ffi_verify_attestation_json(json.as_ptr(), json.len(), pk.as_ptr(), pk.len()) };
+    let rc = unsafe {
+        ffi_verify_attestation_json(
+            json.as_ptr(),
+            json.len(),
+            pk.as_ptr(),
+            pk.len(),
+            FFI_CURVE_ED25519,
+        )
+    };
     assert_eq!(rc, VERIFY_SUCCESS);
 }
 
 #[test]
 fn attestation_null_json_ptr() {
     let pk = issuer_pk_bytes();
-    let rc = unsafe { ffi_verify_attestation_json(ptr::null(), 0, pk.as_ptr(), pk.len()) };
+    let rc = unsafe {
+        ffi_verify_attestation_json(ptr::null(), 0, pk.as_ptr(), pk.len(), FFI_CURVE_ED25519)
+    };
     assert_eq!(rc, ERR_VERIFY_NULL_ARGUMENT);
 }
 
 #[test]
 fn attestation_null_pk_ptr() {
     let json = FIXTURE_ATTESTATION_JSON.as_bytes();
-    let rc = unsafe { ffi_verify_attestation_json(json.as_ptr(), json.len(), ptr::null(), 32) };
+    let rc = unsafe {
+        ffi_verify_attestation_json(json.as_ptr(), json.len(), ptr::null(), 32, FFI_CURVE_ED25519)
+    };
     assert_eq!(rc, ERR_VERIFY_NULL_ARGUMENT);
 }
 
@@ -48,9 +59,25 @@ fn attestation_invalid_pk_len() {
     let json = FIXTURE_ATTESTATION_JSON.as_bytes();
     let short_pk = [0u8; 16];
     let rc = unsafe {
-        ffi_verify_attestation_json(json.as_ptr(), json.len(), short_pk.as_ptr(), short_pk.len())
+        ffi_verify_attestation_json(
+            json.as_ptr(),
+            json.len(),
+            short_pk.as_ptr(),
+            short_pk.len(),
+            FFI_CURVE_ED25519,
+        )
     };
     assert_eq!(rc, ERR_VERIFY_INVALID_PK_LEN);
+}
+
+#[test]
+fn attestation_unknown_curve_code_rejected() {
+    let json = FIXTURE_ATTESTATION_JSON.as_bytes();
+    let pk = issuer_pk_bytes();
+    let rc = unsafe {
+        ffi_verify_attestation_json(json.as_ptr(), json.len(), pk.as_ptr(), pk.len(), 99)
+    };
+    assert_eq!(rc, ERR_VERIFY_UNKNOWN_CURVE);
 }
 
 #[test]
@@ -58,7 +85,13 @@ fn attestation_malformed_json() {
     let bad_json = b"not valid json {{{{";
     let pk = issuer_pk_bytes();
     let rc = unsafe {
-        ffi_verify_attestation_json(bad_json.as_ptr(), bad_json.len(), pk.as_ptr(), pk.len())
+        ffi_verify_attestation_json(
+            bad_json.as_ptr(),
+            bad_json.len(),
+            pk.as_ptr(),
+            pk.len(),
+            FFI_CURVE_ED25519,
+        )
     };
     assert_eq!(rc, ERR_VERIFY_JSON_PARSE);
 }
@@ -68,7 +101,13 @@ fn attestation_wrong_pk_returns_sig_fail() {
     let json = FIXTURE_ATTESTATION_JSON.as_bytes();
     let wrong_pk = [0u8; 32];
     let rc = unsafe {
-        ffi_verify_attestation_json(json.as_ptr(), json.len(), wrong_pk.as_ptr(), wrong_pk.len())
+        ffi_verify_attestation_json(
+            json.as_ptr(),
+            json.len(),
+            wrong_pk.as_ptr(),
+            wrong_pk.len(),
+            FFI_CURVE_ED25519,
+        )
     };
     assert!(rc < 0, "expected negative error code, got {}", rc);
 }
@@ -87,6 +126,7 @@ fn chain_happy_path() {
             chain.len(),
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             buf.as_mut_ptr(),
             &mut buf_len,
         )
@@ -109,6 +149,7 @@ fn chain_null_chain_ptr() {
             0,
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             buf.as_mut_ptr(),
             &mut buf_len,
         )
@@ -127,6 +168,7 @@ fn chain_null_result_ptr() {
             chain.len(),
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             ptr::null_mut(),
             &mut buf_len,
         )
@@ -146,6 +188,7 @@ fn chain_malformed_json() {
             bad.len(),
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             buf.as_mut_ptr(),
             &mut buf_len,
         )
@@ -165,6 +208,7 @@ fn chain_invalid_pk_len() {
             chain.len(),
             short_pk.as_ptr(),
             short_pk.len(),
+            FFI_CURVE_ED25519,
             buf.as_mut_ptr(),
             &mut buf_len,
         )
@@ -192,6 +236,7 @@ fn device_auth_happy_path() {
             chain.len(),
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             buf.as_mut_ptr(),
             &mut buf_len,
         )
@@ -220,6 +265,7 @@ fn device_auth_null_identity_did() {
             chain.len(),
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             buf.as_mut_ptr(),
             &mut buf_len,
         )
@@ -245,6 +291,7 @@ fn device_auth_invalid_pk_len() {
             chain.len(),
             short_pk.as_ptr(),
             short_pk.len(),
+            FFI_CURVE_ED25519,
             buf.as_mut_ptr(),
             &mut buf_len,
         )
@@ -267,6 +314,7 @@ fn chain_with_witnesses_null_chain_ptr() {
             0,
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             receipts.as_ptr(),
             receipts.len(),
             keys.as_ptr(),
@@ -293,6 +341,7 @@ fn chain_with_witnesses_invalid_pk_len() {
             chain.len(),
             short_pk.as_ptr(),
             short_pk.len(),
+            FFI_CURVE_ED25519,
             receipts.as_ptr(),
             receipts.len(),
             keys.as_ptr(),
@@ -319,6 +368,7 @@ fn chain_with_witnesses_happy_path_zero_threshold() {
             chain.len(),
             pk.as_ptr(),
             pk.len(),
+            FFI_CURVE_ED25519,
             receipts.as_ptr(),
             receipts.len(),
             keys.as_ptr(),
