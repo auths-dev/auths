@@ -241,7 +241,7 @@ impl TreasuryLedger {
             .read(manager)?
             .ok_or_else(|| TreasuryError::NotOpened(manager.to_string()))?;
         let committed = rec.committed();
-        if committed + amount > rec.parent_cap {
+        if committed.saturating_add(amount) > rec.parent_cap {
             return Ok(Verdict::AggregateCapExceeded {
                 parent_cap: rec.parent_cap,
                 committed,
@@ -462,8 +462,23 @@ pub fn credit(
     let atomic: u128 = atomic_str.parse().map_err(|_| {
         TreasuryError::Persistence(format!("non-numeric settlement amount '{atomic_str}'"))
     })?;
-    // atomic USDC at `decimals` places → cents (2 places): atomic * 100 / 10^decimals.
-    let cents = (atomic * 100 / 10u128.pow(decimals as u32)) as u64;
+    // atomic USDC at `decimals` places → cents (2 places): atomic * 100 / 10^decimals. `decimals`
+    // and `atomic` come from the settlement payload, so the scale, the multiply, and the narrowing to
+    // cents are all checked — an out-of-range amount is rejected, never silently truncated to a
+    // smaller credit.
+    let scale = u32::try_from(decimals)
+        .ok()
+        .and_then(|d| 10u128.checked_pow(d))
+        .ok_or_else(|| {
+            TreasuryError::Persistence(format!("settlement decimals {decimals} out of range"))
+        })?;
+    let cents = atomic
+        .checked_mul(100)
+        .map(|scaled| scaled / scale)
+        .and_then(|c| u64::try_from(c).ok())
+        .ok_or_else(|| {
+            TreasuryError::Persistence(format!("settlement amount '{atomic_str}' out of range"))
+        })?;
 
     if let Some(claimed) = claim_cents
         && claimed != cents
@@ -487,7 +502,7 @@ pub fn credit(
         .unwrap_or(0);
     let body = serde_json::to_vec_pretty(&serde_json::json!({
         "agent_did": agent_did,
-        "credited_cents": prior + cents,
+        "credited_cents": prior.saturating_add(cents),
         "rail": "x402",
         "direction": "inbound",
     }))
@@ -547,8 +562,11 @@ pub fn subdelegate(
             )));
         }
     };
-    let children_sum: u64 = rec.children.iter().map(|c| c.amount).sum();
-    if children_sum + amount > parent_held {
+    let children_sum: u64 = rec
+        .children
+        .iter()
+        .fold(0u64, |acc, c| acc.saturating_add(c.amount));
+    if children_sum.saturating_add(amount) > parent_held {
         return Ok(Verdict::AggregateCapExceeded {
             parent_cap: parent_held,
             committed: children_sum,
@@ -605,6 +623,23 @@ mod tests {
             Verdict::AggregateCapExceeded { .. }
         ));
         assert_eq!(l.status("manager").unwrap().committed, 10);
+    }
+
+    #[test]
+    fn an_allotment_whose_sum_would_wrap_past_u64_max_is_refused() {
+        let (_d, l) = led();
+        l.open("manager", 100).unwrap();
+        assert!(matches!(
+            l.allot("manager", "a", 50).unwrap(),
+            Verdict::Allotted { .. }
+        ));
+        // 50 + (u64::MAX - 10) exceeds u64::MAX; an unchecked add would wrap to a small sum that
+        // slips under the cap, so this allotment must be refused.
+        assert!(matches!(
+            l.allot("manager", "b", u64::MAX - 10).unwrap(),
+            Verdict::AggregateCapExceeded { .. }
+        ));
+        assert_eq!(l.status("manager").unwrap().committed, 50);
     }
 
     #[test]
