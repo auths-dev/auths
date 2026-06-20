@@ -84,7 +84,7 @@ fn test_emergency_revoke_device() {
         .references()
         .unwrap()
         .filter_map(|r| r.ok())
-        .filter_map(|r| r.name().map(|n| n.to_string()))
+        .filter_map(|r| r.name().ok().map(|n| n.to_string()))
         .collect();
     let has_attestation_refs = refs.iter().any(|r| r.contains("auths"));
     assert!(

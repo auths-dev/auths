@@ -140,7 +140,7 @@ impl<'a> TreeNavigator<'a> {
         };
 
         for entry in tree.iter() {
-            if let Some(name) = entry.name()
+            if let Ok(name) = entry.name()
                 && visitor(name).is_break()
             {
                 break;
@@ -222,7 +222,7 @@ impl TreeMutator {
         // First, get all existing children from base tree
         if let Some(tree) = base {
             for entry in tree.iter() {
-                if let Some(name) = entry.name() {
+                if let Ok(name) = entry.name() {
                     children.insert(
                         name.to_string(),
                         ChildEntry {

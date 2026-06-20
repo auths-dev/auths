@@ -1137,10 +1137,7 @@ mod tests {
             entry,
         };
 
-        (
-            vec![link(device_bind, 0), link(org_add_member, 1)],
-            root,
-        )
+        (vec![link(device_bind, 0), link(org_add_member, 1)], root)
     }
 
     #[test]
@@ -1153,10 +1150,7 @@ mod tests {
         bundle.delegation_chain = chain;
 
         let delegation = verify_delegation_chain(&bundle);
-        assert!(matches!(
-            delegation,
-            DelegationStatus::ChainVerified { .. }
-        ));
+        assert!(matches!(delegation, DelegationStatus::ChainVerified { .. }));
     }
 
     #[test]

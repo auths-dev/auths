@@ -253,6 +253,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4984](AUTHS-E4984.md) | `auths-id` | `CredentialRegistryError::Storage` | registry storage error: {0} |
 | [AUTHS-E4986](AUTHS-E4986.md) | `auths-id` | `CacheError::Io` | I/O error: {0} |
 | [AUTHS-E4987](AUTHS-E4987.md) | `auths-id` | `CacheError::Json` | JSON serialization error: {0} |
+| [AUTHS-E4988](AUTHS-E4988.md) | `auths-id` | `CacheError::InvalidDid` | invalid DID: {0} |
 | [AUTHS-E4991](AUTHS-E4991.md) | `auths-id` | `HookError::Io` | IO error: {0} |
 | [AUTHS-E4992](AUTHS-E4992.md) | `auths-id` | `HookError::NotGitRepo` | Not a Git repository: {0} |
 | [AUTHS-E5001](AUTHS-E5001.md) | `auths-sdk` | `SetupError::IdentityAlreadyExists` | identity already exists: {did} |

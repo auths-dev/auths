@@ -52,7 +52,7 @@ pub(crate) fn list_refs_matching(
     let mut result = Vec::new();
     for reference in repo.references_glob(glob)? {
         let reference = reference?;
-        if let Some(name) = reference.name() {
+        if let Ok(name) = reference.name() {
             result.push(name.to_string());
         }
     }

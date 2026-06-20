@@ -257,6 +257,7 @@ AUTHS-E4983 = auths-id::CredentialRegistryError::Anchor
 AUTHS-E4984 = auths-id::CredentialRegistryError::Storage
 AUTHS-E4986 = auths-id::CacheError::Io
 AUTHS-E4987 = auths-id::CacheError::Json
+AUTHS-E4988 = auths-id::CacheError::InvalidDid
 AUTHS-E4991 = auths-id::HookError::Io
 AUTHS-E4992 = auths-id::HookError::NotGitRepo
 AUTHS-E5001 = auths-sdk::SetupError::IdentityAlreadyExists

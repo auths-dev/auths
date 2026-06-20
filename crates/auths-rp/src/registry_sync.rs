@@ -365,7 +365,7 @@ mod git {
             let r = r.map_err(|e| SyncError::Repository {
                 detail: format!("reading ref failed: {e}"),
             })?;
-            if let (Some(name), Some(oid)) = (r.name(), r.target()) {
+            if let (Ok(name), Some(oid)) = (r.name(), r.target()) {
                 tips.insert(name.to_string(), oid);
             }
         }

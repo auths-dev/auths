@@ -252,12 +252,18 @@ mod tests {
     fn atomic_usdc_produces_a_typed_ceiling_and_actual() {
         // The reserve ceiling rounds up; the settle actual is exact-or-refused — the same split as
         // the bare-cents conversions, but now carried in distinct types.
-        assert_eq!(AtomicUsdc::new(1_500_000).to_ceiling().cents(), Cents::new(150));
+        assert_eq!(
+            AtomicUsdc::new(1_500_000).to_ceiling().cents(),
+            Cents::new(150)
+        );
         assert_eq!(
             AtomicUsdc::new(1_500_000).to_actual().map(Actual::cents),
             Some(Cents::new(150))
         );
-        assert_eq!(AtomicUsdc::new(1_505_000).to_ceiling().cents(), Cents::new(151));
+        assert_eq!(
+            AtomicUsdc::new(1_505_000).to_ceiling().cents(),
+            Cents::new(151)
+        );
         assert_eq!(AtomicUsdc::new(1_505_000).to_actual(), None);
     }
 }

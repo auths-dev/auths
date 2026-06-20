@@ -36,6 +36,7 @@ deny = [
     "jsonschema",
     "auths-monitor",
     "auths-sdk",
+    "murmur-relay",
   ], reason = "HTTP clients confined to adapter/binary layer (auths-monitor binary fetches checkpoints; auths-sdk reqwest is optional, behind the `mcp` feature)" },
 
   # dialoguer is a terminal UX dependency — CLI only
@@ -52,6 +53,7 @@ deny = [
     "auths-scim-server",
     "auths-checkpoint-cosigner",
     "auths-witness",
+    "murmur-relay",
   ], reason = "HTTP framework confined to adapter/server crates (scim-server is the SCIM provisioning server; checkpoint-cosigner and witness are HTTP service binaries)" },
 
   # git2 must not be a production dependency of auths-sdk or auths-core
@@ -73,6 +75,8 @@ ignore = [
   # rsa Marvin Attack (RUSTSEC-2023-0071) — transitive via ssh-key v0.6;
   # no fix available until ssh-key upgrades to rsa v0.10+
   "RUSTSEC-2023-0071",
+  # paste unmaintained (RUSTSEC-2024-0436) — transitive via rmcp; no safe upgrade available
+  "RUSTSEC-2024-0436",
 ]
 
 [sources]

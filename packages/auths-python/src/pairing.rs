@@ -238,9 +238,8 @@ pub fn join_pairing_session_ffi(
             .load_identity()
             .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
-        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
-        let controller_identity_did =
-            IdentityDID::new_unchecked(managed.controller_did.to_string());
+        let controller_identity_did = IdentityDID::parse(managed.controller_did.as_str())
+            .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_PAIRING_ERROR] {e}")))?;
 
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let aliases = keychain

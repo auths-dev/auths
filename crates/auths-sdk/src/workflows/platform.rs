@@ -325,10 +325,9 @@ fn resolve_signing_key_alias(
     ctx: &AuthsContext,
     controller_did: &str,
 ) -> Result<KeyAlias, PlatformError> {
-    let identity_did =
-        IdentityDID::parse(controller_did).map_err(|e| PlatformError::Platform {
-            message: format!("invalid controller did: {e}"),
-        })?;
+    let identity_did = IdentityDID::parse(controller_did).map_err(|e| PlatformError::Platform {
+        message: format!("invalid controller did: {e}"),
+    })?;
     let aliases = ctx
         .key_storage
         .list_aliases_for_identity(&identity_did)

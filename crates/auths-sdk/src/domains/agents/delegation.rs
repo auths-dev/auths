@@ -226,7 +226,7 @@ fn record_delegation_attestation(
         now,
         AttestationInput {
             rid,
-            identity_did: &issuer_canonical,
+            issuer: &issuer_canonical,
             subject: &subject,
             device_public_key: &agent_pk,
             device_curve: agent_pk_curve,

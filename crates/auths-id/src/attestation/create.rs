@@ -44,7 +44,7 @@ pub struct AttestationInput<'a> {
     /// The issuer DID — `did:keri:` for an identity, or a `did:key:` for an
     /// ephemeral key acting as its own issuer. Typed as `&CanonicalDid` so both
     /// shapes are representable without an unvalidated construction.
-    pub identity_did: &'a CanonicalDid,
+    pub issuer: &'a CanonicalDid,
     /// The subject of the attestation — typed as `&CanonicalDid` so
     /// callers can supply either `did:key:` or `did:keri:` shapes. The
     /// wire format (`Attestation.subject`) is also `CanonicalDid`, so
@@ -100,7 +100,7 @@ pub fn create_signed_attestation(
 ) -> Result<Attestation, AttestationError> {
     let AttestationInput {
         rid,
-        identity_did,
+        issuer,
         subject,
         device_public_key,
         device_curve,
@@ -138,7 +138,7 @@ pub fn create_signed_attestation(
 
     // Build attestation with empty signatures first (ActionEnvelope pattern). The issuer is
     // already a CanonicalDid (did:keri for an identity, did:key for an ephemeral self-issuer).
-    let issuer_canonical = identity_did.clone();
+    let issuer_canonical = issuer.clone();
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: subject is a validated CanonicalDid from the caller
     let subject_canonical = CanonicalDid::new_unchecked(subject.as_str());

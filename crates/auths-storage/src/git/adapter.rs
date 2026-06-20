@@ -1424,12 +1424,11 @@ impl RegistryBackend for GitRegistryBackend {
         let expected_issuer = expected_org_issuer(org);
         // The org's issuer DID is identical for every member file under this org,
         // so validate it once: did:keri:{org} for a non-empty org prefix.
-        let org_did = IdentityDID::parse(&expected_issuer).map_err(|e| {
-            RegistryError::InvalidPrefix {
+        let org_did =
+            IdentityDID::parse(&expected_issuer).map_err(|e| RegistryError::InvalidPrefix {
                 prefix: org.to_string(),
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         navigator.visit_dir(&members_parts, |filename| {
             // Strip .json extension
@@ -1591,19 +1590,17 @@ impl RegistryBackend for GitRegistryBackend {
 
         let members: Vec<MemberView> = indexed
             .into_iter()
-            .map(|m| {
-                MemberView {
-                    did: m.member_did.clone(),
-                    status: MemberStatus::Active,
-                    role: None,
-                    capabilities: vec![],
-                    issuer: m.issuer_did,
-                    rid: m.rid,
-                    revoked_at: m.revoked_at,
-                    expires_at: m.expires_at,
-                    timestamp: None,
-                    source_filename: String::new(),
-                }
+            .map(|m| MemberView {
+                did: m.member_did.clone(),
+                status: MemberStatus::Active,
+                role: None,
+                capabilities: vec![],
+                issuer: m.issuer_did,
+                rid: m.rid,
+                revoked_at: m.revoked_at,
+                expires_at: m.expires_at,
+                timestamp: None,
+                source_filename: String::new(),
             })
             .collect();
 

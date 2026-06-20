@@ -343,6 +343,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         // --- auths-id (CacheError) ---
         "AUTHS-E4986" => Some("# AUTHS-E4986\n\n**Crate:** `auths-id`\n\n**Type:** `CacheError::Io`\n\n## Message\n\nI/O error: {0}\n"),
         "AUTHS-E4987" => Some("# AUTHS-E4987\n\n**Crate:** `auths-id`\n\n**Type:** `CacheError::Json`\n\n## Message\n\nJSON serialization error: {0}\n"),
+        "AUTHS-E4988" => Some("# AUTHS-E4988\n\n**Crate:** `auths-id`\n\n**Type:** `CacheError::InvalidDid`\n\n## Message\n\ninvalid DID: {0}\n\n## Suggestion\n\nThe DID must be a 'did:keri:' identity\n"),
 
         // --- auths-id (HookError) ---
         "AUTHS-E4991" => Some("# AUTHS-E4991\n\n**Crate:** `auths-id`\n\n**Type:** `HookError::Io`\n\n## Message\n\nIO error: {0}\n\n## Suggestion\n\nCheck file permissions on the Git hooks directory\n"),
@@ -753,6 +754,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E4984",
         "AUTHS-E4986",
         "AUTHS-E4987",
+        "AUTHS-E4988",
         "AUTHS-E4991",
         "AUTHS-E4992",
         "AUTHS-E5001",
@@ -906,6 +908,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 367);
+        assert_eq!(all_codes().len(), 368);
     }
 }
