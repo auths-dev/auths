@@ -630,3 +630,63 @@ async fn scope_is_delegator_anchored_not_self() {
         "a self-claimed capability outside the delegator scope must be rejected, got {verdict:?}"
     );
 }
+
+#[tokio::test]
+async fn agent_out_of_scope_rejected_without_a_timestamp() {
+    // Capability attenuation is time-independent: a commit claiming a capability the
+    // delegator never granted must be rejected even when no signing time is injected.
+    // The timestamped path already rejects it; the default no-timestamp path must too.
+    let f = build_scoped(
+        &fixture_device_key(),
+        AgentScope {
+            capabilities: vec![auths_verifier::Capability::sign_commit()],
+            expires_at: None,
+        },
+    );
+    let commit = format!("feat: x\n\nAuths-Id: {}\nAuths-Scope: admin\n", f.root_did);
+    let verdict = verify_commit_against_kel(
+        commit.as_bytes(),
+        &f.device_kel,
+        &f.root_kel,
+        std::slice::from_ref(&f.root_did),
+        &RingCryptoProvider,
+    )
+    .await;
+    assert!(
+        matches!(verdict, CommitVerdict::OutsideAgentScope { ref capability, .. } if capability == "admin"),
+        "an out-of-scope capability must be rejected even with no timestamp, got {verdict:?}"
+    );
+}
+
+#[tokio::test]
+async fn in_scope_agent_passes_the_scope_gate_without_a_timestamp() {
+    // The fix must reject only out-of-scope claims, not in-scope ones: an in-scope
+    // capability with no timestamp must pass the scope/expiry gate (it falls through
+    // to the signature check — the hand-built commit is unsigned, hence Unsigned).
+    let f = build_scoped(
+        &fixture_device_key(),
+        AgentScope {
+            capabilities: vec![auths_verifier::Capability::sign_commit()],
+            expires_at: Some(10_000),
+        },
+    );
+    let commit = format!(
+        "feat: x\n\nAuths-Id: {}\nAuths-Scope: sign_commit\n",
+        f.root_did
+    );
+    let verdict = verify_commit_against_kel(
+        commit.as_bytes(),
+        &f.device_kel,
+        &f.root_kel,
+        std::slice::from_ref(&f.root_did),
+        &RingCryptoProvider,
+    )
+    .await;
+    assert!(
+        !matches!(
+            verdict,
+            CommitVerdict::OutsideAgentScope { .. } | CommitVerdict::AgentExpired { .. }
+        ),
+        "an in-scope capability must pass the scope gate even with no timestamp, got {verdict:?}"
+    );
+}

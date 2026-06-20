@@ -773,9 +773,9 @@ async fn authorize_commit(
 /// Checks (in order): the delegation names THIS root; the delegate is not revoked
 /// (ordered by KEL position, KERI carries no wall-clock — signed-before stays valid,
 /// signed-at/after fails, unknown position is the conservative flat rejection); and
-/// the commit stays within the delegator-anchored scope and before any anchored
-/// expiry (only enforced when a signing time is injected and the delegator anchored a
-/// scope seal — never agent-self-asserted).
+/// the commit stays within the delegator-anchored scope (enforced whenever the
+/// delegator anchored a scope seal — never agent-self-asserted) and, when a signing
+/// time is injected, before any anchored expiry.
 fn reject_unauthorized_delegate(
     commit_bytes: &[u8],
     root_kel: &[Event],
@@ -829,10 +829,10 @@ fn reject_unauthorized_delegate(
         }
     }
 
-    if let Some(now) = now
-        && let Some(scope) = read_agent_scope_from_kel(root_kel, &device_prefix)
-    {
-        if let Some(expires_at) = scope.expires_at
+    if let Some(scope) = read_agent_scope_from_kel(root_kel, &device_prefix) {
+        // Expiry is time-dependent: only enforceable when a signing time is injected.
+        if let Some(now) = now
+            && let Some(expires_at) = scope.expires_at
             && now >= expires_at
         {
             return Some(CommitVerdict::AgentExpired {
@@ -841,6 +841,8 @@ fn reject_unauthorized_delegate(
                 signed_at: now,
             });
         }
+        // Capability attenuation is time-independent: a delegate may never exceed the
+        // delegator-anchored scope, so it is enforced whether or not a time is given.
         if !scope.capabilities.is_empty() {
             for claimed in parse_scope_claim(commit_bytes) {
                 if !scope.capabilities.iter().any(|c| c.as_str() == claimed) {
