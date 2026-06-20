@@ -25,7 +25,6 @@ fn audit_action(command: &RootCommand) -> Option<&'static str> {
         RootCommand::Pair(_) => Some("device_paired"),
         RootCommand::Device(_) => Some("device_command"),
         RootCommand::Verify(_) => Some("commit_verified"),
-        RootCommand::SignCommit(_) => Some("commit_signed"),
         _ => None,
     }
 }
@@ -101,7 +100,6 @@ fn run() -> Result<()> {
         RootCommand::Completions(cmd) => cmd.execute(&ctx),
         // Advanced
         RootCommand::Reset(cmd) => cmd.execute(&ctx),
-        RootCommand::SignCommit(cmd) => cmd.execute(&ctx),
         RootCommand::Error(cmd) => cmd.execute(&ctx),
         RootCommand::Id(cmd) => cmd.execute(&ctx),
         RootCommand::Device(cmd) => cmd.execute(&ctx),

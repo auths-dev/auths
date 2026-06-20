@@ -42,7 +42,6 @@ pub mod registry;
 pub mod reset;
 pub mod scim;
 pub mod sign;
-pub mod sign_commit;
 pub mod status;
 pub mod tls_cert;
 pub mod treasury;

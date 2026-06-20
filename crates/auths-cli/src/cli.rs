@@ -40,7 +40,6 @@ use crate::commands::registry::RegistryCommand;
 use crate::commands::reset::ResetCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
-use crate::commands::sign_commit::SignCommitCommand;
 use crate::commands::status::StatusCommand;
 use crate::commands::tls_cert::TlsCertCommand;
 use crate::commands::treasury::TreasuryCommand;
@@ -118,8 +117,6 @@ pub enum RootCommand {
     Artifact(ArtifactCommand),
     #[command(hide = true)]
     Reset(ResetCommand),
-    #[command(hide = true)]
-    SignCommit(SignCommitCommand),
     #[command(hide = true)]
     Error(ErrorLookupCommand),
     #[command(hide = true)]
