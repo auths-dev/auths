@@ -77,7 +77,7 @@ pub enum ArtifactSubcommand {
         #[arg(long)]
         note: Option<String>,
 
-        /// Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted).
+        /// Git commit SHA to embed in the attestation (provenance binding; embedded only when given, never inferred from git state).
         #[arg(long, conflicts_with = "no_commit")]
         commit: Option<String>,
 
@@ -173,7 +173,7 @@ pub enum ArtifactSubcommand {
         #[arg(long)]
         note: Option<String>,
 
-        /// Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted).
+        /// Git commit SHA to embed in the attestation (provenance binding; embedded only when given, never inferred from git state).
         #[arg(long, conflicts_with = "no_commit")]
         commit: Option<String>,
 
@@ -401,11 +401,13 @@ fn resolve_commit_sha_from_flags(
     if no_commit {
         return Ok(None);
     }
-    if let Some(sha) = commit {
-        let validated = validate_commit_sha(&sha).map_err(anyhow::Error::from)?;
-        return Ok(Some(validated));
-    }
-    Ok(crate::commands::git_helpers::resolve_head_silent())
+    // A commit SHA records provenance ("this artifact is the subject of that commit"), so
+    // it is bound only when explicitly given with --commit. It is never inferred from the
+    // ambient git HEAD, which would conflate "I signed this file" with "this file came
+    // from the surrounding commit".
+    commit
+        .map(|sha| validate_commit_sha(&sha).map_err(anyhow::Error::from))
+        .transpose()
 }
 
 /// Handle the `artifact` command dispatch.
@@ -908,5 +910,30 @@ mod tests {
             }
             _ => panic!("expected Publish"),
         }
+    }
+
+    #[test]
+    fn commit_sha_is_not_inferred_from_ambient_git_state() {
+        // Signing without --commit must embed NO commit SHA — never the ambient HEAD of
+        // whatever git tree surrounds the file, which would conflate "I signed this file"
+        // with "this file came from that commit". (This test runs inside a git repo, so a
+        // fallback to HEAD would resolve to a real SHA here.)
+        let resolved = resolve_commit_sha_from_flags(None, false).unwrap();
+        assert_eq!(
+            resolved, None,
+            "no --commit must embed no commit_sha, got {resolved:?}"
+        );
+    }
+
+    #[test]
+    fn explicit_commit_sha_is_bound() {
+        let sha = "a".repeat(40);
+        let resolved = resolve_commit_sha_from_flags(Some(sha.clone()), false).unwrap();
+        assert_eq!(resolved, Some(sha));
+    }
+
+    #[test]
+    fn no_commit_flag_embeds_nothing() {
+        assert_eq!(resolve_commit_sha_from_flags(None, true).unwrap(), None);
     }
 }
