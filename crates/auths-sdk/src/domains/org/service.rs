@@ -280,7 +280,7 @@ pub fn create_org(
         now,
         AttestationInput {
             rid: &rid,
-            identity_did: &issuer_canonical,
+            issuer: &issuer_canonical,
             subject: &org_did,
             device_public_key: &org_pk_bytes,
             device_curve: org_curve,

@@ -42,7 +42,7 @@ pub fn rebuild_attestations_from_git(
     {
         let refs_scan = repo.references()?;
         for reference in refs_scan.filter_map(|r| r.ok()) {
-            if let Some(name) = reference.name()
+            if let Ok(name) = reference.name()
                 && name.starts_with(DEPRECATED_ATTESTATION_PREFIX)
             {
                 return Err(IndexError::DeprecatedPrefix(
@@ -60,8 +60,8 @@ pub fn rebuild_attestations_from_git(
 
     for reference in refs.filter_map(|r| r.ok()) {
         let name = match reference.name() {
-            Some(name) => name,
-            None => continue,
+            Ok(name) => name,
+            Err(_) => continue,
         };
 
         // Check if this ref matches our attestation pattern

@@ -650,7 +650,7 @@ fn create_and_sign_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: rid.as_str(),
-            identity_did: &issuer_canonical,
+            issuer: &issuer_canonical,
             subject,
             device_public_key: device_pk_bytes,
             device_curve,
@@ -815,7 +815,7 @@ pub fn sign_artifact_ephemeral(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: rid.as_str(),
-            identity_did: &device_did,
+            issuer: &device_did,
             subject: &device_did,
             device_public_key: &pubkey_vec,
             device_curve: curve,
@@ -932,7 +932,7 @@ pub fn sign_artifact_raw(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: rid.as_str(),
-            identity_did: &issuer_canonical,
+            issuer: &issuer_canonical,
             subject: &device_did,
             device_public_key: &pubkey,
             device_curve: curve,

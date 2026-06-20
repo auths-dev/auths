@@ -535,7 +535,7 @@ pub fn handle_org(
                 now,
                 auths_sdk::attestation::AttestationInput {
                     rid: &rid,
-                    identity_did: &issuer_canonical,
+                    issuer: &issuer_canonical,
                     subject: &subject_device_did,
                     device_public_key: &device_pk_bytes,
                     device_curve,

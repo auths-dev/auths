@@ -119,7 +119,7 @@ fn create_test_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid,
-            identity_did: &identity_did,
+            issuer: &identity_did,
             subject,
             device_public_key: device_pk,
             // Test fixture: ring Ed25519KeyPair pubkey (32 bytes by construction).

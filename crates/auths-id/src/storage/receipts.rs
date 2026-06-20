@@ -181,7 +181,7 @@ impl ReceiptStorage for GitReceiptStorage {
 
         for reference in repo.references()? {
             let reference = reference?;
-            if let Some(name) = reference.name()
+            if let Ok(name) = reference.name()
                 && name.starts_with(&prefix_path)
                 && let Some(said) = name.strip_prefix(&format!("{}/", prefix_path))
             {

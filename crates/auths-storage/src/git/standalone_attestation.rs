@@ -189,7 +189,7 @@ impl AttestationSource for GitAttestationStorage {
                             }
                         };
 
-                        if let Some(full_ref_name) = reference.name() {
+                        if let Ok(full_ref_name) = reference.name() {
                             let prefix_to_strip = format!("{}/", pattern_base);
                             if let Some(suffix) = full_ref_name.strip_prefix(&prefix_to_strip)
                                 && let Some(sanitized_did) = suffix.strip_suffix("/signatures")

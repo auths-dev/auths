@@ -49,7 +49,13 @@ fn attestation_null_json_ptr() {
 fn attestation_null_pk_ptr() {
     let json = FIXTURE_ATTESTATION_JSON.as_bytes();
     let rc = unsafe {
-        ffi_verify_attestation_json(json.as_ptr(), json.len(), ptr::null(), 32, FFI_CURVE_ED25519)
+        ffi_verify_attestation_json(
+            json.as_ptr(),
+            json.len(),
+            ptr::null(),
+            32,
+            FFI_CURVE_ED25519,
+        )
     };
     assert_eq!(rc, ERR_VERIFY_NULL_ARGUMENT);
 }

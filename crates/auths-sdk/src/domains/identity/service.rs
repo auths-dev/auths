@@ -167,9 +167,7 @@ fn initialize_agent(
         .clone()
         .map(IdentityDID::try_from)
         .transpose()
-        .map_err(|e| {
-            SetupError::InvalidSetupConfig(format!("invalid parent identity did: {e}"))
-        })?;
+        .map_err(|e| SetupError::InvalidSetupConfig(format!("invalid parent identity did: {e}")))?;
 
     let provisioning_config = AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
@@ -340,7 +338,7 @@ fn bind_device(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: &managed.storage_id,
-            identity_did: &issuer_canonical,
+            issuer: &issuer_canonical,
             subject: &device_did,
             device_public_key: &pk_bytes,
             device_curve: curve,

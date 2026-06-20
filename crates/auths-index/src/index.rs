@@ -763,9 +763,7 @@ mod tests {
             )
             .unwrap();
 
-        let err = index
-            .list_org_members_indexed("did:keri:EOrg")
-            .unwrap_err();
+        let err = index.list_org_members_indexed("did:keri:EOrg").unwrap_err();
         assert!(matches!(err, crate::error::IndexError::InvalidDid(_)));
     }
 }

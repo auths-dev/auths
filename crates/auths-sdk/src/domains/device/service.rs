@@ -244,7 +244,7 @@ pub fn extend_device(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: &identity.storage_id,
-            identity_did: &issuer_canonical,
+            issuer: &issuer_canonical,
             subject: &device_did_obj,
             device_public_key: latest.device_public_key.as_bytes(),
             device_curve: latest.device_public_key.curve(),
@@ -350,7 +350,7 @@ fn sign_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid,
-            identity_did: &issuer_canonical,
+            issuer: &issuer_canonical,
             subject: &params.device_did,
             device_public_key: params.device_public_key.as_bytes(),
             device_curve: params.device_public_key.curve(),

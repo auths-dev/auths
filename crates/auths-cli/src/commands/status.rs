@@ -301,7 +301,7 @@ fn maybe_format_duplicity_warning(_report: &StatusReport) -> Option<String> {
         Err(_) => return None,
     };
     for r in refs.filter_map(|r| r.ok()) {
-        let Some(name) = r.name() else { continue };
+        let Ok(name) = r.name() else { continue };
         let Some(rest) = name.strip_prefix(prefix_str) else {
             continue;
         };

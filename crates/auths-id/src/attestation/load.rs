@@ -15,8 +15,8 @@ pub fn load_attestations_by_prefix(
 
     for reference in refs.filter_map(Result::ok) {
         let name = match reference.name() {
-            Some(name) => name,
-            None => continue,
+            Ok(name) => name,
+            Err(_) => continue,
         };
 
         if name.starts_with(ref_prefix) {

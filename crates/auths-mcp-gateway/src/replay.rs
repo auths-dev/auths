@@ -309,7 +309,8 @@ async fn drive_call(
         if let Some(hold) = decision.hold {
             // Settle the ACTUAL the rail's response reports — for an extracted call this
             // is `charge.amount_captured` read from the response, not an agent number.
-            let (settle_verdict, new_cumulative) = gate.settle(budget, hold, Actual::new(cost.settle_cents))?;
+            let (settle_verdict, new_cumulative) =
+                gate.settle(budget, hold, Actual::new(cost.settle_cents))?;
             // A clean settle keeps Allowed; a rollback (replayed/stale total) flips the
             // verdict to usage-counter-rolled-back (the D8 monotonicity guard).
             verdict = settle_verdict;
@@ -362,14 +363,8 @@ async fn drive_call(
             } else {
                 auths_mcp_core::call_commit_binding(&proof_bytes)
             };
-            let (mut bytes, _sha) = chain.sign_settlement(
-                idx,
-                &call_binding,
-                rail_name,
-                settle,
-                charge,
-                cumulative,
-            )?;
+            let (mut bytes, _sha) =
+                chain.sign_settlement(idx, &call_binding, rail_name, settle, charge, cumulative)?;
             // Adversarial harness hook: when AUTHS_MCP_SETTLE_TAMPER is set, flip a byte of the
             // SIGNED settlement after signing — simulating an operator that alters the agent's
             // settled cost. The signature no longer matches, so the offline audit catches it.

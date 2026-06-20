@@ -412,11 +412,11 @@ pub fn verify_attestation_anchor_by_issuer<T: serde::Serialize>(
 mod tests {
     use super::*;
     use crate::keri::{Prefix, create_keri_identity_with_curve};
-    use auths_verifier::IdentityDID;
     use auths_core::crypto::signer::encrypt_keypair;
     use auths_core::signing::StorageSigner;
     use auths_core::storage::keychain::{KeyAlias, KeyRole, KeyStorage};
     use auths_core::testing::{IsolatedKeychainHandle, TestPassphraseProvider};
+    use auths_verifier::IdentityDID;
     use serde::{Deserialize, Serialize};
     use tempfile::TempDir;
 

@@ -243,9 +243,9 @@ impl ReservedHolds {
 
     /// Total cents currently held (the `Σ(active holds)` term of `available`).
     pub fn reserved_cents(&self) -> Cents {
-        self.holds
-            .iter()
-            .fold(Cents::ZERO, |acc, h| acc.saturating_add(h.ceiling_cents.cents()))
+        self.holds.iter().fold(Cents::ZERO, |acc, h| {
+            acc.saturating_add(h.ceiling_cents.cents())
+        })
     }
 
     /// Take a hold for `ceiling` (the caller must have checked `available`
@@ -373,11 +373,7 @@ impl CrossRailBudget {
     /// refused [`SettleOutcome::RolledBack`] if the new cumulative would fall below the
     /// recorded high-water). The hold is released REGARDLESS of the monotonicity
     /// outcome so a rolled-back settle does not leak the reservation.
-    pub fn settle(
-        &mut self,
-        hold: Hold,
-        actual: Actual,
-    ) -> Result<SettleOutcome, BudgetError> {
+    pub fn settle(&mut self, hold: Hold, actual: Actual) -> Result<SettleOutcome, BudgetError> {
         // Release the auth-hold first: the slack (ceiling − actual) returns to
         // available, and a rolled-back settle below does not strand the reservation.
         self.holds.release(hold);
@@ -572,14 +568,24 @@ mod tests {
                 std::thread::spawn(move || {
                     // RESERVE under the lock — the pre-auth boundary. The guard drops at the
                     // end of this statement, releasing the lock before the "rail".
-                    let hold = match b.lock().unwrap().reserve(Ceiling::new(Cents::new(amount))).unwrap() {
+                    let hold = match b
+                        .lock()
+                        .unwrap()
+                        .reserve(Ceiling::new(Cents::new(amount)))
+                        .unwrap()
+                    {
                         ReserveOutcome::Reserved { hold, .. } => Some(hold),
                         ReserveOutcome::Refused { .. } => None,
                     };
                     match hold {
                         Some(hold) => {
                             std::thread::yield_now(); // "rail" touched WITHOUT the lock
-                            match b.lock().unwrap().settle(hold, Actual::new(Cents::new(amount))).unwrap() {
+                            match b
+                                .lock()
+                                .unwrap()
+                                .settle(hold, Actual::new(Cents::new(amount)))
+                                .unwrap()
+                            {
                                 SettleOutcome::Advanced { .. } => {
                                     settled.fetch_add(1, Ordering::SeqCst);
                                 }

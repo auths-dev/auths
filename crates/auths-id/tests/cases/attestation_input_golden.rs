@@ -47,7 +47,7 @@ fn canonical_bytes_are_byte_stable_under_fixed_seed() {
 
     let input = AttestationInput {
         rid: "golden-rid",
-        identity_did: &identity_did,
+        issuer: &identity_did,
         subject: &subject,
         device_public_key: &pub_compressed,
         device_curve: auths_crypto::CurveType::P256,
@@ -100,7 +100,7 @@ fn canonical_bytes_digest_is_stable_across_invocations() {
 fn test_build_attestation(input: &AttestationInput<'_>) -> auths_verifier::core::Attestation {
     use auths_verifier::core::{Attestation, Ed25519Signature, ResourceId};
 
-    let issuer_canonical = input.identity_did.clone();
+    let issuer_canonical = input.issuer.clone();
     #[allow(clippy::disallowed_methods)]
     let subject_canonical = CanonicalDid::new_unchecked(input.subject.as_str());
 

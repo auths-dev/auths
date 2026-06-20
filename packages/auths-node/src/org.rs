@@ -178,11 +178,12 @@ pub fn create_org(
     let signer = StorageSigner::new(keychain);
     let org_did_device = CanonicalDid::from_public_key_did_key(&org_pk_bytes, org_curve);
 
+    let issuer_canonical = CanonicalDid::from(controller_did.clone());
     let attestation = create_signed_attestation(
         now,
         auths_sdk::attestation::AttestationInput {
             rid: &rid,
-            identity_did: &controller_did,
+            issuer: &issuer_canonical,
             subject: &org_did_device,
             device_public_key: &org_pk_bytes,
             device_curve: org_curve,
