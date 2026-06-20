@@ -192,25 +192,27 @@ impl KeyStorage for SecureEnclaveKeyStorage {
     fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
         let handle = self.load_handle(alias)?;
 
-        // Read metadata
+        // Read metadata. A key whose identity binding is missing must not load under a
+        // placeholder DID — without it we cannot prove which identity the key belongs to.
         let meta_path = self.meta_path(alias);
-        let meta: KeyMetadata = if meta_path.exists() {
-            let json = fs::read_to_string(&meta_path).map_err(|e| {
-                AgentError::StorageError(format!("SE key metadata read failed: {e}"))
-            })?;
-            serde_json::from_str(&json).map_err(|e| {
-                AgentError::KeyDeserializationError(format!("SE key metadata parse failed: {e}"))
-            })?
-        } else {
-            KeyMetadata {
-                identity_did: "unknown".to_string(),
-                role: "Device".to_string(),
-            }
-        };
+        if !meta_path.exists() {
+            return Err(AgentError::SecurityError(format!(
+                "secure-enclave key '{}' has no identity metadata",
+                alias.as_str()
+            )));
+        }
+        let json = fs::read_to_string(&meta_path)
+            .map_err(|e| AgentError::StorageError(format!("SE key metadata read failed: {e}")))?;
+        let meta: KeyMetadata = serde_json::from_str(&json).map_err(|e| {
+            AgentError::KeyDeserializationError(format!("SE key metadata parse failed: {e}"))
+        })?;
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: identity_did was stored by store_key from a validated IdentityDID
-        let identity_did = IdentityDID::new_unchecked(&meta.identity_did);
+        let identity_did = IdentityDID::parse(&meta.identity_did).map_err(|e| {
+            AgentError::SecurityError(format!(
+                "secure-enclave metadata for '{}' has a malformed identity DID: {e}",
+                alias.as_str()
+            ))
+        })?;
         let role = if meta.role.contains("NextRotation") {
             KeyRole::NextRotation
         } else if meta.role.contains("DelegatedAgent") {

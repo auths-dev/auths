@@ -369,8 +369,8 @@ mod tests {
     #[test]
     fn delegation_status_chain_verified_serializes() {
         let status = DelegationStatus::ChainVerified {
-            org_did: IdentityDID::new_unchecked("did:keri:EOrg123"),
-            member_did: IdentityDID::new_unchecked("did:keri:EMember456"),
+            org_did: IdentityDID::parse("did:keri:EOrg123").unwrap(),
+            member_did: IdentityDID::parse("did:keri:EMember456").unwrap(),
             member_role: Role::Admin,
             device_did: CanonicalDid::new_unchecked("did:key:z6MkDevice789"),
         };

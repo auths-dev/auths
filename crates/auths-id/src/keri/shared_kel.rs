@@ -289,8 +289,7 @@ mod tests {
     use super::*;
 
     fn did(s: &str) -> IdentityDID {
-        #[allow(clippy::disallowed_methods)]
-        IdentityDID::new_unchecked(s.to_string())
+        IdentityDID::parse(s).unwrap()
     }
 
     fn controller(did_str: &str) -> ControllerDescriptor {

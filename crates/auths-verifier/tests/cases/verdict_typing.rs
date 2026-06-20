@@ -7,7 +7,7 @@ use auths_verifier::{CanonicalDid, Capability, IdentityDID};
 
 #[test]
 fn typed_identity_fields_serialize_as_their_did_string() {
-    let issuer = IdentityDID::new_unchecked("did:keri:Eissuer");
+    let issuer = IdentityDID::parse("did:keri:Eissuer").unwrap();
     let subject = CanonicalDid::new_unchecked("did:keri:Esubject");
 
     // Byte-identical to the `String` fields these replaced.

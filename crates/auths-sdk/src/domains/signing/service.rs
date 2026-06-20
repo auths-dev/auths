@@ -645,11 +645,12 @@ fn create_and_sign_attestation(
     };
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
 
+    let issuer_canonical = CanonicalDid::from(controller_did.clone());
     let mut attestation = create_signed_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: rid.as_str(),
-            identity_did: controller_did,
+            identity_did: &issuer_canonical,
             subject,
             device_public_key: device_pk_bytes,
             device_curve,
@@ -758,9 +759,9 @@ pub fn sign_artifact_ephemeral(
     let pubkey_vec = auths_crypto::typed_public_key(&typed_seed)
         .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
 
+    // The ephemeral key is its own issuer, so the issuer DID here is the
+    // `did:key:` of that key, not a `did:keri:` identity.
     let device_did = CanonicalDid::from_public_key_did_key(&pubkey_vec, curve);
-    #[allow(clippy::disallowed_methods)]
-    let identity_did = IdentityDID::new_unchecked(device_did.as_str());
 
     // 3. Build artifact metadata with optional CI environment in payload
     let digest_hex = hex::encode(Sha256::digest(data));
@@ -814,7 +815,7 @@ pub fn sign_artifact_ephemeral(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: rid.as_str(),
-            identity_did: &identity_did,
+            identity_did: &device_did,
             subject: &device_did,
             device_public_key: &pubkey_vec,
             device_curve: curve,
@@ -926,11 +927,12 @@ pub fn sign_artifact_raw(
         .map(|sha| validate_commit_sha(&sha))
         .transpose()?;
 
+    let issuer_canonical = CanonicalDid::from(identity_did.clone());
     let attestation = create_signed_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: rid.as_str(),
-            identity_did,
+            identity_did: &issuer_canonical,
             subject: &device_did,
             device_public_key: &pubkey,
             device_curve: curve,

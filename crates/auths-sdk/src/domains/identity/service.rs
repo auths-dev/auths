@@ -104,8 +104,7 @@ fn initialize_developer(
     let registered = submit_registration(&config);
 
     Ok(DeveloperIdentityResult {
-        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did originates from initialize_registry_identity() which returns a validated IdentityDID; into_inner() only unwraps it
-        identity_did: IdentityDID::new_unchecked(controller_did),
+        identity_did: controller_did,
         device_did,
         key_alias,
         platform_claim,
@@ -133,8 +132,8 @@ fn initialize_ci(
     // the explicit `auths sign <ref>` path still works without it.
     let hooks_dir = crate::workflows::commit_hooks::install_commit_hooks(
         &config.registry_path,
-        &controller_did,
-        &controller_did,
+        controller_did.as_str(),
+        controller_did.as_str(),
     )
     .ok();
     // Stamp the current KEL position into the trailer file (best-effort).
@@ -149,8 +148,7 @@ fn initialize_ci(
     );
 
     Ok(CiIdentityResult {
-        #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did originates from initialize_registry_identity() which returns a validated IdentityDID; into_inner() only unwraps it
-        identity_did: IdentityDID::new_unchecked(controller_did),
+        identity_did: controller_did,
         device_did,
         env_block,
     })
@@ -164,15 +162,20 @@ fn initialize_agent(
 ) -> Result<AgentIdentityResult, SetupError> {
     use auths_id::agent_identity::{AgentProvisioningConfig, AgentStorageMode};
 
+    let delegated_by = config
+        .parent_identity_did
+        .clone()
+        .map(IdentityDID::try_from)
+        .transpose()
+        .map_err(|e| {
+            SetupError::InvalidSetupConfig(format!("invalid parent identity did: {e}"))
+        })?;
+
     let provisioning_config = AgentProvisioningConfig {
         agent_name: config.alias.to_string(),
         capabilities: config.capabilities.clone(),
         expires_in: config.expires_in,
-        delegated_by: config.parent_identity_did.clone().map(|did| {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: parent_identity_did is supplied by the CLI after resolving from identity storage, which stores only validated did:keri: DIDs
-            IdentityDID::new_unchecked(did)
-        }),
+        delegated_by,
         storage_mode: AgentStorageMode::Persistent {
             repo_path: Some(config.registry_path.clone()),
         },
@@ -220,7 +223,7 @@ fn resolve_or_create_identity(
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
     now: DateTime<Utc>,
-) -> Result<(String, KeyAlias, bool), SetupError> {
+) -> Result<(IdentityDID, KeyAlias, bool), SetupError> {
     if let Ok(existing) = ctx.identity_storage.load_identity() {
         match config.conflict_policy {
             IdentityConflictPolicy::Error => {
@@ -229,11 +232,7 @@ fn resolve_or_create_identity(
                 });
             }
             IdentityConflictPolicy::ReuseExisting => {
-                return Ok((
-                    existing.controller_did.into_inner(),
-                    config.key_alias.clone(),
-                    true,
-                ));
+                return Ok((existing.controller_did, config.key_alias.clone(), true));
             }
             IdentityConflictPolicy::ForceNew => {}
         }
@@ -275,7 +274,7 @@ fn derive_keys(
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
     _now: DateTime<Utc>,
-) -> Result<(String, KeyAlias), SetupError> {
+) -> Result<(IdentityDID, KeyAlias), SetupError> {
     let (controller_did, _key_event) = initialize_registry_identity(
         std::sync::Arc::clone(&ctx.registry),
         &config.key_alias,
@@ -286,12 +285,11 @@ fn derive_keys(
     )
     .map_err(map_init_error)?;
 
-    let did_str = controller_did.into_inner();
     ctx.identity_storage
-        .create_identity(&did_str, None)
+        .create_identity(controller_did.as_str(), None)
         .map_err(|e| SetupError::StorageError(e.into()))?;
 
-    Ok((did_str, config.key_alias.clone()))
+    Ok((controller_did, config.key_alias.clone()))
 }
 
 fn derive_device_did(
@@ -337,11 +335,12 @@ fn bind_device(
         note: Some("Linked by auths-sdk setup".to_string()),
     };
 
+    let issuer_canonical = CanonicalDid::from(managed.controller_did.clone());
     let attestation = create_signed_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: &managed.storage_id,
-            identity_did: &managed.controller_did,
+            identity_did: &issuer_canonical,
             subject: &device_did,
             device_public_key: &pk_bytes,
             device_curve: curve,
@@ -454,7 +453,7 @@ fn initialize_ci_keys(
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
     _now: DateTime<Utc>,
-) -> Result<(String, KeyAlias), SetupError> {
+) -> Result<(IdentityDID, KeyAlias), SetupError> {
     let key_alias = KeyAlias::new_unchecked("ci-key");
 
     let (controller_did, _) = initialize_registry_identity(
@@ -467,7 +466,7 @@ fn initialize_ci_keys(
     )
     .map_err(map_init_error)?;
 
-    Ok((controller_did.into_inner(), key_alias))
+    Ok((controller_did, key_alias))
 }
 
 fn generate_ci_env_block(
@@ -544,4 +543,58 @@ fn build_agent_identity_proposal(
             .and_then(|s| IdentityDID::parse(s).ok()),
         capabilities: config.capabilities.clone(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use auths_core::PrefilledPassphraseProvider;
+    use auths_core::ports::clock::SystemClock;
+    use auths_core::storage::memory::MemoryKeychainHandle;
+    use auths_id::attestation::export::AttestationSink;
+    use auths_id::ports::registry::RegistryBackend;
+    use auths_id::storage::attestation::AttestationSource;
+    use auths_id::storage::identity::IdentityStorage;
+    use auths_id::testing::fakes::{
+        FakeAttestationSink, FakeAttestationSource, FakeIdentityStorage, FakeRegistryBackend,
+    };
+
+    use crate::domains::identity::types::CreateAgentIdentityConfig;
+
+    fn ctx() -> AuthsContext {
+        AuthsContext::builder()
+            .registry(Arc::new(FakeRegistryBackend::new()) as Arc<dyn RegistryBackend + Send + Sync>)
+            .key_storage(Arc::new(MemoryKeychainHandle))
+            .clock(Arc::new(SystemClock))
+            .identity_storage(
+                Arc::new(FakeIdentityStorage::new()) as Arc<dyn IdentityStorage + Send + Sync>
+            )
+            .attestation_sink(
+                Arc::new(FakeAttestationSink::new()) as Arc<dyn AttestationSink + Send + Sync>
+            )
+            .attestation_source(
+                Arc::new(FakeAttestationSource::new()) as Arc<dyn AttestationSource + Send + Sync>
+            )
+            .passphrase_provider(
+                Arc::new(PrefilledPassphraseProvider::new(""))
+                    as Arc<dyn PassphraseProvider + Send + Sync>,
+            )
+            .build()
+    }
+
+    #[test]
+    fn initialize_agent_rejects_malformed_parent_did() {
+        let config = CreateAgentIdentityConfig::builder(KeyAlias::new_unchecked("bot"), ".")
+            .with_parent_did("not-a-keri-did")
+            .build();
+        let ctx = ctx();
+        let result = initialize_agent(
+            config,
+            &ctx,
+            Arc::new(MemoryKeychainHandle),
+            &PrefilledPassphraseProvider::new(""),
+        );
+        assert!(matches!(result, Err(SetupError::InvalidSetupConfig(_))));
+    }
 }

@@ -190,7 +190,8 @@ pub fn build_device_dip(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    let device_did = crate::keri::types::prefix_to_did(&device_prefix);
+    let device_did =
+        IdentityDID::try_from(&device_prefix).map_err(|e| InitError::Keri(e.to_string()))?;
 
     Ok(DeviceDipBundle {
         dip,
@@ -276,7 +277,8 @@ pub fn anchor_received_dip(
         .append_signed_event(&device_prefix, &Event::Dip(anchored_dip), &attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    let device_did = crate::keri::types::prefix_to_did(&device_prefix);
+    let device_did =
+        IdentityDID::try_from(&device_prefix).map_err(|e| InitError::Keri(e.to_string()))?;
     Ok((device_did, anchor_ixn))
 }
 
@@ -1021,7 +1023,8 @@ pub fn rotate_delegated_device(
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
     // Persist the device's new current (the revealed key) + fresh next.
-    let device_did = crate::keri::types::prefix_to_did(device_prefix);
+    let device_did =
+        IdentityDID::try_from(device_prefix).map_err(|e| InitError::Keri(e.to_string()))?;
     let store_pass = passphrase_provider.get_passphrase(&format!(
         "Create passphrase for rotated device key '{}':",
         device_alias

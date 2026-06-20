@@ -55,7 +55,7 @@ fn setup_anchor_test() -> AnchorTestSetup {
 
     let identity_did = format!("did:keri:{}", init.prefix);
     let alias = KeyAlias::new_unchecked("test-anchor-key");
-    let identity_did_typed = IdentityDID::new_unchecked(&identity_did);
+    let identity_did_typed = IdentityDID::parse(&identity_did).unwrap();
 
     let encrypted = encrypt_keypair(init.current_keypair_pkcs8.as_ref(), TEST_PASSPHRASE)
         .expect("encrypt keypair");

@@ -239,11 +239,12 @@ pub fn extend_device(
         expires_at: Some(new_expires_at),
     };
 
+    let issuer_canonical = CanonicalDid::from(identity.controller_did.clone());
     let extended = create_signed_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid: &identity.storage_id,
-            identity_did: &identity.controller_did,
+            identity_did: &issuer_canonical,
             subject: &device_did_obj,
             device_public_key: latest.device_public_key.as_bytes(),
             device_curve: latest.device_public_key.curve(),
@@ -344,11 +345,12 @@ fn sign_attestation(
     signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
 ) -> Result<auths_verifier::core::Attestation, DeviceError> {
+    let issuer_canonical = CanonicalDid::from(params.identity_did.clone());
     create_signed_attestation(
         now,
         auths_id::attestation::create::AttestationInput {
             rid,
-            identity_did: &params.identity_did,
+            identity_did: &issuer_canonical,
             subject: &params.device_did,
             device_public_key: params.device_public_key.as_bytes(),
             device_curve: params.device_public_key.curve(),

@@ -25,7 +25,7 @@ pub use auths_core::pairing::{
 
 use auths_core::pairing::SessionStatus;
 use auths_core::ports::pairing::PairingRelayClient;
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+use auths_core::storage::keychain::{KeyAlias, KeyStorage};
 use auths_id::storage::identity::IdentityStorage;
 use auths_keri::Capability;
 use auths_verifier::types::CanonicalDid;
@@ -313,12 +313,9 @@ pub fn load_device_signing_material(
         .load_identity()
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: managed.controller_did is an IdentityDID loaded from IdentityStorage::load_identity(), already validated
-    let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
     let aliases = ctx
         .key_storage
-        .list_aliases_for_identity(&controller_identity_did)
+        .list_aliases_for_identity(&managed.controller_did)
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
 
     let key_alias = aliases
@@ -602,12 +599,9 @@ pub async fn recover_device<R: PairingRelayClient>(
         .identity_storage
         .load_identity()
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: controller_did is a validated IdentityDID from IdentityStorage.
-    let root_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
     let aliases = ctx
         .key_storage
-        .list_aliases_for_identity(&root_identity_did)
+        .list_aliases_for_identity(&managed.controller_did)
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
     let root_alias = aliases
         .into_iter()

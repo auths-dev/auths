@@ -227,12 +227,14 @@ impl KeyStorage for Pkcs11KeyRef {
             })
             .ok_or(AgentError::KeyNotFound)?;
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: loaded from PKCS#11 token which stores validated DIDs
-        let identity_did = IdentityDID::new_unchecked(
-            String::from_utf8(id_bytes)
-                .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?,
-        );
+        let id_str = String::from_utf8(id_bytes)
+            .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
+        let identity_did = IdentityDID::parse(&id_str).map_err(|e| {
+            AgentError::SecurityError(format!(
+                "PKCS#11 token returned a malformed identity DID for alias '{}': {e}",
+                alias.as_str()
+            ))
+        })?;
 
         let reference = Pkcs11KeyReference {
             slot_id: 0, // filled from context
@@ -319,12 +321,14 @@ impl KeyStorage for Pkcs11KeyRef {
             })
             .ok_or(AgentError::KeyNotFound)?;
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: loaded from PKCS#11 token which stores validated DIDs
-        Ok(IdentityDID::new_unchecked(
-            String::from_utf8(id_bytes)
-                .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?,
-        ))
+        let id_str = String::from_utf8(id_bytes)
+            .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
+        IdentityDID::parse(&id_str).map_err(|e| {
+            AgentError::SecurityError(format!(
+                "PKCS#11 token returned a malformed identity DID for alias '{}': {e}",
+                alias.as_str()
+            ))
+        })
     }
 
     fn backend_name(&self) -> &'static str {

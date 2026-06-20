@@ -207,8 +207,8 @@ fn run_github_verification(
     let controller_did = auths_sdk::pairing::load_controller_did(ctx.identity_storage.as_ref())
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from identity storage
-    let identity_did = IdentityDID::new_unchecked(controller_did.clone());
+    let identity_did = IdentityDID::parse(&controller_did)
+        .context("controller DID is not a valid did:keri identifier")?;
     let aliases = ctx
         .key_storage
         .list_aliases_for_identity(&identity_did)

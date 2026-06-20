@@ -9,19 +9,6 @@ pub use auths_keri::{KeriTypeError, Prefix, Said};
 use auths_core::error::AgentError;
 use auths_core::storage::keychain::IdentityDID;
 
-/// Convert a `Prefix` to a `did:keri:` identity DID.
-///
-/// Usage:
-/// ```ignore
-/// let did = prefix_to_did(&prefix);
-/// assert_eq!(did.as_str(), "did:keri:ETest123abc");
-/// ```
-pub fn prefix_to_did(prefix: &Prefix) -> IdentityDID {
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: Prefix is validated on construction, did:keri:{prefix} is always valid
-    IdentityDID::new_unchecked(format!("did:keri:{}", prefix.as_str()))
-}
-
 /// Extract a `Prefix` from a `did:keri:` identity DID.
 ///
 /// Usage:
@@ -43,24 +30,24 @@ mod tests {
     #[test]
     fn prefix_to_did_converts() {
         let p = Prefix::new("ETest123abc".to_string()).unwrap();
-        let did = prefix_to_did(&p);
+        let did = IdentityDID::try_from(&p).unwrap();
         assert_eq!(did.as_str(), "did:keri:ETest123abc");
     }
 
     #[test]
     fn prefix_from_did_roundtrip() {
         let p = Prefix::new("ETest123abc".to_string()).unwrap();
-        let did = prefix_to_did(&p);
+        let did = IdentityDID::try_from(&p).unwrap();
         let back = prefix_from_did(&did).unwrap();
         assert_eq!(back, p);
     }
 
     #[test]
-    fn prefix_from_did_rejects_non_keri() {
-        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only literal with valid DID format
-        let did = IdentityDID::new_unchecked("did:key:z6Mk".to_string());
-        let err = prefix_from_did(&did).unwrap_err();
-        assert!(err.to_string().contains("Expected did:keri:"));
+    fn non_keri_did_is_rejected_at_parse_boundary() {
+        // A `did:key:` value can never become a valid `IdentityDID`; the scheme
+        // check that `prefix_from_did` once performed is now enforced earlier, at
+        // construction, so the rejection is asserted at the parse boundary.
+        assert!(IdentityDID::parse("did:key:z6Mk").is_err());
     }
 
     #[test]

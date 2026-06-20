@@ -29,7 +29,7 @@ struct DeviceRevokeAttestation {
 
 fn store_key(keychain: &IsolatedKeychainHandle, pkcs8: &[u8], alias: &str, did: &str) -> KeyAlias {
     let alias = KeyAlias::new_unchecked(alias);
-    let did = IdentityDID::new_unchecked(did);
+    let did = IdentityDID::parse(did).unwrap();
     let encrypted = encrypt_keypair(pkcs8, TEST_PASSPHRASE).expect("encrypt");
     keychain
         .store_key(&alias, &did, KeyRole::Primary, &encrypted)

@@ -46,7 +46,7 @@ fn single_operator_pack(framework: ComplianceFramework) -> EvidencePack {
     );
     EvidencePack {
         schema_version: 1,
-        org: IdentityDID::new_unchecked("did:keri:EHonestyCapstoneOrg".to_string()),
+        org: IdentityDID::parse("did:keri:EHonestyCapstoneOrg").unwrap(),
         period: "2026-Q3".to_string(),
         framework,
         equivocation_visibility: ceiling,

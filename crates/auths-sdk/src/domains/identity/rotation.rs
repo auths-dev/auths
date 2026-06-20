@@ -752,9 +752,7 @@ mod tests {
 
         let (_, prefix, _) = resolve_rotation_context(&config, &ctx).unwrap();
         let state = ctx.registry.get_key_state(&prefix).unwrap();
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: test-only literal with valid did:keri: prefix
-        let wrong_did = IdentityDID::new_unchecked("did:keri:EWrongDid".to_string());
+        let wrong_did = IdentityDID::parse("did:keri:EWrongDid").unwrap();
 
         let result = retrieve_precommitted_key(&wrong_did, &key_alias, &state, &ctx);
         assert!(matches!(result, Err(RotationError::RotationFailed(_))));
@@ -764,9 +762,7 @@ mod tests {
     fn retrieve_precommitted_key_missing_key_returns_error() {
         let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: test-only literal with valid did:keri: prefix
-        let did = IdentityDID::new_unchecked("did:keri:Etest".to_string());
+        let did = IdentityDID::parse("did:keri:Etest").unwrap();
         let state = KeyState {
             prefix: Prefix::new_unchecked("Etest".to_string()),
             current_keys: vec![],
@@ -899,9 +895,7 @@ mod tests {
         }
 
         let prefix = Prefix::new_unchecked("ETestMismatch".to_string());
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: test-only literal with valid did:keri: prefix
-        let did = IdentityDID::new_unchecked("did:keri:ETestMismatch".to_string());
+        let did = IdentityDID::parse("did:keri:ETestMismatch").unwrap();
 
         let state = KeyState {
             prefix: prefix.clone(),

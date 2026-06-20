@@ -1,5 +1,5 @@
 use auths_keri::KeriPublicKey;
-use auths_verifier::types::IdentityDID;
+use auths_verifier::IdentityDID;
 
 use super::kel_port::KelPort;
 use crate::keri::{DidKeriResolution, Event, Prefix, ResolveError, parse_did_keri, validate_kel};
@@ -26,6 +26,9 @@ pub fn resolve_from_events(
     did: &str,
     prefix: &Prefix,
 ) -> Result<DidKeriResolution, ResolveError> {
+    // The returned DID is derived from the validated prefix, so the raw `did`
+    // string is retained only for call-site symmetry.
+    let _ = did;
     let state = validate_kel(events)?;
 
     let key_encoded = state.current_key().ok_or(ResolveError::NoCurrentKey)?;
@@ -35,8 +38,8 @@ pub fn resolve_from_events(
     let public_key = keri_key.as_bytes().to_vec();
 
     Ok(DidKeriResolution {
-        #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass a did:keri string already validated by parse_did_keri()
-        did: IdentityDID::new_unchecked(did),
+        did: IdentityDID::try_from(prefix)
+            .map_err(|e| ResolveError::InvalidFormat(e.to_string()))?,
         prefix: prefix.clone(),
         public_key,
         curve,

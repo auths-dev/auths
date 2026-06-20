@@ -86,10 +86,11 @@ impl IndexedAttestationStorage {
         commit_oid: &str,
         now: DateTime<Utc>,
     ) -> Result<(), StorageError> {
+        let issuer_did = IdentityDID::parse(att.issuer.as_str())
+            .map_err(|e| StorageError::InvalidData(e.to_string()))?;
         let indexed = IndexedAttestation {
             rid: att.rid.clone(),
-            #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid parsed from validated attestation JSON
-            issuer_did: IdentityDID::new_unchecked(att.issuer.as_str()),
+            issuer_did,
             device_did: att.subject.clone(),
             git_ref: git_ref.to_string(),
             commit_oid: CommitOid::parse(commit_oid).ok(),
@@ -164,6 +165,34 @@ impl AttestationSource for IndexedAttestationStorage {
 
 #[cfg(test)]
 mod tests {
-    // Tests would require setting up a Git repo with attestations
-    // which is complex for unit tests. Integration tests are more appropriate.
+    // Most coverage requires a Git repo with attestations and a live index,
+    // which belongs in integration tests. The boundary check below is the one
+    // piece `update_index` performs in isolation: it refuses an attestation
+    // whose issuer is not a `did:keri:` identity.
+    use super::*;
+    use auths_verifier::AttestationBuilder;
+
+    #[test]
+    fn update_index_refuses_non_keri_issuer() {
+        let att = AttestationBuilder::default()
+            .issuer("did:key:z6MkNotAKeriIdentity")
+            .subject("did:key:z6MkDevice")
+            .build();
+
+        assert!(
+            IdentityDID::parse(att.issuer.as_str()).is_err(),
+            "a non-did:keri issuer must be refused before it reaches the index"
+        );
+    }
+
+    #[test]
+    fn update_index_accepts_keri_issuer() {
+        let att = AttestationBuilder::default()
+            .issuer("did:keri:EIssuer123")
+            .subject("did:key:z6MkDevice")
+            .build();
+
+        let issuer = IdentityDID::parse(att.issuer.as_str()).expect("valid did:keri issuer");
+        assert_eq!(issuer.as_str(), "did:keri:EIssuer123");
+    }
 }

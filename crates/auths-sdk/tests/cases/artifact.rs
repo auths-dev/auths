@@ -203,7 +203,7 @@ fn sign_artifact_identity_not_found_returns_error() {
 #[test]
 fn sign_artifact_raw_produces_valid_attestation_json() {
     let seed = SecureSeed::new([42u8; 32]);
-    let identity_did = IdentityDID::new_unchecked("did:keri:Etest1234");
+    let identity_did = IdentityDID::parse("did:keri:Etest1234").unwrap();
     let data = b"release binary content";
     let now = Utc::now();
 
@@ -239,7 +239,7 @@ fn sign_artifact_raw_produces_valid_attestation_json() {
 #[test]
 fn sign_artifact_raw_without_optional_fields() {
     let seed = SecureSeed::new([7u8; 32]);
-    let identity_did = IdentityDID::new_unchecked("did:keri:Eminimal");
+    let identity_did = IdentityDID::parse("did:keri:Eminimal").unwrap();
     let now = Utc::now();
 
     let result = sign_artifact_raw(now, &seed, &identity_did, b"data", None, None, None).unwrap();
@@ -252,7 +252,7 @@ fn sign_artifact_raw_without_optional_fields() {
 #[test]
 fn sign_artifact_raw_digest_matches_sha256_of_data() {
     let seed = SecureSeed::new([1u8; 32]);
-    let identity_did = IdentityDID::new_unchecked("did:keri:Edigest");
+    let identity_did = IdentityDID::parse("did:keri:Edigest").unwrap();
     let data = b"hello world";
     let now = Utc::now();
 

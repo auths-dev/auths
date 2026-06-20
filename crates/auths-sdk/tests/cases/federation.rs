@@ -68,7 +68,7 @@ fn subject() -> (tempfile::TempDir, KeyAlias, AuthsContext, IdentityDID) {
         .identity_storage
         .load_identity()
         .expect("subject identity");
-    let did = IdentityDID::new_unchecked(managed.controller_did.as_str().to_string());
+    let did = IdentityDID::parse(managed.controller_did.as_str()).unwrap();
     (tmp, alias, ctx, did)
 }
 
@@ -166,7 +166,7 @@ async fn idp_attestation_group_member_must_be_present_in_token() {
 /// `auths-rp` and nothing here produces one. A positive signal must NOT allow.
 #[test]
 fn idp_attestation_cannot_grant() {
-    let subject = IdentityDID::new_unchecked("did:keri:ESubjectIdpAttestation".to_string());
+    let subject = IdentityDID::parse("did:keri:ESubjectIdpAttestation").unwrap();
     let fresh = fixed_now() + Duration::hours(1);
     let base = AttestationContent {
         subject: subject.clone(),
@@ -203,7 +203,7 @@ fn idp_attestation_cannot_grant() {
 
 #[test]
 fn idp_attestation_expired_yields_no_signal_not_valid() {
-    let subject = IdentityDID::new_unchecked("did:keri:ESubjectExpired".to_string());
+    let subject = IdentityDID::parse("did:keri:ESubjectExpired").unwrap();
     let expired = IdpAttestation {
         content: AttestationContent {
             subject,
@@ -299,7 +299,7 @@ async fn saml_attest_anchors_into_subject_kel() {
 
 #[tokio::test]
 async fn saml_rejects_expired_assertion() {
-    let did = IdentityDID::new_unchecked("did:keri:ESamlExpired".to_string());
+    let did = IdentityDID::parse("did:keri:ESamlExpired").unwrap();
     let verifier = FakeSamlVerifier {
         assertion: saml_assertion(
             "A2",
@@ -317,7 +317,7 @@ async fn saml_rejects_expired_assertion() {
 
 #[tokio::test]
 async fn saml_rejects_audience_mismatch() {
-    let did = IdentityDID::new_unchecked("did:keri:ESamlAud".to_string());
+    let did = IdentityDID::parse("did:keri:ESamlAud").unwrap();
     let verifier = FakeSamlVerifier {
         assertion: saml_assertion("A3", &["some-other-sp"], &[], None),
     };
@@ -330,7 +330,7 @@ async fn saml_rejects_audience_mismatch() {
 
 #[tokio::test]
 async fn saml_group_member_must_be_present_in_attributes() {
-    let did = IdentityDID::new_unchecked("did:keri:ESamlGroup".to_string());
+    let did = IdentityDID::parse("did:keri:ESamlGroup").unwrap();
 
     // Group not present → rejected, never coerced.
     let verifier = FakeSamlVerifier {
@@ -362,7 +362,7 @@ async fn saml_group_member_must_be_present_in_attributes() {
 
 #[tokio::test]
 async fn saml_and_oidc_yield_structurally_identical_attestation() {
-    let did = IdentityDID::new_unchecked("did:keri:EParitySubject".to_string());
+    let did = IdentityDID::parse("did:keri:EParitySubject").unwrap();
     let shared_nonce = "SHARED-CHALLENGE";
 
     // OIDC: nonce comes from the id_token's `nonce` claim.

@@ -511,9 +511,16 @@ pub unsafe extern "C" fn ffi_import_key(
             }
         };
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: validated with starts_with("did:") guard above
-        let did_string = IdentityDID::new_unchecked(did_str.to_string());
+        let did_string = match IdentityDID::parse(did_str) {
+            Ok(did) => did,
+            Err(e) => {
+                error!(
+                    "FFI import failed: controller DID '{}' is not a valid identity DID: {}",
+                    did_str, e
+                );
+                return 1;
+            }
+        };
         let alias = KeyAlias::new_unchecked(alias_str);
 
         // Store

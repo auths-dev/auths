@@ -37,7 +37,7 @@ fn store_keypair_in_keychain(
     identity_did: &str,
 ) -> KeyAlias {
     let alias = KeyAlias::new_unchecked(alias_name);
-    let identity_did_typed = IdentityDID::new_unchecked(identity_did);
+    let identity_did_typed = IdentityDID::parse(identity_did).unwrap();
     let encrypted = encrypt_keypair(pkcs8, TEST_PASSPHRASE).expect("encrypt keypair");
     keychain
         .store_key(&alias, &identity_did_typed, KeyRole::Primary, &encrypted)

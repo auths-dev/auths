@@ -494,9 +494,14 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
         }
     };
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: actor_did from a parsed Entry is already valid
-    let identity_did = IdentityDID::new_unchecked(chain[0].entry.content.actor_did.as_str());
+    let identity_did = match IdentityDID::parse(chain[0].entry.content.actor_did.as_str()) {
+        Ok(did) => did,
+        Err(err) => {
+            return DelegationStatus::ChainBroken {
+                reason: format!("link[0] DeviceBind actor_did is not a valid identity DID: {err}"),
+            };
+        }
+    };
 
     let org_add_member = chain
         .iter()
@@ -526,9 +531,16 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
                     };
                 }
 
-                #[allow(clippy::disallowed_methods)]
-                // INVARIANT: actor_did from a parsed Entry is already valid
-                let org = IdentityDID::new_unchecked(link.entry.content.actor_did.as_str());
+                let org = match IdentityDID::parse(link.entry.content.actor_did.as_str()) {
+                    Ok(did) => did,
+                    Err(err) => {
+                        return DelegationStatus::ChainBroken {
+                            reason: format!(
+                                "link[{idx}] OrgAddMember actor_did is not a valid identity DID: {err}"
+                            ),
+                        };
+                    }
+                };
                 (member_did.clone(), *role, org)
             }
             _ => {
@@ -539,9 +551,16 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
         }
     } else {
         // 2-link chain: [DeviceBind, NamespaceClaim] — direct ownership, no org
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: actor_did from a parsed Entry is already valid
-        let owner_did = IdentityDID::new_unchecked(chain[0].entry.content.actor_did.as_str());
+        let owner_did = match IdentityDID::parse(chain[0].entry.content.actor_did.as_str()) {
+            Ok(did) => did,
+            Err(err) => {
+                return DelegationStatus::ChainBroken {
+                    reason: format!(
+                        "link[0] DeviceBind actor_did is not a valid identity DID: {err}"
+                    ),
+                };
+            }
+        };
         (owner_did.clone(), auths_verifier::Role::Admin, owner_did)
     };
 
@@ -562,10 +581,17 @@ fn verify_delegation_chain(bundle: &OfflineBundle) -> DelegationStatus {
         } = &ns_link.entry.content.body
         {
             if org_add_member.is_some() {
-                #[allow(clippy::disallowed_methods)]
-                // INVARIANT: actor_did from a parsed Entry is already valid
-                let claim_actor =
-                    IdentityDID::new_unchecked(ns_link.entry.content.actor_did.as_str());
+                let claim_actor = match IdentityDID::parse(ns_link.entry.content.actor_did.as_str())
+                {
+                    Ok(did) => did,
+                    Err(err) => {
+                        return DelegationStatus::ChainBroken {
+                            reason: format!(
+                                "link[{ns_idx}] NamespaceClaim actor_did is not a valid identity DID: {err}"
+                            ),
+                        };
+                    }
+                };
                 if claim_actor.as_str() != org_did.as_str() {
                     return DelegationStatus::ChainBroken {
                         reason: format!(
@@ -1034,5 +1060,124 @@ mod tests {
 
         let report = verify_bundle(&bundle, &fixture.trust_root, fixed_now());
         assert_eq!(report.checkpoint, CheckpointStatus::InvalidSignature);
+    }
+
+    /// Builds an entry with the given type, body, and actor DID, signed by the
+    /// fixture actor key and stamped at the given sequence number.
+    fn make_signed_entry(
+        fixture: &TestFixture,
+        sequence: u128,
+        entry_type: EntryType,
+        body: EntryBody,
+        actor_did: &str,
+    ) -> Entry {
+        let content = EntryContent {
+            entry_type,
+            body,
+            actor_did: CanonicalDid::new_unchecked(actor_did),
+        };
+        let canonical = content.canonicalize().unwrap();
+        let sig_bytes = fixture.actor_keypair.sign(&canonical);
+        let actor_sig = Ed25519Signature::try_from_slice(sig_bytes.as_ref()).unwrap();
+        Entry {
+            sequence,
+            timestamp: fixed_ts(),
+            content,
+            actor_sig,
+        }
+    }
+
+    /// Assembles a two-link `[DeviceBind, OrgAddMember]` delegation chain over a
+    /// two-leaf Merkle tree, returning links with valid inclusion proofs plus the
+    /// shared checkpoint root. The `device_actor_did` flows into the DeviceBind
+    /// link's `actor_did`, which the verifier parses as an identity DID;
+    /// `member_did` is the identity the OrgAddMember link delegates to.
+    fn make_delegation_chain(
+        fixture: &TestFixture,
+        device_actor_did: &str,
+        member_did: &str,
+    ) -> (Vec<DelegationChainLink>, crate::types::MerkleHash) {
+        let device_bind = make_signed_entry(
+            fixture,
+            0,
+            EntryType::DeviceBind,
+            EntryBody::DeviceBind {
+                device_did: CanonicalDid::new_unchecked(&fixture.actor_did),
+                public_key: Ed25519PublicKey::from_bytes(fixture.actor_public_key),
+            },
+            device_actor_did,
+        );
+        let org_add_member = make_signed_entry(
+            fixture,
+            1,
+            EntryType::OrgAddMember,
+            EntryBody::OrgAddMember {
+                member_did: IdentityDID::parse(member_did).unwrap(),
+                role: auths_verifier::Role::Admin,
+                capabilities: vec![Capability::sign_commit()],
+                delegated_by: IdentityDID::parse("did:keri:EOrg123").unwrap(),
+            },
+            "did:keri:EOrg123",
+        );
+
+        let leaves = [
+            hash_leaf(&device_bind.leaf_data().unwrap()),
+            hash_leaf(&org_add_member.leaf_data().unwrap()),
+        ];
+        let root = compute_root(&leaves);
+
+        let link = |entry: Entry, index: u64| DelegationChainLink {
+            link_type: entry.content.entry_type.clone(),
+            inclusion_proof: InclusionProof {
+                index,
+                size: 2,
+                root,
+                hashes: crate::merkle::prove_inclusion(&leaves, index).unwrap(),
+            },
+            entry,
+        };
+
+        (
+            vec![link(device_bind, 0), link(org_add_member, 1)],
+            root,
+        )
+    }
+
+    #[test]
+    fn delegation_chain_with_valid_keri_actor_verifies() {
+        let fixture = setup();
+        let mut bundle = make_valid_bundle(&fixture);
+        let (chain, root) =
+            make_delegation_chain(&fixture, "did:keri:EMember456", "did:keri:EMember456");
+        bundle.signed_checkpoint.checkpoint.root = root;
+        bundle.delegation_chain = chain;
+
+        let delegation = verify_delegation_chain(&bundle);
+        assert!(matches!(
+            delegation,
+            DelegationStatus::ChainVerified { .. }
+        ));
+    }
+
+    #[test]
+    fn delegation_chain_with_non_keri_actor_is_broken() {
+        let fixture = setup();
+        let mut bundle = make_valid_bundle(&fixture);
+        let (chain, root) = make_delegation_chain(
+            &fixture,
+            "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
+            "did:keri:EMember456",
+        );
+        bundle.signed_checkpoint.checkpoint.root = root;
+        bundle.delegation_chain = chain;
+
+        let delegation = verify_delegation_chain(&bundle);
+        let DelegationStatus::ChainBroken { reason } = delegation else {
+            panic!("expected ChainBroken for a non-keri actor DID, got {delegation:?}");
+        };
+        assert!(
+            reason.contains("not a valid identity DID"),
+            "unexpected reason: {reason}"
+        );
     }
 }

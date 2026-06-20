@@ -1169,9 +1169,17 @@ impl RegistryBackend for GitRegistryBackend {
         // Index update: best-effort, Git is source of truth
         #[cfg(feature = "indexed-storage")]
         if let Some(index) = &self.index {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: attestation.issuer is a validated CanonicalDid
-            let issuer_did = IdentityDID::new_unchecked(attestation.issuer.as_str());
+            let issuer_did = match IdentityDID::parse(attestation.issuer.as_str()) {
+                Ok(did) => did,
+                Err(e) => {
+                    log::warn!(
+                        "Skipping index update for attestation {}: invalid issuer DID: {}",
+                        attestation.rid,
+                        e
+                    );
+                    return Ok(());
+                }
+            };
             let indexed = auths_index::IndexedAttestation {
                 rid: attestation.rid.clone(),
                 issuer_did,
@@ -1356,9 +1364,18 @@ impl RegistryBackend for GitRegistryBackend {
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: org is a validated KERI prefix from registry storage
             let org_prefix = auths_keri::Prefix::new_unchecked(org.to_string());
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: member.issuer is a validated CanonicalDid
-            let issuer_did = IdentityDID::new_unchecked(member.issuer.as_str());
+            let issuer_did = match IdentityDID::parse(member.issuer.as_str()) {
+                Ok(did) => did,
+                Err(e) => {
+                    log::warn!(
+                        "Skipping index update for org member {} in {}: invalid issuer DID: {}",
+                        member.subject,
+                        org,
+                        e
+                    );
+                    return Ok(());
+                }
+            };
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: member.subject is a validated DID from the attestation
             let member_canonical = CanonicalDid::new_unchecked(member.subject.as_str());
@@ -1405,6 +1422,14 @@ impl RegistryBackend for GitRegistryBackend {
 
         // Compute expected issuer once, outside the per-file loop
         let expected_issuer = expected_org_issuer(org);
+        // The org's issuer DID is identical for every member file under this org,
+        // so validate it once: did:keri:{org} for a non-empty org prefix.
+        let org_did = IdentityDID::parse(&expected_issuer).map_err(|e| {
+            RegistryError::InvalidPrefix {
+                prefix: org.to_string(),
+                reason: e.to_string(),
+            }
+        })?;
 
         navigator.visit_dir(&members_parts, |filename| {
             // Strip .json extension
@@ -1439,14 +1464,19 @@ impl RegistryBackend for GitRegistryBackend {
                                 })
                             // Validate issuer matches expected org issuer (hard invariant)
                             } else if att.issuer.as_str() != expected_issuer {
-                                #[allow(clippy::disallowed_methods)]
-                                // INVARIANT: expected_issuer is derived from validated org KERI prefix via expected_org_issuer()
-                                let expected = IdentityDID::new_unchecked(expected_issuer.clone());
-                                #[allow(clippy::disallowed_methods)]
-                                // INVARIANT: att.issuer is a validated CanonicalDid from deserialized attestation
-                                let actual = IdentityDID::new_unchecked(att.issuer.as_str());
+                                let actual = match IdentityDID::parse(att.issuer.as_str()) {
+                                    Ok(did) => did,
+                                    Err(_) => {
+                                        log::warn!(
+                                            "Skipping member {} with unparseable issuer DID: {}",
+                                            filename,
+                                            att.issuer.as_str()
+                                        );
+                                        return ControlFlow::Continue(());
+                                    }
+                                };
                                 Err(MemberInvalidReason::IssuerMismatch {
-                                    expected_issuer: expected,
+                                    expected_issuer: org_did.clone(),
                                     actual_issuer: actual,
                                 })
                             } else {
@@ -1459,11 +1489,8 @@ impl RegistryBackend for GitRegistryBackend {
                 Err(e) => Err(MemberInvalidReason::Other(e.to_string())),
             };
 
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: org is a validated KERI prefix from registry storage
-            let org_did = IdentityDID::new_unchecked(format!("did:keri:{}", org));
             let entry = OrgMemberEntry {
-                org: org_did,
+                org: org_did.clone(),
                 did,
                 filename: filename.to_string(),
                 attestation,
@@ -1565,16 +1592,12 @@ impl RegistryBackend for GitRegistryBackend {
         let members: Vec<MemberView> = indexed
             .into_iter()
             .map(|m| {
-                #[allow(clippy::disallowed_methods)]
-                // INVARIANT: m.issuer_did comes from indexed storage, originally a validated CanonicalDid
-                let issuer =
-                    auths_core::storage::keychain::IdentityDID::new_unchecked(m.issuer_did);
                 MemberView {
                     did: m.member_did.clone(),
                     status: MemberStatus::Active,
                     role: None,
                     capabilities: vec![],
-                    issuer,
+                    issuer: m.issuer_did,
                     rid: m.rid,
                     revoked_at: m.revoked_at,
                     expires_at: m.expires_at,
@@ -2126,9 +2149,19 @@ pub fn rebuild_org_members_from_registry(
                 #[allow(clippy::disallowed_methods)]
                 // INVARIANT: org_prefix is a validated KERI prefix from visit_orgs
                 let prefix = auths_keri::Prefix::new_unchecked(org_prefix.clone());
-                #[allow(clippy::disallowed_methods)]
-                // INVARIANT: att.issuer is a validated CanonicalDid from deserialized attestation
-                let issuer_did = IdentityDID::new_unchecked(att.issuer.as_str());
+                let issuer_did = match IdentityDID::parse(att.issuer.as_str()) {
+                    Ok(did) => did,
+                    Err(e) => {
+                        log::warn!(
+                            "Skipping org member {} in {}: invalid issuer DID: {}",
+                            entry.did,
+                            org_prefix,
+                            e
+                        );
+                        stats.errors += 1;
+                        return ControlFlow::Continue(());
+                    }
+                };
                 let indexed = IndexedOrgMember {
                     org_prefix: prefix,
                     member_did: entry.did.clone(),

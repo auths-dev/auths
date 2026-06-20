@@ -68,9 +68,8 @@ pub fn initialize_keri_identity(
     let repo = Repository::open(repo_path)?;
     let result = create_keri_identity_with_curve(&repo, None, now, curve)
         .map_err(|e| InitError::Keri(e.to_string()))?;
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: create_keri_identity returns a valid did:keri: DID
-    let controller_did = IdentityDID::new_unchecked(result.did());
+    let controller_did =
+        IdentityDID::try_from(&result.prefix).map_err(|e| InitError::Keri(e.to_string()))?;
 
     // pass the curve-tagged PKCS8 blob through unchanged. The old
     // extract-seed + encode_seed_as_pkcs8 pattern silently wrapped P-256
@@ -201,7 +200,8 @@ pub fn initialize_registry_identity(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    let controller_did = crate::keri::types::prefix_to_did(&prefix);
+    let controller_did =
+        IdentityDID::try_from(&prefix).map_err(|e| InitError::Keri(e.to_string()))?;
 
     // Keys land first, then the registry append is the commit point. A failure
     // at any step rolls back the keys already stored, so a failed init leaves
@@ -268,9 +268,11 @@ fn initialize_hardware_registry_identity(
         )));
     }
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: rebound to the real did:keri prefix before this function returns
-    let placeholder = IdentityDID::new_unchecked("did:keri:pending");
+    #[allow(clippy::expect_used)]
+    // INVARIANT: compile-time literal carries the `did:keri:` scheme with a non-empty
+    // identifier, so parse cannot fail. The stored value is rebound to the real
+    // did:keri prefix before this function returns.
+    let placeholder = IdentityDID::parse("did:keri:pending").expect("literal did:keri: is valid");
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", local_key_alias));
 
     keychain.store_key(local_key_alias, &placeholder, KeyRole::Primary, &[])?;
@@ -364,7 +366,8 @@ fn incept_with_hardware_keys(
         .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
 
-    let controller_did = crate::keri::types::prefix_to_did(&prefix);
+    let controller_did =
+        IdentityDID::try_from(&prefix).map_err(|e| InitError::Keri(e.to_string()))?;
 
     keychain.rebind_identity(local_key_alias, &controller_did)?;
     keychain.rebind_identity(next_alias, &controller_did)?;
@@ -472,7 +475,8 @@ pub fn initialize_registry_identity_multi(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
-    let controller_did = crate::keri::types::prefix_to_did(&prefix);
+    let controller_did =
+        IdentityDID::try_from(&prefix).map_err(|e| InitError::Keri(e.to_string()))?;
 
     let is_hardware_backend = keychain.is_hardware_backend();
     // One passphrase for every slot — prompt once, not once per device slot.

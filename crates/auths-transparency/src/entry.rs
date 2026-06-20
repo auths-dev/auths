@@ -225,10 +225,10 @@ mod tests {
             content: EntryContent {
                 entry_type: EntryType::OrgAddMember,
                 body: EntryBody::OrgAddMember {
-                    member_did: IdentityDID::new_unchecked("did:keri:Emember"),
+                    member_did: IdentityDID::parse("did:keri:Emember").unwrap(),
                     role: Role::Admin,
                     capabilities: vec![Capability::sign_commit()],
-                    delegated_by: IdentityDID::new_unchecked("did:keri:Eadmin"),
+                    delegated_by: IdentityDID::parse("did:keri:Eadmin").unwrap(),
                 },
                 actor_did: CanonicalDid::new_unchecked("did:keri:Eadmin"),
             },

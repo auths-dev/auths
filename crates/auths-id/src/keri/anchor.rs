@@ -412,9 +412,10 @@ pub fn verify_attestation_anchor_by_issuer<T: serde::Serialize>(
 mod tests {
     use super::*;
     use crate::keri::{Prefix, create_keri_identity_with_curve};
+    use auths_verifier::IdentityDID;
     use auths_core::crypto::signer::encrypt_keypair;
     use auths_core::signing::StorageSigner;
-    use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, KeyStorage};
+    use auths_core::storage::keychain::{KeyAlias, KeyRole, KeyStorage};
     use auths_core::testing::{IsolatedKeychainHandle, TestPassphraseProvider};
     use serde::{Deserialize, Serialize};
     use tempfile::TempDir;
@@ -469,9 +470,9 @@ mod tests {
         )
         .unwrap();
 
-        let issuer_did = format!("did:keri:{}", init.prefix);
+        let identity_did = IdentityDID::try_from(&init.prefix).unwrap();
+        let issuer_did = identity_did.as_str().to_string();
         let alias = KeyAlias::new_unchecked("test-anchor-key");
-        let identity_did = IdentityDID::new_unchecked(&issuer_did);
 
         let encrypted = encrypt_keypair(init.current_keypair_pkcs8.as_ref(), TEST_PASSPHRASE)
             .expect("encrypt keypair");

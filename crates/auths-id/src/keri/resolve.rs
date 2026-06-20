@@ -121,8 +121,8 @@ pub fn resolve_did_keri(repo: &Repository, did: &str) -> Result<DidKeriResolutio
     let public_key = keri_key.as_bytes().to_vec();
 
     Ok(DidKeriResolution {
-        #[allow(clippy::disallowed_methods)] // INVARIANT: parse_did_keri() above validated the did:keri format
-        did: IdentityDID::new_unchecked(did),
+        did: IdentityDID::try_from(&prefix)
+            .map_err(|e| ResolveError::InvalidFormat(e.to_string()))?,
         prefix,
         public_key,
         curve,
@@ -200,8 +200,8 @@ pub fn resolve_did_keri_at_sequence(
     let public_key = keri_key.as_bytes().to_vec();
 
     Ok(DidKeriResolution {
-        #[allow(clippy::disallowed_methods)] // INVARIANT: parse_did_keri() above validated the did:keri format
-        did: IdentityDID::new_unchecked(did),
+        did: IdentityDID::try_from(&prefix)
+            .map_err(|e| ResolveError::InvalidFormat(e.to_string()))?,
         prefix,
         public_key,
         curve,

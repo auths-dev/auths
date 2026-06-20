@@ -241,11 +241,23 @@ impl AttestationSink for RegistryAttestationStorage {
                 config.device_attestation_prefix, device_did_sanitized
             );
 
+            let issuer_did = match IdentityDID::parse(attestation.issuer.as_str()) {
+                Ok(did) => did,
+                Err(e) => {
+                    log::warn!(
+                        "Skipping index update for attestation {}: invalid issuer DID: {}",
+                        attestation.rid,
+                        e
+                    );
+                    return;
+                }
+            };
+
             #[allow(clippy::disallowed_methods)]
             // Timestamp fallback for missing attestation timestamp
             let indexed = IndexedAttestation {
                 rid: attestation.rid.clone(),
-                issuer_did: IdentityDID::new_unchecked(attestation.issuer.as_str()),
+                issuer_did,
                 device_did: attestation.subject.clone(),
                 git_ref,
                 commit_oid: None,
