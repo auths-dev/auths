@@ -483,6 +483,31 @@ fn handle_rotate_now(
     Ok(())
 }
 
+/// Whether an emergency freeze should prompt, proceed, or be refused — decided from
+/// `--yes` and whether stdin is a terminal. A non-interactive run without `--yes` is
+/// refused so the freeze fails closed with a clear message rather than crashing on a
+/// TTY prompt or silently leaving signing enabled.
+#[derive(Debug, PartialEq, Eq)]
+enum FreezeConfirmation {
+    /// Apply the freeze without prompting (`--yes`).
+    Proceed,
+    /// Prompt for typed confirmation (interactive terminal).
+    Prompt,
+    /// Refuse: non-interactive and no `--yes`.
+    NonInteractive,
+}
+
+/// Decide how to confirm an emergency freeze. Pure, so it is exhaustively testable.
+fn freeze_confirmation_required(yes: bool, stdin_is_terminal: bool) -> FreezeConfirmation {
+    if yes {
+        FreezeConfirmation::Proceed
+    } else if stdin_is_terminal {
+        FreezeConfirmation::Prompt
+    } else {
+        FreezeConfirmation::NonInteractive
+    }
+}
+
 /// Handle freeze operation — temporarily disables all signing.
 fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Result<()> {
     use auths_sdk::freeze::{FreezeState, load_active_freeze, parse_duration, store_freeze};
@@ -544,15 +569,25 @@ fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Resu
         return Ok(());
     }
 
-    // Confirmation
-    if !cmd.yes {
-        let confirmation: String = dialoguer::Input::new()
-            .with_prompt("Type FREEZE to confirm")
-            .interact_text()?;
+    // Confirmation — fail closed in a non-interactive environment without --yes,
+    // rather than crashing on a TTY prompt and leaving signing silently enabled.
+    match freeze_confirmation_required(cmd.yes, std::io::stdin().is_terminal()) {
+        FreezeConfirmation::Proceed => {}
+        FreezeConfirmation::NonInteractive => {
+            return Err(anyhow::anyhow!(
+                "Cannot confirm an emergency freeze in a non-interactive environment. \
+                 Re-run with --yes to apply it. The freeze was NOT applied — signing is still enabled."
+            ));
+        }
+        FreezeConfirmation::Prompt => {
+            let confirmation: String = dialoguer::Input::new()
+                .with_prompt("Type FREEZE to confirm")
+                .interact_text()?;
 
-        if confirmation != "FREEZE" {
-            out.println("Cancelled - confirmation not matched.");
-            return Ok(());
+            if confirmation != "FREEZE" {
+                out.println("Cancelled - confirmation not matched.");
+                return Ok(());
+            }
         }
     }
 
@@ -921,5 +956,55 @@ mod tests {
         )
         .unwrap();
         assert!(!dir.path().join("freeze.json").exists());
+    }
+
+    #[test]
+    fn freeze_confirmation_fails_closed_without_a_terminal_and_without_yes() {
+        // --yes always proceeds — the headless path for runbooks and automation.
+        assert_eq!(
+            freeze_confirmation_required(true, false),
+            FreezeConfirmation::Proceed
+        );
+        assert_eq!(
+            freeze_confirmation_required(true, true),
+            FreezeConfirmation::Proceed
+        );
+        // Interactive without --yes prompts for typed confirmation.
+        assert_eq!(
+            freeze_confirmation_required(false, true),
+            FreezeConfirmation::Prompt
+        );
+        // Non-interactive without --yes is refused (fail closed): never a cryptic TTY
+        // crash, and never a silent no-op that leaves signing enabled.
+        assert_eq!(
+            freeze_confirmation_required(false, false),
+            FreezeConfirmation::NonInteractive
+        );
+    }
+
+    #[test]
+    fn handle_freeze_refuses_non_interactive_without_yes() {
+        // Tests run headless (no TTY), so a freeze without --yes must fail closed:
+        // return an actionable error pointing to --yes and write no freeze file —
+        // never crash cryptically, never silently leave signing enabled.
+        let dir = tempfile::TempDir::new().unwrap();
+        let result = handle_freeze(
+            FreezeCommand {
+                duration: "24h".to_string(),
+                yes: false,
+                dry_run: false,
+                repo: Some(dir.path().to_path_buf()),
+            },
+            chrono::Utc::now(),
+        );
+        let err = result.expect_err("freeze without --yes in a non-interactive env must fail");
+        assert!(
+            err.to_string().contains("--yes"),
+            "the error must direct the operator to --yes, got: {err}"
+        );
+        assert!(
+            !dir.path().join("freeze.json").exists(),
+            "no freeze must be written"
+        );
     }
 }
