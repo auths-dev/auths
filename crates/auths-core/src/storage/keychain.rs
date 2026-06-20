@@ -225,7 +225,9 @@ pub fn migrate_legacy_alias(
 
     if keychain.load_key(&new_alias).is_ok() {
         // Already migrated (or a fresh multi-key identity was created without
-        // ever touching the legacy alias). In either case, new form wins.
+        // ever touching the legacy alias). In either case, new form wins — but
+        // still reconcile any next-key commitments left under the legacy prefix.
+        migrate_next_key_commitments(keychain, old_alias)?;
         return Ok(new_alias);
     }
 
@@ -241,7 +243,39 @@ pub fn migrate_legacy_alias(
     keychain.store_key(&new_alias, &did, role, &data)?;
     // Best-effort legacy cleanup; failure here isn't fatal.
     let _ = keychain.delete_key(old_alias);
+
+    // The current key moved to slot 0; its pre-committed next key(s) must move with
+    // it so rotation can still derive `{current}--next-N`. Leaving them under the
+    // legacy prefix orphans the commitment and bricks all future rotation.
+    migrate_next_key_commitments(keychain, old_alias)?;
     Ok(new_alias)
+}
+
+/// Move every `{old_alias}--next-{N}` commitment to `{old_alias}--0--next-{N}` so the
+/// next-key linkage survives the slot-0 migration of the current key. Idempotent:
+/// commitments already in the slot-0 form are left untouched.
+fn migrate_next_key_commitments(
+    keychain: &(dyn KeyStorage + Send + Sync),
+    old_alias: &KeyAlias,
+) -> Result<(), AgentError> {
+    let legacy_prefix = format!("{}--next-", old_alias);
+    let slot0_prefix = format!("{}--0--next-", old_alias);
+    for alias in keychain.list_aliases()? {
+        let Some(suffix) = alias.as_str().strip_prefix(legacy_prefix.as_str()) else {
+            continue;
+        };
+        let target = KeyAlias::new_unchecked(format!("{slot0_prefix}{suffix}"));
+        if keychain.load_key(&target).is_ok() {
+            continue;
+        }
+        let (did, role, data) = match keychain.load_key(&alias) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        keychain.store_key(&target, &did, role, &data)?;
+        let _ = keychain.delete_key(&alias);
+    }
+    Ok(())
 }
 
 /// Platform-agnostic interface for storing and loading private keys securely.
@@ -865,6 +899,87 @@ mod tests {
         assert!(KeyRole::from_persisted("bogus").is_err());
         assert!(KeyRole::from_persisted("").is_err());
         assert!(KeyRole::from_persisted("PRIMARY").is_err());
+    }
+
+    #[test]
+    fn migrate_legacy_alias_preserves_the_next_key_commitment() {
+        use super::super::memory::IsolatedKeychainHandle;
+
+        // A failed `id expand` must not brick rotation: when the legacy current key
+        // `main` migrates to slot `main--0`, its pre-committed next key `main--next-2`
+        // must move to `main--0--next-2` so rotation can still derive `{current}--next-N`.
+        // Otherwise the commitment is orphaned and the identity can never rotate.
+        let kc = IsolatedKeychainHandle::new();
+        let did = IdentityDID::parse("did:keri:Etest").unwrap();
+        kc.store_key(
+            &KeyAlias::new_unchecked("main"),
+            &did,
+            KeyRole::Primary,
+            b"current",
+        )
+        .unwrap();
+        kc.store_key(
+            &KeyAlias::new_unchecked("main--next-2"),
+            &did,
+            KeyRole::NextRotation,
+            b"next",
+        )
+        .unwrap();
+
+        let migrated = migrate_legacy_alias(&kc, &KeyAlias::new_unchecked("main")).unwrap();
+        assert_eq!(migrated.as_str(), "main--0");
+
+        assert!(
+            kc.load_key(&KeyAlias::new_unchecked("main--0")).is_ok(),
+            "current key must migrate to slot 0"
+        );
+        assert!(
+            kc.load_key(&KeyAlias::new_unchecked("main--0--next-2"))
+                .is_ok(),
+            "the next-key commitment must migrate with the current key, or rotation is bricked"
+        );
+        assert!(kc.load_key(&KeyAlias::new_unchecked("main")).is_err());
+        assert!(
+            kc.load_key(&KeyAlias::new_unchecked("main--next-2"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn migrate_legacy_alias_recovers_an_already_orphaned_next_key() {
+        use super::super::memory::IsolatedKeychainHandle;
+
+        // The corrupted state a pre-fix failed expand left behind: the current key is
+        // already at slot 0, but its next-key commitment was orphaned under the legacy
+        // prefix. Re-running migration must reconcile it and restore rotatability.
+        let kc = IsolatedKeychainHandle::new();
+        let did = IdentityDID::parse("did:keri:Etest").unwrap();
+        kc.store_key(
+            &KeyAlias::new_unchecked("main--0"),
+            &did,
+            KeyRole::Primary,
+            b"current",
+        )
+        .unwrap();
+        kc.store_key(
+            &KeyAlias::new_unchecked("main--next-2"),
+            &did,
+            KeyRole::NextRotation,
+            b"next",
+        )
+        .unwrap();
+
+        migrate_legacy_alias(&kc, &KeyAlias::new_unchecked("main")).unwrap();
+
+        assert!(
+            kc.load_key(&KeyAlias::new_unchecked("main--0--next-2"))
+                .is_ok(),
+            "re-running migration must recover an orphaned next-key commitment"
+        );
+        assert!(
+            kc.load_key(&KeyAlias::new_unchecked("main--next-2"))
+                .is_err()
+        );
     }
 
     #[test]
