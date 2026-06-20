@@ -6,6 +6,7 @@ mod did_parsing;
 mod expiration_skew;
 #[cfg(feature = "ffi")]
 mod ffi_smoke;
+mod issuer_signature_required;
 mod kel_verification;
 mod newtypes;
 mod presentation;

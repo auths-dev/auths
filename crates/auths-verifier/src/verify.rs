@@ -333,9 +333,13 @@ pub(crate) async fn verify_with_keys_at(
         .await?;
         debug!("(Verify) Issuer signature verified successfully.");
     } else {
-        debug!(
-            "(Verify) No identity signature present (device-only attestation), skipping issuer check."
-        );
+        // An attestation with no issuer signature cannot prove that any identity
+        // authorized it, so the authority path fails closed. A device asserting
+        // only about its own key is checked through a dedicated self-assertion
+        // entry point, never here.
+        return Err(AttestationError::IssuerSignatureFailed(
+            "missing issuer signature".to_string(),
+        ));
     }
 
     // --- 6. Verify device signature (dispatched on curve) ---
