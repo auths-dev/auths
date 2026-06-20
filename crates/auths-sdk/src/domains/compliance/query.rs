@@ -137,7 +137,8 @@ fn classify_rows(
     for r in releases {
         let authority_at_release =
             classify_authority_at_signing(ctx, org_prefix, &r.signer_prefix, r.signed_at)?;
-        let signer = IdentityDID::new_unchecked(format!("did:keri:{}", r.signer_prefix.as_str()));
+        let signer = IdentityDID::try_from(&r.signer_prefix)
+            .map_err(|e| ComplianceQueryError::InvalidRelease(e.to_string()))?;
         rows.push(EvidenceRow {
             artifact_digest: r.artifact_digest.clone(),
             signer,
@@ -271,14 +272,14 @@ mod tests {
     fn sample_pack() -> EvidencePack {
         EvidencePack {
             schema_version: EVIDENCE_PACK_SCHEMA_VERSION,
-            org: IdentityDID::new_unchecked("did:keri:EOrg"),
+            org: IdentityDID::parse("did:keri:EOrg").unwrap(),
             period: "2026-Q3".into(),
             framework: ComplianceFramework::Slsa,
             equivocation_visibility: single_operator_ceiling(),
             generated_at: fixed_now(),
             rows: vec![EvidenceRow {
                 artifact_digest: "sha256:aa".into(),
-                signer: IdentityDID::new_unchecked("did:keri:EAlice"),
+                signer: IdentityDID::parse("did:keri:EAlice").unwrap(),
                 authority_at_release: AuthorityAtSigning::AuthorizedBeforeRevocation,
                 signed_at: Some(7),
                 transparency: None,

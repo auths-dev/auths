@@ -872,9 +872,7 @@ mod tests {
         use super::super::memory::IsolatedKeychainHandle;
 
         let keychain = IsolatedKeychainHandle::new();
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: test-only literal with valid did:keri: prefix
-        let did = IdentityDID::new_unchecked("did:keri:Etest".to_string());
+        let did = IdentityDID::parse("did:keri:Etest").unwrap();
 
         keychain
             .store_key(

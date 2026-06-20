@@ -348,15 +348,10 @@ impl IdentityStorage for RegistryIdentityStorage {
             .get_key_state(&prefix)
             .map_err(|e| StorageError::InvalidData(format!("Failed to load key state: {}", e)))?;
 
-        // Build controller DID
-        let controller_did = format!("did:keri:{}", prefix_str);
-
-        // Load metadata
         let metadata = self.load_metadata(&prefix)?;
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: controller_did is derived from a validated KERI prefix via format!("did:keri:{}", prefix_str)
-        let controller_did = IdentityDID::new_unchecked(controller_did);
+        let controller_did = IdentityDID::parse(&format!("did:keri:{}", prefix_str))
+            .map_err(|e| StorageError::InvalidData(format!("Invalid controller DID: {}", e)))?;
         Ok(ManagedIdentity {
             controller_did,
             storage_id: self.get_storage_id(),

@@ -276,9 +276,7 @@ impl AttestationIndex {
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: issuer_did was validated on insert via upsert_attestation and stored in SQLite
-        let issuer_did = IdentityDID::new_unchecked(issuer_did);
+        let issuer_did = IdentityDID::parse(&issuer_did)?;
         #[allow(clippy::disallowed_methods)]
         // INVARIANT: device_did was validated on insert via upsert_attestation and stored in SQLite
         let device_did = CanonicalDid::new_unchecked(device_did);
@@ -421,9 +419,7 @@ impl AttestationIndex {
             #[allow(clippy::disallowed_methods)]
             // INVARIANT: member_did was validated on insert via upsert_org_member and stored in SQLite
             let member_did = CanonicalDid::new_unchecked(member_did);
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: issuer_did was validated on insert via upsert_org_member and stored in SQLite
-            let issuer_did = IdentityDID::new_unchecked(issuer_did);
+            let issuer_did = IdentityDID::parse(&issuer_did)?;
 
             members.push(IndexedOrgMember {
                 org_prefix,
@@ -476,8 +472,7 @@ mod tests {
         device: &str,
         revoked_at: Option<DateTime<Utc>>,
     ) -> IndexedAttestation {
-        #[allow(clippy::disallowed_methods)] // INVARIANT: test-only hardcoded DID string literal
-        let issuer_did = IdentityDID::new_unchecked("did:key:issuer123");
+        let issuer_did = IdentityDID::parse("did:keri:Eissuer123").unwrap();
         #[allow(clippy::disallowed_methods)] // INVARIANT: test-only DID string from caller
         let device_did = CanonicalDid::new_unchecked(device);
 
@@ -539,7 +534,7 @@ mod tests {
         index.upsert_attestation(&att1).unwrap();
         index.upsert_attestation(&att2).unwrap();
 
-        let results = index.query_by_issuer("did:key:issuer123").unwrap();
+        let results = index.query_by_issuer("did:keri:Eissuer123").unwrap();
         assert_eq!(results.len(), 2);
     }
 
@@ -668,7 +663,7 @@ mod tests {
         let member = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
             member_did: CanonicalDid::new_unchecked("did:key:z6MkMember1"),
-            issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+            issuer_did: IdentityDID::parse("did:keri:EOrg").unwrap(),
             rid: ResourceId::new("rid-member-1"),
             revoked_at: None,
             expires_at: None,
@@ -690,7 +685,7 @@ mod tests {
         let member = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
             member_did: CanonicalDid::new_unchecked("did:key:z6MkMember1"),
-            issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+            issuer_did: IdentityDID::parse("did:keri:EOrg").unwrap(),
             rid: ResourceId::new("rid-v1"),
             revoked_at: None,
             expires_at: None,
@@ -702,7 +697,7 @@ mod tests {
         let updated = IndexedOrgMember {
             org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
             member_did: CanonicalDid::new_unchecked("did:key:z6MkMember1"),
-            issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+            issuer_did: IdentityDID::parse("did:keri:EOrg").unwrap(),
             rid: ResourceId::new("rid-v2"),
             revoked_at: Some(Utc::now()),
             expires_at: None,
@@ -727,7 +722,7 @@ mod tests {
             let member = IndexedOrgMember {
                 org_prefix: Prefix::new_unchecked("did:keri:EOrg".to_string()),
                 member_did: CanonicalDid::new_unchecked(format!("did:key:z6MkMember{}", i)),
-                issuer_did: IdentityDID::new_unchecked("did:keri:EOrg"),
+                issuer_did: IdentityDID::parse("did:keri:EOrg").unwrap(),
                 rid: ResourceId::new(format!("rid-{}", i)),
                 revoked_at: None,
                 expires_at: None,
@@ -738,5 +733,39 @@ mod tests {
 
         assert_eq!(index.count_org_members("did:keri:EOrg").unwrap(), 3);
         assert_eq!(index.count_org_members("did:keri:EOther").unwrap(), 0);
+    }
+
+    #[test]
+    fn corrupt_attestation_issuer_fails_closed_on_read() {
+        let index = AttestationIndex::in_memory().unwrap();
+        index
+            .conn
+            .execute(
+                "INSERT INTO attestations \
+                 (rid, issuer_did, device_did, git_ref, updated_at) \
+                 VALUES ('rid1', 'not-a-did', 'did:key:device1', 'refs/x', '2026-01-01T00:00:00Z')",
+            )
+            .unwrap();
+
+        let err = index.query_active().unwrap_err();
+        assert!(matches!(err, crate::error::IndexError::InvalidDid(_)));
+    }
+
+    #[test]
+    fn corrupt_org_member_issuer_fails_closed_on_read() {
+        let index = AttestationIndex::in_memory().unwrap();
+        index
+            .conn
+            .execute(
+                "INSERT INTO org_members \
+                 (org_prefix, member_did, issuer_did, rid, updated_at) \
+                 VALUES ('did:keri:EOrg', 'did:key:z6MkMember1', 'not-a-did', 'rid1', '2026-01-01T00:00:00Z')",
+            )
+            .unwrap();
+
+        let err = index
+            .list_org_members_indexed("did:keri:EOrg")
+            .unwrap_err();
+        assert!(matches!(err, crate::error::IndexError::InvalidDid(_)));
     }
 }

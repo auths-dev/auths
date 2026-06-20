@@ -948,8 +948,7 @@ pub fn handle_id(
             // Create the bundle. Curve flows in-band from the typed keychain
             // extraction so verifiers never re-derive it from byte length.
             let bundle = IdentityBundle {
-                #[allow(clippy::disallowed_methods)] // INVARIANT: controller_did from storage
-                identity_did: IdentityDID::new_unchecked(identity.controller_did.to_string()),
+                identity_did: identity.controller_did.clone(),
                 public_key_hex,
                 curve,
                 attestation_chain: attestations,
@@ -1065,8 +1064,8 @@ pub fn handle_id(
                 auths_sdk::pairing::load_controller_did(ctx.identity_storage.as_ref())
                     .map_err(anyhow::Error::from)?;
 
-            #[allow(clippy::disallowed_methods)]
-            let identity_did = IdentityDID::new_unchecked(controller_did.clone());
+            let identity_did = IdentityDID::parse(&controller_did)
+                .context("controller DID is not a valid did:keri identifier")?;
             let aliases = ctx
                 .key_storage
                 .list_aliases_for_identity(&identity_did)

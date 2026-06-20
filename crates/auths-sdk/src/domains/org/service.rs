@@ -275,11 +275,12 @@ pub fn create_org(
         expires_at: None,
     };
 
+    let issuer_canonical = CanonicalDid::from(controller_did.clone());
     let attestation = create_signed_attestation(
         now,
         AttestationInput {
             rid: &rid,
-            identity_did: &controller_did,
+            identity_did: &issuer_canonical,
             subject: &org_did,
             device_public_key: &org_pk_bytes,
             device_curve: org_curve,

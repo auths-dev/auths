@@ -161,9 +161,8 @@ pub fn handle_key(cmd: KeyCommand) -> Result<()> {
             seed_file,
             controller_did,
         } => {
-            #[allow(clippy::disallowed_methods)]
-            // INVARIANT: controller_did from CLI arg validated by clap
-            let identity_did = IdentityDID::new_unchecked(controller_did);
+            let identity_did = IdentityDID::try_from(controller_did)
+                .context("controller DID is not a valid did:keri identifier")?;
             key_import(&key_alias, &seed_file, &identity_did)
         }
         KeySubcommand::CopyBackend {

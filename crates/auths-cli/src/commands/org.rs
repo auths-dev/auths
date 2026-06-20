@@ -530,11 +530,12 @@ pub fn handle_org(
             };
 
             let signer = StorageSigner::new(key_storage);
+            let issuer_canonical = CanonicalDid::from(controller_did.clone());
             let attestation = create_signed_attestation(
                 now,
                 auths_sdk::attestation::AttestationInput {
                     rid: &rid,
-                    identity_did: &controller_did,
+                    identity_did: &issuer_canonical,
                     subject: &subject_device_did,
                     device_public_key: &device_pk_bytes,
                     device_curve,

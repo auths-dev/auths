@@ -28,7 +28,7 @@ use auths_core::pairing::types::{SubmitConfirmationRequest, SubmitResponseReques
 use auths_core::pairing::{
     Base64UrlEncoded, GetConfirmationResponse, PairingResponse, PairingToken,
 };
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyRole, extract_public_key_bytes};
+use auths_core::storage::keychain::{KeyAlias, KeyRole, extract_public_key_bytes};
 use auths_crypto::CurveType;
 use auths_id::keri::delegation::{DeviceDipBundle, anchor_received_dip, build_device_dip};
 use auths_id::keri::types::Prefix;
@@ -83,12 +83,9 @@ fn resolve_root_signing(ctx: &AuthsContext) -> Result<(Prefix, KeyAlias, CurveTy
     let root_prefix = parse_did_keri(managed.controller_did.as_str())
         .map_err(|e| PairingError::IdentityNotFound(format!("invalid root did:keri: {e}")))?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: controller_did is a validated IdentityDID from IdentityStorage.
-    let controller_identity_did = IdentityDID::new_unchecked(managed.controller_did.to_string());
     let aliases = ctx
         .key_storage
-        .list_aliases_for_identity(&controller_identity_did)
+        .list_aliases_for_identity(&managed.controller_did)
         .map_err(|e| PairingError::IdentityNotFound(e.to_string()))?;
     let root_alias = aliases
         .into_iter()

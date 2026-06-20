@@ -220,12 +220,13 @@ fn record_delegation_attestation(
         note: None,
     };
     let subject = CanonicalDid::from(agent_did.clone());
+    let issuer_canonical = CanonicalDid::from(identity_did.clone());
     let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
     let attestation = create_signed_attestation(
         now,
         AttestationInput {
             rid,
-            identity_did,
+            identity_did: &issuer_canonical,
             subject: &subject,
             device_public_key: &agent_pk,
             device_curve: agent_pk_curve,
@@ -597,9 +598,10 @@ pub fn rotate(
     }
 
     // Resolve the agent's keychain alias (its current key) and curves.
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: agent_did was validated by parse_did_keri above.
-    let agent_did_typed = IdentityDID::new_unchecked(agent_did.to_string());
+    let agent_did_typed =
+        IdentityDID::try_from(&agent_prefix).map_err(|e| AgentError::AgentNotFound {
+            did: format!("invalid agent did:keri: {e}"),
+        })?;
     let agent_alias = ctx
         .key_storage
         .list_aliases_for_identity(&agent_did_typed)

@@ -453,7 +453,7 @@ mod tests {
     fn test_store_and_load_key() {
         let (storage, _temp) = create_test_storage();
         let alias = KeyAlias::new("test-alias").unwrap();
-        let identity_did = IdentityDID::new_unchecked("did:keri:test123");
+        let identity_did = IdentityDID::parse("did:keri:test123").unwrap();
         let encrypted_data = b"encrypted_key_bytes";
 
         storage
@@ -470,11 +470,19 @@ mod tests {
     fn load_rejects_tampered_identity_did() {
         let (storage, _temp) = create_test_storage();
         let alias = KeyAlias::new("tampered").unwrap();
-        // A corrupted or hand-edited keystore entry: a DID string that never passed parse().
-        let tampered = IdentityDID::new_unchecked("not-a-did");
-        storage
-            .store_key(&alias, &tampered, KeyRole::Primary, b"x")
-            .unwrap();
+
+        // Simulate a corrupted or hand-edited keystore: write a DID string that never
+        // passed parse() straight into the stored entry, bypassing the validated type.
+        let mut data = KeyData::default();
+        data.keys.insert(
+            alias.as_str().to_string(),
+            KeyEntry::WithRole(
+                "not-a-did".to_string(),
+                KeyRole::Primary.to_string(),
+                BASE64.encode(b"x"),
+            ),
+        );
+        storage.write_data(&data).unwrap();
 
         assert!(matches!(
             storage.load_key(&alias),
@@ -489,7 +497,7 @@ mod tests {
     #[test]
     fn test_list_aliases() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new_unchecked("did:keri:test");
+        let did = IdentityDID::parse("did:keri:test").unwrap();
 
         storage
             .store_key(
@@ -522,8 +530,8 @@ mod tests {
     #[test]
     fn test_list_aliases_for_identity() {
         let (storage, _temp) = create_test_storage();
-        let did1 = IdentityDID::new_unchecked("did:keri:one");
-        let did2 = IdentityDID::new_unchecked("did:keri:two");
+        let did1 = IdentityDID::parse("did:keri:one").unwrap();
+        let did2 = IdentityDID::parse("did:keri:two").unwrap();
 
         storage
             .store_key(
@@ -561,7 +569,7 @@ mod tests {
     #[test]
     fn test_delete_key() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new_unchecked("did:keri:test");
+        let did = IdentityDID::parse("did:keri:test").unwrap();
         let alias = KeyAlias::new("alias").unwrap();
 
         storage
@@ -579,7 +587,7 @@ mod tests {
     #[test]
     fn test_get_identity_for_alias() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new_unchecked("did:keri:test123");
+        let did = IdentityDID::parse("did:keri:test123").unwrap();
         let alias = KeyAlias::new("alias").unwrap();
 
         storage
@@ -599,7 +607,7 @@ mod tests {
     #[test]
     fn test_file_format_version() {
         let (storage, _temp) = create_test_storage();
-        let did = IdentityDID::new_unchecked("did:keri:test");
+        let did = IdentityDID::parse("did:keri:test").unwrap();
 
         storage
             .store_key(
@@ -624,7 +632,7 @@ mod tests {
     fn test_missing_password_error() {
         let temp_dir = TempDir::new().unwrap();
         let storage = EncryptedFileStorage::new(temp_dir.path()).unwrap();
-        let did = IdentityDID::new_unchecked("did:test".to_string());
+        let did = IdentityDID::parse("did:keri:test").unwrap();
         let result = storage.store_key(
             &KeyAlias::new("alias").unwrap(),
             &did,

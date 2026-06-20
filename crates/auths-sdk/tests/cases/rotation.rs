@@ -313,7 +313,7 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
     let _ = registry.append_event(&prefix, &Event::Rot(dummy_rot));
 
     let key_material = RotationKeyMaterial {
-        did: IdentityDID::new_unchecked(format!("did:keri:{}", prefix.as_str())),
+        did: IdentityDID::try_from(&prefix).unwrap(),
         next_alias: KeyAlias::new_unchecked("rotated-key"),
         new_next_alias: KeyAlias::new_unchecked("rotated-key--next-1"),
         old_next_alias: KeyAlias::new_unchecked("test-key--next-0"),

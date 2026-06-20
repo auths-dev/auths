@@ -211,8 +211,10 @@ impl TestIdentityBuilder {
         let identity_public_key = identity_pubkey.to_vec();
 
         // Create DID from public key (using simplified test format)
-        let did_str = format!("did:key:z6Mk{}", hex::encode(&identity_public_key));
-        let did = IdentityDID::new_unchecked(did_str.clone());
+        let key_hex = hex::encode(&identity_public_key);
+        let did_str = format!("did:key:z6Mk{}", key_hex);
+        let did = IdentityDID::parse(&format!("did:keri:{key_hex}"))
+            .map_err(|e| AgentError::InvalidInput(format!("test identity DID: {e}")))?;
 
         // Build PKCS#8 v2 for storage compatibility, then encrypt
         let identity_pkcs8 =

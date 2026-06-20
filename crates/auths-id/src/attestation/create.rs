@@ -41,8 +41,10 @@ pub struct CanonicalRevocationData<'a> {
 pub struct AttestationInput<'a> {
     /// Resource identifier for this attestation.
     pub rid: &'a str,
-    /// The identity DID (e.g., "did:keri:...") issuing the attestation.
-    pub identity_did: &'a IdentityDID,
+    /// The issuer DID — `did:keri:` for an identity, or a `did:key:` for an
+    /// ephemeral key acting as its own issuer. Typed as `&CanonicalDid` so both
+    /// shapes are representable without an unvalidated construction.
+    pub identity_did: &'a CanonicalDid,
     /// The subject of the attestation — typed as `&CanonicalDid` so
     /// callers can supply either `did:key:` or `did:keri:` shapes. The
     /// wire format (`Attestation.subject`) is also `CanonicalDid`, so
@@ -134,10 +136,9 @@ pub fn create_signed_attestation(
         }
     }
 
-    // Build attestation with empty signatures first (ActionEnvelope pattern)
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: identity_did is an IdentityDID which guarantees valid DID format
-    let issuer_canonical = CanonicalDid::new_unchecked(identity_did.as_str());
+    // Build attestation with empty signatures first (ActionEnvelope pattern). The issuer is
+    // already a CanonicalDid (did:keri for an identity, did:key for an ephemeral self-issuer).
+    let issuer_canonical = identity_did.clone();
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: subject is a validated CanonicalDid from the caller
     let subject_canonical = CanonicalDid::new_unchecked(subject.as_str());

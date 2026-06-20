@@ -78,7 +78,7 @@ fn generate_device_keypair(
 
     let encrypted = auths_core::crypto::signer::encrypt_keypair(device_pkcs8.as_ref(), passphrase)
         .expect("Failed to encrypt device key");
-    let identity_did_typed = IdentityDID::new_unchecked(identity_did);
+    let identity_did_typed = IdentityDID::parse(identity_did).unwrap();
     keychain
         .store_key(
             &KeyAlias::new_unchecked(device_alias),
@@ -111,7 +111,7 @@ fn create_test_attestation(
         timestamp: Some(now),
         expires_at: None,
     };
-    let identity_did = IdentityDID::new_unchecked(identity_did);
+    let identity_did = CanonicalDid::parse(identity_did).unwrap();
     let identity_alias = KeyAlias::new_unchecked(identity_alias);
     let device_alias = device_alias.map(KeyAlias::new_unchecked);
 

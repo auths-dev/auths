@@ -148,9 +148,7 @@ fn extract_attestation_from_ref(
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(Utc::now);
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: issuer_did extracted from attestation JSON stored in a signed Git commit
-    let issuer_did = IdentityDID::new_unchecked(&issuer_did);
+    let issuer_did = IdentityDID::parse(&issuer_did)?;
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: device_did extracted from attestation JSON stored in a signed Git commit
     let device_did = CanonicalDid::new_unchecked(&device_did);
@@ -226,5 +224,50 @@ mod tests {
             }
             other => panic!("expected DeprecatedPrefix, got {other:?}"),
         }
+    }
+
+    fn seed_attestation_ref(repo: &Repository, leaf: &str, attestation_json: &[u8]) {
+        let blob = repo.blob(attestation_json).expect("blob");
+        let mut builder = repo.treebuilder(None).expect("treebuilder");
+        builder
+            .insert("attestation.json", blob, 0o100644)
+            .expect("insert");
+        let tree = builder.write().expect("write tree");
+        let tree_obj = repo.find_tree(tree).expect("find tree");
+        let sig = git2::Signature::now("test", "test@example.com").expect("sig");
+        let commit_oid = repo
+            .commit(None, &sig, &sig, "attestation", &tree_obj, &[])
+            .expect("commit");
+        let ref_name = format!("{}/{}/signatures", DEFAULT_ATTESTATION_PREFIX, leaf);
+        repo.reference(&ref_name, commit_oid, true, "test")
+            .expect("ref");
+    }
+
+    #[test]
+    fn malformed_issuer_did_is_skipped_fail_closed() {
+        // An attestation whose issuer is not a did:keri: identity must not
+        // be indexed; the rebuild counts it as an error and indexes nothing.
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let repo = Repository::init_bare(tmp.path()).expect("init_bare");
+        let attestation = br#"{
+            "rid": "rid1",
+            "issuer": "not-a-did",
+            "subject": "did:key:z6MkDevice1"
+        }"#;
+        seed_attestation_ref(&repo, "device1", attestation);
+
+        let index = AttestationIndex::in_memory().expect("open index");
+        let stats = rebuild_attestations_from_git(
+            &index,
+            tmp.path(),
+            DEFAULT_ATTESTATION_PREFIX,
+            "attestation.json",
+        )
+        .expect("rebuild should complete and skip the bad ref");
+
+        assert_eq!(stats.refs_scanned, 1);
+        assert_eq!(stats.attestations_indexed, 0);
+        assert_eq!(stats.errors, 1);
+        assert_eq!(index.count().expect("count"), 0);
     }
 }

@@ -19,7 +19,7 @@ const MEMBER_PUBKEY: [u8; 32] = [
 ];
 
 fn org_issuer() -> IdentityDID {
-    IdentityDID::new_unchecked(format!("did:keri:{ORG}"))
+    IdentityDID::parse(&format!("did:keri:{ORG}")).unwrap()
 }
 
 fn base_admin_attestation() -> Attestation {

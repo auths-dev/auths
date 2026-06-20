@@ -325,9 +325,10 @@ fn resolve_signing_key_alias(
     ctx: &AuthsContext,
     controller_did: &str,
 ) -> Result<KeyAlias, PlatformError> {
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: controller_did comes from load_controller_did() which returns into_inner() of a validated IdentityDID from storage
-    let identity_did = IdentityDID::new_unchecked(controller_did.to_string());
+    let identity_did =
+        IdentityDID::parse(controller_did).map_err(|e| PlatformError::Platform {
+            message: format!("invalid controller did: {e}"),
+        })?;
     let aliases = ctx
         .key_storage
         .list_aliases_for_identity(&identity_did)
@@ -487,4 +488,48 @@ pub async fn update_github_ssh_scopes<
     }
 
     Ok(profile)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use auths_core::PrefilledPassphraseProvider;
+    use auths_core::ports::clock::SystemClock;
+    use auths_core::signing::PassphraseProvider;
+    use auths_core::storage::memory::MemoryKeychainHandle;
+    use auths_id::attestation::export::AttestationSink;
+    use auths_id::ports::registry::RegistryBackend;
+    use auths_id::storage::attestation::AttestationSource;
+    use auths_id::testing::fakes::{
+        FakeAttestationSink, FakeAttestationSource, FakeIdentityStorage, FakeRegistryBackend,
+    };
+
+    fn ctx() -> AuthsContext {
+        AuthsContext::builder()
+            .registry(Arc::new(FakeRegistryBackend::new()) as Arc<dyn RegistryBackend + Send + Sync>)
+            .key_storage(Arc::new(MemoryKeychainHandle))
+            .clock(Arc::new(SystemClock))
+            .identity_storage(
+                Arc::new(FakeIdentityStorage::new()) as Arc<dyn IdentityStorage + Send + Sync>
+            )
+            .attestation_sink(
+                Arc::new(FakeAttestationSink::new()) as Arc<dyn AttestationSink + Send + Sync>
+            )
+            .attestation_source(
+                Arc::new(FakeAttestationSource::new()) as Arc<dyn AttestationSource + Send + Sync>
+            )
+            .passphrase_provider(
+                Arc::new(PrefilledPassphraseProvider::new(""))
+                    as Arc<dyn PassphraseProvider + Send + Sync>,
+            )
+            .build()
+    }
+
+    #[test]
+    fn resolve_signing_key_alias_rejects_malformed_controller_did() {
+        let result = resolve_signing_key_alias(&ctx(), "not-a-keri-did");
+        assert!(matches!(result, Err(PlatformError::Platform { .. })));
+    }
 }

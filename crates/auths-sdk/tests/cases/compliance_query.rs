@@ -224,7 +224,7 @@ fn offline_pack_round_trips_and_verifies_with_zero_network() {
     assert_eq!(verdicts[0].transparency_verified, None);
 
     // A non-pinned root fails closed.
-    let stranger = IdentityDID::new_unchecked("did:keri:EStranger".to_string());
+    let stranger = IdentityDID::parse("did:keri:EStranger").unwrap();
     assert!(
         verify_evidence_pack_offline(&reloaded, &[stranger], None).is_err(),
         "an unpinned org must fail offline verification"
@@ -531,7 +531,7 @@ fn signed_offline_pack_verifies_end_to_end_from_envelope_and_roots_alone() {
     );
 
     // An auditor who pinned a different root rejects the whole pack.
-    let stranger = IdentityDID::new_unchecked("did:keri:EStranger".to_string());
+    let stranger = IdentityDID::parse("did:keri:EStranger").unwrap();
     assert!(
         verify_signed_evidence_pack_offline(&raw, &[stranger], None).is_err(),
         "an unpinned org must fail closed"

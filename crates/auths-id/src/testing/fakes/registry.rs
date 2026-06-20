@@ -342,9 +342,13 @@ impl RegistryBackend for FakeRegistryBackend {
             if org_key != org {
                 continue;
             }
+            let org_did =
+                IdentityDID::from_prefix(org).map_err(|e| RegistryError::InvalidPrefix {
+                    prefix: org.to_string(),
+                    reason: e.to_string(),
+                })?;
             let entry = OrgMemberEntry {
-                #[allow(clippy::disallowed_methods)] // INVARIANT: org is a KERI prefix from the org_members map key, format! produces a valid did:keri string
-                org: IdentityDID::new_unchecked(format!("did:keri:{}", org)),
+                org: org_did,
                 #[allow(clippy::disallowed_methods)] // INVARIANT: member_did_str is a DID string stored in the org_members map key
                 did: CanonicalDid::new_unchecked(member_did_str.clone()),
                 filename: format!("{}.json", member_did_str.replace(':', "_")),
@@ -459,11 +463,17 @@ fn validate_org_member(
 ) -> Result<Attestation, MemberInvalidReason> {
     let expected_issuer = format!("did:keri:{}", org);
     if att.issuer.as_str() != expected_issuer {
+        let expected = IdentityDID::from_prefix(org)
+            .map_err(|e| MemberInvalidReason::Other(format!("invalid org prefix '{org}': {e}")))?;
+        let actual = IdentityDID::parse(att.issuer.as_str()).map_err(|e| {
+            MemberInvalidReason::Other(format!(
+                "unparseable issuer DID '{}': {e}",
+                att.issuer.as_str()
+            ))
+        })?;
         return Err(MemberInvalidReason::IssuerMismatch {
-            #[allow(clippy::disallowed_methods)] // INVARIANT: format! with "did:keri:" prefix and org KERI prefix produces a valid did:keri string
-            expected_issuer: IdentityDID::new_unchecked(expected_issuer),
-            #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid from a deserialized Attestation
-            actual_issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
+            expected_issuer: expected,
+            actual_issuer: actual,
         });
     }
     if att.subject.as_str() != member_did_str {

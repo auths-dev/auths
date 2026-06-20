@@ -176,8 +176,10 @@ use std::str::FromStr;
 pub struct IdentityDID(String);
 
 impl IdentityDID {
-    /// Wraps a DID string without validation (for trusted internal paths).
-    pub fn new_unchecked<S: Into<String>>(s: S) -> Self {
+    /// Wraps a DID string without validation. Crate-internal only: external callers must use
+    /// `parse` / `TryFrom`, which validate the `did:keri:` shape. The clippy ban plus this
+    /// visibility make an unvalidated `IdentityDID` unconstructable outside this crate.
+    pub(crate) fn new_unchecked<S: Into<String>>(s: S) -> Self {
         Self(s.into())
     }
 

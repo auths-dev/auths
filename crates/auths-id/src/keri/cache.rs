@@ -57,6 +57,9 @@ pub enum CacheError {
 
     #[error("JSON serialization error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("invalid DID: {0}")]
+    InvalidDid(String),
 }
 
 impl auths_core::error::AuthsErrorInfo for CacheError {
@@ -64,6 +67,7 @@ impl auths_core::error::AuthsErrorInfo for CacheError {
         match self {
             Self::Io(_) => "AUTHS-E4986",
             Self::Json(_) => "AUTHS-E4987",
+            Self::InvalidDid(_) => "AUTHS-E4988",
         }
     }
 
@@ -75,6 +79,7 @@ impl auths_core::error::AuthsErrorInfo for CacheError {
             Self::Json(_) => {
                 Some("The cache file may be corrupted; try clearing it with 'auths cache clear'")
             }
+            Self::InvalidDid(_) => Some("The DID must be a 'did:keri:' identity"),
         }
     }
 }
@@ -124,10 +129,10 @@ pub fn write_kel_cache(
     commit_oid: &str,
     now: DateTime<Utc>,
 ) -> Result<(), CacheError> {
+    let did_parsed = IdentityDID::parse(did).map_err(|e| CacheError::InvalidDid(e.to_string()))?;
     let cache = CachedKelState {
         version: CACHE_VERSION,
-        #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass a did:keri string that was resolved via parse_did_keri()
-        did: IdentityDID::new_unchecked(did),
+        did: did_parsed,
         sequence: state.sequence,
         validated_against_tip_said: Said::new_unchecked(tip_said.to_string()),
         #[allow(clippy::disallowed_methods)] // INVARIANT: callers pass the hex-encoded Git commit OID read from the repository
@@ -418,6 +423,23 @@ mod tests {
     }
 
     #[test]
+    fn write_kel_cache_refuses_non_keri_did() {
+        let dir = TempDir::new().unwrap();
+        let state = create_test_state();
+
+        let result = write_kel_cache(
+            dir.path(),
+            "did:key:z6MkNotAKeriIdentity",
+            &state,
+            "ELatestSaid",
+            VALID_OID,
+            Utc::now(),
+        );
+
+        assert!(matches!(result, Err(CacheError::InvalidDid(_))));
+    }
+
+    #[test]
     fn test_cache_invalidation_on_said_mismatch() {
         let dir = TempDir::new().unwrap();
         let did = "did:keri:EMismatch";
@@ -449,7 +471,7 @@ mod tests {
         let path = cache_path_for_did(dir.path(), did);
         let mut cache: CachedKelState =
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        cache.did = IdentityDID::new_unchecked("did:keri:EWrongDid");
+        cache.did = IdentityDID::parse("did:keri:EWrongDid").unwrap();
         fs::write(&path, serde_json::to_vec_pretty(&cache).unwrap()).unwrap();
 
         // Try to load - should return None due to DID mismatch

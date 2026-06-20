@@ -768,13 +768,18 @@ pub trait RegistryBackend: Send + Sync {
             // same reason — filtering on attestation-borne role/caps would re-introduce
             // the retired authority reader.
             if let Some(att) = att_opt {
+                // Fail closed: an attestation whose issuer is not a `did:keri:`
+                // identity is dropped from the view rather than surfaced with an
+                // unvalidated issuer.
+                let Ok(issuer) = IdentityDID::parse(att.issuer.as_str()) else {
+                    return ControlFlow::Continue(());
+                };
                 members.push(MemberView {
                     did: entry.did.clone(),
                     status,
                     role: None,
                     capabilities: vec![],
-                    #[allow(clippy::disallowed_methods)] // INVARIANT: att.issuer is a CanonicalDid parsed from validated attestation JSON
-                    issuer: IdentityDID::new_unchecked(att.issuer.as_str()),
+                    issuer,
                     rid: att.rid.clone(),
                     revoked_at,
                     expires_at: att.expires_at,

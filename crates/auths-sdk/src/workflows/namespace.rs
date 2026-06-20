@@ -58,6 +58,10 @@ pub enum NamespaceError {
     #[error("invalid package name: {0}")]
     InvalidPackageName(String),
 
+    /// A supplied DID is not a valid `did:keri:` identity.
+    #[error("invalid did: {0}")]
+    InvalidDid(String),
+
     /// A network operation failed.
     #[error("network error: {0}")]
     NetworkError(String),
@@ -265,9 +269,8 @@ pub fn sign_namespace_delegate(
     validate_ecosystem(&cmd.ecosystem)?;
     validate_package_name(&cmd.package_name)?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: delegate_did is from CLI input, validated at presentation boundary
-    let delegate_identity = IdentityDID::new_unchecked(&cmd.delegate_did);
+    let delegate_identity = IdentityDID::parse(&cmd.delegate_did)
+        .map_err(|e| NamespaceError::InvalidDid(e.to_string()))?;
 
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: actor_did is an IdentityDID from storage, always valid
@@ -312,9 +315,8 @@ pub fn sign_namespace_transfer(
     validate_ecosystem(&cmd.ecosystem)?;
     validate_package_name(&cmd.package_name)?;
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: new_owner_did is from CLI input, validated at presentation boundary
-    let new_owner_identity = IdentityDID::new_unchecked(&cmd.new_owner_did);
+    let new_owner_identity = IdentityDID::parse(&cmd.new_owner_did)
+        .map_err(|e| NamespaceError::InvalidDid(e.to_string()))?;
 
     #[allow(clippy::disallowed_methods)]
     // INVARIANT: actor_did is an IdentityDID from storage, always valid
@@ -525,4 +527,51 @@ pub async fn initiate_namespace_claim(
         controller_did,
         platform,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::fakes::FakeSecureSigner;
+    use auths_core::PrefilledPassphraseProvider;
+
+    fn actor() -> IdentityDID {
+        IdentityDID::parse("did:keri:EActor").unwrap()
+    }
+
+    #[test]
+    fn sign_namespace_delegate_rejects_malformed_delegate_did() {
+        let cmd = DelegateNamespaceCommand {
+            ecosystem: "npm".into(),
+            package_name: "pkg".into(),
+            delegate_did: "not-a-did".into(),
+            registry_url: "https://registry.example.com".into(),
+        };
+        let result = sign_namespace_delegate(
+            &cmd,
+            &actor(),
+            &FakeSecureSigner,
+            &PrefilledPassphraseProvider::new(""),
+            &KeyAlias::new_unchecked("alias"),
+        );
+        assert!(matches!(result, Err(NamespaceError::InvalidDid(_))));
+    }
+
+    #[test]
+    fn sign_namespace_transfer_rejects_malformed_new_owner_did() {
+        let cmd = TransferNamespaceCommand {
+            ecosystem: "npm".into(),
+            package_name: "pkg".into(),
+            new_owner_did: "did:web:example.com".into(),
+            registry_url: "https://registry.example.com".into(),
+        };
+        let result = sign_namespace_transfer(
+            &cmd,
+            &actor(),
+            &FakeSecureSigner,
+            &PrefilledPassphraseProvider::new(""),
+            &KeyAlias::new_unchecked("alias"),
+        );
+        assert!(matches!(result, Err(NamespaceError::InvalidDid(_))));
+    }
 }

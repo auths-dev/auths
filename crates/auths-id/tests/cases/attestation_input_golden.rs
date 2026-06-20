@@ -11,7 +11,7 @@
 use chrono::TimeZone;
 use sha2::{Digest, Sha256};
 
-use auths_core::storage::keychain::{IdentityDID, KeyAlias};
+use auths_core::storage::keychain::KeyAlias;
 use auths_crypto::testing::seeded_p256_keypair;
 use auths_id::attestation::create::AttestationInput;
 use auths_id::storage::git_refs::AttestationMetadata;
@@ -28,10 +28,7 @@ fn canonical_bytes_are_byte_stable_under_fixed_seed() {
     // Seeded inputs — every value chosen to be deterministic.
     let (_pkcs8, pub_compressed) = seeded_p256_keypair(1_700_000_000);
 
-    #[allow(clippy::disallowed_methods)]
-    // INVARIANT: test-only IdentityDID built from a seeded prefix; never
-    // used at runtime.
-    let identity_did = IdentityDID::new_unchecked("did:keri:EGoldenIdentity".to_string());
+    let identity_did = CanonicalDid::parse("did:keri:EGoldenIdentity").unwrap();
 
     let subject =
         CanonicalDid::from_public_key_did_key(&pub_compressed, auths_crypto::CurveType::P256);
@@ -103,8 +100,7 @@ fn canonical_bytes_digest_is_stable_across_invocations() {
 fn test_build_attestation(input: &AttestationInput<'_>) -> auths_verifier::core::Attestation {
     use auths_verifier::core::{Attestation, Ed25519Signature, ResourceId};
 
-    #[allow(clippy::disallowed_methods)]
-    let issuer_canonical = CanonicalDid::new_unchecked(input.identity_did.as_str());
+    let issuer_canonical = input.identity_did.clone();
     #[allow(clippy::disallowed_methods)]
     let subject_canonical = CanonicalDid::new_unchecked(input.subject.as_str());
 

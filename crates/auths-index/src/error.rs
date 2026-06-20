@@ -1,3 +1,4 @@
+use auths_verifier::types::DidParseError;
 use thiserror::Error;
 
 /// Errors that can occur when working with the attestation index.
@@ -5,6 +6,9 @@ use thiserror::Error;
 pub enum IndexError {
     #[error("Database error: {0}")]
     Database(#[from] sqlite::Error),
+
+    #[error("Invalid DID in index data: {0}")]
+    InvalidDid(#[from] DidParseError),
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),

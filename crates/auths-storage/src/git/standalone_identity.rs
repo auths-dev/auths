@@ -64,9 +64,8 @@ impl IdentityStorage for GitIdentityStorage {
         let identity_ref_name = identity_ref(&self.config);
         let identity_blob_filename = identity_blob_name(&self.config);
 
-        #[allow(clippy::disallowed_methods)]
-        // INVARIANT: controller_did is a validated DID string from the caller (SDK layer)
-        let controller_did = IdentityDID::new_unchecked(controller_did);
+        let controller_did = IdentityDID::parse(controller_did)
+            .map_err(|e| StorageError::InvalidData(format!("Invalid controller DID: {}", e)))?;
         let stored_data = StoredIdentityData {
             version: 1,
             controller_did,
@@ -181,5 +180,34 @@ impl IdentityStorage for GitIdentityStorage {
 
     fn get_identity_ref(&self) -> Result<String, StorageError> {
         Ok(identity_ref(&self.config).to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn setup_test_repo() -> (TempDir, GitIdentityStorage) {
+        let dir = TempDir::new().unwrap();
+        Repository::init(dir.path()).unwrap();
+        let storage = GitIdentityStorage::new_with_defaults(dir.path());
+        (dir, storage)
+    }
+
+    #[test]
+    fn create_identity_accepts_valid_controller_did() {
+        let (_dir, storage) = setup_test_repo();
+        storage.create_identity("did:keri:EValid123", None).unwrap();
+
+        let loaded = storage.load_identity().unwrap();
+        assert_eq!(loaded.controller_did.as_str(), "did:keri:EValid123");
+    }
+
+    #[test]
+    fn create_identity_rejects_malformed_controller_did() {
+        let (_dir, storage) = setup_test_repo();
+        let result = storage.create_identity("not-a-did", None);
+        assert!(matches!(result, Err(StorageError::InvalidData(_))));
     }
 }

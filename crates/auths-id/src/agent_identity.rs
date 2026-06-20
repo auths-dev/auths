@@ -84,7 +84,6 @@ pub fn format_agent_toml(did: &str, key_alias: &str, config: &AgentProvisioningC
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)] // INVARIANT: tests construct IdentityDID via new_unchecked with literal DIDs
 mod tests {
     use super::*;
 
@@ -97,7 +96,7 @@ mod tests {
                 auths_keri::Capability::parse("pr:create").unwrap(),
             ],
             expires_in: Some(86400),
-            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eabc123")),
+            delegated_by: Some(IdentityDID::parse("did:keri:Eabc123").unwrap()),
             storage_mode: AgentStorageMode::Persistent { repo_path: None },
         };
         let toml = format_agent_toml("did:keri:Eagent", "agent-key", &config);
@@ -131,7 +130,7 @@ mod tests {
             agent_name: "deploy-bot".to_string(),
             capabilities: vec![auths_keri::Capability::sign_commit()],
             expires_in: None,
-            delegated_by: Some(IdentityDID::new_unchecked("did:keri:Eroot")),
+            delegated_by: Some(IdentityDID::parse("did:keri:Eroot").unwrap()),
             storage_mode: AgentStorageMode::Persistent { repo_path: None },
         };
         let toml = format_agent_toml("did:keri:E<pending>", "agent-key", &config);
