@@ -65,6 +65,8 @@ pub mod evidence_pack;
 /// C-compatible FFI bindings for attestation and chain verification.
 #[cfg(feature = "ffi")]
 pub mod ffi;
+/// Freshness verdict model (ADR 009): bounded freshness, verifier-set policy.
+pub mod freshness;
 /// OIDC-subject policy and the verify-time join for keyless CI signing.
 pub mod oidc_policy;
 /// Offline verification of air-gapped org provenance bundles.
