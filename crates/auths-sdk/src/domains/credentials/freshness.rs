@@ -243,6 +243,36 @@ impl<S: DelegatorLogSource> RootRefresh<S> {
     }
 }
 
+/// A per-delegator revocation-freshness source the presentation gate consults before honoring a
+/// credential: it answers how stale the locally-held copy of the delegator's logs is. Object-safe,
+/// so an [`AuthsContext`](crate::context::AuthsContext) can hold an optional `Arc<dyn …>` without a
+/// generic; production pairs a [`RootRefresh`] with a [`RevocationFreshnessPolicy`] via
+/// [`PolicyBoundRefresh`], a test injects a fake.
+pub trait RevocationFreshnessSource: Send + Sync {
+    /// The freshness of the locally-held copy of `delegator`'s logs as of `now`.
+    ///
+    /// Args:
+    /// * `delegator`: the delegator (root) AID whose logs gate the delegated subject.
+    /// * `now`: the current time, injected at the boundary.
+    fn freshness(&self, delegator: &Prefix, now: DateTime<Utc>) -> FreshnessDecision;
+}
+
+/// Pairs a [`RootRefresh`] with the [`RevocationFreshnessPolicy`] it enforces, so it can back an
+/// [`AuthsContext`]'s revocation-freshness gate. The live poll against a remote registry is the
+/// deployment's to schedule (`refresh_if_due`); this only reads the watermark that poll maintains.
+pub struct PolicyBoundRefresh<S: DelegatorLogSource> {
+    /// The refresh driver tracking each delegator's freshness watermark.
+    pub refresh: RootRefresh<S>,
+    /// The fail-closed / fail-open policy applied to a stale copy.
+    pub policy: RevocationFreshnessPolicy,
+}
+
+impl<S: DelegatorLogSource> RevocationFreshnessSource for PolicyBoundRefresh<S> {
+    fn freshness(&self, delegator: &Prefix, now: DateTime<Utc>) -> FreshnessDecision {
+        self.refresh.freshness(delegator, &self.policy, now)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

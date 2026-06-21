@@ -95,9 +95,29 @@ pub struct AuthsContext {
     pub witness_config: Option<auths_id::witness_config::WitnessConfig>,
     /// Path to the registry repository (needed for witness receipt storage).
     pub repo_path: Option<std::path::PathBuf>,
+    /// Optional revocation-freshness source. When set, a credential presentation is refused if the
+    /// locally-held copy of the issuer's logs is too stale to trust its revocation status (a `rev`
+    /// may have landed unseen). Default `None` — no staleness gate. Set via
+    /// [`AuthsContext::with_revocation_freshness`].
+    pub revocation_freshness:
+        Option<Arc<dyn crate::domains::credentials::RevocationFreshnessSource>>,
 }
 
 impl AuthsContext {
+    /// Set the revocation-freshness source (a fluent post-build override). When set, a credential
+    /// presentation is refused if the issuer's locally-held logs are too stale to trust their
+    /// revocation status.
+    ///
+    /// Args:
+    /// * `source`: the per-delegator staleness oracle (e.g. a `PolicyBoundRefresh`).
+    pub fn with_revocation_freshness(
+        mut self,
+        source: Arc<dyn crate::domains::credentials::RevocationFreshnessSource>,
+    ) -> Self {
+        self.revocation_freshness = Some(source);
+        self
+    }
+
     /// Build witness params from the context's configuration.
     ///
     /// Returns `WitnessParams::Enabled` when both `witness_config` and `repo_path`
@@ -499,6 +519,7 @@ impl
                 .unwrap_or_else(|| Arc::new(NoopAgentProvider)),
             witness_config: self.witness_config,
             repo_path: self.repo_path,
+            revocation_freshness: None,
         }
     }
 }

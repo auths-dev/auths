@@ -19,8 +19,8 @@ use auths_id::keri::types::Prefix;
 use auths_rp::{Audience, ChallengeStore, InMemoryChallengeStore, WirePresentation};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::credentials::{
-    PresentationAuthError, PresentationChallenge, authenticate_presentation, issue,
-    present_credential, revoke,
+    FreshnessDecision, PresentationAuthError, PresentationChallenge, RevocationFreshnessSource,
+    authenticate_presentation, issue, present_credential, revoke,
 };
 use auths_sdk::domains::device::add_device;
 use auths_sdk::domains::identity::service::initialize;
@@ -160,6 +160,65 @@ fn issuer_prefix(h: &Harness) -> Prefix {
         .expect("issuer identity")
         .controller_did;
     parse_did_keri(did.as_str()).expect("issuer prefix")
+}
+
+/// A revocation-freshness source returning a fixed decision, to drive the gate without a live poll.
+struct FakeFreshness(FreshnessDecision);
+
+impl RevocationFreshnessSource for FakeFreshness {
+    fn freshness(
+        &self,
+        _delegator: &Prefix,
+        _now: chrono::DateTime<chrono::Utc>,
+    ) -> FreshnessDecision {
+        self.0
+    }
+}
+
+#[tokio::test]
+async fn revocation_freshness_gate_refuses_a_stale_copy_and_honors_a_fresh_one() {
+    // A configured staleness source whose copy is too stale → the presentation is refused
+    // (fail-closed: a `rev` may have landed unseen), even though it otherwise verifies.
+    {
+        let h = setup();
+        let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+        let audience = Audience::parse(AUDIENCE).unwrap();
+        let store = InMemoryChallengeStore::new(16);
+        let now = chrono::Utc::now();
+        let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+        let ctx = h.ctx.with_revocation_freshness(Arc::new(FakeFreshness(
+            FreshnessDecision::StaleRejected {
+                age: chrono::Duration::minutes(5),
+            },
+        )));
+        let err = authenticate_presentation(&ctx, &h.issuer_alias, &store, &audience, wire, now)
+            .await
+            .expect_err("a stale issuer-log copy must refuse the presentation");
+        assert!(
+            matches!(err, PresentationAuthError::RevocationStale(_)),
+            "expected RevocationStale, got {err:?}"
+        );
+        assert_eq!(err.http_status(), 401);
+    }
+    // A fresh copy → the presentation is honored.
+    {
+        let h = setup();
+        let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+        let audience = Audience::parse(AUDIENCE).unwrap();
+        let store = InMemoryChallengeStore::new(16);
+        let now = chrono::Utc::now();
+        let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+        let ctx =
+            h.ctx
+                .with_revocation_freshness(Arc::new(FakeFreshness(FreshnessDecision::Fresh {
+                    age: chrono::Duration::seconds(1),
+                })));
+        let principal =
+            authenticate_presentation(&ctx, &h.issuer_alias, &store, &audience, wire, now)
+                .await
+                .expect("a fresh issuer-log copy must honor the presentation");
+        assert!(!principal.capabilities().is_empty());
+    }
 }
 
 #[tokio::test]

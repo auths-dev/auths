@@ -32,8 +32,8 @@ pub mod verify;
 pub use authenticate::{PresentationAuthError, authenticate_presentation};
 pub use error::CredentialError;
 pub use freshness::{
-    DelegatorLogSource, FreshnessDecision, RefreshError, RefreshOutcome, RevocationFreshnessPolicy,
-    RootRefresh, enforce_freshness,
+    DelegatorLogSource, FreshnessDecision, PolicyBoundRefresh, RefreshError, RefreshOutcome,
+    RevocationFreshnessPolicy, RevocationFreshnessSource, RootRefresh, enforce_freshness,
 };
 pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
 pub use present::{ChallengeSession, PresentationChallenge, present_credential};
