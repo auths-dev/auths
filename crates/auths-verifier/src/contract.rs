@@ -211,6 +211,7 @@ impl From<CredentialVerdict> for WireCredentialVerdict {
                 subject,
                 caps,
                 as_of,
+                ..
             } => WireCredentialVerdict::Valid {
                 issuer: issuer.as_str().to_string(),
                 subject: subject.as_str().to_string(),

@@ -24,6 +24,28 @@ pub enum Freshness {
     Stale,
 }
 
+/// What the verifier knows about a source fresher than the supplied slice (ADR 009 D3–D5).
+/// The verifier reads no clock and no network — this is an INPUT supplied at the boundary
+/// (a bundle timestamp, a witness head, a transparency-log tip), the one model both the
+/// time-based (bundle) and positional (KEL/credential) call sites share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreshnessEvidence {
+    /// No source fresher than the supplied slice was available (offline) → `Unknown`.
+    Offline,
+    /// The age of the freshest available source (a witness-head / checkpoint timestamp);
+    /// time-based, used by bundle verification. Within the policy window → `Fresh`, beyond
+    /// it → `Stale`.
+    SourceAge(Duration),
+    /// A known-fresher tip handed to the verifier out of band (a witness head / log tip),
+    /// compared against the slice's `as_of`; positional, used by KEL/credential verification.
+    FresherTip {
+        /// The freshest tip sequence the verifier knows of.
+        latest_seq: u128,
+        /// The sequence the verified slice is as-of.
+        slice_as_of: u128,
+    },
+}
+
 /// The relying party's freshness tolerance. Verifier-set, never signer-set: a bundle
 /// producer states an age, but the verifier caps the trust window (ADR 009 D2 — this is what
 /// kills the "1-year bundle" anti-pattern).
@@ -59,25 +81,29 @@ impl FreshnessPolicy {
         }
     }
 
-    /// Classify the freshness of a verdict from the age of its freshness evidence.
+    /// Classify a verdict's freshness from the evidence of a fresher source.
     ///
-    /// `evidence_age` is `None` when no source fresher than the supplied slice is available
-    /// (offline) — that NAMES the oracle as [`Freshness::Unknown`], never a silent pass and
-    /// never a hard reject.
+    /// [`FreshnessEvidence::Offline`] NAMES the oracle as [`Freshness::Unknown`] — never a
+    /// silent pass and never a hard reject. A source within the window (or a slice at/beyond a
+    /// known-fresher tip) is [`Freshness::Fresh`]; one provably past it is [`Freshness::Stale`].
     ///
     /// Args:
-    /// * `evidence_age`: age of the freshness evidence (e.g. a bundle timestamp, or a
-    ///   witness/checkpoint head), or `None` when none is available.
+    /// * `evidence`: what the verifier was told about a source fresher than the slice.
     ///
     /// Usage:
     /// ```ignore
-    /// let f = policy.classify(Some(bundle_age));
+    /// let f = policy.classify(FreshnessEvidence::SourceAge(bundle_age));
     /// ```
-    pub fn classify(&self, evidence_age: Option<Duration>) -> Freshness {
-        match evidence_age {
-            None => Freshness::Unknown,
-            Some(age) if age <= self.max_age => Freshness::Fresh,
-            Some(_) => Freshness::Stale,
+    pub fn classify(&self, evidence: FreshnessEvidence) -> Freshness {
+        match evidence {
+            FreshnessEvidence::Offline => Freshness::Unknown,
+            FreshnessEvidence::SourceAge(age) if age <= self.max_age => Freshness::Fresh,
+            FreshnessEvidence::SourceAge(_) => Freshness::Stale,
+            FreshnessEvidence::FresherTip {
+                latest_seq,
+                slice_as_of,
+            } if latest_seq > slice_as_of => Freshness::Stale,
+            FreshnessEvidence::FresherTip { .. } => Freshness::Fresh,
         }
     }
 
@@ -103,16 +129,37 @@ mod tests {
         let p = FreshnessPolicy::default(); // 24h, tolerates unknown
         // Offline — no fresher source than the slice → Unknown (named), never a silent pass
         // and never a hard reject.
-        assert_eq!(p.classify(None), Freshness::Unknown);
-        // Within the window → Fresh.
+        assert_eq!(p.classify(FreshnessEvidence::Offline), Freshness::Unknown);
+        // A source within the window → Fresh; older than the window → Stale.
         assert_eq!(
-            p.classify(Some(Duration::from_secs(3600))),
+            p.classify(FreshnessEvidence::SourceAge(Duration::from_secs(3600))),
             Freshness::Fresh
         );
-        // Older than the window → Stale.
         assert_eq!(
-            p.classify(Some(Duration::from_secs(25 * 3600))),
+            p.classify(FreshnessEvidence::SourceAge(Duration::from_secs(25 * 3600))),
             Freshness::Stale
+        );
+    }
+
+    #[test]
+    fn classify_positional_slice_behind_a_fresher_tip_is_stale() {
+        let p = FreshnessPolicy::default();
+        // A slice behind a known-fresher tip → Stale (it cannot see the later events,
+        // including a revocation).
+        assert_eq!(
+            p.classify(FreshnessEvidence::FresherTip {
+                latest_seq: 5,
+                slice_as_of: 3,
+            }),
+            Freshness::Stale
+        );
+        // A slice at (or beyond) the known-fresher tip → Fresh.
+        assert_eq!(
+            p.classify(FreshnessEvidence::FresherTip {
+                latest_seq: 3,
+                slice_as_of: 3,
+            }),
+            Freshness::Fresh
         );
     }
 

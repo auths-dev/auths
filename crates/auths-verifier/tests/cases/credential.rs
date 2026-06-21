@@ -13,6 +13,7 @@ use auths_keri::{
     compute_capability_schema_said, compute_next_commitment, encode_tel_nonce, finalize_icp_event,
     finalize_ixn_event,
 };
+use auths_verifier::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use auths_verifier::{CredentialVerdict, LifecycleEvent, SignedAcdc, VerifierWitnessPolicy};
 use chrono::{TimeZone, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -355,7 +356,13 @@ async fn valid_credential_verifies() {
                 subject,
                 caps,
                 as_of,
+                freshness,
             } => {
+                assert_eq!(
+                    freshness,
+                    Freshness::Unknown,
+                    "the offline verifier names freshness Unknown, never a bare Valid"
+                );
                 assert_eq!(issuer.as_str(), format!("did:keri:{}", f.issuer_aid));
                 assert_eq!(
                     subject.as_str(),
@@ -423,6 +430,95 @@ async fn revoked_credential_rejected_by_kel_position() {
     assert_eq!(
         verdict,
         CredentialVerdict::CredentialRevoked { revoked_at: 3 }
+    );
+}
+
+/// A credential verified against a captured *pre-revoke* slice returns a positionally-correct
+/// `Valid`, hiding a later revocation. The bare offline
+/// verifier names freshness `Unknown` (never a bare `Valid`); a relying party with a
+/// fresher-tip oracle (a witness head) then grades it `Stale`, and `is_trusted` rejects it —
+/// where the old `is_valid()` would have trusted the stale slice.
+#[tokio::test]
+async fn stale_pre_revoke_slice_is_graded_stale_not_trusted() {
+    // The issuer + credential are deterministic (seed 1), so the pre-revoke and post-revoke
+    // fixtures describe the SAME credential at two points in the issuer's history.
+    let stale = build_fixture(&FixtureSpec::basic(CurveType::P256, false));
+    let fresh = build_fixture(&FixtureSpec::basic(CurveType::P256, true));
+    assert_eq!(
+        stale.iss_said, fresh.iss_said,
+        "the two views are the same credential issuance"
+    );
+
+    // The issuer's TRUE current state: the credential is revoked at the fresher tip (seq 3).
+    let current = auths_verifier::verify_credential(
+        &fresh.signed,
+        &fresh.issuer_kel,
+        &fresh.tel,
+        &[],
+        VerifierWitnessPolicy::Warn,
+        now(),
+        &provider(),
+    )
+    .await;
+    assert_eq!(
+        current,
+        CredentialVerdict::CredentialRevoked { revoked_at: 3 },
+        "the credential is revoked at the issuer's current tip"
+    );
+
+    // The attack: present only the captured pre-revoke slice (tip 2). It verifies `Valid` —
+    // positionally correct, but stale. The verifier names freshness `Unknown`, not bare.
+    let stale_verdict = auths_verifier::verify_credential(
+        &stale.signed,
+        &stale.issuer_kel,
+        &stale.tel,
+        &[],
+        VerifierWitnessPolicy::Warn,
+        now(),
+        &provider(),
+    )
+    .await;
+    let as_of = match &stale_verdict {
+        CredentialVerdict::Valid {
+            as_of, freshness, ..
+        } => {
+            assert_eq!(*as_of, 2, "the stale slice's tip");
+            assert_eq!(
+                *freshness,
+                Freshness::Unknown,
+                "the offline verifier names freshness Unknown, never a bare Valid"
+            );
+            *as_of
+        }
+        other => panic!("expected Valid on the stale slice, got {other:?}"),
+    };
+    assert!(
+        stale_verdict.is_valid(),
+        "is_valid() alone trusts the stale slice — the vulnerability the grade closes"
+    );
+
+    // The fix: a relying party with a fresher-tip oracle (the issuer's current tip is 3, from
+    // a witness head) grades the verdict. The slice is behind the fresher tip → Stale.
+    let oracle = FreshnessEvidence::FresherTip {
+        latest_seq: 3,
+        slice_as_of: as_of,
+    };
+    let graded = stale_verdict.with_freshness(&FreshnessPolicy::default(), oracle);
+    assert_eq!(
+        graded.freshness(),
+        Freshness::Stale,
+        "a slice behind the fresher tip is Stale"
+    );
+    // A stale slice is trusted by no policy — neither the 24h default nor a strict one.
+    assert!(
+        !graded.is_trusted(&FreshnessPolicy::default()),
+        "the default policy must not trust a stale slice"
+    );
+    assert!(
+        !graded.is_trusted(&FreshnessPolicy::strict(std::time::Duration::from_secs(
+            3600
+        ))),
+        "a strict policy must reject a stale slice"
     );
 }
 

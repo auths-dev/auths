@@ -25,6 +25,7 @@ use auths_crypto::CryptoProvider;
 use auths_keri::witness::StoredReceipt;
 use auths_keri::witness::agreement::WitnessAgreement;
 
+use crate::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use crate::software_verify::verify_with_key_sync;
 use crate::{CanonicalDid, Capability, IdentityDID};
 use auths_keri::{
@@ -90,6 +91,10 @@ pub enum CredentialVerdict {
         caps: Vec<Capability>,
         /// The KEL position the verdict is as-of: the tip `(seq)` of the given issuer KEL.
         as_of: u128,
+        /// How fresh this verdict is under the verifier's freshness policy (ADR 009). The
+        /// bare verifier is positional (no clock), so it sets [`Freshness::Unknown`]; a
+        /// caller with a freshness signal upgrades it via [`CredentialVerdict::with_freshness`].
+        freshness: Freshness,
     },
     /// The recomputed ACDC `d` (or nested `a.d`) did not match the embedded SAID.
     SaidMismatch,
@@ -132,6 +137,52 @@ impl CredentialVerdict {
     /// Whether the credential verified (`Valid`).
     pub fn is_valid(&self) -> bool {
         matches!(self, CredentialVerdict::Valid { .. })
+    }
+
+    /// This verdict's freshness (ADR 009). Only meaningful for `Valid`; a non-`Valid`
+    /// verdict reports [`Freshness::Stale`] since it is never trusted regardless.
+    pub fn freshness(&self) -> Freshness {
+        match self {
+            CredentialVerdict::Valid { freshness, .. } => *freshness,
+            _ => Freshness::Stale,
+        }
+    }
+
+    /// Re-classify a `Valid` verdict's freshness against a policy and the evidence of a fresher
+    /// source ([`FreshnessEvidence`] — a bundle age, or a fresher KEL tip). The bare verifier
+    /// emits `Unknown`; the relying party upgrades it here once it has a freshness oracle.
+    /// A no-op on non-`Valid` verdicts.
+    ///
+    /// Args:
+    /// * `policy`: the relying party's freshness policy.
+    /// * `evidence`: what the relying party knows about a source fresher than the slice.
+    pub fn with_freshness(self, policy: &FreshnessPolicy, evidence: FreshnessEvidence) -> Self {
+        match self {
+            CredentialVerdict::Valid {
+                issuer,
+                subject,
+                caps,
+                as_of,
+                ..
+            } => CredentialVerdict::Valid {
+                issuer,
+                subject,
+                caps,
+                as_of,
+                freshness: policy.classify(evidence),
+            },
+            other => other,
+        }
+    }
+
+    /// Whether this verdict is trusted under a freshness policy: it is `Valid` AND its
+    /// freshness clears the policy. A bare `Valid` is never trusted without freshness — the
+    /// relying party's policy (not the signer) decides the tolerance (ADR 009).
+    ///
+    /// Args:
+    /// * `policy`: the relying party's freshness policy.
+    pub fn is_trusted(&self, policy: &FreshnessPolicy) -> bool {
+        self.is_valid() && policy.trusts(self.freshness())
     }
 }
 
@@ -291,6 +342,9 @@ pub fn verify_credential_sync(
         subject,
         caps,
         as_of: issuer_state.sequence,
+        // Positional verification carries no clock; the relying party upgrades this via
+        // `with_freshness` once it has a freshness signal. Offline default → Unknown.
+        freshness: Freshness::Unknown,
     }
 }
 
