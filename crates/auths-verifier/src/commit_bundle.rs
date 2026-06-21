@@ -387,14 +387,12 @@ async fn verify_commit_with_bundle_inner(
     )
     .await;
 
-    // Grade the verdict from the bundle's age against the verifier's freshness policy: the
-    // verifier caps trust, never the bundle's self-declared TTL (ADR 009). A bundle older
-    // than the policy window is Stale and a strict/default relying party rejects it.
-    let age = (now - bundle.bundle_timestamp).to_std().unwrap_or_default();
-    Ok(verdict.with_freshness(
-        &FreshnessPolicy::default(),
-        FreshnessEvidence::SourceAge(age),
-    ))
+    // An offline bundle carries no source the verifier can trust to confirm freshness: its
+    // timestamp and TTL are producer-set, unsigned fields, so an edited or inflated value must not
+    // buy trust. Absent a verifier-supplied fresher tip (a witness head / checkpoint / log tip),
+    // the strongest honest grade is Unknown — the relying party's policy decides whether to
+    // tolerate it (ADR 009 D5).
+    Ok(verdict.with_freshness(&FreshnessPolicy::default(), FreshnessEvidence::Offline))
 }
 
 #[cfg(test)]

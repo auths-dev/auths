@@ -186,7 +186,7 @@ pub async fn handle_verify_commit(
     let mut bundle_kel: Option<BundleKel> = None;
     if let Some(bundle_path) = &cmd.identity_bundle {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
-            Ok((root, kel, freshness_age)) => {
+            Ok((root, kel)) => {
                 // Evidence-only (RT-005): the bundle is *evidence for* a root that
                 // must be pinned independently (`.auths/roots` or self-trust). It
                 // never becomes its own trust anchor — otherwise the anchor and the
@@ -210,7 +210,6 @@ pub async fn handle_verify_commit(
                     bundle_kel = Some(BundleKel {
                         did: root,
                         events: kel,
-                        freshness_age,
                     });
                 }
             }
@@ -255,9 +254,6 @@ struct BundleKel {
     /// The bundle's KEL events, oldest first — already signature-authenticated by
     /// [`load_bundle_trust`] (RT-002).
     events: Vec<Event>,
-    /// The bundle's age at load time; the verdict's freshness is graded against it so the
-    /// verifier's policy caps trust, not the bundle's self-declared TTL.
-    freshness_age: std::time::Duration,
 }
 
 /// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
@@ -269,16 +265,15 @@ struct BundleKel {
 fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
-) -> std::result::Result<(String, Vec<Event>, std::time::Duration), String> {
+) -> std::result::Result<(String, Vec<Event>), String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("could not read identity bundle {path:?}: {e}"))?;
     let bundle: IdentityBundle = serde_json::from_str(&content)
         .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
     let trust = BundleTrust::parse(&bundle, now)
         .map_err(|e| format!("identity bundle {path:?} is not a usable trust anchor: {e}"))?;
-    let age = (now - bundle.bundle_timestamp).to_std().unwrap_or_default();
     let (root, kel) = trust.into_parts();
-    Ok((root, kel, age))
+    Ok((root, kel))
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -527,14 +522,14 @@ async fn verify_one_commit(
         now,
     )
     .await;
-    // When the signer was resolved from an identity bundle, grade the verdict's freshness
-    // from the bundle's age against the verifier's policy (ADR 009): the policy caps trust,
-    // not the bundle's own TTL. A direct verify carries no such signal and stays Unknown.
+    // A bundle's timestamp and TTL are producer-set, unsigned fields; an offline verifier holds
+    // no source it can trust to confirm freshness from them. Absent a verifier-supplied fresher
+    // tip, the strongest honest grade is Unknown — the policy decides whether to tolerate it
+    // (ADR 009 D5). A direct verify carries no such signal and likewise stays Unknown.
     let verdict = match bundle_kel {
-        Some(bk) => witnessed.verdict.with_freshness(
-            &FreshnessPolicy::default(),
-            FreshnessEvidence::SourceAge(bk.freshness_age),
-        ),
+        Some(_) => witnessed
+            .verdict
+            .with_freshness(&FreshnessPolicy::default(), FreshnessEvidence::Offline),
         None => witnessed.verdict,
     };
     let mut result = verdict_to_result(sha.clone(), verdict);
