@@ -38,19 +38,26 @@ fn summarizes_a_signed_action_request_from_its_bytes() {
 }
 
 #[test]
-fn summarizes_a_signed_commit_object_from_its_bytes() {
+fn commit_summary_excludes_the_unverified_git_author() {
+    // The git `author` line is an attacker-controllable self-claim, not the authorizing identity
+    // (that is the verdict's cryptographically-verified signer). It must not appear in the consent
+    // summary; only the legible message is carried.
     let bytes = b"tree abc123\n\
-        author Test User <test@example.com> 1700000000 +0000\n\
-        committer Test User <test@example.com> 1700000000 +0000\n\
+        author Attacker Name <attacker@evil.example> 1700000000 +0000\n\
+        committer Attacker Name <attacker@evil.example> 1700000000 +0000\n\
         \n\
         Fix the thing\n";
-    match AuthorizationSummary::from_signed_bytes(bytes) {
-        AuthorizationSummary::Commit { author, message } => {
-            assert!(author.contains("Test User"), "author: {author}");
+    let summary = AuthorizationSummary::from_signed_bytes(bytes);
+    match &summary {
+        AuthorizationSummary::Commit { message } => {
             assert!(message.contains("Fix the thing"), "message: {message}");
         }
         other => panic!("expected a Commit summary, got {other:?}"),
     }
+    assert!(
+        !summary.to_string().contains("Attacker"),
+        "the unverified git author must not appear in the consent summary, got {summary}"
+    );
 }
 
 #[test]

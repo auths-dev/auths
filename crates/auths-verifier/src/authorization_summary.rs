@@ -24,10 +24,10 @@ pub enum AuthorizationSummary {
         /// The action payload's top-level fields, rendered as key/value pairs.
         details: Vec<(String, String)>,
     },
-    /// A git commit: its author and message — both legible from the signed object.
+    /// A git commit's message — the legible content being authorized. The commit's git `author`
+    /// line is deliberately excluded: it is an unverified self-claim, and the authorizing identity
+    /// is always the verdict's cryptographically-verified signer, never the git author.
     Commit {
-        /// The commit `author` line.
-        author: String,
         /// The commit message.
         message: String,
     },
@@ -90,21 +90,18 @@ fn parse_action(bytes: &[u8]) -> Option<AuthorizationSummary> {
     })
 }
 
-/// Parse a git commit object (`tree …`, an `author …` line, a blank line, then the message).
+/// Parse a git commit object (`tree …` header, a blank line, then the message). The `author`
+/// line is intentionally not read — it is an unverified self-claim, not the authorizing identity.
 fn parse_commit(bytes: &[u8]) -> Option<AuthorizationSummary> {
     let text = std::str::from_utf8(bytes).ok()?;
     if !text.starts_with("tree ") {
         return None;
     }
-    let author = text
-        .lines()
-        .find_map(|l| l.strip_prefix("author "))
-        .map(str::to_string)?;
     let message = text
         .split_once("\n\n")
         .map(|(_, m)| m.trim_end().to_string())
         .unwrap_or_default();
-    Some(AuthorizationSummary::Commit { author, message })
+    Some(AuthorizationSummary::Commit { message })
 }
 
 /// Render a JSON value as a compact display string (strings unquoted, others as JSON).
@@ -129,9 +126,9 @@ impl fmt::Display for AuthorizationSummary {
                 }
                 Ok(())
             }
-            AuthorizationSummary::Commit { author, message } => {
+            AuthorizationSummary::Commit { message } => {
                 let subject = message.lines().next().unwrap_or("");
-                write!(f, "commit by {author}: {subject}")
+                write!(f, "commit: {subject}")
             }
             AuthorizationSummary::Opaque { digest_hex } => {
                 write!(f, "opaque payload sha256:{digest_hex}")
