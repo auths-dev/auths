@@ -692,11 +692,13 @@ fn replay_kel_gated(
 /// `ixn` against the current key-state. An event with no — or an invalid —
 /// signature fails closed with [`ValidationError::SignatureFailed`].
 ///
-/// This is the function the stateless verify entrypoints (CI `--identity-bundle`,
-/// WASM, FFI) must call once their wire formats carry CESR signature attachments;
-/// until that wiring lands they still replay structurally (see the RT-002 note in
-/// the test module). Structural checks are applied here too, so a forged SAID or
-/// broken chain is still rejected.
+/// This is the function the stateless verify entrypoints call to AUTHENTICATE an
+/// ingested KEL: the identity bundle carries a CESR signature attachment per `kel`
+/// event (`IdentityBundle::kel_attachments`, paired via `pair_kel_attachments`),
+/// and the WASM KEL boundary replays through this function and deliberately does
+/// not expose the structural `validate_kel`. Structural checks are applied here
+/// too, so a forged SAID or broken chain is still rejected — but the signature
+/// check is the point: an unsigned or wrong-signer event fails closed.
 ///
 /// Args:
 /// * `events`: The ordered KEL of signed events to replay.
@@ -1852,15 +1854,17 @@ mod tests {
         );
     }
 
-    // RT-002 / A.1: `validate_signed_kel` is the AUTHENTICATED replay — it
-    // verifies each event's signature against the controlling key-state, so a
-    // forged unsigned / wrong-signer `ixn`/`rot`/`icp` is rejected (tests below).
-    // The structural `validate_kel`/`replay_kel_gated` remain (they authorize by
-    // log structure only). REMAINING WORK (not in this change): wire the stateless
-    // verify entrypoints (IdentityBundle.kel, WASM, FFI) to carry CESR signature
-    // attachments and call `validate_signed_kel` instead of `validate_kel`. Until
-    // that wiring lands those entrypoints still replay structurally; do not
-    // mistake the structural path for authentication.
+    // `validate_signed_kel` is the AUTHENTICATED replay — it verifies each event's
+    // signature against the controlling key-state, so a forged unsigned /
+    // wrong-signer `ixn`/`rot`/`icp` is rejected (tests below).
+    // The structural `validate_kel`/`replay_kel_gated` remain for the trusted-local
+    // path (replaying a KEL already authenticated on write to the registry), where
+    // they authorize by log structure only. The stateless verify entrypoints that
+    // ingest an untrusted KEL DO authenticate: the identity bundle carries a CESR
+    // signature attachment per event and the bundle/WASM paths call
+    // `validate_signed_kel` (see `auths-verifier` `commit_bundle.rs` and `wasm.rs`,
+    // and the forged/stripped-signature rejection tests there). Do not mistake the
+    // structural path for authentication — it is the trusted-local replay only.
 
     fn sign_event(event: &Event, kp: &Ed25519KeyPair) -> SignedEvent {
         let sig = kp
