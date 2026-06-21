@@ -1,0 +1,19 @@
+# Auths commercial tier — source-available, NOT open source.
+#
+# Crates under ee/ are licensed separately from the Apache-2.0 crates under crates/ and are
+# NOT part of the open-source workspace. This is its own Cargo workspace; the root workspace
+# excludes it via `exclude = ["ee"]`, so `cargo build --workspace` at the repo root never
+# compiles or ships these crates.
+[workspace]
+resolver = "3"
+members = ["auths-idp"]
+
+[workspace.package]
+version = "0.1.3"
+license = "LicenseRef-Proprietary"
+repository = "https://github.com/auths-dev/auths"
+homepage = "https://github.com/auths-dev/auths"
+
+[workspace.dependencies]
+thiserror = "2"
+tokio = { version = "1" }

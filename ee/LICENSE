@@ -1,0 +1,14 @@
+Auths Commercial License (Proprietary, Source-Available)
+========================================================
+
+Copyright (c) Auths.
+
+The software in this directory (the "Commercial Tier") is source-available but NOT open
+source. It is licensed separately from the Apache-2.0 licensed software under `../crates`.
+
+All rights reserved. No license, express or implied, is granted to use, copy, modify, or
+distribute this software except under the terms of a separate written commercial agreement
+with the copyright holder.
+
+This is a placeholder notice. Replace it with the final commercial / source-available license
+terms before any distribution.

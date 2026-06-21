@@ -1,0 +1,45 @@
+[package]
+name = "auths-idp"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+description = "Enterprise IdP verification — OIDC and SAML identity binding for Auths"
+
+[features]
+default = ["oidc"]
+oidc = ["dep:reqwest", "dep:jsonwebtoken"]
+saml = ["dep:samael", "dep:base64", "dep:reqwest"]
+test-utils = []
+
+[lib]
+name = "auths_idp"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+json-canon = "0.1"
+jsonwebtoken = { version = "10.3.0", optional = true }
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "rustls-tls"], optional = true }
+samael = { version = "0.0.19", optional = true }
+base64 = { version = "0.22", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+async-trait = "0.1"
+axum = "0.8"
+base64 = "0.22.1"
+chrono = "0.4"
+jsonwebtoken = "10.3.0"
+rsa = { version = "0.9", features = ["pem"] }
+serde_json = "1"
+tokio = { workspace = true, features = ["full", "test-util"] }

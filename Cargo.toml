@@ -1,5 +1,8 @@
 [workspace]
 resolver = "3"
+# ee/ is the source-available commercial tier — its own workspace, never built or shipped
+# by the open-source (Apache-2.0) workspace.
+exclude = ["ee"]
 members = [
   "crates/auths",
   "crates/auths-core",
