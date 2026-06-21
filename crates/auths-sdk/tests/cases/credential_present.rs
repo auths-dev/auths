@@ -183,6 +183,8 @@ async fn verify(
         AUDIENCE,
         expected_challenge,
         chrono::Utc::now(),
+        &auths_verifier::freshness::FreshnessPolicy::default(),
+        None,
         &RingCryptoProvider,
     )
     .await

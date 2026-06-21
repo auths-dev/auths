@@ -14,6 +14,7 @@ use auths_keri::{
     VersionString, compute_capability_schema_said, compute_next_commitment, encode_tel_nonce,
     finalize_icp_event, finalize_ixn_event, finalize_rot_event,
 };
+use auths_verifier::freshness::FreshnessPolicy;
 use auths_verifier::{
     CredentialVerdict, PresentationBinding, PresentationEnvelope, PresentationVerdict, SignedAcdc,
     VerifierWitnessPolicy, verify_presentation, verify_presentation_json, verify_presentation_sync,
@@ -344,12 +345,44 @@ async fn verify(
         expected_audience,
         expected_challenge,
         now(),
+        &FreshnessPolicy::default(),
+        None,
         &provider(),
     )
     .await
 }
 
 const AUDIENCE: &str = "audience.example";
+
+/// Drive `verify_presentation` with an explicit freshness policy + a known-fresher issuer tip.
+#[allow(clippy::too_many_arguments)]
+async fn verify_with_tip(
+    envelope: &PresentationEnvelope,
+    cred: &Credentialed,
+    subject_kel: &[Event],
+    expected_audience: &str,
+    expected_challenge: Option<&[u8]>,
+    policy: &FreshnessPolicy,
+    fresher_tip_seq: Option<u128>,
+) -> PresentationVerdict {
+    verify_presentation(
+        envelope,
+        &cred.signed,
+        &cred.issuer_kel,
+        &cred.tel,
+        &[],
+        VerifierWitnessPolicy::Warn,
+        subject_kel,
+        &[],
+        expected_audience,
+        expected_challenge,
+        now(),
+        policy,
+        fresher_tip_seq,
+        &provider(),
+    )
+    .await
+}
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -419,6 +452,57 @@ async fn valid_challenge_presentation_verifies() {
             other => panic!("expected Valid on {curve:?}, got {other:?}"),
         }
     }
+}
+
+#[tokio::test]
+async fn presentation_behind_a_fresher_issuer_tip_is_rejected() {
+    // A captured slice verifies positionally (Valid as-of its slice), but the verifier knows the
+    // issuer's KEL has advanced past it — a later revocation the slice cannot see. The presentation
+    // path must consume that freshness signal and refuse the stale slice; a slice at or beyond the
+    // known tip is still honored.
+    let subject = Subject::incept(CurveType::Ed25519, 41);
+    let cred = credential_for(&subject.aid, false);
+    let nonce = vec![7u8; 32];
+    let envelope = subject.present(
+        &cred.credential_said,
+        AUDIENCE,
+        PresentationBinding::Challenge {
+            nonce: nonce.clone(),
+        },
+    );
+
+    // A known issuer tip far beyond the slice's as-of → the held slice is stale → not honored.
+    let stale = verify_with_tip(
+        &envelope,
+        &cred,
+        &subject.kel,
+        AUDIENCE,
+        Some(&nonce),
+        &FreshnessPolicy::default(),
+        Some(u128::MAX),
+    )
+    .await;
+    assert!(
+        !matches!(stale, PresentationVerdict::Valid { .. }),
+        "a presentation whose credential slice is behind the issuer's true tip must not be \
+         honored, got {stale:?}"
+    );
+
+    // A tip at or behind the slice → the slice is current → honored.
+    let fresh = verify_with_tip(
+        &envelope,
+        &cred,
+        &subject.kel,
+        AUDIENCE,
+        Some(&nonce),
+        &FreshnessPolicy::default(),
+        Some(0),
+    )
+    .await;
+    assert!(
+        matches!(fresh, PresentationVerdict::Valid { .. }),
+        "a presentation whose credential slice is at the known tip must be honored, got {fresh:?}"
+    );
 }
 
 #[tokio::test]
@@ -642,6 +726,8 @@ async fn sync_and_async_presentation_verdicts_match() {
                 audience,
                 challenge,
                 now(),
+                &FreshnessPolicy::default(),
+                Some(0),
                 &provider(),
             )
             .await;
@@ -658,6 +744,8 @@ async fn sync_and_async_presentation_verdicts_match() {
                 audience,
                 challenge,
                 now(),
+                &FreshnessPolicy::default(),
+                Some(0),
             );
 
             assert_eq!(

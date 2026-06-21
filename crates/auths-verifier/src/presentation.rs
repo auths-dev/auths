@@ -39,6 +39,7 @@ use chrono::{DateTime, Utc};
 use subtle::ConstantTimeEq;
 
 use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential_sync};
+use crate::freshness::{FreshnessEvidence, FreshnessPolicy};
 use crate::software_verify::verify_with_key_sync;
 use crate::{CanonicalDid, Capability, IdentityDID};
 
@@ -230,6 +231,8 @@ pub async fn verify_presentation(
     expected_audience: &str,
     expected_challenge: Option<&[u8]>,
     now: DateTime<Utc>,
+    policy: &FreshnessPolicy,
+    fresher_tip_seq: Option<u128>,
     _provider: &dyn CryptoProvider,
 ) -> PresentationVerdict {
     verify_presentation_sync(
@@ -244,6 +247,8 @@ pub async fn verify_presentation(
         expected_audience,
         expected_challenge,
         now,
+        policy,
+        fresher_tip_seq,
     )
 }
 
@@ -279,6 +284,8 @@ pub fn verify_presentation_sync(
     expected_audience: &str,
     expected_challenge: Option<&[u8]>,
     now: DateTime<Utc>,
+    policy: &FreshnessPolicy,
+    fresher_tip_seq: Option<u128>,
 ) -> PresentationVerdict {
     let credential_verdict = verify_credential_sync(
         signed,
@@ -288,7 +295,21 @@ pub fn verify_presentation_sync(
         witness_policy,
         now,
     );
-    if !credential_verdict.is_valid() {
+    // Consume freshness: the bare credential verdict is positional (`Unknown`). Grade it against a
+    // known-fresher issuer tip — a slice behind the issuer's true tip is `Stale`, since it cannot
+    // see a later revocation — then gate on the relying party's policy. A bare `Valid` is never
+    // honored without clearing the policy (ADR 009 D7).
+    let evidence = match (&credential_verdict, fresher_tip_seq) {
+        (CredentialVerdict::Valid { as_of, .. }, Some(latest_seq)) => {
+            FreshnessEvidence::FresherTip {
+                latest_seq,
+                slice_as_of: *as_of,
+            }
+        }
+        _ => FreshnessEvidence::Offline,
+    };
+    let credential_verdict = credential_verdict.with_freshness(policy, evidence);
+    if !credential_verdict.is_trusted(policy) {
         return PresentationVerdict::CredentialNotValid(credential_verdict);
     }
 

@@ -123,6 +123,13 @@ pub async fn authenticate_presentation(
         config_audience.as_str(),
         Some(expected.as_bytes()),
         now,
+        // The presentation path now consumes freshness: the verdict is graded and the gate is
+        // `is_trusted`. The independent fresher-issuer-tip source that makes a behind-slice fail
+        // closed is resolved by the revocation-freshness refresh layer; until that is threaded
+        // here, no fresher tip is supplied, so an offline-resolved slice grades Unknown and the
+        // default policy tolerates it.
+        &auths_verifier::freshness::FreshnessPolicy::default(),
+        None,
         &RingCryptoProvider,
     )
     .await;

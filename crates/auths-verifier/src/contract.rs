@@ -497,6 +497,8 @@ fn run_presentation(request_json: &str) -> Result<WirePresentationVerdict, Reque
         &request.audience,
         expected_challenge.as_deref(),
         request.now,
+        &crate::freshness::FreshnessPolicy::default(),
+        None,
     )
     .into())
 }
