@@ -18,6 +18,7 @@ use crate::commit::{extract_ssh_signature, verify_commit_signature};
 use crate::commit_error::CommitVerificationError;
 use crate::core::DevicePublicKey;
 use crate::duplicity::{KelEventRef, detect_duplicity};
+use crate::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use crate::ssh_sig::parse_sshsig_pem;
 
 /// The outcome of KEL-native commit verification. Distinguishable so the CLI/UX can
@@ -33,6 +34,12 @@ pub enum CommitVerdict {
         root_did: String,
         /// True if the root KEL shows a fork (non-fatal warning — trust-on-first-sight).
         duplicitous_root: bool,
+        /// The signer-KEL tip sequence this verdict was decided against.
+        as_of: u128,
+        /// How fresh this verdict is under the verifier's freshness policy (ADR 009). The
+        /// positional verifier sets `Unknown`; a caller with a freshness signal upgrades it
+        /// via [`CommitVerdict::with_freshness`].
+        freshness: Freshness,
     },
     /// The commit carries no SSH signature.
     Unsigned,
@@ -153,6 +160,52 @@ impl CommitVerdict {
     /// non-fatal duplicity warning).
     pub fn is_valid(&self) -> bool {
         matches!(self, CommitVerdict::Valid { .. })
+    }
+
+    /// This verdict's freshness (ADR 009). Only meaningful for `Valid`; a non-`Valid`
+    /// verdict reports [`Freshness::Stale`] since it is never trusted regardless.
+    pub fn freshness(&self) -> Freshness {
+        match self {
+            CommitVerdict::Valid { freshness, .. } => *freshness,
+            _ => Freshness::Stale,
+        }
+    }
+
+    /// Re-classify a `Valid` verdict's freshness against a policy and the evidence of a
+    /// fresher source (a bundle age, or a fresher signer-KEL tip). The positional verifier
+    /// emits `Unknown`; the relying party upgrades it here once it has a freshness oracle.
+    /// A no-op on non-`Valid` verdicts.
+    ///
+    /// Args:
+    /// * `policy`: the relying party's freshness policy.
+    /// * `evidence`: what the relying party knows about a source fresher than the slice.
+    pub fn with_freshness(self, policy: &FreshnessPolicy, evidence: FreshnessEvidence) -> Self {
+        match self {
+            CommitVerdict::Valid {
+                signer_did,
+                root_did,
+                duplicitous_root,
+                as_of,
+                ..
+            } => CommitVerdict::Valid {
+                signer_did,
+                root_did,
+                duplicitous_root,
+                as_of,
+                freshness: policy.classify(evidence),
+            },
+            other => other,
+        }
+    }
+
+    /// Whether this verdict is trusted under a freshness policy: it is `Valid` AND its
+    /// freshness clears the policy. A bare `Valid` is never trusted without freshness — the
+    /// relying party's policy (not the signer) decides the tolerance (ADR 009).
+    ///
+    /// Args:
+    /// * `policy`: the relying party's freshness policy.
+    pub fn is_trusted(&self, policy: &FreshnessPolicy) -> bool {
+        self.is_valid() && policy.trusts(self.freshness())
     }
 
     /// A stable, machine-readable code for this verdict, suitable for the `status`
@@ -752,6 +805,8 @@ async fn authorize_commit(
             signer_did: device_did,
             root_did,
             duplicitous_root,
+            as_of: device_state.sequence,
+            freshness: Freshness::Unknown,
         },
         Err(CommitVerificationError::UnsignedCommit) => CommitVerdict::Unsigned,
         Err(CommitVerificationError::GpgNotSupported) => CommitVerdict::GpgUnsupported,

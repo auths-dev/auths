@@ -608,6 +608,7 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
             signer_did,
             root_did,
             duplicitous_root,
+            ..
         } => {
             result.valid = true;
             result.ssh_valid = Some(true);
@@ -1068,6 +1069,8 @@ mod tests {
                 signer_did: "did:keri:dev".into(),
                 root_did: "did:keri:root".into(),
                 duplicitous_root: true,
+                as_of: 0,
+                freshness: auths_verifier::freshness::Freshness::Unknown,
             },
         );
         assert!(result.valid);

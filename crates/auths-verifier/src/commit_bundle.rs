@@ -18,6 +18,7 @@ use serde::Serialize;
 
 use crate::commit_kel::{CommitVerdict, commit_signer_trailers, verify_commit_against_kel};
 use crate::core::{IdentityBundle, MAX_JSON_BATCH_SIZE};
+use crate::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use auths_crypto::CryptoProvider;
 
 /// Why an identity bundle could not become a trust anchor. Fails closed: an
@@ -172,6 +173,13 @@ enum CommitBundleEnvelope {
         signer_did: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         root_did: Option<String>,
+        /// The freshness grade of a positive verdict; the relying party's policy, not the
+        /// bundle's TTL, decides whether it clears (ADR 009).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        freshness: Option<Freshness>,
+        /// The signer-KEL tip the verdict was decided against.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        as_of: Option<u128>,
     },
     Error {
         error: String,
@@ -197,6 +205,7 @@ fn verdict_detail(verdict: &CommitVerdict) -> String {
             signer_did,
             root_did,
             duplicitous_root,
+            ..
         } => {
             let fork = if *duplicitous_root {
                 " (warning: root KEL shows a fork)"
@@ -246,20 +255,31 @@ fn verdict_detail(verdict: &CommitVerdict) -> String {
 }
 
 fn verdict_envelope(verdict: CommitVerdict) -> CommitBundleEnvelope {
-    let (signer_did, root_did) = match &verdict {
+    let (signer_did, root_did, as_of, freshness) = match &verdict {
         CommitVerdict::Valid {
             signer_did,
             root_did,
+            as_of,
+            freshness,
             ..
-        } => (Some(signer_did.clone()), Some(root_did.clone())),
-        _ => (None, None),
+        } => (
+            Some(signer_did.clone()),
+            Some(root_did.clone()),
+            Some(*as_of),
+            Some(*freshness),
+        ),
+        _ => (None, None, None, None),
     };
     CommitBundleEnvelope::Verdict {
-        valid: verdict.is_valid(),
+        // The relying party's policy caps trust, not the bundle's self-declared TTL: a bundle
+        // older than the default window is not trusted even though it verified (ADR 009).
+        valid: verdict.is_trusted(&FreshnessPolicy::default()),
         verdict: verdict_code(&verdict),
         detail: verdict_detail(&verdict),
         signer_did,
         root_did,
+        freshness,
+        as_of,
     }
 }
 
@@ -358,14 +378,23 @@ async fn verify_commit_with_bundle_inner(
         }
     }
 
-    Ok(verify_commit_against_kel(
+    let verdict = verify_commit_against_kel(
         commit_text.as_bytes(),
         trust.kel(),
         trust.kel(),
         &pinned_roots,
         provider,
     )
-    .await)
+    .await;
+
+    // Grade the verdict from the bundle's age against the verifier's freshness policy: the
+    // verifier caps trust, never the bundle's self-declared TTL (ADR 009). A bundle older
+    // than the policy window is Stale and a strict/default relying party rejects it.
+    let age = (now - bundle.bundle_timestamp).to_std().unwrap_or_default();
+    Ok(verdict.with_freshness(
+        &FreshnessPolicy::default(),
+        FreshnessEvidence::SourceAge(age),
+    ))
 }
 
 #[cfg(test)]
@@ -566,5 +595,72 @@ mod tests {
                 .contains("not carried by the bundle"),
             "unexpected error: {out}"
         );
+    }
+
+    fn valid_verdict() -> CommitVerdict {
+        CommitVerdict::Valid {
+            signer_did: "did:keri:Edev".to_string(),
+            root_did: ROOT.to_string(),
+            duplicitous_root: false,
+            as_of: 7,
+            freshness: Freshness::Unknown,
+        }
+    }
+
+    #[test]
+    fn bundle_age_grades_the_commit_verdict_against_the_verifier_policy() {
+        let policy = FreshnessPolicy::default(); // 24h
+        // A bundle older than the policy window grades Stale and is trusted by no policy —
+        // the verifier caps trust regardless of the bundle's self-declared TTL.
+        let stale = valid_verdict().with_freshness(
+            &policy,
+            FreshnessEvidence::SourceAge(std::time::Duration::from_secs(25 * 3600)),
+        );
+        assert_eq!(stale.freshness(), Freshness::Stale);
+        assert!(!stale.is_trusted(&policy));
+        // A bundle within the window grades Fresh and is trusted.
+        let fresh = valid_verdict().with_freshness(
+            &policy,
+            FreshnessEvidence::SourceAge(std::time::Duration::from_secs(3600)),
+        );
+        assert_eq!(fresh.freshness(), Freshness::Fresh);
+        assert!(fresh.is_trusted(&policy));
+        // No oracle (a direct verify) → Unknown: the default tolerates it, strict denies it.
+        let unknown = valid_verdict().with_freshness(&policy, FreshnessEvidence::Offline);
+        assert_eq!(unknown.freshness(), Freshness::Unknown);
+        assert!(unknown.is_trusted(&policy));
+        assert!(
+            !unknown.is_trusted(&FreshnessPolicy::strict(std::time::Duration::from_secs(
+                3600
+            )))
+        );
+    }
+
+    #[test]
+    fn verdict_envelope_caps_trust_at_the_policy_and_surfaces_freshness() {
+        // A stale-graded verdict: the envelope reports it not-valid (the verifier policy caps
+        // trust) and surfaces the freshness grade and as-of for the consumer.
+        let stale = valid_verdict().with_freshness(
+            &FreshnessPolicy::default(),
+            FreshnessEvidence::SourceAge(std::time::Duration::from_secs(25 * 3600)),
+        );
+        let json = envelope_to_string(&verdict_envelope(stale));
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            v["valid"], false,
+            "a stale bundle is not trusted under the default policy"
+        );
+        assert_eq!(v["freshness"], "stale");
+        assert_eq!(v["as_of"], 7);
+
+        // A fresh-graded verdict: trusted and surfaced.
+        let fresh = valid_verdict().with_freshness(
+            &FreshnessPolicy::default(),
+            FreshnessEvidence::SourceAge(std::time::Duration::from_secs(3600)),
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(&envelope_to_string(&verdict_envelope(fresh))).unwrap();
+        assert_eq!(v["valid"], true);
+        assert_eq!(v["freshness"], "fresh");
     }
 }

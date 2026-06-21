@@ -464,6 +464,8 @@ mod tests {
                 signer_did: "did:keri:Eagent".into(),
                 root_did: "did:keri:Eroot".into(),
                 duplicitous_root: false,
+                as_of: 0,
+                freshness: auths_verifier::freshness::Freshness::Unknown,
             }),
             Verdict::Allowed
         );
