@@ -433,20 +433,21 @@ fn handle_rotate_now(
         return Ok(());
     }
 
-    // Extra confirmation for rotation
+    // Extra confirmation for rotation — fail closed in a non-interactive environment without
+    // --yes rather than crashing on a TTY prompt or leaving a half-done rotation.
     if !cmd.yes {
         out.print_warn("Key rotation is a significant operation.");
         out.println("All devices will need to re-authorize.");
         out.newline();
-
-        let confirmation: String = Input::new()
-            .with_prompt("Type ROTATE to confirm")
-            .interact_text()?;
-
-        if confirmation != "ROTATE" {
-            out.println("Cancelled - confirmation not matched.");
-            return Ok(());
-        }
+    }
+    if !confirm_or_refuse(
+        cmd.yes,
+        std::io::stdin().is_terminal(),
+        "key rotation",
+        "ROTATE",
+    )? {
+        out.println("Cancelled - confirmation not matched.");
+        return Ok(());
     }
 
     let repo_path = layout::resolve_repo_path(cmd.repo)?;
@@ -483,13 +484,13 @@ fn handle_rotate_now(
     Ok(())
 }
 
-/// Whether an emergency freeze should prompt, proceed, or be refused — decided from
-/// `--yes` and whether stdin is a terminal. A non-interactive run without `--yes` is
-/// refused so the freeze fails closed with a clear message rather than crashing on a
-/// TTY prompt or silently leaving signing enabled.
+/// Whether a confirmation-gated emergency action should prompt, proceed, or be refused —
+/// decided from `--yes` and whether stdin is a terminal. A non-interactive run without `--yes`
+/// is refused so the action fails closed with a clear message rather than crashing on a TTY
+/// prompt or silently proceeding.
 #[derive(Debug, PartialEq, Eq)]
-enum FreezeConfirmation {
-    /// Apply the freeze without prompting (`--yes`).
+enum ConfirmationMode {
+    /// Apply the action without prompting (`--yes`).
     Proceed,
     /// Prompt for typed confirmation (interactive terminal).
     Prompt,
@@ -497,14 +498,51 @@ enum FreezeConfirmation {
     NonInteractive,
 }
 
-/// Decide how to confirm an emergency freeze. Pure, so it is exhaustively testable.
-fn freeze_confirmation_required(yes: bool, stdin_is_terminal: bool) -> FreezeConfirmation {
+/// Decide how to confirm a destructive emergency action. Pure, so it is exhaustively testable.
+fn confirmation_mode(yes: bool, stdin_is_terminal: bool) -> ConfirmationMode {
     if yes {
-        FreezeConfirmation::Proceed
+        ConfirmationMode::Proceed
     } else if stdin_is_terminal {
-        FreezeConfirmation::Prompt
+        ConfirmationMode::Prompt
     } else {
-        FreezeConfirmation::NonInteractive
+        ConfirmationMode::NonInteractive
+    }
+}
+
+/// Confirm a destructive emergency action, or fail closed. Returns whether to proceed; a
+/// non-interactive environment without `--yes` returns an actionable error (never a cryptic
+/// TTY-prompt crash, never silently proceeding).
+///
+/// Args:
+/// * `yes`: the `--yes` flag (apply headlessly).
+/// * `stdin_is_terminal`: whether stdin is an interactive terminal.
+/// * `action`: the action name for the message (e.g. "freeze", "key rotation").
+/// * `confirm_word`: the word the operator types to confirm interactively.
+///
+/// Usage:
+/// ```ignore
+/// if !confirm_or_refuse(cmd.yes, std::io::stdin().is_terminal(), "freeze", "FREEZE")? {
+///     return Ok(());
+/// }
+/// ```
+fn confirm_or_refuse(
+    yes: bool,
+    stdin_is_terminal: bool,
+    action: &str,
+    confirm_word: &str,
+) -> Result<bool> {
+    match confirmation_mode(yes, stdin_is_terminal) {
+        ConfirmationMode::Proceed => Ok(true),
+        ConfirmationMode::NonInteractive => Err(anyhow!(
+            "Cannot confirm an emergency {action} in a non-interactive environment. Re-run with \
+             --yes to apply it. The {action} was NOT applied."
+        )),
+        ConfirmationMode::Prompt => {
+            let typed: String = dialoguer::Input::new()
+                .with_prompt(format!("Type {confirm_word} to confirm"))
+                .interact_text()?;
+            Ok(typed == confirm_word)
+        }
     }
 }
 
@@ -569,26 +607,11 @@ fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Resu
         return Ok(());
     }
 
-    // Confirmation — fail closed in a non-interactive environment without --yes,
-    // rather than crashing on a TTY prompt and leaving signing silently enabled.
-    match freeze_confirmation_required(cmd.yes, std::io::stdin().is_terminal()) {
-        FreezeConfirmation::Proceed => {}
-        FreezeConfirmation::NonInteractive => {
-            return Err(anyhow::anyhow!(
-                "Cannot confirm an emergency freeze in a non-interactive environment. \
-                 Re-run with --yes to apply it. The freeze was NOT applied — signing is still enabled."
-            ));
-        }
-        FreezeConfirmation::Prompt => {
-            let confirmation: String = dialoguer::Input::new()
-                .with_prompt("Type FREEZE to confirm")
-                .interact_text()?;
-
-            if confirmation != "FREEZE" {
-                out.println("Cancelled - confirmation not matched.");
-                return Ok(());
-            }
-        }
+    // Confirmation — fail closed in a non-interactive environment without --yes, rather than
+    // crashing on a TTY prompt and leaving signing silently enabled.
+    if !confirm_or_refuse(cmd.yes, std::io::stdin().is_terminal(), "freeze", "FREEZE")? {
+        out.println("Cancelled - confirmation not matched.");
+        return Ok(());
     }
 
     let state = FreezeState {
@@ -609,6 +632,12 @@ fn handle_freeze(cmd: FreezeCommand, now: chrono::DateTime<chrono::Utc>) -> Resu
         "Freeze expires in: {}",
         out.info(&state.expires_description(now))
     ));
+    out.newline();
+    out.print_warn(
+        "This freeze is local to this machine — it does not travel to other verifiers, so a \
+         leaked key still verifies elsewhere. To revoke a compromised identity everywhere, \
+         rotate (recover) or abandon it.",
+    );
     out.newline();
     out.println("To unfreeze early:");
     out.println(&format!("  {}", out.dim("auths emergency unfreeze")));
@@ -959,26 +988,35 @@ mod tests {
     }
 
     #[test]
-    fn freeze_confirmation_fails_closed_without_a_terminal_and_without_yes() {
+    fn confirmation_fails_closed_without_a_terminal_and_without_yes() {
         // --yes always proceeds — the headless path for runbooks and automation.
-        assert_eq!(
-            freeze_confirmation_required(true, false),
-            FreezeConfirmation::Proceed
-        );
-        assert_eq!(
-            freeze_confirmation_required(true, true),
-            FreezeConfirmation::Proceed
-        );
+        assert_eq!(confirmation_mode(true, false), ConfirmationMode::Proceed);
+        assert_eq!(confirmation_mode(true, true), ConfirmationMode::Proceed);
         // Interactive without --yes prompts for typed confirmation.
+        assert_eq!(confirmation_mode(false, true), ConfirmationMode::Prompt);
+        // Non-interactive without --yes is refused (fail closed): never a cryptic TTY crash,
+        // and never a silent no-op that leaves the action half-done.
         assert_eq!(
-            freeze_confirmation_required(false, true),
-            FreezeConfirmation::Prompt
+            confirmation_mode(false, false),
+            ConfirmationMode::NonInteractive
         );
-        // Non-interactive without --yes is refused (fail closed): never a cryptic TTY
-        // crash, and never a silent no-op that leaves signing enabled.
-        assert_eq!(
-            freeze_confirmation_required(false, false),
-            FreezeConfirmation::NonInteractive
+    }
+
+    #[test]
+    fn confirm_or_refuse_fails_closed_with_an_actionable_message() {
+        // --yes proceeds headlessly for every destructive action (freeze, rotation).
+        assert!(confirm_or_refuse(true, false, "key rotation", "ROTATE").unwrap());
+        // Non-interactive without --yes refuses with an actionable error that names --yes and
+        // the action that was NOT applied — the same fail-closed gate for every action.
+        let err = confirm_or_refuse(false, false, "key rotation", "ROTATE")
+            .expect_err("non-interactive without --yes must fail closed");
+        assert!(
+            err.to_string().contains("--yes"),
+            "must point to --yes: {err}"
+        );
+        assert!(
+            err.to_string().contains("rotation"),
+            "must name the refused action: {err}"
         );
     }
 
