@@ -134,6 +134,35 @@ struct UserStore {
     by_id: HashMap<String, StoredUser>,
 }
 
+impl UserStore {
+    /// Insert a user, stamping a fresh content ETag (so a created user carries the same kind of
+    /// `meta.version` a created group does), and return the stored value. Mirrors
+    /// [`GroupStore::insert`]; the optional `external_id` indexes the idempotency key.
+    fn insert(
+        &mut self,
+        tenant_id: &str,
+        external_id: Option<String>,
+        mut user: ScimUser,
+    ) -> ScimUser {
+        recompute_etag(&mut user);
+        let id = user.id.clone();
+        if let Some(ext) = external_id {
+            self.by_external
+                .insert((tenant_id.to_string(), ext), id.clone());
+        }
+        let stored = user.clone();
+        self.by_id.insert(
+            id,
+            StoredUser {
+                tenant_id: tenant_id.to_string(),
+                user,
+                deleted: false,
+            },
+        );
+        stored
+    }
+}
+
 /// A stored SCIM Group plus its owning tenant. `deleted` is the soft-delete tombstone,
 /// matching the user store's semantics (hidden from reads, recoverable).
 struct StoredGroup {
@@ -355,23 +384,15 @@ impl ScimServerState {
             .collect()
     }
 
-    /// Insert a freshly provisioned resource and index it on `(tenant, externalId)`.
-    pub(crate) fn insert_user(&self, tenant_id: &str, external_id: Option<String>, user: ScimUser) {
-        let mut store = self.inner.store();
-        let id = user.id.clone();
-        if let Some(ext) = external_id {
-            store
-                .by_external
-                .insert((tenant_id.to_string(), ext), id.clone());
-        }
-        store.by_id.insert(
-            id,
-            StoredUser {
-                tenant_id: tenant_id.to_string(),
-                user,
-                deleted: false,
-            },
-        );
+    /// Insert a freshly provisioned resource and index it on `(tenant, externalId)`, stamping its
+    /// content ETag and returning the stored value.
+    pub(crate) fn insert_user(
+        &self,
+        tenant_id: &str,
+        external_id: Option<String>,
+        user: ScimUser,
+    ) -> ScimUser {
+        self.inner.store().insert(tenant_id, external_id, user)
     }
 
     /// Atomically read-modify-write a live resource under a single lock.
@@ -530,6 +551,26 @@ mod tests {
         a.user_name = "alice-renamed".to_string();
         recompute_etag(&mut a);
         assert_ne!(a.meta.version, v1, "a content change must change the ETag");
+    }
+
+    #[test]
+    fn user_store_insert_stamps_the_content_etag_like_groups() {
+        // A created user must carry the same content-derived ETag a created group does — the value
+        // `recompute_etag` produces for its content — not a separate id-based placeholder.
+        let mut store = UserStore::default();
+        let stored = store.insert("t1", Some("ext-alice".to_string()), user("alice"));
+
+        let mut expected = user("alice");
+        recompute_etag(&mut expected);
+        assert_eq!(
+            stored.meta.version, expected.meta.version,
+            "insert must stamp the content ETag"
+        );
+        assert!(
+            stored.meta.version.starts_with("W/\""),
+            "weak content ETag, got {}",
+            stored.meta.version
+        );
     }
 
     fn group(id: &str, display: &str) -> ScimGroup {

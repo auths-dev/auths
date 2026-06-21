@@ -291,6 +291,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn created_user_carries_a_content_etag_like_a_group() {
+        // A freshly created user must carry a content ETag (`meta.version`) just as a group does,
+        // so `If-Match` optimistic concurrency works on it from the moment it exists.
+        let resp = router(test_state())
+            .oneshot(post_users(user_body("alice", "ext-alice")))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = json_value(resp).await;
+        let version = body["meta"]["version"].as_str().unwrap_or("");
+        assert!(
+            !version.is_empty(),
+            "a created user must carry a content ETag, got meta = {}",
+            body["meta"]
+        );
+    }
+
+    #[tokio::test]
     async fn router_nests_into_a_parent_router() {
         let parent = Router::new().merge(router(test_state()));
         let resp = parent

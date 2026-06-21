@@ -52,8 +52,8 @@ pub async fn create_user(
         created_at: now,
     };
     let user = provision_result_to_scim_user(&result, &request, now, &tenant.base_url);
-    state.insert_user(&tenant.tenant_id, request.external_id.clone(), user.clone());
-    Ok((StatusCode::CREATED, Json(user)))
+    let stored = state.insert_user(&tenant.tenant_id, request.external_id.clone(), user);
+    Ok((StatusCode::CREATED, Json(stored)))
 }
 
 /// `GET /scim/v2/Users` — list, filter (RFC 7644), and paginate this tenant's
