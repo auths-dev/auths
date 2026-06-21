@@ -87,6 +87,43 @@ fn good_identity_bundle_pins_root_and_verifies() {
 }
 
 #[test]
+fn stale_identity_bundle_is_not_trusted_under_the_verifier_policy() {
+    let (env, good) = setup_signed_commit_and_bundle();
+
+    // Age the bundle past the verifier's freshness window, but well within its own
+    // (inflated) TTL — a bundle's self-declared TTL must not buy unbounded trust; the
+    // verifier's policy caps it.
+    let stale = env.home.path().join("stale-bundle.json");
+    let mut bundle: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&good).unwrap()).unwrap();
+    let aged = chrono::Utc::now() - chrono::Duration::hours(25);
+    bundle["bundle_timestamp"] = serde_json::json!(aged.to_rfc3339());
+    bundle["max_valid_for_secs"] = serde_json::json!(31_536_000u64); // one year
+    std::fs::write(&stale, serde_json::to_string(&bundle).unwrap()).unwrap();
+
+    let out = env
+        .cmd("auths")
+        .args([
+            "verify",
+            "HEAD",
+            "--identity-bundle",
+            stale.to_str().unwrap(),
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("verify --json");
+    assert_eq!(
+        json["freshness"], "stale",
+        "the verifier must grade an over-aged bundle stale"
+    );
+    assert_eq!(
+        json["valid"], false,
+        "a stale bundle must not be trusted under the default policy"
+    );
+}
+
+#[test]
 fn wrong_identity_bundle_root_is_rejected() {
     let (env, good) = setup_signed_commit_and_bundle();
 

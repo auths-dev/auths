@@ -6,6 +6,7 @@ use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
 use auths_sdk::core_config::EnvironmentConfig;
 use auths_sdk::ports::RegistryBackend;
 use auths_sdk::storage::{GitRegistryBackend, GitWitnessReceiptLookup, RegistryConfig};
+use auths_verifier::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
     Attestation, BundleTrust, CommitVerdict, IdentityBundle, VerificationReport,
@@ -75,6 +76,10 @@ struct VerifyCommitResult {
     /// cause without parsing the human `error` string.
     #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<String>,
+    /// The freshness grade of a positive verdict (ADR 009); a stale bundle is reported here
+    /// and is not trusted under the default policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    freshness: Option<Freshness>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ssh_valid: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,6 +128,7 @@ impl VerifyCommitResult {
             commit,
             valid: false,
             status: None,
+            freshness: None,
             ssh_valid: None,
             chain_valid: None,
             chain_report: None,
@@ -180,7 +186,7 @@ pub async fn handle_verify_commit(
     let mut bundle_kel: Option<BundleKel> = None;
     if let Some(bundle_path) = &cmd.identity_bundle {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
-            Ok((root, kel)) => {
+            Ok((root, kel, freshness_age)) => {
                 // Evidence-only (RT-005): the bundle is *evidence for* a root that
                 // must be pinned independently (`.auths/roots` or self-trust). It
                 // never becomes its own trust anchor — otherwise the anchor and the
@@ -204,6 +210,7 @@ pub async fn handle_verify_commit(
                     bundle_kel = Some(BundleKel {
                         did: root,
                         events: kel,
+                        freshness_age,
                     });
                 }
             }
@@ -248,6 +255,9 @@ struct BundleKel {
     /// The bundle's KEL events, oldest first — already signature-authenticated by
     /// [`load_bundle_trust`] (RT-002).
     events: Vec<Event>,
+    /// The bundle's age at load time; the verdict's freshness is graded against it so the
+    /// verifier's policy caps trust, not the bundle's self-declared TTL.
+    freshness_age: std::time::Duration,
 }
 
 /// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
@@ -259,14 +269,16 @@ struct BundleKel {
 fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
-) -> std::result::Result<(String, Vec<Event>), String> {
+) -> std::result::Result<(String, Vec<Event>, std::time::Duration), String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("could not read identity bundle {path:?}: {e}"))?;
     let bundle: IdentityBundle = serde_json::from_str(&content)
         .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
     let trust = BundleTrust::parse(&bundle, now)
         .map_err(|e| format!("identity bundle {path:?} is not a usable trust anchor: {e}"))?;
-    Ok(trust.into_parts())
+    let age = (now - bundle.bundle_timestamp).to_std().unwrap_or_default();
+    let (root, kel) = trust.into_parts();
+    Ok((root, kel, age))
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -515,7 +527,17 @@ async fn verify_one_commit(
         now,
     )
     .await;
-    let mut result = verdict_to_result(sha.clone(), witnessed.verdict);
+    // When the signer was resolved from an identity bundle, grade the verdict's freshness
+    // from the bundle's age against the verifier's policy (ADR 009): the policy caps trust,
+    // not the bundle's own TTL. A direct verify carries no such signal and stays Unknown.
+    let verdict = match bundle_kel {
+        Some(bk) => witnessed.verdict.with_freshness(
+            &FreshnessPolicy::default(),
+            FreshnessEvidence::SourceAge(bk.freshness_age),
+        ),
+        None => witnessed.verdict,
+    };
+    let mut result = verdict_to_result(sha.clone(), verdict);
     match witnessed.witness {
         WitnessGateStatus::NotRequired => {}
         WitnessGateStatus::Met => result.witness_gate = Some("met".to_string()),
@@ -603,6 +625,10 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
     // valid/invalid branch — a consumer can attribute the outcome (e.g.
     // `outside-agent-scope`) without parsing the human `error` string.
     result.status = Some(verdict.code().to_string());
+    // Trust requires both authorization and freshness: a verified-but-stale commit (a slice
+    // older than the verifier's policy admits) is reported but not trusted (ADR 009).
+    let trusted = verdict.is_trusted(&FreshnessPolicy::default());
+    let freshness = verdict.freshness();
     match verdict {
         CommitVerdict::Valid {
             signer_did,
@@ -610,10 +636,18 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
             duplicitous_root,
             ..
         } => {
-            result.valid = true;
+            result.valid = trusted;
+            result.freshness = Some(freshness);
             result.ssh_valid = Some(true);
             result.signer = Some(signer_did);
-            result.error = None;
+            result.error = if trusted {
+                None
+            } else {
+                Some(format!(
+                    "commit verified but its freshness is {freshness:?}; the supplied slice is \
+                     older than the verifier's trust window"
+                ))
+            };
             if duplicitous_root {
                 result.warnings.push(format!(
                     "Root {root_did} shows KEL duplicity (a fork) — trusting the first event \
@@ -968,6 +1002,7 @@ mod tests {
             commit: "abc123".into(),
             valid: true,
             status: Some("valid".into()),
+            freshness: None,
             ssh_valid: Some(true),
             chain_valid: Some(true),
             chain_report: None,
@@ -1006,6 +1041,7 @@ mod tests {
             commit: "abc12345".into(),
             valid: true,
             status: Some("valid".into()),
+            freshness: None,
             ssh_valid: Some(true),
             chain_valid: None,
             chain_report: None,
@@ -1027,6 +1063,7 @@ mod tests {
             commit: "abc12345".into(),
             valid: true,
             status: Some("valid".into()),
+            freshness: None,
             ssh_valid: Some(true),
             chain_valid: Some(true),
             chain_report: Some(VerificationReport::valid(vec![])),

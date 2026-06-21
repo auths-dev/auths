@@ -25,6 +25,8 @@ use crate::ports::RegistryBackend;
 #[cfg(feature = "backend-git")]
 use auths_crypto::CryptoProvider;
 #[cfg(feature = "backend-git")]
+use auths_verifier::freshness::FreshnessPolicy;
+#[cfg(feature = "backend-git")]
 use auths_verifier::{CommitVerdict, verify_commit_against_kel};
 
 /// Failure resolving commit trust before a verdict can be reached.
@@ -163,7 +165,7 @@ impl CommitDecision {
     /// (or the root anchored no policy). Fail-closed: any policy deny/indeterminate, or
     /// a non-`Valid` verdict, is unauthorized.
     pub fn is_authorized(&self) -> bool {
-        if !self.verdict.is_valid() {
+        if !self.verdict.is_trusted(&FreshnessPolicy::default()) {
             return false;
         }
         match &self.policy {

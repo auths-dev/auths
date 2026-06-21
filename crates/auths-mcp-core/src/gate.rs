@@ -115,7 +115,14 @@ impl Verdict {
     /// else non-`Valid` is an unauthentic proof and fails closed.
     pub(crate) fn from_commit_verdict(v: &CommitVerdict) -> Self {
         match v {
-            CommitVerdict::Valid { .. } => Verdict::Allowed,
+            CommitVerdict::Valid { .. }
+                if v.is_trusted(&auths_verifier::freshness::FreshnessPolicy::default()) =>
+            {
+                Verdict::Allowed
+            }
+            CommitVerdict::Valid { .. } => Verdict::ProofUnauthentic {
+                reason: "stale".to_string(),
+            },
             CommitVerdict::OutsideAgentScope { capability, .. } => Verdict::OutsideAgentScope {
                 capability: Capability(capability.clone()),
             },
