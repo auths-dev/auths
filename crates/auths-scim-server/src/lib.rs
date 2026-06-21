@@ -67,6 +67,7 @@ pub fn router(state: ScimServerState) -> Router {
         .route(
             "/scim/v2/Users/{id}",
             get(users::get_user)
+                .put(users::put_user)
                 .patch(lifecycle::patch_user)
                 .delete(lifecycle::delete_user),
         )

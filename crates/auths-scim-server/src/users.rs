@@ -13,7 +13,7 @@ use auths_scim::resource::ScimUser;
 use auths_scim::{CompareOp, ScimError, ScimFilter, ScimListResponse, parse_filter};
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use serde::Deserialize;
 
 use crate::auth::AuthenticatedTenant;
@@ -123,6 +123,58 @@ pub async fn get_user(
         .find_by_id(&tenant.tenant_id, &id)
         .map(Json)
         .ok_or_else(|| ScimServerError::from(ScimError::NotFound { id }))
+}
+
+/// `PUT /scim/v2/Users/{id}` — full-resource replace (RFC 7644 §3.5.1). Honors `If-Match`
+/// optimistic concurrency against the resource's current ETag (a stale match → 412) and rejects a
+/// `userName` change (`userName` is immutable). An absent `If-Match` is permitted.
+pub async fn put_user(
+    State(state): State<ScimServerState>,
+    tenant: AuthenticatedTenant,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(input): Json<ScimUser>,
+) -> Result<Json<ScimUser>, ScimServerError> {
+    let if_match = headers
+        .get(axum::http::header::IF_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let updated = state.update_user(&tenant.tenant_id, &id, move |current| {
+        apply_put(current, input, if_match.as_deref())
+    })?;
+    Ok(Json(updated))
+}
+
+/// Apply a `PUT` replacement to the stored resource, enforcing `If-Match` and `userName`
+/// immutability. Pure, so the precondition + mutability rules are tested without the HTTP layer.
+/// `meta` is left for the store to refresh — it recomputes the ETag on write.
+fn apply_put(
+    current: ScimUser,
+    input: ScimUser,
+    if_match: Option<&str>,
+) -> Result<ScimUser, ScimError> {
+    if let Some(expected) = if_match
+        && !etag_matches(expected, &current.meta.version)
+    {
+        return Err(ScimError::PreconditionFailed);
+    }
+    if input.user_name != current.user_name {
+        return Err(ScimError::Mutability {
+            attribute: "userName".to_string(),
+        });
+    }
+    let mut next = current;
+    next.external_id = input.external_id;
+    next.display_name = input.display_name;
+    next.active = input.active;
+    Ok(next)
+}
+
+/// Whether an `If-Match` value matches the current ETag: `*` matches any existing resource,
+/// otherwise some ETag in the comma-separated list must equal `current` (RFC 7232).
+fn etag_matches(if_match: &str, current: &str) -> bool {
+    let v = if_match.trim();
+    v == "*" || v.split(',').any(|t| t.trim() == current)
 }
 
 /// RFC 7644 list query parameters.
@@ -268,5 +320,37 @@ mod tests {
             users.iter().map(|u| u.id.as_str()).collect::<Vec<_>>(),
             ["1", "2", "3"]
         );
+    }
+
+    #[test]
+    fn put_enforces_if_match_and_username_immutability() {
+        let mut current = user("1", "alice");
+        current.meta.version = "W/\"abc\"".to_string();
+
+        // userName is immutable — a PUT changing it is rejected.
+        let renamed = user("1", "alice-renamed");
+        assert!(matches!(
+            apply_put(current.clone(), renamed, Some("W/\"abc\"")),
+            Err(ScimError::Mutability { .. })
+        ));
+
+        // A stale If-Match → PreconditionFailed (412) — the optimistic-concurrency guard.
+        assert!(matches!(
+            apply_put(current.clone(), user("1", "alice"), Some("W/\"stale\"")),
+            Err(ScimError::PreconditionFailed)
+        ));
+
+        // A matching If-Match → replace succeeds: mutable fields updated, userName kept.
+        let mut update = user("1", "alice");
+        update.display_name = Some("Alice A.".to_string());
+        update.active = false;
+        let out = apply_put(current.clone(), update, Some("W/\"abc\"")).unwrap();
+        assert_eq!(out.user_name, "alice");
+        assert_eq!(out.display_name.as_deref(), Some("Alice A."));
+        assert!(!out.active);
+
+        // `*` matches any existing resource; an absent If-Match is permitted.
+        assert!(apply_put(current.clone(), user("1", "alice"), Some("*")).is_ok());
+        assert!(apply_put(current, user("1", "alice"), None).is_ok());
     }
 }
