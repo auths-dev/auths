@@ -14,6 +14,7 @@
 mod auth;
 mod discovery;
 mod error;
+mod groups;
 mod lifecycle;
 mod provisioner;
 mod serve;
@@ -72,6 +73,16 @@ pub fn router(state: ScimServerState) -> Router {
                 .delete(lifecycle::delete_user),
         )
         .route("/scim/v2/Users/{id}/revoke", post(lifecycle::revoke_user))
+        .route(
+            "/scim/v2/Groups",
+            get(groups::list_groups).post(groups::create_group),
+        )
+        .route(
+            "/scim/v2/Groups/{id}",
+            get(groups::get_group)
+                .put(groups::put_group)
+                .delete(groups::delete_group),
+        )
         .route("/health", get(health))
         .with_state(state)
 }

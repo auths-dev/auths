@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use auths_scim::ScimError;
-use auths_scim::resource::ScimUser;
+use auths_scim::resource::{ScimGroup, ScimUser};
 use auths_verifier::Capability;
 use sha2::{Digest, Sha256};
 
@@ -134,10 +134,101 @@ struct UserStore {
     by_id: HashMap<String, StoredUser>,
 }
 
+/// A stored SCIM Group plus its owning tenant. `deleted` is the soft-delete tombstone,
+/// matching the user store's semantics (hidden from reads, recoverable).
+struct StoredGroup {
+    tenant_id: String,
+    group: ScimGroup,
+    deleted: bool,
+}
+
+/// The per-tenant Group index. Mirrors [`UserStore`]; KEL plays no part — Groups are an
+/// org-directory convenience, not cryptographic identities.
+#[derive(Default)]
+struct GroupStore {
+    by_id: HashMap<String, StoredGroup>,
+}
+
+impl GroupStore {
+    /// Insert a group, stamping a fresh content ETag, and return the stored value.
+    fn insert(&mut self, tenant_id: &str, mut group: ScimGroup) -> ScimGroup {
+        recompute_group_etag(&mut group);
+        let stored = group.clone();
+        self.by_id.insert(
+            group.id.clone(),
+            StoredGroup {
+                tenant_id: tenant_id.to_string(),
+                group,
+                deleted: false,
+            },
+        );
+        stored
+    }
+
+    /// A live group by id, scoped to its tenant (a tombstoned or cross-tenant id reads absent).
+    fn find_by_id(&self, tenant_id: &str, id: &str) -> Option<ScimGroup> {
+        self.by_id
+            .get(id)
+            .filter(|s| s.tenant_id == tenant_id && !s.deleted)
+            .map(|s| s.group.clone())
+    }
+
+    /// All live groups owned by a tenant (unordered; the handler sorts for determinism).
+    fn list_for_tenant(&self, tenant_id: &str) -> Vec<ScimGroup> {
+        self.by_id
+            .values()
+            .filter(|s| s.tenant_id == tenant_id && !s.deleted)
+            .map(|s| s.group.clone())
+            .collect()
+    }
+
+    /// Apply `f` to a live group, refreshing its ETag on write. Unknown/cross-tenant → NotFound.
+    fn update<F>(&mut self, tenant_id: &str, id: &str, f: F) -> Result<ScimGroup, ScimError>
+    where
+        F: FnOnce(ScimGroup) -> Result<ScimGroup, ScimError>,
+    {
+        let current = self
+            .by_id
+            .get(id)
+            .filter(|s| s.tenant_id == tenant_id && !s.deleted)
+            .map(|s| s.group.clone())
+            .ok_or_else(|| ScimError::NotFound { id: id.to_string() })?;
+        let mut updated = f(current)?;
+        recompute_group_etag(&mut updated);
+        if let Some(slot) = self.by_id.get_mut(id) {
+            slot.group = updated.clone();
+        }
+        Ok(updated)
+    }
+
+    /// Soft-delete (tombstone) a group, scoped to its tenant. Idempotent.
+    fn delete(&mut self, tenant_id: &str, id: &str) {
+        if let Some(slot) = self.by_id.get_mut(id)
+            && slot.tenant_id == tenant_id
+        {
+            slot.deleted = true;
+        }
+    }
+}
+
+/// Recompute a group's ETag (`meta.version`) from its content, so a mutation changes it — what
+/// `If-Match` needs to detect a stale write. Stable for unchanged content.
+fn recompute_group_etag(group: &mut ScimGroup) {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    group.display_name.hash(&mut hasher);
+    group.external_id.hash(&mut hasher);
+    for member in &group.members {
+        member.value.hash(&mut hasher);
+    }
+    group.meta.version = format!("W/\"{:x}\"", hasher.finish());
+}
+
 struct Inner {
     tenants: HashMap<String, TenantConfig>,
     provisioner: Arc<dyn Provisioner>,
     store: Mutex<UserStore>,
+    groups: Mutex<GroupStore>,
 }
 
 impl Inner {
@@ -145,6 +236,13 @@ impl Inner {
     /// a poisoned cache is still safe to read/overwrite, so we never `unwrap`.
     fn store(&self) -> MutexGuard<'_, UserStore> {
         self.store
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Lock the group store, recovering a poisoned guard the same way.
+    fn groups(&self) -> MutexGuard<'_, GroupStore> {
+        self.groups
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -177,6 +275,7 @@ impl ScimServerState {
                 tenants,
                 provisioner,
                 store: Mutex::new(UserStore::default()),
+                groups: Mutex::new(GroupStore::default()),
             }),
         }
     }
@@ -337,6 +436,39 @@ impl ScimServerState {
             slot.user.active = false;
         }
     }
+
+    /// Store a new group (stamps its ETag), returning the stored value.
+    pub(crate) fn insert_group(&self, tenant_id: &str, group: ScimGroup) -> ScimGroup {
+        self.inner.groups().insert(tenant_id, group)
+    }
+
+    /// A live group by id, scoped to its tenant (tombstoned/cross-tenant → absent).
+    pub(crate) fn find_group_by_id(&self, tenant_id: &str, id: &str) -> Option<ScimGroup> {
+        self.inner.groups().find_by_id(tenant_id, id)
+    }
+
+    /// All live groups owned by a tenant (unordered; the handler sorts for determinism).
+    pub(crate) fn groups_for_tenant(&self, tenant_id: &str) -> Vec<ScimGroup> {
+        self.inner.groups().list_for_tenant(tenant_id)
+    }
+
+    /// Apply `f` to a live group, refreshing its ETag on write. Unknown/cross-tenant → NotFound.
+    pub(crate) fn update_group<F>(
+        &self,
+        tenant_id: &str,
+        id: &str,
+        f: F,
+    ) -> Result<ScimGroup, ScimError>
+    where
+        F: FnOnce(ScimGroup) -> Result<ScimGroup, ScimError>,
+    {
+        self.inner.groups().update(tenant_id, id, f)
+    }
+
+    /// Soft-delete (tombstone) a group, scoped to its tenant. Idempotent.
+    pub(crate) fn delete_group(&self, tenant_id: &str, id: &str) {
+        self.inner.groups().delete(tenant_id, id)
+    }
 }
 
 /// Recompute a resource's ETag (`meta.version`) from its mutable content, so any mutation
@@ -388,5 +520,52 @@ mod tests {
         a.user_name = "alice-renamed".to_string();
         recompute_etag(&mut a);
         assert_ne!(a.meta.version, v1, "a content change must change the ETag");
+    }
+
+    fn group(id: &str, display: &str) -> ScimGroup {
+        ScimGroup {
+            schemas: ScimGroup::default_schemas(),
+            id: id.to_string(),
+            external_id: None,
+            display_name: display.to_string(),
+            members: vec![],
+            meta: Default::default(),
+        }
+    }
+
+    #[test]
+    fn group_store_isolates_tenants_and_bumps_etag_on_update() {
+        let mut store = GroupStore::default();
+        let inserted = store.insert("t1", group("g1", "eng"));
+        store.insert("t2", group("g2", "sales"));
+        assert!(
+            inserted.meta.version.starts_with("W/\""),
+            "insert stamps a real ETag"
+        );
+
+        // Reads are tenant-scoped.
+        assert_eq!(store.find_by_id("t1", "g1").unwrap().display_name, "eng");
+        assert!(store.find_by_id("t2", "g1").is_none(), "tenant isolation");
+        assert_eq!(store.list_for_tenant("t1").len(), 1);
+
+        // An update applies the change and bumps the ETag; a cross-tenant update is NotFound.
+        let before = inserted.meta.version.clone();
+        let updated = store
+            .update("t1", "g1", |mut g| {
+                g.display_name = "engineering".to_string();
+                Ok(g)
+            })
+            .unwrap();
+        assert_eq!(updated.display_name, "engineering");
+        assert_ne!(
+            updated.meta.version, before,
+            "a mutation bumps the group ETag"
+        );
+        assert!(store.update("t2", "g1", Ok).is_err(), "cross-tenant update");
+
+        // Delete tombstones: hidden from find + list.
+        store.delete("t1", "g1");
+        assert!(store.find_by_id("t1", "g1").is_none());
+        assert_eq!(store.list_for_tenant("t1").len(), 0);
     }
 }

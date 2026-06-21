@@ -172,7 +172,7 @@ fn apply_put(
 
 /// Whether an `If-Match` value matches the current ETag: `*` matches any existing resource,
 /// otherwise some ETag in the comma-separated list must equal `current` (RFC 7232).
-fn etag_matches(if_match: &str, current: &str) -> bool {
+pub(crate) fn etag_matches(if_match: &str, current: &str) -> bool {
     let v = if_match.trim();
     v == "*" || v.split(',').any(|t| t.trim() == current)
 }
@@ -194,7 +194,7 @@ pub struct ListParams {
 
 /// The presentation-boundary timestamp for new resources.
 #[allow(clippy::disallowed_methods)] // SCIM server is a presentation layer (like the CLI)
-fn presentation_now() -> chrono::DateTime<chrono::Utc> {
+pub(crate) fn presentation_now() -> chrono::DateTime<chrono::Utc> {
     chrono::Utc::now()
 }
 
