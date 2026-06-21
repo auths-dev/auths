@@ -898,6 +898,12 @@ fn reject_unauthorized_delegate(
         }
         // Capability attenuation is time-independent: a delegate may never exceed the
         // delegator-anchored scope, so it is enforced whether or not a time is given.
+        //
+        // Accepted risk: an empty delegator-anchored capability list means UNCONSTRAINED, not
+        // "deny all" — with nothing to attenuate against, every claimed capability passes. This is
+        // by design: the scope is advisory authorization, and a delegator that anchors a capless
+        // scope is choosing not to constrain the delegate. A capless grant is therefore as
+        // powerful as the delegator; constrain a delegate by anchoring a non-empty capability set.
         if !scope.capabilities.is_empty() {
             for claimed in parse_scope_claim(commit_bytes) {
                 if !scope.capabilities.iter().any(|c| c.as_str() == claimed) {
