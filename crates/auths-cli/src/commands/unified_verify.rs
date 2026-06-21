@@ -203,6 +203,7 @@ pub async fn handle_verify_unified(
                     oidc_policy_did: None,
                     log_evidence: None,
                     log_key: None,
+                    expect_signer: None,
                 },
             )
             .await

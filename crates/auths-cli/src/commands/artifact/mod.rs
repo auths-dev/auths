@@ -264,6 +264,12 @@ pub enum ArtifactSubcommand {
         /// of band — never trusted from the evidence file itself.
         #[arg(long, value_name = "HEX", requires = "log_evidence")]
         log_key: Option<String>,
+
+        /// Require the verified signer to be exactly this identity (e.g. a release
+        /// signer). Fails closed on a signer mismatch — an allowlist applied after
+        /// verification, it can only narrow a valid verdict, never widen it.
+        #[arg(long = "expect-signer", value_name = "DID")]
+        expect_signer: Option<String>,
     },
 }
 
@@ -661,6 +667,7 @@ pub fn handle_artifact(
             oidc_policy_did,
             log_evidence,
             log_key,
+            expect_signer,
         } => {
             if offline {
                 return verify::handle_offline_verify(
@@ -691,6 +698,7 @@ pub fn handle_artifact(
                     oidc_policy_did,
                     log_evidence,
                     log_key,
+                    expect_signer,
                 },
             ))
         }

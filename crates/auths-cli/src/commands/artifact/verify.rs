@@ -92,6 +92,27 @@ pub struct VerifyArtifactArgs {
     /// The log operator's pinned Ed25519 key (64 hex chars); paired with
     /// `log_evidence` at the clap boundary.
     pub log_key: Option<String>,
+    /// Require the cryptographically-verified signer (the attestation issuer) to be
+    /// exactly this identity. Applied AFTER verification as an allowlist — it can only
+    /// narrow a `valid` verdict to invalid on a signer mismatch, never widen it.
+    pub expect_signer: Option<String>,
+}
+
+/// Decide whether the verified signer satisfies an `--expect-signer` allowlist.
+///
+/// Pure: a string-equality allowlist applied only once an attestation has otherwise
+/// verified. Returns the mismatch message to fail closed on, or `None` to proceed.
+///
+/// Args:
+/// * `issuer`: the verified attestation issuer (the signer).
+/// * `expect`: the `--expect-signer` value, if given.
+fn expected_signer_mismatch(issuer: &str, expect: Option<&str>) -> Option<String> {
+    match expect {
+        Some(want) if want != issuer => Some(format!(
+            "Signer mismatch: verified signer {issuer} is not the expected signer {want}"
+        )),
+        _ => None,
+    }
 }
 
 /// Execute the `artifact verify` command.
@@ -110,6 +131,7 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         oidc_policy_did,
         log_evidence,
         log_key,
+        expect_signer,
     } = args;
     let witness_keys = &witness_keys;
     let file_str = file.to_string_lossy().to_string();
@@ -276,6 +298,29 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
             return output_error(&file_str, 1, &format!("Chain verification failed: {}", e));
         }
     };
+
+    // --expect-signer: an allowlist applied AFTER cryptographic verification. A signer
+    // mismatch fails the verdict closed; it can only narrow `valid`, never widen it.
+    if let Some(msg) =
+        expected_signer_mismatch(attestation.issuer.as_str(), expect_signer.as_deref())
+    {
+        return output_result(
+            1,
+            VerifyArtifactResult {
+                file: file_str.clone(),
+                valid: false,
+                digest_match: Some(true),
+                chain_valid,
+                chain_report: chain_report.clone(),
+                witness_quorum: None,
+                issuer: Some(attestation.issuer.to_string()),
+                commit_sha: attestation.commit_sha.clone(),
+                commit_verified: None,
+                oidc_join: None,
+                error: Some(msg),
+            },
+        );
+    }
 
     // 6b. Offline transparency anchoring. With inclusion evidence supplied,
     //     the verdict's `anchored` field is decided by the proof: Anchored
@@ -1010,6 +1055,7 @@ pub(crate) fn raw_commit_bytes(repo: &git2::Repository, oid: git2::Oid) -> Resul
 
 #[cfg(test)]
 mod tests {
+    use super::expected_signer_mismatch;
     use super::raw_commit_bytes;
     use std::process::Command;
 
@@ -1047,6 +1093,22 @@ mod tests {
         assert_eq!(
             via_helper, via_git.stdout,
             "verifier payload must be byte-identical to git cat-file commit"
+        );
+    }
+
+    #[test]
+    fn expect_signer_is_an_allowlist_applied_after_verification() {
+        // No --expect-signer: never a mismatch (existing behavior preserved).
+        assert!(expected_signer_mismatch("did:keri:Erelease", None).is_none());
+        // The verified signer is exactly the expected one: proceed.
+        assert!(expected_signer_mismatch("did:keri:Erelease", Some("did:keri:Erelease")).is_none());
+        // A signer other than the expected one: fail closed, naming the expected signer.
+        let m = expected_signer_mismatch("did:keri:Eattacker", Some("did:keri:Erelease"));
+        assert!(
+            m.as_deref().is_some_and(
+                |s| s.contains("did:keri:Erelease") && s.contains("did:keri:Eattacker")
+            ),
+            "a non-expected signer must be rejected with a message naming both, got {m:?}"
         );
     }
 }
