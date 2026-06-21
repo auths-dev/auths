@@ -22,8 +22,8 @@ vulnerability you *waved through*, not the one you flagged.
 
 Write your report here:
 ```
-/Users/bordumb/workspace/repositories/auths-base/auths/docs/plans
-filename: red_team_{TODAY_DATE}.md
+/Users/bordumb/workspace/repositories/auths-base/auths/docs/plans/security
+filename: red_team_{TODAY_DATE}_{TIMESTAMP}.md
 ```
 End the report with the exact commit SHA you reviewed up to (`Reviewed through:
 <sha>`) so the next pass can start from there.
@@ -168,7 +168,47 @@ A list of 40 findings is itself noise. Group them:
 - **The one fix worth doing now** — the single change that closes the most exposure,
   specific enough to execute. Or "none — the range held up."
 - **Adversarial test gaps** — the negative/abuse tests that would have caught these and
-  don't exist. These are the cheapest durable defense.
+  don't exist, **each naming the test *level*** (Step 4). These are the cheapest durable defense.
+
+---
+
+## Step 4 — Recommend the test that would have caught it (match the level to the bug class)
+
+Every confirmed finding ships with the test that *would have caught it and prevents its return* — and
+**the level is the point.** A test at the wrong level is usually *why the finding exists*. Pick the
+level by asking one question: **is the *check itself* wrong, or is a *correct check wired wrong*?**
+
+- **The check is wrong** (the verifier/helper accepts a forgery or mis-decides in isolation) → a
+  **RED-first negative unit test**: forged-but-consistent input rejected, expired/revoked/replayed
+  rejected, wrong-curve *routed*-not-mis-verified. Necessary — but it only proves the helper.
+- **The check is right but the *wiring around it* is wrong** → an **end-to-end test on the live wired
+  path**: drive the *real caller* and assert the *real outcome*, never a helper in isolation. This is the
+  class you uniquely surface and a unit suite structurally **cannot** catch:
+  - the verdict is *consumed* wrong — a caller branches on `is_valid()` where it must use `is_trusted()`;
+  - the check is *fed* attacker-controlled / unauthenticated input — an unsigned timestamp graded fresh;
+  - the gate *exists but is never called* — dead-coded, behind a flag, or its test is disabled.
+  A green unit test sitting next to one of these is the most dangerous artifact in the repo — "the
+  property is never wired in" is invisible below the e2e level. **Default your recommendation here
+  whenever the finding is composition/wiring, not arithmetic.**
+- **The crypto may be subtly wrong against an *unimagined* class** (malleability, non-canonical encoding,
+  algorithm confusion) → **differential testing against an independent, trusted oracle** (keripy / RFC
+  test vectors / another implementation) over many inputs; any divergence is the bug. It catches what
+  your imagination and the author's both miss — recommend it for any hand-rolled or reimplemented
+  primitive, **even when it passes the happy-path vectors**.
+- **An untrusted-bytes boundary** (a parser, a deserializer, an FFI/foreign buffer) → a
+  **coverage-guided fuzz target** (`cargo-fuzz`), invariant *never accept an unsigned/forged input, never
+  panic*.
+- **A secret / MAC / token comparison** (a timing finding) → a **constant-time check**
+  (`subtle::ConstantTimeEq`, or a `dudect`-style test). Functional tests pass while the leak is live;
+  this is the one class only a timing/side-channel test or a tool catches, never a diff read.
+- **A cross-implementation divergence** (native vs WASM/FFI, two languages) → a **shared parity /
+  forge-once-bypass-everywhere test** that the same forgery is rejected by every implementation.
+
+Two corollaries:
+- **A disabled or commented-out security test is a failing test.** If a finding exists because its test
+  was turned off, the recommendation is *re-enable it* (update it to current types) — not "write a new one."
+- **Recommend, don't implement.** You produce the recommendation (the level + the exact assertion that is
+  RED before and GREEN after); the build loop writes it. One line per gap: which level, and why.
 
 ---
 
@@ -212,13 +252,16 @@ Severity · Title (in attacker terms) · Location (file:line) · Vulnerability �
 Attack (attacker, what they control, path to impact) · Impact (property broken) ·
 Confidence (Proven / Likely / Hypothesis — and what would confirm a hypothesis) ·
 Fix (the concrete change, the gotcha to avoid) · Acceptance (the adversarial test that
-fails before and passes after).
+fails before and passes after — **name the level** per Step 4: unit / e2e-on-the-wired-path /
+differential / fuzz / constant-time / parity).
 
 ## The one fix worth doing now
 Concrete, executable. Or "none — the range held up."
 
 ## Adversarial test gaps
-The negative/abuse tests this range should have and doesn't.
+The negative/abuse tests this range should have and doesn't — **each naming the level** (Step 4:
+unit / e2e-on-the-wired-path / differential / fuzz / constant-time / parity), and flagging any
+security test that is disabled/commented-out as a failing test to re-enable.
 
 ## Accepted-risk reconciliation
 For any finding touching a documented accepted risk (the *_accepted_risks.md /
