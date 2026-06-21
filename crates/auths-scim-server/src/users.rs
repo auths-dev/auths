@@ -76,7 +76,11 @@ pub async fn list_users(
         users = kept;
     }
 
-    users.sort_by(|a, b| a.id.cmp(&b.id));
+    sort_users(
+        &mut users,
+        params.sort_by.as_deref(),
+        params.sort_order.as_deref(),
+    );
     let total = users.len() as u64;
 
     let start_index = params.start_index.unwrap_or(1).max(1);
@@ -85,6 +89,28 @@ pub async fn list_users(
     let page: Vec<ScimUser> = users.into_iter().skip(skip).take(count as usize).collect();
 
     Ok(Json(ScimListResponse::new(page, total, start_index)))
+}
+
+/// Sort users per the SCIM `sortBy` attribute (case-insensitive) and `sortOrder` (`ascending`
+/// default), with `id` as a stable tiebreaker so pagination stays deterministic. An absent or
+/// unrecognized `sortBy` falls back to `id`.
+///
+/// Args:
+/// * `users`: the (filtered) user list, sorted in place.
+/// * `sort_by`: the requested SCIM attribute (`userName`, `externalId`, or `id`).
+/// * `sort_order`: `ascending` (default) or `descending`.
+fn sort_users(users: &mut [ScimUser], sort_by: Option<&str>, sort_order: Option<&str>) {
+    let key = |u: &ScimUser| -> String {
+        match sort_by.map(str::to_ascii_lowercase).as_deref() {
+            Some("username") => u.user_name.clone(),
+            Some("externalid") => u.external_id.clone().unwrap_or_default(),
+            _ => u.id.clone(),
+        }
+    };
+    users.sort_by(|a, b| key(a).cmp(&key(b)).then_with(|| a.id.cmp(&b.id)));
+    if sort_order.is_some_and(|s| s.eq_ignore_ascii_case("descending")) {
+        users.reverse();
+    }
 }
 
 /// `GET /scim/v2/Users/{id}` — fetch one resource; unknown id → 404 envelope.
@@ -108,6 +134,10 @@ pub struct ListParams {
     start_index: Option<u64>,
     #[serde(default)]
     count: Option<u64>,
+    #[serde(rename = "sortBy", default)]
+    sort_by: Option<String>,
+    #[serde(rename = "sortOrder", default)]
+    sort_order: Option<String>,
 }
 
 /// The presentation-boundary timestamp for new resources.
@@ -185,5 +215,58 @@ fn present_attr(user: &ScimUser, attr: &str) -> bool {
         "id" => !user.id.is_empty(),
         "active" => true,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user(id: &str, user_name: &str) -> ScimUser {
+        ScimUser {
+            schemas: ScimUser::default_schemas(),
+            id: id.to_string(),
+            external_id: None,
+            user_name: user_name.to_string(),
+            display_name: None,
+            active: true,
+            meta: Default::default(),
+            auths_extension: None,
+        }
+    }
+
+    #[test]
+    fn sort_users_honors_sort_by_and_order() {
+        let mut users = vec![user("3", "charlie"), user("1", "alice"), user("2", "bob")];
+        // sortBy=userName, ascending (default) → alice, bob, charlie.
+        sort_users(&mut users, Some("userName"), None);
+        assert_eq!(
+            users
+                .iter()
+                .map(|u| u.user_name.as_str())
+                .collect::<Vec<_>>(),
+            ["alice", "bob", "charlie"]
+        );
+        // sortOrder=descending → charlie, bob, alice.
+        sort_users(&mut users, Some("userName"), Some("descending"));
+        assert_eq!(
+            users
+                .iter()
+                .map(|u| u.user_name.as_str())
+                .collect::<Vec<_>>(),
+            ["charlie", "bob", "alice"]
+        );
+        // No sortBy → the deterministic id order (stable for pagination).
+        sort_users(&mut users, None, None);
+        assert_eq!(
+            users.iter().map(|u| u.id.as_str()).collect::<Vec<_>>(),
+            ["1", "2", "3"]
+        );
+        // An unrecognized sortBy falls back to id order and never panics.
+        sort_users(&mut users, Some("bogus"), None);
+        assert_eq!(
+            users.iter().map(|u| u.id.as_str()).collect::<Vec<_>>(),
+            ["1", "2", "3"]
+        );
     }
 }
