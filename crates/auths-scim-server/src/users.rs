@@ -85,8 +85,8 @@ pub async fn list_users(
 
     let start_index = params.start_index.unwrap_or(1).max(1);
     let skip = (start_index - 1) as usize;
-    let count = params.count.unwrap_or(u64::MAX);
-    let page: Vec<ScimUser> = users.into_iter().skip(skip).take(count as usize).collect();
+    let count = auths_scim::list::clamp_list_count(params.count);
+    let page: Vec<ScimUser> = users.into_iter().skip(skip).take(count).collect();
 
     Ok(Json(ScimListResponse::new(page, total, start_index)))
 }
