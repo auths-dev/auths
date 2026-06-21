@@ -333,7 +333,7 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "reqwest",
  "ring",
  "serde",
@@ -347,40 +347,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zeroize",
-]
-
-[[package]]
-name = "auths-auth-server"
-version = "0.1.3"
-dependencies = [
- "argon2",
- "async-trait",
- "auths-core",
- "auths-crypto",
- "auths-id",
- "auths-storage",
- "auths-telemetry",
- "auths-verifier",
- "axum",
- "base64",
- "bs58",
- "chrono",
- "futures",
- "git2 0.20.4",
- "hex",
- "http-body-util",
- "json-canon",
- "reqwest",
- "ring",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -443,7 +409,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "gethostname",
- "git2 0.21.0",
+ "git2",
  "glob",
  "hex",
  "indicatif",
@@ -588,7 +554,7 @@ dependencies = [
  "der 0.8.0",
  "dirs",
  "futures",
- "git2 0.21.0",
+ "git2",
  "hex",
  "json-canon",
  "jsonschema",
@@ -621,7 +587,7 @@ dependencies = [
  "auths-keri",
  "auths-verifier",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "log",
  "serde",
  "serde_json",
@@ -640,7 +606,7 @@ dependencies = [
  "auths-test-utils",
  "auths-verifier",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "log",
  "serde",
  "serde_json",
@@ -911,7 +877,7 @@ dependencies = [
  "auths-verifier",
  "base64",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "parking_lot",
  "ring",
  "serde",
@@ -980,7 +946,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "flate2",
- "git2 0.21.0",
+ "git2",
  "hex",
  "html-escape",
  "json-canon",
@@ -1019,7 +985,7 @@ dependencies = [
  "chrono",
  "criterion 0.8.2",
  "fs2",
- "git2 0.21.0",
+ "git2",
  "log",
  "ring",
  "serde",
@@ -1055,7 +1021,7 @@ name = "auths-test-utils"
 version = "0.1.0"
 dependencies = [
  "auths-crypto",
- "git2 0.21.0",
+ "git2",
  "ring",
  "tempfile",
 ]
@@ -3445,21 +3411,6 @@ dependencies = [
 
 [[package]]
 name = "git2"
-version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b88256088d75a56f8ecfa070513a775dd9107f6530ef14919dac831af9cfe2b"
-dependencies = [
- "bitflags",
- "libc",
- "libgit2-sys",
- "log",
- "openssl-probe 0.1.6",
- "openssl-sys",
- "url",
-]
-
-[[package]]
-name = "git2"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddddbf932745a6be37109b6112d3ee09696106f848449069d3a57bba937ab82e"
@@ -3701,12 +3652,6 @@ dependencies = [
  "http-body 1.0.1",
  "pin-project-lite",
 ]
-
-[[package]]
-name = "http-range-header"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
 name = "httparse"
@@ -4352,9 +4297,7 @@ checksum = "005d6ae6eac1912906073e069f7db60b1fa98e052a68227824afe3e3a1c59ca2"
 dependencies = [
  "cc",
  "libc",
- "libssh2-sys",
  "libz-sys",
- "openssl-sys",
  "pkg-config",
 ]
 
@@ -4384,20 +4327,6 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.7.4",
-]
-
-[[package]]
-name = "libssh2-sys"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "220e4f05ad4a218192533b300327f5150e809b54c4ec83b5a1d91833601811b9"
-dependencies = [
- "cc",
- "libc",
- "libz-sys",
- "openssl-sys",
- "pkg-config",
- "vcpkg",
 ]
 
 [[package]]
@@ -4596,16 +4525,6 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
-
-[[package]]
-name = "mime_guess"
-version = "2.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
-dependencies = [
- "mime",
- "unicase",
-]
 
 [[package]]
 name = "minicov"
@@ -4954,27 +4873,9 @@ dependencies = [
 
 [[package]]
 name = "openssl-probe"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
-
-[[package]]
-name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.117"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "option-ext"
@@ -6121,7 +6022,7 @@ version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "612460d5f7bea540c490b2b6395d8e34a953e52b491accd6c86c8164c5932a63"
 dependencies = [
- "openssl-probe 0.2.1",
+ "openssl-probe",
  "rustls-pki-types",
  "schannel",
  "security-framework 3.7.0",
@@ -7391,20 +7292,13 @@ checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
  "bitflags",
  "bytes",
- "futures-core",
  "futures-util",
  "http 1.4.0",
  "http-body 1.0.1",
  "http-body-util",
- "http-range-header",
- "httpdate",
  "iri-string",
- "mime",
- "mime_guess",
- "percent-encoding",
  "pin-project-lite",
  "tokio",
- "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
@@ -7586,12 +7480,6 @@ name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
-
-[[package]]
-name = "unicase"
-version = "2.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "unicode-bidi"

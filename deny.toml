@@ -30,7 +30,6 @@ deny = [
     "auths-infra-http",
     "auths-infra-rekor",
     "auths-api",
-    "auths-auth-server",
     "auths-cli",
     "auths-mcp-server",
     "auths-telemetry",
@@ -47,7 +46,6 @@ deny = [
   { crate = "axum", wrappers = [
     "auths-infra-http",
     "auths-api",
-    "auths-auth-server",
     "auths-cli",
     "auths-core",
     "auths-mcp-server",
@@ -68,7 +66,6 @@ deny = [
     "auths-sdk",
     "auths-test-utils",
     "auths-api",
-    "auths-auth-server",
     "auths-rp",
   ], reason = "git2 must stay in storage/adapter layer; auths-sdk and auths-api git2 are dev-deps only; auth-server uses git2 via the local-git identity resolver; auths-rp's git2 is the optional git-sync registry-fetch adapter (feature-gated off by default)" },
 ]
@@ -80,11 +77,6 @@ ignore = [
   "RUSTSEC-2023-0071",
   # paste unmaintained (RUSTSEC-2024-0436) — transitive via rmcp; no safe upgrade available
   "RUSTSEC-2024-0436",
-  # git2 unsound in Remote::list (RUSTSEC-2026-0183) and buffer-created BlameHunk Signature
-  # (RUSTSEC-2026-0184). auths uses git2 only for local registry reads; neither Remote::list
-  # nor BlameHunk is called, so the unsound paths are never exercised.
-  "RUSTSEC-2026-0183",
-  "RUSTSEC-2026-0184",
 ]
 
 [sources]
