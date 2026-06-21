@@ -270,6 +270,11 @@ pub enum ArtifactSubcommand {
         /// verification, it can only narrow a valid verdict, never widen it.
         #[arg(long = "expect-signer", value_name = "DID")]
         expect_signer: Option<String>,
+        /// Require the verified signer to be a rooted did:keri identity (a rotatable, revocable
+        /// key-state log), rejecting a bare did:key self-attestation. Fails closed; applied after
+        /// verification, it can only narrow a valid verdict, never widen it.
+        #[arg(long = "require-rooted-signer")]
+        require_rooted_signer: bool,
     },
 }
 
@@ -668,6 +673,7 @@ pub fn handle_artifact(
             log_evidence,
             log_key,
             expect_signer,
+            require_rooted_signer,
         } => {
             if offline {
                 return verify::handle_offline_verify(
@@ -699,6 +705,7 @@ pub fn handle_artifact(
                     log_evidence,
                     log_key,
                     expect_signer,
+                    require_rooted_signer,
                 },
             ))
         }
