@@ -217,29 +217,6 @@ pub enum IdSubcommand {
         timeout: u64,
     },
 
-    /// Expand a single-device identity into multi-device via one rotation.
-    Expand {
-        /// Add a device slot (repeatable). Curve name: `P256` or `Ed25519`.
-        #[arg(long, action = ArgAction::Append, value_name = "CURVE")]
-        add_device: Vec<String>,
-
-        /// Signing threshold after expansion. Required.
-        #[arg(long)]
-        signing_threshold: String,
-
-        /// Rotation threshold after expansion. Required.
-        #[arg(long)]
-        rotation_threshold: String,
-
-        /// Base alias for the existing single-key identity.
-        #[arg(long, default_value = "main")]
-        alias: String,
-
-        /// Alias for the new multi-key identity set.
-        #[arg(long, default_value = "main")]
-        next_alias: String,
-    },
-
     /// Export an identity bundle for stateless CI/CD verification.
     ///
     /// Creates a portable JSON bundle containing the identity ID, public key,
@@ -648,8 +625,9 @@ pub fn handle_id(
             {
                 return Err(anyhow!(
                     "multi-device rotation (--add-device / --remove-device / --signing-threshold / \
-                     --rotation-threshold) is not yet wired through `auths id rotate`. Use \
-                     `auths id expand` to add devices, or omit these flags for a standard rotation."
+                     --rotation-threshold) is not wired through `auths id rotate`. Add a device \
+                     with `auths device pair` (each device is a delegated identity under your \
+                     root), or omit these flags for a standard rotation."
                 ));
             }
             let identity_key_alias = alias.or(current_key_alias);
@@ -775,94 +753,6 @@ pub fn handle_id(
                 result.new_key_alias,
             );
 
-            Ok(())
-        }
-
-        IdSubcommand::Expand {
-            add_device,
-            signing_threshold,
-            rotation_threshold,
-            alias,
-            next_alias,
-        } => {
-            if add_device.is_empty() {
-                return Err(anyhow!(
-                    "`auths id expand` requires at least one --add-device; use `auths id rotate` for key-set-preserving rotations"
-                ));
-            }
-
-            // Parse curves from --add-device string values.
-            let curves: Result<Vec<auths_crypto::CurveType>, _> = add_device
-                .iter()
-                .map(|s| match s.to_ascii_lowercase().as_str() {
-                    "p256" | "p-256" => Ok(auths_crypto::CurveType::P256),
-                    "ed25519" => Ok(auths_crypto::CurveType::Ed25519),
-                    other => Err(anyhow!(
-                        "unknown curve {:?}: expected P256 or Ed25519",
-                        other
-                    )),
-                })
-                .collect();
-            let curves = curves?;
-
-            // Current + added count determines post-expansion device count.
-            // Without state read here, assume current is single-key (the
-            // common `expand` case). If state is already multi-key, the
-            // threshold validator in the SDK rejects mismatches.
-            let estimated_count = 1 + curves.len();
-            let new_kt =
-                crate::commands::init::parse_threshold_cli(&signing_threshold, estimated_count)?;
-            let new_nt =
-                crate::commands::init::parse_threshold_cli(&rotation_threshold, estimated_count)?;
-
-            let base_alias = KeyAlias::new_unchecked(alias.clone());
-
-            // Atomically migrate the legacy {alias} slot to {alias}--0 before
-            // the rotation starts. Idempotent: safe if already migrated.
-            let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(
-                auths_sdk::keychain::get_platform_keychain_with_config(env_config)
-                    .context("Failed to access keychain")?,
-            );
-            let _migrated =
-                auths_sdk::keychain::migrate_legacy_alias(key_storage.as_ref(), &base_alias)
-                    .context("Failed to migrate legacy key alias before expansion")?;
-
-            // Build the registry backend and run the multi-device rotation.
-            let backend: Arc<dyn auths_sdk::ports::RegistryBackend + Send + Sync> = Arc::new(
-                auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
-                    auths_sdk::storage::RegistryConfig::single_tenant(&repo_path),
-                ),
-            );
-
-            let shape = auths_sdk::identity::RotationShape {
-                add_devices: curves,
-                remove_indices: vec![],
-                new_kt: Some(new_kt),
-                new_nt: Some(new_nt),
-            };
-            let layout = auths_sdk::storage_layout::StorageLayoutConfig::default();
-            let next_alias_obj = KeyAlias::new_unchecked(next_alias.clone());
-            let result = auths_sdk::identity::rotate_registry_identity_multi(
-                backend,
-                &base_alias,
-                &next_alias_obj,
-                passphrase_provider.as_ref(),
-                &layout,
-                key_storage.as_ref(),
-                None,
-                shape,
-            )
-            .context("Failed to expand identity")?;
-
-            println!(
-                "[OK] Identity expanded — rotation at sequence {} with {} new device(s)",
-                result.sequence,
-                add_device.len()
-            );
-            println!(
-                "     Base alias: {} → slots {}..{}",
-                alias, 0, estimated_count
-            );
             Ok(())
         }
 

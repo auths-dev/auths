@@ -134,9 +134,9 @@ pub struct InitCommand {
     /// Number of device slots for a multi-key KEL (default 1).
     ///
     /// Values > 1 require `--signing-threshold` and `--rotation-threshold`.
-    /// Multi-device init today runs a single-device inception and points the
-    /// operator at `auths id expand` for the device-expansion rotation; the
-    /// full atomic multi-device inception path is wired through later.
+    /// Multi-device init today runs a single-device inception; add further
+    /// devices with `auths device pair` (each is a delegated identity under
+    /// the root). The full atomic multi-device inception path is wired later.
     #[clap(long, default_value_t = 1)]
     pub device_count: u8,
 
@@ -259,8 +259,8 @@ pub fn handle_init(
         let _nt = parse_threshold_cli(nt_str, device_count)?;
         return Err(anyhow!(
             "multi-device init (--device-count > 1) is not yet wired through the developer setup flow. \
-             Run `auths init` for a single-device identity, then `auths id expand --add-device <CURVE>` \
-             (repeatable) with the desired thresholds to convert into a multi-device KEL."
+             Run `auths init` for a single-device identity, then add devices with `auths device pair` \
+             (each device is a delegated identity under your root)."
         ));
     }
     if cmd.signing_threshold.is_some() && device_count == 1 {

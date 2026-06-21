@@ -1,5 +1,6 @@
 mod clap_collision;
 mod doctor;
+mod expand_rotate;
 mod golden_path;
 mod helpers;
 mod init;
