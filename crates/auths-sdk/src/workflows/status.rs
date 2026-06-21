@@ -56,16 +56,34 @@ impl StatusWorkflow {
         })
     }
 
-    /// Compute suggested next steps based on current state.
+    /// Compute suggested next steps from the aggregated state.
     fn compute_next_steps(
         identity: &Option<IdentityStatus>,
         devices: &[DeviceStatus],
         agent: &AgentStatus,
     ) -> Vec<NextStep> {
+        let readinesses: Vec<DeviceReadiness> = devices.iter().map(|d| d.readiness).collect();
+        Self::next_steps_from_readiness(identity.is_some(), &readinesses, agent.running)
+    }
+
+    /// The next-step rules, keyed on the minimal facts they need — identity presence, each device's
+    /// readiness, and whether the signing agent is live. The single source of truth for these rules,
+    /// including the recovery single-point-of-failure signpost, so any presentation layer (the CLI)
+    /// shares them rather than re-deriving its own.
+    ///
+    /// Args:
+    /// * `identity_present`: whether an identity is initialized.
+    /// * `readinesses`: the readiness of each device in the roster.
+    /// * `agent_running`: whether the signing agent is live.
+    pub fn next_steps_from_readiness(
+        identity_present: bool,
+        readinesses: &[DeviceReadiness],
+        agent_running: bool,
+    ) -> Vec<NextStep> {
         let mut steps = Vec::new();
 
         // No identity initialized
-        if identity.is_none() {
+        if !identity_present {
             steps.push(NextStep {
                 summary: "Initialize your identity".to_string(),
                 command: "auths init --profile developer".to_string(),
@@ -74,17 +92,17 @@ impl StatusWorkflow {
         }
 
         // No devices linked
-        if devices.is_empty() {
+        if readinesses.is_empty() {
             steps.push(NextStep {
                 summary: "Link this device to your identity".to_string(),
                 command: "auths pair".to_string(),
             });
         }
 
-        // Device expiring soon
-        let expiring_soon = devices
+        // Devices expiring soon
+        let expiring_soon = readinesses
             .iter()
-            .filter(|d| d.readiness == DeviceReadiness::ExpiringSoon)
+            .filter(|r| **r == DeviceReadiness::ExpiringSoon)
             .count();
         if expiring_soon > 0 {
             steps.push(NextStep {
@@ -95,7 +113,7 @@ impl StatusWorkflow {
 
         // A single usable device is a recovery single point of failure: if it is lost or
         // compromised there is no second device to recover the identity from.
-        if Self::needs_recovery_device(devices) {
+        if Self::needs_recovery_device(readinesses) {
             steps.push(NextStep {
                 summary: "Add a recovery device — with only one device, losing or compromising it \
                           leaves no way to recover your identity"
@@ -105,7 +123,7 @@ impl StatusWorkflow {
         }
 
         // Agent not running
-        if !agent.running {
+        if !agent_running {
             steps.push(NextStep {
                 summary: "Start the authentication agent for signing".to_string(),
                 command: "auths agent start".to_string(),
@@ -146,16 +164,11 @@ impl StatusWorkflow {
     /// device to recover from. Zero devices is a different state (link a device first).
     ///
     /// Args:
-    /// * `devices`: the identity's device roster.
-    fn needs_recovery_device(devices: &[DeviceStatus]) -> bool {
-        devices
+    /// * `readinesses`: the readiness of each device in the roster.
+    fn needs_recovery_device(readinesses: &[DeviceReadiness]) -> bool {
+        readinesses
             .iter()
-            .filter(|d| {
-                !matches!(
-                    d.readiness,
-                    DeviceReadiness::Revoked | DeviceReadiness::Expired
-                )
-            })
+            .filter(|r| !matches!(r, DeviceReadiness::Revoked | DeviceReadiness::Expired))
             .count()
             == 1
     }
@@ -216,36 +229,33 @@ mod tests {
         assert!(steps[0].command.contains("init"));
     }
 
-    fn ok_device() -> DeviceStatus {
-        DeviceStatus {
-            device_did: auths_verifier::types::CanonicalDid::new_unchecked("did:key:z6MkTest"),
-            readiness: DeviceReadiness::Ok,
-            expires_at: None,
-            expires_in: None,
-            revoked_at: None,
-        }
-    }
-
     #[test]
     fn single_usable_device_is_a_recovery_single_point_of_failure() {
         // One usable device → no second device to recover from → flagged.
-        assert!(StatusWorkflow::needs_recovery_device(&[ok_device()]));
+        assert!(StatusWorkflow::needs_recovery_device(&[
+            DeviceReadiness::Ok
+        ]));
         // Two usable devices → a recovery path exists → not flagged.
         assert!(!StatusWorkflow::needs_recovery_device(&[
-            ok_device(),
-            ok_device()
+            DeviceReadiness::Ok,
+            DeviceReadiness::Ok
         ]));
         // A revoked device is not a recovery option: one usable + one revoked is still a
         // single point of failure.
-        let revoked = DeviceStatus {
-            readiness: DeviceReadiness::Revoked,
-            ..ok_device()
-        };
         assert!(StatusWorkflow::needs_recovery_device(&[
-            ok_device(),
-            revoked
+            DeviceReadiness::Ok,
+            DeviceReadiness::Revoked
         ]));
         // Zero devices is a different state (link a device first), not a recovery nag.
         assert!(!StatusWorkflow::needs_recovery_device(&[]));
+    }
+
+    #[test]
+    fn single_device_identity_is_told_to_add_a_recovery_device() {
+        let steps = StatusWorkflow::next_steps_from_readiness(true, &[DeviceReadiness::Ok], true);
+        assert!(
+            steps.iter().any(|s| s.summary.contains("recovery device")),
+            "a single-device identity must be told to add a recovery device, got {steps:?}"
+        );
     }
 }
