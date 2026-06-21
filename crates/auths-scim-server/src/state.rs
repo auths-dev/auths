@@ -213,6 +213,11 @@ impl GroupStore {
 
 /// Recompute a group's ETag (`meta.version`) from its content, so a mutation changes it — what
 /// `If-Match` needs to detect a stale write. Stable for unchanged content.
+///
+/// The `DefaultHasher` here is a non-cryptographic, weak content tag — it is an
+/// optimistic-concurrency hint only, never a security boundary. `If-Match` does not gate
+/// authorization (that is the bearer token's job), so the ETag must not be repurposed as one;
+/// it does not need to be collision-resistant.
 fn recompute_group_etag(group: &mut ScimGroup) {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -474,6 +479,11 @@ impl ScimServerState {
 /// Recompute a resource's ETag (`meta.version`) from its mutable content, so any mutation
 /// changes it — what an `If-Match` optimistic-concurrency check needs to detect a stale write.
 /// A weak ETag; stable for unchanged content so a re-read is not seen as modified.
+///
+/// The `DefaultHasher` here is a non-cryptographic, weak content tag — it is an
+/// optimistic-concurrency hint only, never a security boundary. `If-Match` does not gate
+/// authorization (that is the bearer token's job), so the ETag must not be repurposed as one;
+/// it does not need to be collision-resistant.
 fn recompute_etag(user: &mut ScimUser) {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
