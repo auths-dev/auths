@@ -20,8 +20,8 @@ abstraction you *waved through*, not the one you flagged.
 
 Write your report here:
 ```
-/Users/bordumb/workspace/repositories/auths-base/auths/docs/plans
-filename: architectural_review_{TODAY_DATE}.md
+/Users/bordumb/workspace/repositories/auths-base/auths/docs/plans/architecture
+filename: architectural_review_{TODAY_DATE}_{TIMESTAMP}.md
 ```
 End the report with the exact commit SHA you reviewed up to (`Reviewed through:
 <sha>`) so the next review can start from there.
