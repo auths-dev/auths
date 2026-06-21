@@ -1,3 +1,4 @@
+mod authorization_summary;
 mod capability_fromstr;
 mod commit_kel;
 mod commit_verify;

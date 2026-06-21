@@ -97,6 +97,28 @@ pub fn handle_sign(
     );
     println!("  RID:    {}", result.rid);
     println!("  Digest: sha256:{}", result.digest);
+    print_authorization_scope(&final_json);
 
     Ok(())
+}
+
+/// Print the scope this signature grants — who is vouching, for what, and until when — so the
+/// signer sees what they authorize rather than just a digest. The artifact's content is bound by
+/// the digest above, not shown here.
+///
+/// Args:
+/// * `attestation_json`: the canonical attestation JSON that was signed.
+fn print_authorization_scope(attestation_json: &str) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(attestation_json) else {
+        return;
+    };
+    for (label, field) in [
+        ("Signer ", "issuer"),
+        ("Subject", "subject"),
+        ("Expires", "expires_at"),
+    ] {
+        if let Some(text) = value.get(field).and_then(|v| v.as_str()) {
+            println!("  {label}: {text}");
+        }
+    }
 }

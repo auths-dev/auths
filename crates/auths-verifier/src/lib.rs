@@ -48,6 +48,8 @@
 //! - `wasm` — Enable WASM bindings via wasm-bindgen
 
 pub mod action;
+/// Legible "what you are authorizing" summary derived from the bytes being signed.
+pub mod authorization_summary;
 pub mod clock;
 pub mod commit;
 /// Stateless commit verification against an identity bundle (CLI + WASM).
@@ -93,6 +95,9 @@ pub use types::{
 
 // Re-export action envelope
 pub use action::ActionEnvelope;
+
+// Re-export the legible authorization summary (signing-consent surface)
+pub use authorization_summary::AuthorizationSummary;
 
 // Re-export core types
 pub use core::{
