@@ -92,6 +92,11 @@ pub enum Verdict {
     /// gateway treats this as a hard fail-closed: the call is not forwarded. A
     /// forged or malformed proof lands here.
     ProofUnauthentic { reason: String },
+    /// The proof is authentic, but its freshness failed the policy — a valid grant
+    /// whose source is too stale to trust under the current `FreshnessPolicy`. Distinct
+    /// from [`ProofUnauthentic`]: the call is still fail-closed (not forwarded), but the
+    /// remedy is to re-fetch the latest tip and retry, not to reject a forgery.
+    Stale,
 }
 
 impl Verdict {
@@ -106,6 +111,7 @@ impl Verdict {
             Verdict::AgentExpired => "agent-expired",
             Verdict::Revoked => "revoked",
             Verdict::ProofUnauthentic { .. } => "proof-unauthentic",
+            Verdict::Stale => "stale",
         }
     }
 
@@ -120,9 +126,7 @@ impl Verdict {
             {
                 Verdict::Allowed
             }
-            CommitVerdict::Valid { .. } => Verdict::ProofUnauthentic {
-                reason: "stale".to_string(),
-            },
+            CommitVerdict::Valid { .. } => Verdict::Stale,
             CommitVerdict::OutsideAgentScope { capability, .. } => Verdict::OutsideAgentScope {
                 capability: Capability(capability.clone()),
             },
@@ -494,5 +498,21 @@ mod tests {
             Verdict::from_commit_verdict(&CommitVerdict::SshSignatureInvalid),
             Verdict::ProofUnauthentic { .. }
         ));
+    }
+
+    #[test]
+    fn valid_but_stale_is_stale_not_unauthentic() {
+        // A valid proof whose freshness fails policy is Stale, not ProofUnauthentic: the proof IS
+        // authentic, so the remedy is to re-fetch the latest tip, not to reject a forgery. Both
+        // are fail-closed (not forwarded), but the gateway must keep them distinct.
+        let verdict = Verdict::from_commit_verdict(&CommitVerdict::Valid {
+            signer_did: "did:keri:Eagent".into(),
+            root_did: "did:keri:Eroot".into(),
+            duplicitous_root: false,
+            as_of: 0,
+            freshness: auths_verifier::freshness::Freshness::Stale,
+        });
+        assert_eq!(verdict, Verdict::Stale);
+        assert_eq!(verdict.code(), "stale");
     }
 }

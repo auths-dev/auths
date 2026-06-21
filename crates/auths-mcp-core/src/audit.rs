@@ -336,8 +336,9 @@ pub async fn audit_spend_log(
                 };
             }
             crate::gate::Verdict::Revoked => return AuditVerdict::Revoked { at: i },
-            // Allowed / OutsideAgentScope / AgentExpired are AUTHENTIC proofs — a legit refusal is
-            // not a tamper; only forgery and revocation are audit failures of the proof itself.
+            // Allowed / OutsideAgentScope / AgentExpired / Stale are AUTHENTIC proofs — a legit
+            // refusal (including a stale-freshness one) is not a tamper; only forgery and
+            // revocation are audit failures of the proof itself.
             _ => {}
         }
         // Continuity: each record's SIGNED `Auths-Prev` links to the prior record's commit (the
