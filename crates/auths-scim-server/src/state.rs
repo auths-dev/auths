@@ -302,7 +302,8 @@ impl ScimServerState {
             .filter(|s| s.tenant_id == tenant_id && !s.deleted)
             .map(|s| s.user.clone())
             .ok_or_else(|| ScimError::NotFound { id: id.to_string() })?;
-        let updated = f(current)?;
+        let mut updated = f(current)?;
+        recompute_etag(&mut updated);
         if let Some(slot) = store.by_id.get_mut(id) {
             slot.user = updated.clone();
         }
@@ -321,6 +322,7 @@ impl ScimServerState {
             if let Some(ext) = slot.user.auths_extension.as_mut() {
                 ext.revoked = true;
             }
+            recompute_etag(&mut slot.user);
         }
     }
 
@@ -334,5 +336,57 @@ impl ScimServerState {
             slot.deleted = true;
             slot.user.active = false;
         }
+    }
+}
+
+/// Recompute a resource's ETag (`meta.version`) from its mutable content, so any mutation
+/// changes it — what an `If-Match` optimistic-concurrency check needs to detect a stale write.
+/// A weak ETag; stable for unchanged content so a re-read is not seen as modified.
+fn recompute_etag(user: &mut ScimUser) {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    user.user_name.hash(&mut hasher);
+    user.external_id.hash(&mut hasher);
+    user.display_name.hash(&mut hasher);
+    user.active.hash(&mut hasher);
+    if let Some(ext) = &user.auths_extension {
+        ext.revoked.hash(&mut hasher);
+    }
+    user.meta.version = format!("W/\"{:x}\"", hasher.finish());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn user(name: &str) -> ScimUser {
+        ScimUser {
+            schemas: ScimUser::default_schemas(),
+            id: "id-1".to_string(),
+            external_id: None,
+            user_name: name.to_string(),
+            display_name: None,
+            active: true,
+            meta: Default::default(),
+            auths_extension: None,
+        }
+    }
+
+    #[test]
+    fn recompute_etag_changes_with_content_for_if_match() {
+        let mut a = user("alice");
+        recompute_etag(&mut a);
+        let v1 = a.meta.version.clone();
+        assert!(v1.starts_with("W/\""), "weak ETag, got {v1}");
+
+        // Same content → same ETag (a no-op re-read is not seen as modified).
+        let mut same = user("alice");
+        recompute_etag(&mut same);
+        assert_eq!(same.meta.version, v1);
+
+        // A content change → a different ETag (a stale If-Match no longer matches).
+        a.user_name = "alice-renamed".to_string();
+        recompute_etag(&mut a);
+        assert_ne!(a.meta.version, v1, "a content change must change the ETag");
     }
 }
