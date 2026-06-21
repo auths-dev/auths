@@ -30,6 +30,7 @@ pub use serve::{ServeConfig, TenantBootstrap, build_provisioner, run};
 pub use state::{ScimServerState, TenantConfig};
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 
 /// Build the SCIM 2.0 router.
@@ -84,6 +85,10 @@ pub fn router(state: ScimServerState) -> Router {
                 .delete(groups::delete_group),
         )
         .route("/health", get(health))
+        // Pin an explicit 1 MiB request-body cap (matching auths-api) rather than relying on
+        // axum's 2 MiB extractor default, so an oversized SCIM payload is rejected before it is
+        // buffered into memory.
+        .layer(DefaultBodyLimit::max(1024 * 1024))
         .with_state(state)
 }
 
@@ -252,6 +257,37 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         assert!(body_string(resp).await.contains("\"totalResults\":0"));
+    }
+
+    #[tokio::test]
+    async fn oversized_request_body_is_rejected_at_the_explicit_one_mib_cap() {
+        // The SCIM server pins an explicit 1 MiB body cap rather than relying on axum's 2 MiB
+        // extractor default — matching `auths-api` and not silently depending on a framework
+        // default. A body between 1 MiB and 2 MiB passes the framework default but must be
+        // rejected by the explicit cap with 413 before the handler deserializes it.
+        let big_members = (0..65_000)
+            .map(|i| format!(r#"{{"value":"member-{i:08}"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        let body = format!(
+            r#"{{"schemas":["urn:ietf:params:scim:schemas:core:2.0:Group"],"displayName":"big","members":[{big_members}]}}"#
+        );
+        assert!(
+            body.len() > 1024 * 1024 && body.len() < 2 * 1024 * 1024,
+            "test body must sit between the 1 MiB explicit cap and axum's 2 MiB default, was {}",
+            body.len()
+        );
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/scim/v2/Groups")
+            .header(header::AUTHORIZATION, "Bearer scim_secret")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body))
+            .unwrap();
+
+        let resp = router(test_state()).oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[tokio::test]
