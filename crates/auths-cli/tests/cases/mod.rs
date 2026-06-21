@@ -8,6 +8,7 @@ mod key_rotation;
 mod key_rotation_cli;
 mod preset;
 mod revocation;
+mod sign_commit_binding;
 mod sign_verify;
 mod sign_verify_roundtrip;
 mod verify;

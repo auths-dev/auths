@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 
-use crate::subprocess::{git_command, git_silent};
+use crate::subprocess::git_command;
 
 /// Resolve a git ref to a full commit SHA.
 ///
@@ -44,16 +44,4 @@ pub fn resolve_commit_sha(commit_ref: &str) -> Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// Silently attempt to resolve HEAD to a full commit SHA.
-///
-/// Returns `None` if not in a git repo, no commits exist, or git is unavailable.
-///
-/// Usage:
-/// ```ignore
-/// let sha = resolve_head_silent(); // Some("abc123...") or None
-/// ```
-pub fn resolve_head_silent() -> Option<String> {
-    git_silent(&["rev-parse", "--verify", "--quiet", "HEAD"])
 }

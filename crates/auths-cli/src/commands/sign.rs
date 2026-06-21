@@ -362,7 +362,11 @@ pub fn handle_sign_unified(
                 Some(alias) => alias.to_string(),
                 None => super::key_detect::auto_detect_device_key(repo_opt.as_deref(), env_config)?,
             };
-            let commit_sha = super::git_helpers::resolve_head_silent();
+            // A file attestation does not bind a commit: the ambient git HEAD is unrelated to the
+            // file being signed, and inferring it would let whatever commit happens to be checked
+            // out be claimed as the attestation's provenance. Bind one explicitly with
+            // `auths artifact sign --commit <sha>`.
+            let commit_sha: Option<String> = None;
             handle_artifact_sign(
                 &path,
                 cmd.sig_output,

@@ -58,7 +58,9 @@ impl ExecutableCommand for PublishCommand {
                         )?,
                         None,
                         None,
-                        crate::commands::git_helpers::resolve_head_silent(),
+                        // Auto-signing a file for publish does not bind the ambient git HEAD: it is
+                        // unrelated to the file. Bind one with `auths artifact sign --commit <sha>`.
+                        None,
                         ctx.repo_path.clone(),
                         ctx.passphrase_provider.clone(),
                         &ctx.env_config,
