@@ -93,6 +93,17 @@ impl StatusWorkflow {
             });
         }
 
+        // A single usable device is a recovery single point of failure: if it is lost or
+        // compromised there is no second device to recover the identity from.
+        if Self::needs_recovery_device(devices) {
+            steps.push(NextStep {
+                summary: "Add a recovery device — with only one device, losing or compromising it \
+                          leaves no way to recover your identity"
+                    .to_string(),
+                command: "auths pair".to_string(),
+            });
+        }
+
         // Agent not running
         if !agent.running {
             steps.push(NextStep {
@@ -128,6 +139,25 @@ impl StatusWorkflow {
             Some(_) => DeviceReadiness::Ok,
             None => DeviceReadiness::Ok, // No expiry set
         }
+    }
+
+    /// Whether the identity is a recovery single point of failure: exactly one usable
+    /// (non-revoked, non-expired) device, so a lost or compromised device leaves no second
+    /// device to recover from. Zero devices is a different state (link a device first).
+    ///
+    /// Args:
+    /// * `devices`: the identity's device roster.
+    fn needs_recovery_device(devices: &[DeviceStatus]) -> bool {
+        devices
+            .iter()
+            .filter(|d| {
+                !matches!(
+                    d.readiness,
+                    DeviceReadiness::Revoked | DeviceReadiness::Expired
+                )
+            })
+            .count()
+            == 1
     }
 }
 
@@ -184,5 +214,38 @@ mod tests {
         );
         assert!(!steps.is_empty());
         assert!(steps[0].command.contains("init"));
+    }
+
+    fn ok_device() -> DeviceStatus {
+        DeviceStatus {
+            device_did: auths_verifier::types::CanonicalDid::new_unchecked("did:key:z6MkTest"),
+            readiness: DeviceReadiness::Ok,
+            expires_at: None,
+            expires_in: None,
+            revoked_at: None,
+        }
+    }
+
+    #[test]
+    fn single_usable_device_is_a_recovery_single_point_of_failure() {
+        // One usable device → no second device to recover from → flagged.
+        assert!(StatusWorkflow::needs_recovery_device(&[ok_device()]));
+        // Two usable devices → a recovery path exists → not flagged.
+        assert!(!StatusWorkflow::needs_recovery_device(&[
+            ok_device(),
+            ok_device()
+        ]));
+        // A revoked device is not a recovery option: one usable + one revoked is still a
+        // single point of failure.
+        let revoked = DeviceStatus {
+            readiness: DeviceReadiness::Revoked,
+            ..ok_device()
+        };
+        assert!(StatusWorkflow::needs_recovery_device(&[
+            ok_device(),
+            revoked
+        ]));
+        // Zero devices is a different state (link a device first), not a recovery nag.
+        assert!(!StatusWorkflow::needs_recovery_device(&[]));
     }
 }
