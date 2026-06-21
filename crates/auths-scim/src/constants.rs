@@ -1,6 +1,9 @@
 /// SCIM 2.0 Core User schema URI (RFC 7643 Section 4.1).
 pub const SCHEMA_USER: &str = "urn:ietf:params:scim:schemas:core:2.0:User";
 
+/// SCIM 2.0 Core Group schema URI (RFC 7643 Section 4.2).
+pub const SCHEMA_GROUP: &str = "urn:ietf:params:scim:schemas:core:2.0:Group";
+
 /// SCIM 2.0 ListResponse message schema URI (RFC 7644 Section 3.4.2).
 pub const SCHEMA_LIST_RESPONSE: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
 

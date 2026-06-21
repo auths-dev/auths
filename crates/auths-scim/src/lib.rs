@@ -33,7 +33,7 @@ pub use mapping::{
     scim_user_to_update_fields,
 };
 pub use patch::{PatchOpType, PatchOperation, ScimPatchOp, apply_patch_operations};
-pub use resource::{AuthsAgentExtension, ScimMeta, ScimUser};
+pub use resource::{AuthsAgentExtension, GroupMember, ScimGroup, ScimMeta, ScimUser};
 pub use schema::{
     AuthenticationScheme, FilterSupported, ResourceType, SchemaAttribute, SchemaDefinition,
     SchemaExtension, ServiceProviderConfig, Supported,

@@ -4,7 +4,7 @@ use auths_verifier::{Capability, IdentityDID};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::constants::{SCHEMA_AUTHS_AGENT, SCHEMA_USER};
+use crate::constants::{SCHEMA_AUTHS_AGENT, SCHEMA_GROUP, SCHEMA_USER};
 
 /// SCIM 2.0 User resource adapted for Auths agent identities.
 ///
@@ -87,6 +87,43 @@ pub struct AuthsAgentExtension {
     pub revoked: bool,
 }
 
+/// A SCIM Group resource (RFC 7643 §4.2) — a named collection of members.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScimGroup {
+    pub schemas: Vec<String>,
+    #[serde(default)]
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<String>,
+    pub display_name: String,
+    #[serde(default)]
+    pub members: Vec<GroupMember>,
+    #[serde(default)]
+    pub meta: ScimMeta,
+}
+
+impl ScimGroup {
+    /// Default schemas for a new Group resource.
+    pub fn default_schemas() -> Vec<String> {
+        vec![SCHEMA_GROUP.into()]
+    }
+}
+
+/// A member reference within a SCIM Group (RFC 7643 §4.2).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupMember {
+    /// The member resource's `id`.
+    pub value: String,
+    /// A human-readable label for the member (e.g. the user's `userName`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+    /// The URI reference to the member resource, serialized as `$ref`.
+    #[serde(rename = "$ref", skip_serializing_if = "Option::is_none")]
+    pub ref_uri: Option<String>,
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -163,5 +200,37 @@ mod tests {
         assert_eq!(schemas.len(), 2);
         assert!(schemas.contains(&SCHEMA_USER.to_string()));
         assert!(schemas.contains(&SCHEMA_AUTHS_AGENT.to_string()));
+    }
+
+    #[test]
+    fn scim_group_serializes_with_display_name_and_members() {
+        let group = ScimGroup {
+            schemas: ScimGroup::default_schemas(),
+            id: "g-1".into(),
+            external_id: Some("okta-grp-9".into()),
+            display_name: "engineering".into(),
+            members: vec![GroupMember {
+                value: "u-1".into(),
+                display: Some("alice".into()),
+                ref_uri: Some("/Users/u-1".into()),
+            }],
+            meta: ScimMeta::default(),
+        };
+        let json = serde_json::to_string(&group).unwrap();
+        assert!(json.contains("\"displayName\":\"engineering\""));
+        assert!(json.contains("\"members\""));
+        assert!(json.contains("\"value\":\"u-1\""));
+        // The member reference uses the SCIM `$ref` key, not the Rust field name.
+        assert!(json.contains("\"$ref\":\"/Users/u-1\""));
+        assert!(json.contains(SCHEMA_GROUP));
+        // Round-trips through serde.
+        let back: ScimGroup = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, group);
+    }
+
+    #[test]
+    fn group_default_schemas() {
+        let schemas = ScimGroup::default_schemas();
+        assert_eq!(schemas, vec![SCHEMA_GROUP.to_string()]);
     }
 }
