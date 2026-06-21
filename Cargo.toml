@@ -36,6 +36,7 @@ members = [
   "crates/auths-witness-node",
   "crates/auths-checkpoint-cosigner",
   "crates/auths-monitor",
+  "crates/auths-auth-server",
   "crates/murmur-core",
   "crates/murmur-relay",
 ]

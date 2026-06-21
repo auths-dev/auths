@@ -1,0 +1,191 @@
+openapi: "3.1.0"
+info:
+  title: Auths Auth Server
+  version: "0.1.0"
+  description: DID-based challenge-response authentication for auths.dev
+servers:
+  - url: "{baseUrl}"
+    variables:
+      baseUrl:
+        default: http://localhost:3001
+
+paths:
+  /auth/init:
+    post:
+      operationId: initAuth
+      summary: Create a DID authentication challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitRequest"
+      responses:
+        "200":
+          description: Challenge created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InitResponse"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/verify:
+    post:
+      operationId: verifyAuth
+      summary: Verify a signed challenge and obtain a JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyRequest"
+      responses:
+        "200":
+          description: Verification succeeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /auth/status/{id}:
+    get:
+      operationId: authStatus
+      summary: Check the status of an authentication session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /config:
+    get:
+      operationId: getConfig
+      summary: Get auth server configuration
+      responses:
+        "200":
+          description: Server config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigResponse"
+
+components:
+  schemas:
+    InitRequest:
+      type: object
+      properties:
+        domain:
+          type: string
+          description: Optional domain scope for the challenge
+
+    InitResponse:
+      type: object
+      required: [id, challenge, domain, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        challenge:
+          type: string
+          description: >
+            Random challenge string the client must sign.
+            Note: the frontend renames this field to "nonce" client-side.
+        domain:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    VerifyRequest:
+      type: object
+      required: [id, did, signature, public_key]
+      properties:
+        id:
+          type: string
+          format: uuid
+        did:
+          type: string
+          description: "DID of the signer (did:key:z...)"
+        signature:
+          type: string
+          description: Hex-encoded Ed25519 signature over the challenge
+        public_key:
+          type: string
+          description: Hex-encoded Ed25519 public key
+
+    VerifyResponse:
+      type: object
+      required: [verified, token, did, expires_at]
+      properties:
+        verified:
+          type: boolean
+        token:
+          type: string
+          description: JWT bearer token
+        did:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    StatusResponse:
+      type: object
+      required: [id, status, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        did:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    ConfigResponse:
+      type: object
+      required: [registry_url]
+      properties:
+        registry_url:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [type, title, status, detail, code]
+      description: RFC 9457 Problem Details
+      properties:
+        type:
+          type: string
+          description: "URI reference (e.g. urn:auths:error:session-not-found)"
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        code:
+          type: string
+          description: Machine-readable error code
+
+  responses:
+    Error:
+      description: Error response (RFC 9457 Problem Details)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
