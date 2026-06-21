@@ -617,6 +617,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_threshold_cli_rejects_unsatisfiable_thresholds() {
+        // A threshold larger than the device count can never be met — it would brick recovery,
+        // so it is rejected at creation.
+        assert!(parse_threshold_cli("3", 2).is_err());
+        // Zero is unsatisfiable for a non-empty device set.
+        assert!(parse_threshold_cli("0", 2).is_err());
+        // A satisfiable threshold parses: 2-of-2.
+        assert_eq!(
+            parse_threshold_cli("2", 2).unwrap(),
+            auths_keri::Threshold::Simple(2)
+        );
+        // 1-of-N (the any-device default) is satisfiable.
+        assert!(parse_threshold_cli("1", 3).is_ok());
+    }
+
+    #[test]
     fn test_setup_command_defaults() {
         let cmd = InitCommand {
             interactive: false,
