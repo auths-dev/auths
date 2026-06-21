@@ -79,6 +79,25 @@ fn sign_test_token(
     jsonwebtoken::encode(&header, claims, &encoding_key).expect("failed to encode JWT")
 }
 
+/// Craft an unsigned `alg: none` token — the classic JWT bypass. A correct verifier pins the
+/// expected algorithm and rejects this outright.
+fn alg_none_token(kid: &str, claims: &serde_json::Value) -> String {
+    use base64::Engine;
+    let b64 = |s: &str| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(s.as_bytes());
+    let header = json!({ "alg": "none", "typ": "JWT", "kid": kid }).to_string();
+    format!("{}.{}.", b64(&header), b64(&claims.to_string()))
+}
+
+/// Sign a token with HS256 using `secret` as the HMAC key — the algorithm-confusion attack where
+/// the attacker keys HMAC with the verifier's published RSA public key. A correct verifier that
+/// expects RS256 rejects it.
+fn hs256_token(secret: &[u8], kid: &str, claims: &serde_json::Value) -> String {
+    let encoding_key = EncodingKey::from_secret(secret);
+    let mut header = Header::new(Algorithm::HS256);
+    header.kid = Some(kid.to_string());
+    jsonwebtoken::encode(&header, claims, &encoding_key).expect("failed to encode HS256 JWT")
+}
+
 async fn start_mock_jwks_server(
     jwks_json: serde_json::Value,
 ) -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
@@ -203,6 +222,123 @@ async fn test_oidc_okta_wrong_audience_rejected() {
     let result = verifier.verify(token.as_bytes(), now).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("audience"));
+}
+
+#[tokio::test]
+async fn test_oidc_okta_alg_none_rejected() {
+    let (_private_key, public_key) = generate_test_rsa_keys();
+    let kid = "okta-kid-none";
+    let issuer = "https://company.okta.com";
+    let audience = "okta-client-id";
+    let jwk = build_jwk_from_public_key(&public_key, kid);
+    let (addr, _handle) = start_mock_jwks_server(json!({ "keys": [jwk] })).await;
+    let jwks_client = test_jwks_client(
+        &format!("http://{addr}/.well-known/openid-configuration/jwks"),
+        issuer,
+        audience,
+    );
+    let verifier = OktaIdpVerifier::new(issuer, audience, jwks_client);
+    let now = chrono::Utc::now();
+    let claims = json!({
+        "iss": issuer, "sub": "okta-user-123", "aud": audience,
+        "iat": now.timestamp(), "exp": now.timestamp() + 300,
+    });
+    // An unsigned `alg: none` token must never be accepted (the classic JWT bypass).
+    let token = alg_none_token(kid, &claims);
+    let result = verifier.verify(token.as_bytes(), now).await;
+    assert!(
+        result.is_err(),
+        "alg:none token must be rejected, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_oidc_okta_hs256_confusion_rejected() {
+    use rsa::traits::PublicKeyParts;
+    let (_private_key, public_key) = generate_test_rsa_keys();
+    let kid = "okta-kid-hs";
+    let issuer = "https://company.okta.com";
+    let audience = "okta-client-id";
+    let jwk = build_jwk_from_public_key(&public_key, kid);
+    let (addr, _handle) = start_mock_jwks_server(json!({ "keys": [jwk] })).await;
+    let jwks_client = test_jwks_client(
+        &format!("http://{addr}/.well-known/openid-configuration/jwks"),
+        issuer,
+        audience,
+    );
+    let verifier = OktaIdpVerifier::new(issuer, audience, jwks_client);
+    let now = chrono::Utc::now();
+    let claims = json!({
+        "iss": issuer, "sub": "okta-user-123", "aud": audience,
+        "iat": now.timestamp(), "exp": now.timestamp() + 300,
+    });
+    // Algorithm confusion: HMAC the token with the published RSA public key. A verifier pinned to
+    // RS256 must reject it, not verify HS256 against the public key.
+    let secret = public_key.n().to_bytes_be();
+    let token = hs256_token(&secret, kid, &claims);
+    let result = verifier.verify(token.as_bytes(), now).await;
+    assert!(
+        result.is_err(),
+        "HS256-confusion token must be rejected, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_oidc_okta_tampered_signature_rejected() {
+    let (private_key, public_key) = generate_test_rsa_keys();
+    let kid = "okta-kid-tamper";
+    let issuer = "https://company.okta.com";
+    let audience = "okta-client-id";
+    let jwk = build_jwk_from_public_key(&public_key, kid);
+    let (addr, _handle) = start_mock_jwks_server(json!({ "keys": [jwk] })).await;
+    let jwks_client = test_jwks_client(
+        &format!("http://{addr}/.well-known/openid-configuration/jwks"),
+        issuer,
+        audience,
+    );
+    let verifier = OktaIdpVerifier::new(issuer, audience, jwks_client);
+    let now = chrono::Utc::now();
+    let claims = json!({
+        "iss": issuer, "sub": "okta-user-123", "aud": audience,
+        "iat": now.timestamp(), "exp": now.timestamp() + 300,
+    });
+    let mut token = sign_test_token(&private_key, kid, &claims);
+    // Flip the last signature character — the signature no longer verifies.
+    let last = token.pop().unwrap_or('A');
+    token.push(if last == 'A' { 'B' } else { 'A' });
+    let result = verifier.verify(token.as_bytes(), now).await;
+    assert!(
+        result.is_err(),
+        "tampered-signature token must be rejected, got {result:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_oidc_okta_wrong_issuer_rejected() {
+    let (private_key, public_key) = generate_test_rsa_keys();
+    let kid = "okta-kid-iss";
+    let issuer = "https://company.okta.com";
+    let audience = "okta-client-id";
+    let jwk = build_jwk_from_public_key(&public_key, kid);
+    let (addr, _handle) = start_mock_jwks_server(json!({ "keys": [jwk] })).await;
+    let jwks_client = test_jwks_client(
+        &format!("http://{addr}/.well-known/openid-configuration/jwks"),
+        issuer,
+        audience,
+    );
+    let verifier = OktaIdpVerifier::new(issuer, audience, jwks_client);
+    let now = chrono::Utc::now();
+    // Otherwise well-formed and signed by this key, but the `iss` is an attacker's.
+    let claims = json!({
+        "iss": "https://attacker.example.com", "sub": "okta-user-123", "aud": audience,
+        "iat": now.timestamp(), "exp": now.timestamp() + 300,
+    });
+    let token = sign_test_token(&private_key, kid, &claims);
+    let result = verifier.verify(token.as_bytes(), now).await;
+    assert!(
+        result.is_err(),
+        "wrong-issuer token must be rejected, got {result:?}"
+    );
 }
 
 // ─── Entra ID tests ───
