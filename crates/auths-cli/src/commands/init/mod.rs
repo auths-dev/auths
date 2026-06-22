@@ -38,7 +38,7 @@ use gather::{
     submit_registration,
 };
 use guided::GuidedSetup;
-use helpers::{get_auths_repo_path, offer_shell_completions};
+use helpers::offer_shell_completions;
 use prompts::{prompt_platform_verification, prompt_profile};
 
 const DEFAULT_KEY_ALIAS: &str = "main";
@@ -114,6 +114,11 @@ pub struct InitCommand {
     /// Force overwrite if identity already exists
     #[clap(long)]
     pub force: bool,
+
+    /// Confirm replacing an existing root identity when running non-interactively. Required with
+    /// `--force` over an existing identity when there is no TTY to confirm at.
+    #[clap(long)]
+    pub confirm_replace: bool,
 
     /// Preview agent configuration without creating files or identities
     #[clap(long)]
@@ -306,8 +311,8 @@ fn run_developer_setup(
 
     // GATHER
     guide.section("Prerequisites & Configuration");
-    let (keychain, mut config) = gather_developer_config(interactive, out, cmd)?;
-    let registry_path = get_auths_repo_path()?;
+    let registry_path = auths_sdk::paths::resolve_registry_path(ctx.repo_path.clone())?;
+    let (keychain, mut config) = gather_developer_config(interactive, out, cmd, &registry_path)?;
     ensure_registry_dir(&registry_path)?;
 
     let sign_binary_path = which::which("auths-sign").ok();
@@ -433,7 +438,7 @@ fn run_developer_setup(
     // REGISTRATION & DISPLAY
     guide.section("Registration & Summary");
     let registered = submit_registration(
-        &get_auths_repo_path()?,
+        &registry_path,
         &cmd.registry,
         proof_url,
         !cmd.register, // skip unless --register is explicitly passed
@@ -640,6 +645,7 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
@@ -667,6 +673,7 @@ mod tests {
             profile: Some(InitProfile::Ci),
             key_alias: "ci-key".to_string(),
             force: true,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
@@ -702,6 +709,7 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
@@ -721,6 +729,7 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,

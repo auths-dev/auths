@@ -3,13 +3,28 @@
 use std::fmt;
 use std::path::PathBuf;
 
-/// Default passphrase used to encrypt the file-backed CI key when `AUTHS_PASSPHRASE`
-/// is not set in the environment.
+use ring::rand::{SecureRandom, SystemRandom};
+
+/// Generate a strong, random, per-identity passphrase for encrypting a CI identity's file-backed key
+/// when `AUTHS_PASSPHRASE` is not supplied.
 ///
-/// CI identities are ephemeral and low-value, so this default keeps the documented
-/// quickstart copy-paste runnable. Production pipelines should export their own
-/// `AUTHS_PASSPHRASE` (a managed secret) before running `auths init --profile ci`.
-pub const DEFAULT_CI_PASSPHRASE: &str = "Ci-ephemeral-pass1!";
+/// Each CI identity gets its own secret, so obtaining one CI identity's encrypted key reveals nothing
+/// about another's — unlike the former shared constant, which was public in the source tree. The value
+/// is echoed once into the generated env block (see [`CiIdentityConfig`]) so the follow-up `auths sign`
+/// can decrypt the key headlessly within the same job.
+///
+/// Usage:
+/// ```ignore
+/// let passphrase = generate_ci_passphrase();
+/// ```
+pub fn generate_ci_passphrase() -> String {
+    let rng = SystemRandom::new();
+    let mut bytes = [0u8; 24];
+    #[allow(clippy::expect_used)]
+    // INVARIANT: OS CSPRNG (ring SystemRandom) failure is unrecoverable, like a poisoned mutex.
+    rng.fill(&mut bytes).expect("system CSPRNG unavailable");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
 
 /// CI platform environment.
 ///
@@ -74,5 +89,22 @@ impl fmt::Debug for CiIdentityConfig {
             .field("keychain_file", &self.keychain_file)
             .field("passphrase", &"[REDACTED]")
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ci_passphrase_is_unique_per_call() {
+        // a per-identity secret: two CI inits must not share a passphrase
+        assert_ne!(generate_ci_passphrase(), generate_ci_passphrase());
+    }
+
+    #[test]
+    fn ci_passphrase_is_strong() {
+        let p = generate_ci_passphrase();
+        assert!(p.len() >= 32, "passphrase too short ({} chars)", p.len());
     }
 }

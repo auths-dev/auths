@@ -5,6 +5,7 @@ use dialoguer::{Confirm, Input, Select};
 use std::path::Path;
 use std::sync::Arc;
 
+use auths_sdk::domains::identity::replace_policy::authorize_identity_replacement;
 use auths_sdk::keychain::IdentityDID;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::signing::PassphraseProvider;
@@ -58,6 +59,26 @@ pub(crate) fn prompt_for_conflict_policy(
     out: &Output,
 ) -> Result<IdentityConflictPolicy> {
     if cmd.force {
+        // --force only replaces something when an identity already exists; on a fresh setup it is a
+        // no-op. Replacing an existing root repoints signing, so require an explicit confirmation —
+        // an interactive prompt, or --confirm-replace non-interactively — never a silent swap.
+        let identity_storage = RegistryIdentityStorage::new(registry_path.to_path_buf());
+        if identity_storage.load_identity().is_ok() {
+            let confirmed = if interactive {
+                Confirm::new()
+                    .with_prompt(
+                        "--force will REPLACE your existing root identity with a new one. The old keys \
+                         are not deleted, but signing repoints to the new root. Continue?",
+                    )
+                    .default(false)
+                    .interact()?
+            } else {
+                cmd.confirm_replace
+            };
+            authorize_identity_replacement(confirmed).map_err(|e| {
+                anyhow!("{e}\n\nRe-run interactively to confirm, or pass --confirm-replace to replace non-interactively.")
+            })?;
+        }
         return Ok(IdentityConflictPolicy::ForceNew);
     }
 
