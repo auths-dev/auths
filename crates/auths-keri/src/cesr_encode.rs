@@ -177,4 +177,56 @@ mod tests {
         let commitment = encode_blake3_digest(blake3::hash(qb64.as_bytes()).as_bytes()).unwrap();
         assert_eq!(commitment, "EF_M_u7ASVHXfI8QzdWLq3V9ocSKqxkbujXGbi9QMtP9");
     }
+
+    #[test]
+    fn matter_full_len_matches_cesride_encoding() {
+        use cesride::{Cigar, Matter};
+        // The full-size table mirrors cesride's matter sizage for the codes auths
+        // parses. Pin each entry to what cesride actually emits, so a cesride bump
+        // that shifts a primitive's size fails here loudly instead of drifting the
+        // length-guard against the decoder.
+        let cases: [(&str, String); 7] = [
+            (
+                "D",
+                encode_verkey(&[0u8; 32], matter::Codex::Ed25519).unwrap(),
+            ),
+            (
+                "B",
+                encode_verkey(&[0u8; 32], matter::Codex::Ed25519N).unwrap(),
+            ),
+            (
+                "1AAJ",
+                encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1).unwrap(),
+            ),
+            (
+                "1AAI",
+                encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1N).unwrap(),
+            ),
+            ("E", encode_blake3_digest(&[0u8; 32]).unwrap()),
+            (
+                "0B",
+                Cigar::new_with_raw(&[0u8; 64], None, Some(matter::Codex::Ed25519_Sig))
+                    .and_then(|c| c.qb64())
+                    .unwrap(),
+            ),
+            (
+                "0I",
+                Cigar::new_with_raw(&[0u8; 64], None, Some(matter::Codex::ECDSA_256r1_Sig))
+                    .and_then(|c| c.qb64())
+                    .unwrap(),
+            ),
+        ];
+        for (code, encoded) in cases {
+            assert!(
+                encoded.starts_with(code),
+                "{code} primitive must encode under its own code, got {encoded:?}"
+            );
+            assert_eq!(
+                matter_full_len(code),
+                Some(encoded.len()),
+                "matter_full_len({code:?}) drifted from cesride's {} chars",
+                encoded.len()
+            );
+        }
+    }
 }
