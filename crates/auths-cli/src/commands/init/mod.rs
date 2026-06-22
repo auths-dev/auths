@@ -115,6 +115,11 @@ pub struct InitCommand {
     #[clap(long)]
     pub force: bool,
 
+    /// Confirm replacing an existing root identity when running non-interactively. Required with
+    /// `--force` over an existing identity when there is no TTY to confirm at.
+    #[clap(long)]
+    pub confirm_replace: bool,
+
     /// Preview agent configuration without creating files or identities
     #[clap(long)]
     pub dry_run: bool,
@@ -640,6 +645,7 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
@@ -667,6 +673,7 @@ mod tests {
             profile: Some(InitProfile::Ci),
             key_alias: "ci-key".to_string(),
             force: true,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
@@ -702,6 +709,7 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
@@ -721,6 +729,7 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
             registry: DEFAULT_REGISTRY_URL.to_string(),
             register: false,
