@@ -87,6 +87,11 @@ struct VerifyResult {
     subject: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     witness_quorum: Option<auths_verifier::witness::WitnessQuorum>,
+    /// The verdict's surfaced freshness (ADR 009) — present only on a honored verdict. An
+    /// offline attestation verify cannot confirm freshness, so it names `Unknown`, never a
+    /// bare success that reads as real-time fresh.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    freshness: Option<auths_verifier::Freshness>,
 }
 
 /// Handle verify command. Returns Ok(()) on success, Err on error.
@@ -125,6 +130,7 @@ pub async fn handle_verify(cmd: VerifyCommand) -> Result<()> {
                     issuer: None,
                     subject: None,
                     witness_quorum: None,
+                    freshness: None,
                 };
                 println!("{}", serde_json::to_string(&error_result)?);
             } else {
@@ -328,6 +334,10 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
 
     match verify_result {
         Ok(_) => {
+            // An offline attestation verify consults no fresher source, so the honest default
+            // is `Unknown` (ADR 009); the witness path below upgrades it from the report it
+            // already computes. The verdict is never surfaced as a bare success.
+            let mut verdict_freshness = auths_verifier::Freshness::Unknown;
             // 6. If witness receipts are provided, do witness chain verification
             let witness_quorum = if let Some(ref receipts_path) = cmd.witness_receipts {
                 let receipts_bytes = fs::read(receipts_path).with_context(|| {
@@ -348,6 +358,7 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
                         .await
                         .context("Witness chain verification failed")?;
 
+                verdict_freshness = report.freshness();
                 if !report.is_valid() {
                     if !is_json_mode()
                         && let auths_verifier::VerificationStatus::InsufficientWitnesses {
@@ -367,6 +378,7 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
                         issuer: Some(att.issuer.to_string()),
                         subject: Some(att.subject.to_string()),
                         witness_quorum: report.witness_quorum,
+                        freshness: None,
                     });
                 }
 
@@ -382,7 +394,10 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
             };
 
             if !is_json_mode() {
-                println!("Attestation verified successfully.");
+                println!(
+                    "Attestation verified successfully (freshness {}).",
+                    crate::commands::verify_helpers::freshness_label(verdict_freshness)
+                );
             }
             Ok(VerifyResult {
                 valid: true,
@@ -390,6 +405,7 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
                 issuer: Some(att.issuer.to_string()),
                 subject: Some(att.subject.to_string()),
                 witness_quorum,
+                freshness: Some(verdict_freshness),
             })
         }
         Err(e) => Ok(VerifyResult {
@@ -398,6 +414,7 @@ async fn run_verify(now: chrono::DateTime<Utc>, cmd: &VerifyCommand) -> Result<V
             issuer: Some(att.issuer.to_string()),
             subject: Some(att.subject.to_string()),
             witness_quorum: None,
+            freshness: None,
         }),
     }
 }
@@ -455,10 +472,15 @@ mod tests {
             issuer: Some("did:key:issuer".to_string()),
             subject: Some("did:key:subject".to_string()),
             witness_quorum: None,
+            freshness: Some(auths_verifier::Freshness::Unknown),
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":true"));
         assert!(json.contains("\"issuer\":\"did:key:issuer\""));
+        assert!(
+            json.contains("\"freshness\":\"unknown\""),
+            "a honored verdict surfaces its freshness, never a bare valid: {json}"
+        );
     }
 
     #[test]
@@ -469,9 +491,14 @@ mod tests {
             issuer: None,
             subject: None,
             witness_quorum: None,
+            freshness: None,
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"valid\":false"));
         assert!(json.contains("\"error\":\"signature mismatch\""));
+        assert!(
+            !json.contains("freshness"),
+            "a failed verdict carries no freshness to surface: {json}"
+        );
     }
 }

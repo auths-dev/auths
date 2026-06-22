@@ -1,5 +1,6 @@
 //! Verification types: reports, statuses, and device DIDs.
 
+use crate::freshness::Freshness;
 use crate::witness::WitnessQuorum;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -36,6 +37,13 @@ pub struct VerificationReport {
     /// replay was performed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duplicity_warning: Option<crate::duplicity::DuplicityReport>,
+    /// How fresh this verdict is under the verifier's freshness model (ADR 009). The chain
+    /// verifier reads no clock and no network, so an offline verify (no fresher source supplied)
+    /// names [`Freshness::Unknown`] — the report is never a bare `Valid` that reads as real-time
+    /// fresh. A caller that has a fresher source upgrades it via [`VerificationReport::with_freshness`].
+    /// `#[serde(default)]` resolves a missing field to `Unknown` so pre-field JSON still loads.
+    #[serde(default)]
+    pub freshness: Freshness,
 }
 
 impl VerificationReport {
@@ -45,6 +53,10 @@ impl VerificationReport {
     }
 
     /// Creates a new valid VerificationReport with the given chain.
+    ///
+    /// Freshness defaults to [`Freshness::Unknown`]: the chain verifier consults no fresher
+    /// source, so an offline verify is honestly unconfirmable, never silently fresh. A caller
+    /// holding a fresher source upgrades it with [`VerificationReport::with_freshness`].
     pub fn valid(chain: Vec<ChainLink>) -> Self {
         Self {
             status: VerificationStatus::Valid,
@@ -53,10 +65,14 @@ impl VerificationReport {
             witness_quorum: None,
             anchored: None,
             duplicity_warning: None,
+            freshness: Freshness::Unknown,
         }
     }
 
     /// Creates a new VerificationReport with the given status and chain.
+    ///
+    /// Freshness defaults to [`Freshness::Unknown`] (offline, unconfirmable) — see
+    /// [`VerificationReport::valid`].
     pub fn with_status(status: VerificationStatus, chain: Vec<ChainLink>) -> Self {
         Self {
             status,
@@ -65,6 +81,7 @@ impl VerificationReport {
             witness_quorum: None,
             anchored: None,
             duplicity_warning: None,
+            freshness: Freshness::Unknown,
         }
     }
 
@@ -73,6 +90,26 @@ impl VerificationReport {
     /// per-attestation signature validity.
     pub fn with_duplicity_warning(mut self, warning: crate::duplicity::DuplicityReport) -> Self {
         self.duplicity_warning = Some(warning);
+        self
+    }
+
+    /// The freshness this report names (ADR 009). An offline verify is [`Freshness::Unknown`];
+    /// a report built with a fresher source carries its classified grade.
+    pub fn freshness(&self) -> Freshness {
+        self.freshness
+    }
+
+    /// Re-stamp this report's freshness from a fresher-source classification.
+    ///
+    /// The chain verifier itself reads no clock/network, so it always emits `Unknown`. A caller
+    /// that holds a fresher source (a witness head, a transparency-log tip) classifies it through
+    /// [`crate::freshness::FreshnessPolicy`] and stamps the grade here, so the surfaced verdict
+    /// stays honest about what was confirmed.
+    ///
+    /// Args:
+    /// * `freshness`: the classified freshness of this otherwise-valid report.
+    pub fn with_freshness(mut self, freshness: Freshness) -> Self {
+        self.freshness = freshness;
         self
     }
 }
@@ -815,6 +852,7 @@ mod tests {
             }),
             anchored: None,
             duplicity_warning: None,
+            freshness: Freshness::Unknown,
         };
 
         let json = serde_json::to_string(&report).unwrap();
@@ -822,6 +860,16 @@ mod tests {
         assert_eq!(report, parsed);
         assert!(parsed.witness_quorum.is_some());
         assert_eq!(parsed.witness_quorum.unwrap().verified, 2);
+    }
+
+    #[test]
+    fn pre_freshness_report_json_loads_as_unknown() {
+        // A report JSON written before the freshness field existed must still deserialize,
+        // defaulting freshness to the honest `Unknown` (never a fabricated `Fresh`).
+        let json = r#"{"status":{"type":"Valid"},"chain":[],"warnings":[]}"#;
+        let report: VerificationReport = serde_json::from_str(json).unwrap();
+        assert!(report.is_valid());
+        assert_eq!(report.freshness(), Freshness::Unknown);
     }
 
     #[test]

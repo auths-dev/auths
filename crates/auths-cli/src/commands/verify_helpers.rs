@@ -24,6 +24,26 @@ pub fn load_project_pinned_roots() -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// The human-readable label for a surfaced freshness verdict (ADR 009).
+///
+/// Shared by every verify command so an offline verdict renders "freshness unknown"
+/// identically across the CLI — never a bare success that reads as real-time fresh.
+///
+/// Args:
+/// * `freshness`: the verdict's classified freshness.
+///
+/// Usage:
+/// ```ignore
+/// let label = freshness_label(report.freshness());
+/// ```
+pub fn freshness_label(freshness: auths_verifier::Freshness) -> &'static str {
+    match freshness {
+        auths_verifier::Freshness::Fresh => "fresh",
+        auths_verifier::Freshness::Unknown => "unknown",
+        auths_verifier::Freshness::Stale => "stale",
+    }
+}
+
 /// Parse witness key arguments ("did:key:z6Mk...:abcd1234...") into (DID, pk_bytes) tuples.
 pub fn parse_witness_keys(keys: &[String]) -> Result<Vec<(String, Vec<u8>)>> {
     keys.iter()

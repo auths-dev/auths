@@ -650,6 +650,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn verify_chain_valid_report_is_offline_unknown_not_bare() {
+        // A chain verified offline (no fresher source supplied) is honest about it: the report
+        // names its freshness as `Unknown`, never a bare `Valid` that reads as real-time fresh.
+        // This is what the CLI verify callers consume to render "valid (freshness unknown)".
+        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
+        let root_did = ed25519_did(&root_pk);
+        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
+        let device_did = ed25519_did(&device_pk);
+
+        let att = create_signed_attestation(
+            &root_kp,
+            &device_kp,
+            &root_did,
+            &device_did,
+            None,
+            Some(fixed_now() + Duration::days(365)),
+        );
+
+        let report = test_verifier()
+            .verify_chain(&[att], &ed(&root_pk))
+            .await
+            .unwrap();
+        assert!(report.is_valid());
+        assert_eq!(
+            report.freshness(),
+            crate::freshness::Freshness::Unknown,
+            "an offline chain verify must surface Unknown freshness, never a bare Valid"
+        );
+    }
+
+    #[tokio::test]
     async fn verify_chain_revoked_attestation_returns_revoked() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
         let root_did = ed25519_did(&root_pk);

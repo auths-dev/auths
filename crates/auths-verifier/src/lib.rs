@@ -273,6 +273,7 @@ mod tests {
             witness_quorum: None,
             anchored: None,
             duplicity_warning: None,
+            freshness: crate::freshness::Freshness::Unknown,
         };
 
         let json = serde_json::to_string(&report).expect("serialization failed");
