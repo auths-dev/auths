@@ -24,6 +24,7 @@ pub(crate) fn gather_developer_config(
     interactive: bool,
     out: &Output,
     cmd: &InitCommand,
+    registry_path: &Path,
 ) -> Result<(
     Box<dyn KeyStorage + Send + Sync>,
     CreateDeveloperIdentityConfig,
@@ -34,9 +35,8 @@ pub(crate) fn gather_developer_config(
     out.print_success("Prerequisites OK");
     out.newline();
 
-    let registry_path = get_auths_repo_path()?;
     let alias = prompt_for_alias(interactive, cmd)?;
-    let conflict_policy = prompt_for_conflict_policy(interactive, cmd, &registry_path, out)?;
+    let conflict_policy = prompt_for_conflict_policy(interactive, cmd, registry_path, out)?;
     let git_scope = prompt_for_git_scope(interactive)?;
 
     let mut builder = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked(&alias))
