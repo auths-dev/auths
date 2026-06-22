@@ -96,14 +96,6 @@ fn curve_of_aid(aid: &str) -> Result<CurveType, KeriDecodeError> {
     }
 }
 
-/// The qb64 length a parsed primitive consumed (cesride tolerates trailing stream
-/// data, slicing to the primitive's full size).
-fn consumed<M: Matter>(m: &M) -> Result<usize, KeriDecodeError> {
-    Ok(m.qb64()
-        .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))?
-        .len())
-}
-
 /// Emit a `-L` NonTransReceiptCouples attachment group, byte-aligned with keripy.
 ///
 /// Each couple is `(witness AID, signature)`: the witness AID is appended as its
@@ -137,18 +129,19 @@ pub fn parse_nontrans_receipt_couples(s: &str) -> Result<Vec<(Prefix, Vec<u8>)>,
     let (count, mut cur) = decode_counter(s, NONTRANS_RECEIPT_COUPLES)?;
     let mut out = Vec::with_capacity(count);
     for _ in 0..count {
-        // Witness AID: keep its qb64 form (the curve-tagged prefix) verbatim.
-        let verfer =
-            Verfer::new_with_qb64(cur).map_err(|e| KeriDecodeError::DecodeError(e.to_string()))?;
-        let vlen = consumed(&verfer)?;
-        let aid = Prefix::new_unchecked(cur[..vlen].to_string());
-        cur = &cur[vlen..];
-        // Signature: recover the raw bytes.
-        let cigar = Cigar::new_with_qb64(cur, None)
-            .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))?;
-        let slen = consumed(&cigar)?;
+        // Witness AID: the curve-tagged verkey prefix, kept verbatim. Take its exact
+        // qb64 width before the decoder runs so a malformed code cannot slice out of
+        // bounds.
+        let aid_qb64 = crate::cesr_encode::take_matter_qb64(cur)?;
+        Verfer::new_with_qb64(aid_qb64).map_err(|e| KeriDecodeError::DecodeError(e.to_string()))?;
+        let aid = Prefix::new_unchecked(aid_qb64.to_string());
+        cur = &cur[aid_qb64.len()..];
+        // Signature: recover the raw bytes from its exact qb64 width.
+        let sig_qb64 = crate::cesr_encode::take_matter_qb64(cur)?;
+        let cigar = Cigar::new_with_qb64(sig_qb64, None)
+            .map_err(|e| KeriDecodeError::DecodeError(format!("Cigar decode: {e}")))?;
         out.push((aid, cigar.raw()));
-        cur = &cur[slen..];
+        cur = &cur[sig_qb64.len()..];
     }
     Ok(out)
 }
@@ -221,6 +214,19 @@ mod tests {
         assert_eq!(parsed[0].1, s1);
         assert_eq!(parsed[1].0.as_str(), w2.as_str());
         assert_eq!(parsed[1].1, s2);
+    }
+
+    #[test]
+    fn parse_rejects_malformed_couple_without_panicking() {
+        // A -L group (count 1) whose first primitive is a truncated/variable-length
+        // code must fail closed, not panic on an out-of-bounds slice inside the CESR
+        // decoder.
+        assert!(parse_nontrans_receipt_couples("-LAB6AAA1IAA").is_err());
+        // A non-ASCII byte where a primitive is expected is rejected too.
+        assert!(parse_nontrans_receipt_couples("-LABD\u{42c}").is_err());
+        // A valid witness AID prefix but a truncated body is rejected, not sliced
+        // past the end.
+        assert!(parse_nontrans_receipt_couples("-LABBBERER").is_err());
     }
 
     #[test]

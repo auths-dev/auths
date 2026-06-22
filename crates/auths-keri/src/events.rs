@@ -1189,6 +1189,11 @@ pub fn parse_source_seal_couples(bytes: &[u8]) -> Result<Vec<SourceSeal>, Attach
 fn parse_source_seal_group(s: &str) -> Result<(Vec<SourceSeal>, &str), AttachmentError> {
     use cesride::{Matter, Saider, Seqner};
 
+    // CESR qb64 is ASCII; reject non-ASCII at the boundary so the byte-offset slices
+    // below cannot split a multi-byte char and panic.
+    if !s.is_ascii() {
+        return Err(AttachmentError::Decode("non-ASCII CESR attachment".into()));
+    }
     let rest = s.strip_prefix("-G").ok_or_else(|| {
         AttachmentError::Decode("source-seal group must start with -G counter code".into())
     })?;
@@ -1523,6 +1528,11 @@ pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, Attachmen
 fn parse_sig_group(s: &str) -> Result<(Vec<IndexedSignature>, &str), AttachmentError> {
     use cesride::{Indexer, Siger};
 
+    // CESR qb64 is ASCII; reject non-ASCII at the boundary so the byte-offset slices
+    // below cannot split a multi-byte char and panic.
+    if !s.is_ascii() {
+        return Err(AttachmentError::Decode("non-ASCII CESR attachment".into()));
+    }
     let rest = s.strip_prefix("-A").ok_or_else(|| {
         AttachmentError::Decode("attachment must start with -A counter code".into())
     })?;
@@ -1683,6 +1693,20 @@ mod tests {
         assert_eq!(back.len(), 1);
         assert_eq!(back[0].index, 0);
         assert_eq!(back[0].sig, vec![0x42u8; 64]);
+    }
+
+    #[test]
+    fn attachment_parsers_reject_multibyte_without_panicking() {
+        // qb64 is ASCII; a multi-byte UTF-8 char in a -A signature or -G seal group
+        // must fail closed, not panic on a non-char-boundary slice.
+        assert!(parse_attachment("-AAB\u{42c}".as_bytes()).is_err());
+        assert!(parse_delegated_attachment("-AAB\u{42c}".as_bytes()).is_err());
+
+        // -G source-seal group with a multi-byte char straddling the Seqner slice.
+        let mut seal = String::from("-GAB");
+        seal.push_str(&"A".repeat(23));
+        seal.push('\u{42c}');
+        assert!(parse_source_seal_couples(seal.as_bytes()).is_err());
     }
 
     #[test]

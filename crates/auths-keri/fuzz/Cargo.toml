@@ -43,3 +43,17 @@ path = "fuzz_targets/fuzz_validate_kel.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_receipt_couples"
+path = "fuzz_targets/fuzz_receipt_couples.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_attachment_parse"
+path = "fuzz_targets/fuzz_attachment_parse.rs"
+test = false
+doc = false
+bench = false
