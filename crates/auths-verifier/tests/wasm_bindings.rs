@@ -150,6 +150,19 @@ async fn attestation_json_happy_path() {
 }
 
 #[wasm_bindgen_test]
+async fn attestation_json_wrong_issuer_key_is_refused() {
+    // The same forgery the native and FFI surfaces reject: a valid attestation against
+    // the wrong issuer key. WASM must refuse it too.
+    let result = wasm_verify_attestation_json(
+        FIXTURE_ATTESTATION_JSON,
+        &"00".repeat(32),
+        Some("ed25519".to_string()),
+    )
+    .await;
+    assert!(result.is_err(), "wrong issuer key must not verify on WASM");
+}
+
+#[wasm_bindgen_test]
 async fn attestation_json_malformed_json() {
     let result = wasm_verify_attestation_json(
         "not valid json {{{{",
@@ -207,4 +220,33 @@ async fn artifact_signature_wrong_pubkey() {
     )
     .await;
     assert!(!wrong);
+}
+
+#[wasm_bindgen_test]
+async fn artifact_absent_curve_defaults_to_p256_not_ed25519() {
+    // The WASM wire rule: an absent curve tag defaults to P-256, never Ed25519. Pinned via
+    // the asymmetry on the *same* Ed25519 vector — tagged `ed25519` it verifies, but with
+    // the tag omitted the 32-byte key is read as a (malformed) P-256 key and rejected. This
+    // is the counterpart to the FFI surface rejecting an unknown integer curve code, so the
+    // two surfaces cannot silently converge on a curve default.
+    let tagged = wasm_verify_artifact_signature(
+        RFC8032_MESSAGE_HEX,
+        RFC8032_SIGNATURE_HEX,
+        RFC8032_PUBKEY_HEX,
+        Some("ed25519".to_string()),
+    )
+    .await;
+    assert!(tagged, "an Ed25519-tagged vector verifies");
+
+    let absent = wasm_verify_artifact_signature(
+        RFC8032_MESSAGE_HEX,
+        RFC8032_SIGNATURE_HEX,
+        RFC8032_PUBKEY_HEX,
+        None,
+    )
+    .await;
+    assert!(
+        !absent,
+        "an absent curve tag defaults to P-256, which rejects a 32-byte Ed25519 key"
+    );
 }
