@@ -180,6 +180,10 @@ pub use presentation::{
     verify_presentation_sync,
 };
 
+// Re-export the freshness model (ADR 009): it now appears in public verdict surfaces
+// (`PresentationVerdict::Valid`, `CredentialVerdict::Valid`), so consumers reach it directly.
+pub use freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
+
 // Re-export the cross-boundary JSON verify contract (Epic D2). One bundled request in, one
 // tagged discriminated-union verdict out — the single surface FFI/WASM/Node/Python/Go share.
 pub use contract::{SCHEMA_VERSION, verify_credential_json, verify_presentation_json};

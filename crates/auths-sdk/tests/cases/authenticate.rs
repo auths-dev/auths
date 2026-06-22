@@ -151,6 +151,31 @@ async fn valid_presentation_authenticates_and_replay_rejected() {
     assert_eq!(err.http_status(), 401);
 }
 
+#[tokio::test]
+async fn authenticated_principal_surfaces_offline_freshness_as_unknown() {
+    // The relying party resolves the credential slice offline (no fresher issuer tip is threaded
+    // through the SDK caller yet), so the honored verdict must surface a *named* freshness —
+    // `Unknown` — at the principal boundary, never a bare honored verdict. This is what lets a
+    // relying party tell `Valid(Fresh)` from `Valid(Unknown)` and apply a stricter policy if it
+    // wants. The default policy tolerates `Unknown`, so the presentation still authenticates.
+    let h = setup();
+    let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+    let audience = Audience::parse(AUDIENCE).unwrap();
+    let store = InMemoryChallengeStore::new(16);
+    let now = chrono::Utc::now();
+
+    let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+    let principal = authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
+        .await
+        .expect("offline-resolved presentation authenticates under the default policy");
+
+    assert_eq!(
+        principal.freshness(),
+        auths_verifier::freshness::Freshness::Unknown,
+        "an offline-resolved honored verdict must surface Unknown, not a bare Valid"
+    );
+}
+
 /// The issuer's KEL prefix (it acts as the org/policy authority in this harness).
 fn issuer_prefix(h: &Harness) -> Prefix {
     let did = h

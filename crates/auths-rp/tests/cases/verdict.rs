@@ -1,6 +1,6 @@
 use auths_rp::{Denied, VerifiedPrincipal};
 use auths_verifier::{
-    CanonicalDid, Capability, CredentialVerdict, IdentityDID, PresentationVerdict,
+    CanonicalDid, Capability, CredentialVerdict, Freshness, IdentityDID, PresentationVerdict,
 };
 
 fn valid_verdict(subject: &str, caps: &[&str]) -> PresentationVerdict {
@@ -10,6 +10,7 @@ fn valid_verdict(subject: &str, caps: &[&str]) -> PresentationVerdict {
         caps: caps.iter().map(|c| Capability::parse(c).unwrap()).collect(),
         role: None,
         expires_at: None,
+        freshness: Freshness::Unknown,
     }
 }
 

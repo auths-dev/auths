@@ -271,6 +271,7 @@ pub fn context_from_credential(
         caps,
         role,
         expires_at,
+        ..
     } = presentation
     else {
         return Err(PolicyBridgeError::NoHolderProof);
@@ -717,6 +718,7 @@ mod tests {
                 .collect(),
             role: role.map(str::to_string),
             expires_at,
+            freshness: auths_verifier::Freshness::Unknown,
         }
     }
 

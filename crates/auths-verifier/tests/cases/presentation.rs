@@ -434,6 +434,7 @@ async fn valid_challenge_presentation_verifies() {
                 caps,
                 role,
                 expires_at,
+                freshness,
             } => {
                 assert_eq!(s.as_str(), format!("did:keri:{}", subject.aid));
                 assert_eq!(
@@ -448,6 +449,9 @@ async fn valid_challenge_presentation_verifies() {
                 // The F.8 fixture writes only `a.capability` (no role/expiry claims).
                 assert_eq!(role, None);
                 assert_eq!(expires_at, None);
+                // `verify` supplies no fresher issuer tip (offline), so the honored verdict
+                // names its freshness as Unknown — never a bare Valid.
+                assert_eq!(freshness, auths_verifier::freshness::Freshness::Unknown);
             }
             other => panic!("expected Valid on {curve:?}, got {other:?}"),
         }
@@ -499,9 +503,44 @@ async fn presentation_behind_a_fresher_issuer_tip_is_rejected() {
         Some(0),
     )
     .await;
+    assert_eq!(
+        fresh.freshness(),
+        Some(auths_verifier::freshness::Freshness::Fresh),
+        "a presentation whose credential slice is at the known tip must be honored as Fresh, \
+         got {fresh:?}"
+    );
+}
+
+#[tokio::test]
+async fn strict_policy_refuses_offline_unknown_presentation() {
+    // The same offline-resolved slice the default policy honors as `Valid(Unknown)` is refused
+    // outright under a strict policy that denies `Unknown` — the freshness is surfaced *and*
+    // gated, never a silent accept.
+    let subject = Subject::incept(CurveType::P256, 61);
+    let cred = credential_for(&subject.aid, false);
+    let nonce = vec![3u8; 32];
+    let envelope = subject.present(
+        &cred.credential_said,
+        AUDIENCE,
+        PresentationBinding::Challenge {
+            nonce: nonce.clone(),
+        },
+    );
+
+    let strict = FreshnessPolicy::strict(std::time::Duration::from_secs(3600));
+    let verdict = verify_with_tip(
+        &envelope,
+        &cred,
+        &subject.kel,
+        AUDIENCE,
+        Some(&nonce),
+        &strict,
+        None,
+    )
+    .await;
     assert!(
-        matches!(fresh, PresentationVerdict::Valid { .. }),
-        "a presentation whose credential slice is at the known tip must be honored, got {fresh:?}"
+        matches!(verdict, PresentationVerdict::CredentialNotValid(_)),
+        "a strict policy must refuse an offline-Unknown presentation, got {verdict:?}"
     );
 }
 
@@ -900,6 +939,10 @@ fn presentation_json_contract_matches_sync() {
                     "valid verdict carries the holder subject DID"
                 );
                 assert_eq!(verdict["caps"], serde_json::json!(["sign"]));
+                assert_eq!(
+                    verdict["freshness"], "unknown",
+                    "the JSON valid verdict surfaces freshness in lockstep with the native verdict"
+                );
             }
         }
     }

@@ -45,6 +45,7 @@ use auths_keri::{Acdc, Event, TelEvent};
 
 use crate::commit_kel::VerifierWitnessPolicy;
 use crate::credential::{CredentialVerdict, LifecycleEvent, SignedAcdc, verify_credential_sync};
+use crate::freshness::Freshness;
 use crate::presentation::{
     PresentationBinding, PresentationEnvelope, PresentationVerdict, verify_presentation_sync,
 };
@@ -98,6 +99,7 @@ enum WirePresentationVerdict {
         caps: Vec<String>,
         role: Option<String>,
         expires_at: Option<String>,
+        freshness: Freshness,
     },
     HolderNotCurrentKey,
     WrongAudience,
@@ -178,12 +180,14 @@ impl From<PresentationVerdict> for WirePresentationVerdict {
                 caps,
                 role,
                 expires_at,
+                freshness,
             } => WirePresentationVerdict::Valid {
                 issuer: issuer.as_str().to_string(),
                 subject: subject.as_str().to_string(),
                 caps: caps.iter().map(|c| c.as_str().to_string()).collect(),
                 role,
                 expires_at: expires_at.map(|t| t.to_rfc3339()),
+                freshness,
             },
             PresentationVerdict::HolderNotCurrentKey => {
                 WirePresentationVerdict::HolderNotCurrentKey

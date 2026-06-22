@@ -229,6 +229,7 @@ mod tests {
                 .collect(),
             role: None,
             expires_at: None,
+            freshness: auths_verifier::Freshness::Unknown,
         };
         VerifiedPrincipal::from_verdict(verdict).expect("valid verdict -> principal")
     }

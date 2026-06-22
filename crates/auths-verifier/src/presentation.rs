@@ -39,7 +39,7 @@ use chrono::{DateTime, Utc};
 use subtle::ConstantTimeEq;
 
 use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential_sync};
-use crate::freshness::{FreshnessEvidence, FreshnessPolicy};
+use crate::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use crate::software_verify::verify_with_key_sync;
 use crate::{CanonicalDid, Capability, IdentityDID};
 
@@ -154,6 +154,12 @@ pub enum PresentationVerdict {
         role: Option<String>,
         /// The optional credential expiry (`a.expiry`), as carried in the ACDC attributes.
         expires_at: Option<DateTime<Utc>>,
+        /// How fresh this honored verdict is under the relying party's freshness policy
+        /// (ADR 009). A possessed-but-offline credential slice yields [`Freshness::Unknown`];
+        /// the verdict is never a bare `Valid`, so a relying party can tell `Valid(Fresh)` from
+        /// `Valid(Unknown)` and apply a stricter policy. The gate already refused `Stale`/
+        /// policy-failing freshness, so this is `Fresh` or (tolerated) `Unknown`.
+        freshness: Freshness,
     },
     /// The presentation signature did not verify against the subject KEL's current key —
     /// the presenter does not currently control `a.i` (bearer / stale-key rejection).
@@ -177,6 +183,16 @@ impl PresentationVerdict {
     /// Whether the presentation is honored (`Valid`).
     pub fn is_honored(&self) -> bool {
         matches!(self, PresentationVerdict::Valid { .. })
+    }
+
+    /// The freshness of an honored verdict (ADR 009), or `None` when the presentation was not
+    /// honored. An honored verdict always *names* its freshness — it is never a bare `Valid` —
+    /// so a relying party can distinguish `Valid(Fresh)` from a tolerated `Valid(Unknown)`.
+    pub fn freshness(&self) -> Option<Freshness> {
+        match self {
+            PresentationVerdict::Valid { freshness, .. } => Some(*freshness),
+            _ => None,
+        }
     }
 }
 
@@ -325,8 +341,13 @@ pub fn verify_presentation_sync(
         return verdict;
     }
 
-    let (issuer, caps) = match credential_verdict {
-        CredentialVerdict::Valid { issuer, caps, .. } => (issuer, caps),
+    let (issuer, caps, freshness) = match credential_verdict {
+        CredentialVerdict::Valid {
+            issuer,
+            caps,
+            freshness,
+            ..
+        } => (issuer, caps, freshness),
         // The `is_trusted()` gate above guarantees `Valid`; on the impossible arm return a
         // credential failure rather than panicking or fabricating an identity (keeps this
         // WASM/FFI-safe).
@@ -338,6 +359,7 @@ pub fn verify_presentation_sync(
         caps,
         role: read_attribute(signed, ROLE_FIELD),
         expires_at: read_expiry(signed),
+        freshness,
     };
 
     verify_holder_signature(envelope, signed, subject_kel, subject_delegator_kel, grant)
@@ -353,6 +375,7 @@ struct GrantFacts {
     caps: Vec<Capability>,
     role: Option<String>,
     expires_at: Option<DateTime<Utc>>,
+    freshness: Freshness,
 }
 
 /// Read an optional string claim from the verified ACDC attributes (`a.<field>`).
@@ -446,6 +469,7 @@ fn verify_holder_signature(
                 caps: grant.caps,
                 role: grant.role,
                 expires_at: grant.expires_at,
+                freshness: grant.freshness,
             };
         }
     }
