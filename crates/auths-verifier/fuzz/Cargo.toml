@@ -10,6 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 serde_json = "1.0"
+tokio = { version = "1", features = ["rt"] }
 
 [dependencies.auths_verifier]
 package = "auths-verifier"
@@ -43,6 +44,20 @@ bench = false
 [[bin]]
 name = "did_parse"
 path = "fuzz_targets/did_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "verify_presentation_json"
+path = "fuzz_targets/verify_presentation_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "verify_credential_json"
+path = "fuzz_targets/verify_credential_json.rs"
 test = false
 doc = false
 bench = false

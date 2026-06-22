@@ -715,8 +715,10 @@ impl Serialize for VersionString {
 impl<'de> Deserialize<'de> for VersionString {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        // Full 17-char format: "KERI10JSON000100_"
-        if s.len() >= 17 && s.ends_with('_') {
+        // Full 17-char format: "KERI10JSON000100_". The version string is all-ASCII; the
+        // `is_ascii` guard makes the byte slices below char-boundary-safe, so a multi-byte
+        // UTF-8 char that passes the byte-length check is rejected rather than panicking.
+        if s.len() >= 17 && s.is_ascii() && s.ends_with('_') {
             let size_hex = &s[10..16];
             let size = u32::from_str_radix(size_hex, 16).map_err(|_| {
                 serde::de::Error::custom(format!("invalid version string size: {size_hex:?}"))
@@ -1058,5 +1060,15 @@ mod tests {
     #[test]
     fn version_string_rejects_invalid() {
         assert!(serde_json::from_str::<VersionString>("\"INVALID\"").is_err());
+    }
+
+    #[test]
+    fn version_string_rejects_multibyte_without_panicking() {
+        // A 17+ *byte* string whose bytes 6..10 / 10..16 straddle a multi-byte UTF-8
+        // char must be rejected, not panic on a non-char-boundary slice. The Cyrillic
+        // `Ь` is two bytes, so this passes a byte-length check while breaking the slice.
+        assert!(serde_json::from_str::<VersionString>("\"KERI1ЬSON00012b_\"").is_err());
+        // A multi-byte char inside the size field is rejected too.
+        assert!(serde_json::from_str::<VersionString>("\"KERI10JSON00Ь1b_\"").is_err());
     }
 }

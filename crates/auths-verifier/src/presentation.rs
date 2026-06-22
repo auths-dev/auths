@@ -327,8 +327,9 @@ pub fn verify_presentation_sync(
 
     let (issuer, caps) = match credential_verdict {
         CredentialVerdict::Valid { issuer, caps, .. } => (issuer, caps),
-        // `is_valid()` above guarantees `Valid`; on the impossible arm return a credential
-        // failure rather than panicking or fabricating an identity (keeps this WASM/FFI-safe).
+        // The `is_trusted()` gate above guarantees `Valid`; on the impossible arm return a
+        // credential failure rather than panicking or fabricating an identity (keeps this
+        // WASM/FFI-safe).
         other => return PresentationVerdict::CredentialNotValid(other),
     };
 

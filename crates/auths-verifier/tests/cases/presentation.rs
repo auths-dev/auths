@@ -538,6 +538,49 @@ async fn consumed_or_mismatched_challenge_rejected() {
     );
 }
 
+/// The challenge nonce is compared in constant time (`ct_eq`), so its accept/reject must
+/// still match exact byte-equality semantics: honored only when the offered challenge is
+/// byte-for-byte the bound nonce, rejected for an equal-length mismatch and — the case a
+/// fixed-length compare could get wrong — for a different-length challenge.
+#[tokio::test]
+async fn challenge_nonce_gate_matches_byte_equality() {
+    let subject = Subject::incept(CurveType::Ed25519, 39);
+    let cred = credential_for(&subject.aid, false);
+    let bound = vec![5u8; 32];
+    let envelope = subject.present(
+        &cred.credential_said,
+        AUDIENCE,
+        PresentationBinding::Challenge {
+            nonce: bound.clone(),
+        },
+    );
+
+    // Exact match → honored.
+    let exact = verify(&envelope, &cred, &subject.kel, AUDIENCE, Some(&bound)).await;
+    assert!(
+        exact.is_honored(),
+        "the exact bound nonce is honored, got {exact:?}"
+    );
+
+    // Equal-length, one byte different → rejected.
+    let mut off_by_one = bound.clone();
+    off_by_one[31] ^= 0x01;
+    let mismatch = verify(&envelope, &cred, &subject.kel, AUDIENCE, Some(&off_by_one)).await;
+    assert_eq!(
+        mismatch,
+        PresentationVerdict::NonceMismatchOrConsumed,
+        "a single differing byte is rejected"
+    );
+
+    // Different length (a prefix of the bound nonce) → rejected, never honored.
+    let shorter = verify(&envelope, &cred, &subject.kel, AUDIENCE, Some(&bound[..16])).await;
+    assert_eq!(
+        shorter,
+        PresentationVerdict::NonceMismatchOrConsumed,
+        "a different-length challenge is rejected, never treated as a prefix match"
+    );
+}
+
 #[tokio::test]
 async fn presentation_by_noncurrent_key_rejected() {
     // The subject rotates its key AFTER signing the presentation with the OLD key. The

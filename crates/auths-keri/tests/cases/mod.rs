@@ -6,6 +6,7 @@ mod dual_index;
 mod event;
 mod interop_vectors;
 mod keripy_interop;
+mod keripy_kel_oracle;
 mod multi_key_threshold;
 #[cfg(feature = "cesr")]
 mod roundtrip;
