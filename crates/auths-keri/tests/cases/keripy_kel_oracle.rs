@@ -141,11 +141,17 @@ fn cesr_stream(parts: &[(&[u8], &[u8])]) -> Vec<u8> {
 /// keripy is unavailable.
 #[test]
 fn keripy_subprocess_agrees_on_accept_and_reject() {
+    // `KERIPY_REQUIRED=1` (set by the CI conformance job) turns the otherwise-silent
+    // skips into hard failures: a venv/PATH break that left keripy unreachable would
+    // otherwise revert the reject cases to a self-oracle while the job stayed green.
+    let required = std::env::var("KERIPY_REQUIRED").ok().as_deref() == Some("1");
     if std::env::var("KERIPY_INTEROP").ok().as_deref() != Some("1") {
+        assert!(!required, "KERIPY_REQUIRED=1 but KERIPY_INTEROP is not set");
         eprintln!("[SKIP] KERIPY_INTEROP != 1; not invoking keripy");
         return;
     }
     if !keripy_importable() {
+        assert!(!required, "KERIPY_REQUIRED=1 but keripy is not importable");
         eprintln!("[SKIP] keripy not importable");
         return;
     }

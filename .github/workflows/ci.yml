@@ -396,6 +396,7 @@ jobs:
         working-directory: tests/conformance
         env:
           KERIPY_INTEROP: "1"
+          KERIPY_REQUIRED: "1"
         run: uv run cargo test --manifest-path ../../Cargo.toml -p auths-keri --test integration keripy_subprocess_agrees_on_accept_and_reject -- --nocapture
       - name: Upload conformance results
         if: always()
