@@ -332,7 +332,7 @@ jobs:
           - dir: crates/auths-verifier/fuzz
             targets: verify_presentation_json verify_credential_json verify_chain attestation_parse did_parse
           - dir: crates/auths-keri/fuzz
-            targets: fuzz_cesr_import fuzz_parse_cesr fuzz_validate_kel fuzz_receipt_couples
+            targets: fuzz_cesr_import fuzz_parse_cesr fuzz_validate_kel fuzz_receipt_couples fuzz_attachment_parse
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
