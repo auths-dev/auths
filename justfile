@@ -54,6 +54,14 @@ build:
         _run "wasm-pack build"       bash -c 'cd crates/auths-verifier && wasm-pack build --target bundler --features wasm'
     fi
 
+    # --- Optional: execute the compiled WASM verdict path under Node ---
+    # `cargo check` proves it links; this proves the verdict is computed correctly
+    # on the wasm32 target. Needs `wasm-bindgen-test-runner` (matching the locked
+    # wasm-bindgen version) and Node >= 20 (for the Web Crypto Ed25519 leg).
+    if command -v wasm-bindgen-test-runner >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+        _run "wasm32 verdict tests (node)" bash -c 'cd crates/auths-verifier && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner cargo test --target wasm32-unknown-unknown --no-default-features --features wasm --test wasm_bindings'
+    fi
+
     # --- Optional: aarch64 cross build (requires cross + Docker) ---
     if command -v cross >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
         _run "aarch64 cross build"   cross build --release --package auths-cli --target aarch64-unknown-linux-gnu
