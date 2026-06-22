@@ -7,6 +7,7 @@ mod credential;
 mod cross_surface_parity;
 mod did_parsing;
 mod expiration_skew;
+mod freshness_honesty;
 #[cfg(feature = "ffi")]
 mod ffi_smoke;
 mod issuer_signature_required;

@@ -139,6 +139,7 @@ enum WireCredentialVerdict {
         subject: String,
         caps: Vec<String>,
         as_of: u128,
+        freshness: Freshness,
     },
     SaidMismatch,
     SchemaInvalid,
@@ -215,12 +216,13 @@ impl From<CredentialVerdict> for WireCredentialVerdict {
                 subject,
                 caps,
                 as_of,
-                ..
+                freshness,
             } => WireCredentialVerdict::Valid {
                 issuer: issuer.as_str().to_string(),
                 subject: subject.as_str().to_string(),
                 caps: caps.iter().map(|c| c.as_str().to_string()).collect(),
                 as_of,
+                freshness,
             },
             CredentialVerdict::SaidMismatch => WireCredentialVerdict::SaidMismatch,
             CredentialVerdict::SchemaInvalid => WireCredentialVerdict::SchemaInvalid,

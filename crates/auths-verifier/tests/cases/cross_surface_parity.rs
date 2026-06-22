@@ -115,6 +115,29 @@ fn credential_verdicts_are_byte_identical_native_and_ffi() {
     }
 }
 
+/// The positive JSON verdict names its freshness on the FFI surface too, not just natively
+/// (invariant #6 in lockstep). The byte-identical checks above already pin native == FFI; this
+/// asserts the surfaced field is actually present on the FFI verdict, so a regression that drops
+/// freshness from the wire is caught on the embeddable surface, not only in the native test.
+#[test]
+fn ffi_valid_verdicts_name_freshness() {
+    for (request, f) in [
+        (
+            PRESENTATION_VALID,
+            auths_verify_presentation_json as JsonVerifyFn,
+        ),
+        (CREDENTIAL_VALID, auths_verify_credential_json as JsonVerifyFn),
+    ] {
+        let verdict: serde_json::Value =
+            serde_json::from_str(&ffi_verdict(request, f)).expect("verdict json");
+        assert_eq!(verdict["kind"], "valid", "fixture must be a valid verdict");
+        assert!(
+            verdict.get("freshness").and_then(|v| v.as_str()).is_some(),
+            "the FFI valid verdict must name its freshness, got {verdict}"
+        );
+    }
+}
+
 /// The raw-key attestation surface (the curve carried as an out-of-band tag, not in-band
 /// CESR) must accept/reject in lockstep across native and FFI for the whole fixture set.
 /// Both sides decode the *same* hex key under the *same* curve, so any divergence is a
