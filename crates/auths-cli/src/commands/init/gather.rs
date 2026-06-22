@@ -80,8 +80,8 @@ pub(crate) fn gather_ci_config(
     let (passphrase, passphrase_source) = match std::env::var("AUTHS_PASSPHRASE") {
         Ok(p) => (p, "the AUTHS_PASSPHRASE environment variable"),
         Err(_) => (
-            auths_sdk::types::DEFAULT_CI_PASSPHRASE.to_string(),
-            "the built-in CI default passphrase",
+            auths_sdk::types::generate_ci_passphrase(),
+            "a generated per-identity ephemeral passphrase",
         ),
     };
     preflight_passphrase(&passphrase, passphrase_source)?;

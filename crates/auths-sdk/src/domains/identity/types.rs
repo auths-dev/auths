@@ -321,7 +321,7 @@ impl IdentityConfig {
             ci_environment: CiEnvironment::Unknown,
             registry_path,
             keychain_file,
-            passphrase: crate::domains::ci::types::DEFAULT_CI_PASSPHRASE.to_string(),
+            passphrase: crate::domains::ci::types::generate_ci_passphrase(),
         })
     }
 
