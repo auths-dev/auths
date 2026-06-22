@@ -1710,6 +1710,43 @@ mod tests {
     }
 
     #[test]
+    fn cesr_length_tables_match_cesride_encoding() {
+        use cesride::{Diger, Matter, matter};
+        // saider_qb64_len: pin the Blake3-256 SAID code auths emits to cesride's width.
+        let digest = Diger::new(
+            None,
+            Some(matter::Codex::Blake3_256),
+            Some(&[0u8; 32]),
+            None,
+            None,
+            None,
+        )
+        .and_then(|d| d.qb64())
+        .unwrap();
+        assert_eq!(saider_qb64_len(digest.as_bytes()[0]), Some(digest.len()));
+
+        // indexer_sizage: pin the single-index (`A`) and dual-index (`2A`) Ed25519 siger
+        // widths auths emits, by measuring a real encoded siger (after the 4-char counter).
+        for prior_index in [None, Some(1u32)] {
+            let att = serialize_attachment(&[IndexedSignature {
+                index: 0,
+                prior_index,
+                sig: vec![0u8; 64],
+            }])
+            .unwrap();
+            let att = std::str::from_utf8(&att).unwrap();
+            let siger = &att[4..];
+            let code = &siger[..indexer_hard_len(siger.as_bytes()[0])];
+            assert_eq!(
+                indexer_sizage(code).map(|(fs, _)| fs),
+                Some(siger.len()),
+                "indexer_sizage({code:?}) drifted from cesride's {} chars",
+                siger.len()
+            );
+        }
+    }
+
+    #[test]
     fn attachment_roundtrip_three_sigs() {
         let sigs = vec![
             IndexedSignature {
