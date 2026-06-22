@@ -184,6 +184,7 @@ mod tests {
             role: None,
             expires_at: None,
             freshness: Freshness::Unknown,
+            as_of: 0,
         }
     }
 
@@ -196,6 +197,7 @@ mod tests {
             role: None,
             expires_at: None,
             freshness: Freshness::Fresh,
+            as_of: 0,
         };
         assert_eq!(
             VerifiedPrincipal::from_verdict(fresh).unwrap().freshness(),

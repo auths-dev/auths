@@ -160,6 +160,11 @@ pub enum PresentationVerdict {
         /// `Valid(Unknown)` and apply a stricter policy. The gate already refused `Stale`/
         /// policy-failing freshness, so this is `Fresh` or (tolerated) `Unknown`.
         freshness: Freshness,
+        /// The issuer-KEL position the bound credential was verified as-of: the tip `(seq)` of
+        /// the given issuer KEL (ADR 009, the `{as_of, freshness}` pair). Carried through from
+        /// the inner credential verdict so a relying party can see *how current* the slice is,
+        /// not just the freshness grade — `Unknown` as-of which position.
+        as_of: u128,
     },
     /// The presentation signature did not verify against the subject KEL's current key —
     /// the presenter does not currently control `a.i` (bearer / stale-key rejection).
@@ -191,6 +196,15 @@ impl PresentationVerdict {
     pub fn freshness(&self) -> Option<Freshness> {
         match self {
             PresentationVerdict::Valid { freshness, .. } => Some(*freshness),
+            _ => None,
+        }
+    }
+
+    /// The issuer-KEL position an honored verdict was verified as-of (the `{as_of, freshness}`
+    /// pair, ADR 009), or `None` when the presentation was not honored.
+    pub fn as_of(&self) -> Option<u128> {
+        match self {
+            PresentationVerdict::Valid { as_of, .. } => Some(*as_of),
             _ => None,
         }
     }
@@ -341,13 +355,14 @@ pub fn verify_presentation_sync(
         return verdict;
     }
 
-    let (issuer, caps, freshness) = match credential_verdict {
+    let (issuer, caps, freshness, as_of) = match credential_verdict {
         CredentialVerdict::Valid {
             issuer,
             caps,
             freshness,
+            as_of,
             ..
-        } => (issuer, caps, freshness),
+        } => (issuer, caps, freshness, as_of),
         // The `is_trusted()` gate above guarantees `Valid`; on the impossible arm return a
         // credential failure rather than panicking or fabricating an identity (keeps this
         // WASM/FFI-safe).
@@ -360,6 +375,7 @@ pub fn verify_presentation_sync(
         role: read_attribute(signed, ROLE_FIELD),
         expires_at: read_expiry(signed),
         freshness,
+        as_of,
     };
 
     verify_holder_signature(envelope, signed, subject_kel, subject_delegator_kel, grant)
@@ -376,6 +392,7 @@ struct GrantFacts {
     role: Option<String>,
     expires_at: Option<DateTime<Utc>>,
     freshness: Freshness,
+    as_of: u128,
 }
 
 /// Read an optional string claim from the verified ACDC attributes (`a.<field>`).
@@ -470,6 +487,7 @@ fn verify_holder_signature(
                 role: grant.role,
                 expires_at: grant.expires_at,
                 freshness: grant.freshness,
+                as_of: grant.as_of,
             };
         }
     }

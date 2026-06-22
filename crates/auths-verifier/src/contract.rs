@@ -100,6 +100,7 @@ enum WirePresentationVerdict {
         role: Option<String>,
         expires_at: Option<String>,
         freshness: Freshness,
+        as_of: u128,
     },
     HolderNotCurrentKey,
     WrongAudience,
@@ -182,6 +183,7 @@ impl From<PresentationVerdict> for WirePresentationVerdict {
                 role,
                 expires_at,
                 freshness,
+                as_of,
             } => WirePresentationVerdict::Valid {
                 issuer: issuer.as_str().to_string(),
                 subject: subject.as_str().to_string(),
@@ -189,6 +191,7 @@ impl From<PresentationVerdict> for WirePresentationVerdict {
                 role,
                 expires_at: expires_at.map(|t| t.to_rfc3339()),
                 freshness,
+                as_of,
             },
             PresentationVerdict::HolderNotCurrentKey => {
                 WirePresentationVerdict::HolderNotCurrentKey

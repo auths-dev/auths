@@ -148,6 +148,15 @@ impl CredentialVerdict {
         }
     }
 
+    /// The issuer-KEL position a `Valid` verdict was verified as-of (the `{as_of, freshness}`
+    /// pair, ADR 009), or `None` when the verdict is not `Valid`.
+    pub fn as_of(&self) -> Option<u128> {
+        match self {
+            CredentialVerdict::Valid { as_of, .. } => Some(*as_of),
+            _ => None,
+        }
+    }
+
     /// Re-classify a `Valid` verdict's freshness against a policy and the evidence of a fresher
     /// source ([`FreshnessEvidence`] — a bundle age, or a fresher KEL tip). The bare verifier
     /// emits `Unknown`; the relying party upgrades it here once it has a freshness oracle.

@@ -719,6 +719,7 @@ mod tests {
             role: role.map(str::to_string),
             expires_at,
             freshness: auths_verifier::Freshness::Unknown,
+            as_of: 0,
         }
     }
 

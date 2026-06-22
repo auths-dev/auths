@@ -230,6 +230,7 @@ mod tests {
             role: None,
             expires_at: None,
             freshness: auths_verifier::Freshness::Unknown,
+            as_of: 0,
         };
         VerifiedPrincipal::from_verdict(verdict).expect("valid verdict -> principal")
     }

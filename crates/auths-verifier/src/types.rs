@@ -44,6 +44,13 @@ pub struct VerificationReport {
     /// `#[serde(default)]` resolves a missing field to `Unknown` so pre-field JSON still loads.
     #[serde(default)]
     pub freshness: Freshness,
+    /// The KEL position this verdict was verified as-of (ADR 009, the `{as_of, freshness}` pair):
+    /// the issuer-KEL tip `(seq)` the chain was checked against, when the caller supplies one.
+    /// The pure chain verifier reads no KEL tip, so it leaves this `None` ("position unknown") —
+    /// honest, never fabricated; a caller holding the slice position stamps it via
+    /// [`VerificationReport::with_as_of`]. `#[serde(default)]` keeps pre-field JSON loadable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub as_of: Option<u128>,
 }
 
 impl VerificationReport {
@@ -66,6 +73,7 @@ impl VerificationReport {
             anchored: None,
             duplicity_warning: None,
             freshness: Freshness::Unknown,
+            as_of: None,
         }
     }
 
@@ -82,6 +90,7 @@ impl VerificationReport {
             anchored: None,
             duplicity_warning: None,
             freshness: Freshness::Unknown,
+            as_of: None,
         }
     }
 
@@ -110,6 +119,23 @@ impl VerificationReport {
     /// * `freshness`: the classified freshness of this otherwise-valid report.
     pub fn with_freshness(mut self, freshness: Freshness) -> Self {
         self.freshness = freshness;
+        self
+    }
+
+    /// The KEL position this report was verified as-of (ADR 009), or `None` when the pure chain
+    /// verifier was given no slice position to report.
+    pub fn as_of(&self) -> Option<u128> {
+        self.as_of
+    }
+
+    /// Stamp the issuer-KEL slice position this report was verified as-of. Pairs with
+    /// [`VerificationReport::with_freshness`]: a caller holding the verified slice records both
+    /// *how current* (`as_of`) and *how fresh* (`freshness`) the otherwise-valid report is.
+    ///
+    /// Args:
+    /// * `as_of`: the issuer-KEL tip `(seq)` the chain was verified against.
+    pub fn with_as_of(mut self, as_of: u128) -> Self {
+        self.as_of = Some(as_of);
         self
     }
 }
@@ -853,6 +879,7 @@ mod tests {
             anchored: None,
             duplicity_warning: None,
             freshness: Freshness::Unknown,
+            as_of: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();

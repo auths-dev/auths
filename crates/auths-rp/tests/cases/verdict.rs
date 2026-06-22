@@ -11,6 +11,7 @@ fn valid_verdict(subject: &str, caps: &[&str]) -> PresentationVerdict {
         role: None,
         expires_at: None,
         freshness: Freshness::Unknown,
+        as_of: 0,
     }
 }
 

@@ -435,6 +435,7 @@ async fn valid_challenge_presentation_verifies() {
                 role,
                 expires_at,
                 freshness,
+                ..
             } => {
                 assert_eq!(s.as_str(), format!("did:keri:{}", subject.aid));
                 assert_eq!(
