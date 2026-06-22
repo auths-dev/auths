@@ -17,19 +17,16 @@ use auths_verifier::wasm::{
 };
 use wasm_bindgen_test::*;
 
-// Committed cross-language fixtures, generated from the native verifier
-// (`AUTHS_EMIT_FIXTURES=1`); the native contract tests assert these produce the same
-// typed verdicts, so the WASM verdict here is checked against an independent surface.
-const PRESENTATION_VALID: &str = include_str!("fixtures/presentation_valid.json");
-const CREDENTIAL_VALID: &str = include_str!("fixtures/credential_valid.json");
-const CREDENTIAL_REVOKED: &str = include_str!("fixtures/credential_revoked.json");
-
-// Pre-computed fixture: valid attestation JSON signed with deterministic test keypairs.
-// Generated via `cargo run --example gen_wasm_fixture -p auths-verifier`.
-const FIXTURE_ISSUER_PK_HEX: &str =
-    "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c";
-
-const FIXTURE_ATTESTATION_JSON: &str = r#"{"version":1,"rid":"test-rid","issuer":"did:key:z6Mkon3Necd6NkkyfoGoHxid2znGc59LU3K7mubaRcFbLfLX","subject":"did:key:z6Mko9hTggMwjSTEaJaPUfE6tqcy2xvU6BnNq3e3o8qVBiyH","device_public_key":"8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394","identity_signature":"1690dee2371b2bd586e696c6f891c509140ff808b82cda8c83ecfa0ea396cb3e295006ad2e6498389b5e3b1ff9d089a9ab654c30adb68d55bde04a64d7e80208","device_signature":"df199539fd0367b3684fef8b484f829c679c1d02373acf9787150032a573a3e79c878e3c4c403dfeffc25f5d4695aecb64ea67a286068ed7ca4a51f042adfc08","timestamp":null}"#;
+// The cross-surface forgery battery + fixtures, shared verbatim with the native/FFI parity
+// suite (`cases/cross_surface_parity.rs`). Driving the *same* cases here is the third leg of
+// the §3.8 lockstep: a forgery the native and FFI surfaces refuse must be refused — with the
+// identical verdict kind — by the compiled WASM verdict too.
+#[path = "cases/parity_cases.rs"]
+mod parity_cases;
+use parity_cases::{
+    CREDENTIAL_REVOKED, CREDENTIAL_VALID, FIXTURE_ATTESTATION_JSON, FIXTURE_ISSUER_PK_HEX,
+    PRESENTATION_VALID, credential_cases, kind, presentation_cases,
+};
 
 // RFC 8032 Section 7.1, Test Vector 2 — used for artifact signature tests.
 const RFC8032_PUBKEY_HEX: &str = "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c";
@@ -51,6 +48,34 @@ fn tampered(fixture_json: &str, mutate: impl FnOnce(&mut serde_json::Value)) -> 
         serde_json::from_str(fixture_json).expect("fixture is valid JSON");
     mutate(&mut value);
     serde_json::to_string(&value).expect("re-serialize")
+}
+
+// ---- cross-surface parity battery (same cases as native/FFI) ----
+
+#[wasm_bindgen_test]
+fn presentation_battery_kinds_match_native_and_ffi() {
+    for case in presentation_cases() {
+        let v = wasm_verify_presentation_json(&case.request);
+        assert_eq!(
+            kind(&v),
+            case.expected_kind,
+            "WASM presentation verdict must match the native/FFI kind for {}",
+            case.label
+        );
+    }
+}
+
+#[wasm_bindgen_test]
+fn credential_battery_kinds_match_native_and_ffi() {
+    for case in credential_cases() {
+        let v = wasm_verify_credential_json(&case.request);
+        assert_eq!(
+            kind(&v),
+            case.expected_kind,
+            "WASM credential verdict must match the native/FFI kind for {}",
+            case.label
+        );
+    }
 }
 
 // ---- verifyPresentationJson (synchronous, pure-Rust verdict path) ----
