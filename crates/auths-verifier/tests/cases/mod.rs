@@ -13,6 +13,8 @@ mod freshness_honesty;
 mod issuer_signature_required;
 mod kel_verification;
 mod newtypes;
+#[cfg(feature = "ffi")]
+mod parity_cases;
 mod presentation;
 mod proptest_core;
 mod revocation_adversarial;
