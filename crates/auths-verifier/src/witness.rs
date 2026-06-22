@@ -33,6 +33,15 @@ use serde::{Deserialize, Serialize};
 /// did not check) without re-inspecting anything. `Verified` is the only
 /// success arm, so a receipt that did not verify can never be mistaken for one
 /// that did.
+///
+/// This is **not** an ADR-009 freshness-bearing trust verdict, by design — so it
+/// carries no `freshness` qualifier (and is named on the freshness-honesty
+/// allowlist). A receipt *is itself* freshness evidence: it records that a witness
+/// observed an event, which is what other verdicts consume as their fresher source.
+/// Qualifying a piece of freshness evidence with its own freshness is circular; the
+/// relying party grades the freshness of the *authority* verdict the receipt
+/// corroborates, not the receipt. Consumed today by `auths witness` and
+/// `auths-witness-node` as corroboration, never as a time-bounded authority claim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "kebab-case")]
 pub enum OfflineReceiptVerdict {
@@ -147,6 +156,14 @@ pub fn verify_receipt_offline(
 /// A forged attestation — one whose attested digest differs from the running
 /// binary — fails on the second even when its signature is perfectly valid, so a
 /// swapped attestation cannot pass. `Verified` is the only success arm.
+///
+/// This is **not** an ADR-009 freshness-bearing trust verdict, by design — so it
+/// carries no `freshness` qualifier (and is named on the freshness-honesty
+/// allowlist). It is a *self-measurement*, not a time-bounded authority claim:
+/// `Verified` means the attested digest equals the digest of the binary running
+/// right now, a present-tense fact with no "as-of" slice that could go stale.
+/// There is no fresher source to compare against — the node measured itself.
+/// Consumed today by `auths-witness-node` as a measurement, never as authority.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "result", rename_all = "kebab-case")]
 pub enum OfflineBuildVerdict {
