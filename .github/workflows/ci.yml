@@ -322,6 +322,36 @@ jobs:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
         run: cargo test --target wasm32-unknown-unknown --no-default-features --features wasm --test wasm_bindings
 
+  fuzz-smoke:
+    name: Fuzz targets build + smoke (auths-verifier)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/auths-verifier/fuzz/target
+          key: ${{ runner.os }}-fuzz-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-fuzz-
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      # Building is the anti-bit-rot guard (the targets must track the verifier API); a
+      # short run on each exercises the invariants — never accept a forgery, never panic.
+      - name: Build fuzz targets
+        working-directory: crates/auths-verifier/fuzz
+        run: cargo +nightly fuzz build
+      - name: Smoke-run each target
+        working-directory: crates/auths-verifier/fuzz
+        run: |
+          for target in verify_presentation_json verify_credential_json verify_chain attestation_parse did_parse; do
+            echo "::group::$target"
+            cargo +nightly fuzz run "$target" -- -runs=20000
+            echo "::endgroup::"
+          done
+
   conformance:
     name: KERI conformance (keripy 1.3.4)
     runs-on: ubuntu-latest
