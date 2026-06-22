@@ -177,8 +177,14 @@ fn keripy_subprocess_agrees_on_accept_and_reject() {
     // Each tamper is a universal KERI rejection; keripy must refuse every one (never reach
     // sn=1), exactly as auths' offline verdict above does.
     let rejects: [(&str, Vec<u8>); 4] = [
-        ("forged inception signature", cesr_stream(&[(&icp_raw, &forged_att)])),
-        ("unmet inception threshold", cesr_stream(&[(&icp_raw, &one_sig_att)])),
+        (
+            "forged inception signature",
+            cesr_stream(&[(&icp_raw, &forged_att)]),
+        ),
+        (
+            "unmet inception threshold",
+            cesr_stream(&[(&icp_raw, &one_sig_att)]),
+        ),
         (
             "non-self-addressing inception d",
             cesr_stream(&[(&replace_field_said(&icp_raw, "d", WRONG_SAID), &icp_att)]),

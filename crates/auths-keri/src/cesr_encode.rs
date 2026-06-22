@@ -186,10 +186,22 @@ mod tests {
         // that shifts a primitive's size fails here loudly instead of drifting the
         // length-guard against the decoder.
         let cases: [(&str, String); 7] = [
-            ("D", encode_verkey(&[0u8; 32], matter::Codex::Ed25519).unwrap()),
-            ("B", encode_verkey(&[0u8; 32], matter::Codex::Ed25519N).unwrap()),
-            ("1AAJ", encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1).unwrap()),
-            ("1AAI", encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1N).unwrap()),
+            (
+                "D",
+                encode_verkey(&[0u8; 32], matter::Codex::Ed25519).unwrap(),
+            ),
+            (
+                "B",
+                encode_verkey(&[0u8; 32], matter::Codex::Ed25519N).unwrap(),
+            ),
+            (
+                "1AAJ",
+                encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1).unwrap(),
+            ),
+            (
+                "1AAI",
+                encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1N).unwrap(),
+            ),
             ("E", encode_blake3_digest(&[0u8; 32]).unwrap()),
             (
                 "0B",
