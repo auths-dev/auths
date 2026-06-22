@@ -126,7 +126,10 @@ fn ffi_valid_verdicts_name_freshness() {
             PRESENTATION_VALID,
             auths_verify_presentation_json as JsonVerifyFn,
         ),
-        (CREDENTIAL_VALID, auths_verify_credential_json as JsonVerifyFn),
+        (
+            CREDENTIAL_VALID,
+            auths_verify_credential_json as JsonVerifyFn,
+        ),
     ] {
         let verdict: serde_json::Value =
             serde_json::from_str(&ffi_verdict(request, f)).expect("verdict json");

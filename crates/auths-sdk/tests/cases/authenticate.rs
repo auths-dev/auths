@@ -165,9 +165,10 @@ async fn authenticated_principal_surfaces_offline_freshness_as_unknown() {
     let now = chrono::Utc::now();
 
     let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
-    let principal = authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
-        .await
-        .expect("offline-resolved presentation authenticates under the default policy");
+    let principal =
+        authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
+            .await
+            .expect("offline-resolved presentation authenticates under the default policy");
 
     assert_eq!(
         principal.freshness(),
