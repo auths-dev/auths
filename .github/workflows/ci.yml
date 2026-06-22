@@ -323,8 +323,16 @@ jobs:
         run: cargo test --target wasm32-unknown-unknown --no-default-features --features wasm --test wasm_bindings
 
   fuzz-smoke:
-    name: Fuzz targets build + smoke (auths-verifier)
+    name: Fuzz targets build + smoke
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dir: crates/auths-verifier/fuzz
+            targets: verify_presentation_json verify_credential_json verify_chain attestation_parse did_parse
+          - dir: crates/auths-keri/fuzz
+            targets: fuzz_cesr_import fuzz_parse_cesr fuzz_validate_kel
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -333,20 +341,20 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            crates/auths-verifier/fuzz/target
-          key: ${{ runner.os }}-fuzz-${{ hashFiles('**/Cargo.lock') }}
+            ${{ matrix.dir }}/target
+          key: ${{ runner.os }}-fuzz-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.dir }}
           restore-keys: ${{ runner.os }}-fuzz-
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
-      # Building is the anti-bit-rot guard (the targets must track the verifier API); a
+      # Building is the anti-bit-rot guard (the targets must track the crate API); a
       # short run on each exercises the invariants — never accept a forgery, never panic.
       - name: Build fuzz targets
-        working-directory: crates/auths-verifier/fuzz
+        working-directory: ${{ matrix.dir }}
         run: cargo +nightly fuzz build
       - name: Smoke-run each target
-        working-directory: crates/auths-verifier/fuzz
+        working-directory: ${{ matrix.dir }}
         run: |
-          for target in verify_presentation_json verify_credential_json verify_chain attestation_parse did_parse; do
+          for target in ${{ matrix.targets }}; do
             echo "::group::$target"
             cargo +nightly fuzz run "$target" -- -runs=20000
             echo "::endgroup::"
