@@ -119,6 +119,27 @@ impl KeriPublicKey {
             return Err(KeriDecodeError::EmptyInput);
         }
 
+        // cesride's qb64 decoder derives a primitive's length from its derivation
+        // code and slices the input by that length, so a non-ASCII, truncated, or
+        // unknown code makes it slice off a char boundary or past the end and panic.
+        // Reject anything that is not an exact, known verkey primitive here so the
+        // parser fails closed on hostile input. The curve is still selected by the
+        // in-band code prefix, never by raw byte length.
+        let expected_len = if encoded.starts_with("1AAI") || encoded.starts_with("1AAJ") {
+            48 // P-256 compressed verkey: 4-char code + 44 base64 chars
+        } else if encoded.starts_with('D') || encoded.starts_with('B') {
+            44 // Ed25519 verkey: 1-char code + 43 base64 chars
+        } else {
+            return Err(KeriDecodeError::UnsupportedKeyType(
+                encoded.chars().take(4).collect(),
+            ));
+        };
+        if !encoded.is_ascii() || encoded.len() != expected_len {
+            return Err(KeriDecodeError::DecodeError(format!(
+                "verkey primitive is not a {expected_len}-char ASCII CESR string"
+            )));
+        }
+
         let (bytes, code) = crate::cesr_encode::decode_verkey(encoded)?;
 
         use cesride::matter::Codex;
@@ -359,6 +380,19 @@ mod tests {
         assert!(!non_transferable.is_transferable());
         assert_eq!(transferable.cesr_prefix(), "1AAJ");
         assert_eq!(non_transferable.cesr_prefix(), "1AAI");
+    }
+
+    #[test]
+    fn parse_rejects_malformed_qb64_without_panicking() {
+        // A derivation code whose declared primitive size exceeds the actual
+        // input length must fail closed with a typed error, never an
+        // out-of-bounds slice panic inside the CESR decoder.
+        for malformed in ["6AAA1IAA", "1AAJ", "D", "1AAI"] {
+            assert!(
+                KeriPublicKey::parse(malformed).is_err(),
+                "malformed CESR verkey {malformed:?} must be rejected, not panic"
+            );
+        }
     }
 
     #[test]

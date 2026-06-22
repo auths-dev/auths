@@ -54,9 +54,15 @@ pub(crate) fn encode_verkey(raw: &[u8], code: &str) -> Result<String, KeriDecode
 /// Args:
 /// * `qb64`: The CESR-qualified verkey string (e.g. `"DAAB…"`, `"1AAJ…"`).
 pub(crate) fn decode_verkey(qb64: &str) -> Result<(Vec<u8>, String), KeriDecodeError> {
-    let verfer = Verfer::new(None, None, None, Some(qb64), None)
-        .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))?;
-    Ok((verfer.raw(), verfer.code()))
+    // cesride derives a primitive's length from its derivation code and indexes
+    // into the qb64 by that length, so a truncated or malformed code slices out
+    // of bounds and panics. Contain the panic at this untrusted-input boundary so
+    // a bad verkey fails closed with a typed error instead of crashing the caller.
+    std::panic::catch_unwind(|| {
+        Verfer::new(None, None, None, Some(qb64), None).map(|v| (v.raw(), v.code()))
+    })
+    .map_err(|_| KeriDecodeError::DecodeError("malformed CESR verkey primitive".into()))?
+    .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
 }
 
 /// CESR-encode a 32-byte Blake3-256 digest as a qb64 SAID/commitment (`E…`).

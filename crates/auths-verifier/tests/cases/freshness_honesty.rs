@@ -24,8 +24,10 @@ const PRESENTATION_VALID: &str = include_str!("../fixtures/presentation_valid.js
 /// freshness evidence and a build-digest match is a self-measurement, neither a
 /// time-bounded authority claim. Documented on the types themselves; listed here so the
 /// tripwire's scope is explicit and auditable rather than a silent omission.
-const NON_FRESHNESS_BEARING_POSITIVE_VERDICTS: &[&str] =
-    &["OfflineReceiptVerdict::Verified", "OfflineBuildVerdict::Verified"];
+const NON_FRESHNESS_BEARING_POSITIVE_VERDICTS: &[&str] = &[
+    "OfflineReceiptVerdict::Verified",
+    "OfflineBuildVerdict::Verified",
+];
 
 fn did(s: &str) -> IdentityDID {
     IdentityDID::parse(s).expect("did")
@@ -47,7 +49,11 @@ fn presentation_valid_names_as_of_and_freshness() {
         as_of: 4,
     };
     assert_eq!(verdict.freshness(), Some(Freshness::Unknown));
-    assert_eq!(verdict.as_of(), Some(4), "an honored verdict names the slice position it is as-of");
+    assert_eq!(
+        verdict.as_of(),
+        Some(4),
+        "an honored verdict names the slice position it is as-of"
+    );
 }
 
 #[test]
@@ -84,14 +90,21 @@ fn verification_report_valid_names_as_of_and_freshness() {
     // The pure chain verifier reports no slice position, so `as_of` is honestly `None`; the
     // verdict still *carries* the position channel, and a caller with the slice stamps it.
     assert_eq!(report.as_of(), None);
-    assert_eq!(report.with_as_of(9).as_of(), Some(9), "a report can carry its verified position");
+    assert_eq!(
+        report.with_as_of(9).as_of(),
+        Some(9),
+        "a report can carry its verified position"
+    );
 }
 
 #[test]
 fn presentation_json_valid_verdict_carries_as_of_and_freshness_on_the_wire() {
     let verdict: serde_json::Value =
         serde_json::from_str(&verify_presentation_json(PRESENTATION_VALID)).expect("verdict json");
-    assert_eq!(verdict["kind"], "valid", "fixture must be a valid presentation");
+    assert_eq!(
+        verdict["kind"], "valid",
+        "fixture must be a valid presentation"
+    );
     assert!(
         verdict.get("freshness").and_then(|f| f.as_str()).is_some(),
         "a valid presentation JSON verdict must name its freshness, got {verdict}"
@@ -106,7 +119,10 @@ fn presentation_json_valid_verdict_carries_as_of_and_freshness_on_the_wire() {
 fn credential_json_valid_verdict_carries_as_of_and_freshness_on_the_wire() {
     let verdict: serde_json::Value =
         serde_json::from_str(&verify_credential_json(CREDENTIAL_VALID)).expect("verdict json");
-    assert_eq!(verdict["kind"], "valid", "fixture must be a valid credential");
+    assert_eq!(
+        verdict["kind"], "valid",
+        "fixture must be a valid credential"
+    );
     assert!(
         verdict.get("freshness").and_then(|f| f.as_str()).is_some(),
         "a valid credential JSON verdict must name its freshness in lockstep with the \
