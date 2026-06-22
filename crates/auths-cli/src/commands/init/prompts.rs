@@ -5,11 +5,11 @@ use dialoguer::{Confirm, Input, Select};
 use std::path::Path;
 use std::sync::Arc;
 
+use auths_sdk::domains::identity::replace_policy::authorize_identity_replacement;
 use auths_sdk::keychain::IdentityDID;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::storage::RegistryIdentityStorage;
-use auths_sdk::domains::identity::replace_policy::authorize_identity_replacement;
 use auths_sdk::types::{GitSigningScope, IdentityConflictPolicy};
 
 use super::InitCommand;

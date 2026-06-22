@@ -20,7 +20,8 @@ use ring::rand::{SecureRandom, SystemRandom};
 pub fn generate_ci_passphrase() -> String {
     let rng = SystemRandom::new();
     let mut bytes = [0u8; 24];
-    #[allow(clippy::expect_used)] // INVARIANT: OS CSPRNG (ring SystemRandom) failure is unrecoverable, like a poisoned mutex.
+    #[allow(clippy::expect_used)]
+    // INVARIANT: OS CSPRNG (ring SystemRandom) failure is unrecoverable, like a poisoned mutex.
     rng.fill(&mut bytes).expect("system CSPRNG unavailable");
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

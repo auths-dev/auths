@@ -172,7 +172,8 @@ pub fn handle_key(cmd: KeyCommand) -> Result<()> {
             } else {
                 false
             };
-            authorize_key_export(sensitivity, interactive, confirmed).map_err(|e| anyhow!("{e}"))?;
+            authorize_key_export(sensitivity, interactive, confirmed)
+                .map_err(|e| anyhow!("{e}"))?;
 
             let passphrase = match passphrase {
                 Some(p) => p,
