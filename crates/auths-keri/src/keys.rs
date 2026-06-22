@@ -122,22 +122,14 @@ impl KeriPublicKey {
         // cesride's qb64 decoder derives a primitive's length from its derivation
         // code and slices the input by that length, so a non-ASCII, truncated, or
         // unknown code makes it slice off a char boundary or past the end and panic.
-        // Reject anything that is not an exact, known verkey primitive here so the
-        // parser fails closed on hostile input. The curve is still selected by the
-        // in-band code prefix, never by raw byte length.
-        let expected_len = if encoded.starts_with("1AAI") || encoded.starts_with("1AAJ") {
-            48 // P-256 compressed verkey: 4-char code + 44 base64 chars
-        } else if encoded.starts_with('D') || encoded.starts_with('B') {
-            44 // Ed25519 verkey: 1-char code + 43 base64 chars
-        } else {
-            return Err(KeriDecodeError::UnsupportedKeyType(
-                encoded.chars().take(4).collect(),
+        // Validate the input is exactly one well-formed CESR primitive (with no
+        // trailing bytes) before the decoder runs; the curve is then selected by the
+        // in-band code below, never by raw byte length.
+        let primitive = crate::cesr_encode::take_matter_qb64(encoded)?;
+        if primitive.len() != encoded.len() {
+            return Err(KeriDecodeError::DecodeError(
+                "trailing bytes after verkey primitive".into(),
             ));
-        };
-        if !encoded.is_ascii() || encoded.len() != expected_len {
-            return Err(KeriDecodeError::DecodeError(format!(
-                "verkey primitive is not a {expected_len}-char ASCII CESR string"
-            )));
         }
 
         let (bytes, code) = crate::cesr_encode::decode_verkey(encoded)?;
