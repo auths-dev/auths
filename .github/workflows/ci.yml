@@ -308,6 +308,19 @@ jobs:
       - name: Build WASM with wasm-pack
         working-directory: crates/auths-verifier
         run: wasm-pack build --target bundler --no-default-features --features wasm
+      # Node 20+ provides the Web Crypto Ed25519 the async entrypoints exercise.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Pin the test runner to the wasm-bindgen version in Cargo.lock — the runtime
+      # glue and the runner must match exactly.
+      - name: Install wasm-bindgen-test-runner
+        run: cargo install wasm-bindgen-cli --version 0.2.118 --locked
+      - name: Execute the WASM verdict path under Node
+        working-directory: crates/auths-verifier
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: cargo test --target wasm32-unknown-unknown --no-default-features --features wasm --test wasm_bindings
 
   conformance:
     name: KERI conformance (keripy 1.3.4)
