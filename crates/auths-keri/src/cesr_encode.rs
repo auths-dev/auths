@@ -116,7 +116,8 @@ pub(crate) fn take_matter_qb64(s: &str) -> Result<&str, KeriDecodeError> {
         ));
     }
     let code = &s[..hs];
-    let fs = matter_full_len(code).ok_or_else(|| KeriDecodeError::UnsupportedKeyType(code.into()))?;
+    let fs =
+        matter_full_len(code).ok_or_else(|| KeriDecodeError::UnsupportedKeyType(code.into()))?;
     if bytes.len() < fs || !bytes[..fs].is_ascii() {
         return Err(KeriDecodeError::DecodeError(format!(
             "{code} primitive needs {fs} ASCII chars, have {}",

@@ -96,7 +96,6 @@ fn curve_of_aid(aid: &str) -> Result<CurveType, KeriDecodeError> {
     }
 }
 
-
 /// Emit a `-L` NonTransReceiptCouples attachment group, byte-aligned with keripy.
 ///
 /// Each couple is `(witness AID, signature)`: the witness AID is appended as its
