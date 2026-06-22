@@ -84,7 +84,8 @@ pub fn encode_sig(curve: CurveType, sig: &[u8]) -> Result<String, KeriDecodeErro
 
 /// The signing curve a witness AID names, from its in-band CESR verkey code.
 fn curve_of_aid(aid: &str) -> Result<CurveType, KeriDecodeError> {
-    let (_raw, code) = crate::cesr_encode::decode_verkey(aid)?;
+    let primitive = crate::cesr_encode::take_matter_qb64(aid)?;
+    let (_raw, code) = crate::cesr_encode::decode_verkey(primitive)?;
     if code == matter::Codex::Ed25519 || code == matter::Codex::Ed25519N {
         Ok(CurveType::Ed25519)
     } else if code == matter::Codex::ECDSA_256r1 || code == matter::Codex::ECDSA_256r1N {

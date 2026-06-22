@@ -53,16 +53,16 @@ pub(crate) fn encode_verkey(raw: &[u8], code: &str) -> Result<String, KeriDecode
 ///
 /// Args:
 /// * `qb64`: The CESR-qualified verkey string (e.g. `"DAAB…"`, `"1AAJ…"`).
+///
+/// PRECONDITION: `qb64` must already be a validated, exact-length CESR primitive —
+/// every caller (`KeriPublicKey::parse`, `curve_of_aid`) runs [`take_matter_qb64`]
+/// first. cesride's decoder slices the input by a code-derived length, so handing it
+/// an unvalidated (truncated/non-ASCII) string would slice out of bounds and panic;
+/// the guard makes that unreachable. Do not call this with unvalidated input.
 pub(crate) fn decode_verkey(qb64: &str) -> Result<(Vec<u8>, String), KeriDecodeError> {
-    // cesride derives a primitive's length from its derivation code and indexes
-    // into the qb64 by that length, so a truncated or malformed code slices out
-    // of bounds and panics. Contain the panic at this untrusted-input boundary so
-    // a bad verkey fails closed with a typed error instead of crashing the caller.
-    std::panic::catch_unwind(|| {
-        Verfer::new(None, None, None, Some(qb64), None).map(|v| (v.raw(), v.code()))
-    })
-    .map_err(|_| KeriDecodeError::DecodeError("malformed CESR verkey primitive".into()))?
-    .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
+    Verfer::new(None, None, None, Some(qb64), None)
+        .map(|v| (v.raw(), v.code()))
+        .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
 }
 
 /// CESR Matter hard-code character length, keyed by the code's first character

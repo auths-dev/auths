@@ -143,19 +143,8 @@ fn icp_version_string_byte_count_matches() {
 /// otherwise with a clear log line.
 #[test]
 fn subprocess_mode_when_keripy_available() {
-    if std::env::var("KERIPY_INTEROP").ok().as_deref() != Some("1") {
-        eprintln!("[SKIP] KERIPY_INTEROP != 1; not invoking python subprocess");
+    if !super::keripy_oracle::should_run_keripy("import keri.core.serdering") {
         return;
-    }
-    let probe = std::process::Command::new("python3")
-        .args(["-c", "import keri.core.serdering"])
-        .status();
-    match probe {
-        Ok(s) if s.success() => {}
-        _ => {
-            eprintln!("[SKIP] python3 + keri.core.serdering not available");
-            return;
-        }
     }
 
     let icp = make_icp();
