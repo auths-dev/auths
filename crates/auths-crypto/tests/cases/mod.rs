@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
+mod constant_time;
 mod did_key_negative;
 #[cfg(feature = "native")]
 mod kat;

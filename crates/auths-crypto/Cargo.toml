@@ -92,6 +92,7 @@ aws-lc-rs = { version = "1.16", default-features = false, features = ["fips"], o
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 ring.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
+subtle = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
