@@ -509,7 +509,17 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
 impl ExecutableCommand for KeyCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        // Every `key` subcommand operates on the per-machine keychain selected by
+        // AUTHS_KEYCHAIN_* (backend, file, passphrase) — never on a repo-scoped
+        // registry. `--repo` cannot point at the keychain, so accepting it would
+        // silently act on the global store. Reject it instead of ignoring it.
+        if ctx.repo_path.is_some() {
+            anyhow::bail!(
+                "`--repo` is not supported for `auths key`; the keychain is selected by \
+                 AUTHS_KEYCHAIN_BACKEND / AUTHS_KEYCHAIN_FILE, not by repository."
+            );
+        }
         handle_key(self.clone())
     }
 }

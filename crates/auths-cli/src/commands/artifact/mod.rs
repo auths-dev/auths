@@ -54,6 +54,10 @@ pub enum ArtifactSubcommand {
         #[arg(long = "sig-output", value_name = "PATH")]
         sig_output: Option<PathBuf>,
 
+        /// Overwrite the --sig-output file if it already exists.
+        #[arg(long)]
+        force: bool,
+
         /// Local alias of the identity key (used for signing). Omit for CI device-only signing.
         #[arg(
             long,
@@ -427,6 +431,7 @@ pub fn handle_artifact(
         ArtifactSubcommand::Sign {
             file,
             sig_output,
+            force,
             key,
             device_key,
             expires_in,
@@ -561,6 +566,8 @@ pub fn handle_artifact(
                     p
                 });
 
+                sign::ensure_writable(&output_path, force)?;
+
                 std::fs::write(&output_path, &final_json)
                     .with_context(|| format!("Failed to write signature to {:?}", output_path))?;
 
@@ -596,6 +603,7 @@ pub fn handle_artifact(
                     env_config,
                     &log,
                     allow_unlogged,
+                    force,
                 )
             }
         }
@@ -638,6 +646,7 @@ pub fn handle_artifact(
                             passphrase_provider,
                             env_config,
                             &None,
+                            false,
                             false,
                         )?;
                         default_sig

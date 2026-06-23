@@ -30,6 +30,7 @@ mod pairing_client;
 mod platform_context;
 mod registry_client;
 mod request;
+mod ssrf;
 mod witness_client;
 
 pub use async_witness_client::HttpAsyncWitnessClient;

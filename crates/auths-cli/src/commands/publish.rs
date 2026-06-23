@@ -66,6 +66,7 @@ impl ExecutableCommand for PublishCommand {
                         &ctx.env_config,
                         &None,
                         false,
+                        false,
                     )?;
                 }
                 p
