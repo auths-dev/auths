@@ -3,7 +3,9 @@ use std::fs;
 
 /// Extract the `did:keri:` identity DID from `auths whoami --json` output.
 fn extract_did(json: &str) -> String {
-    let start = json.find("did:keri:").expect("a did:keri: identity in whoami json");
+    let start = json
+        .find("did:keri:")
+        .expect("a did:keri: identity in whoami json");
     let rest = &json[start..];
     let end = rest
         .find(|c: char| c == '"' || c == ',' || c.is_whitespace())
@@ -19,7 +21,11 @@ fn trust_pin_honors_repo_override() {
     let env = TestEnv::new();
     env.init_identity();
 
-    let whoami = env.cmd("auths").args(["whoami", "--json"]).output().unwrap();
+    let whoami = env
+        .cmd("auths")
+        .args(["whoami", "--json"])
+        .output()
+        .unwrap();
     assert!(whoami.status.success());
     let did = extract_did(&String::from_utf8_lossy(&whoami.stdout));
 
@@ -51,7 +57,7 @@ fn trust_pin_honors_repo_override() {
     assert!(fs::read_to_string(&alt_store).unwrap().contains(&did));
 
     let default_store = env.auths_home.join("known_identities.json");
-    let leaked = default_store.exists()
-        && fs::read_to_string(&default_store).unwrap().contains(&did);
+    let leaked =
+        default_store.exists() && fs::read_to_string(&default_store).unwrap().contains(&did);
     assert!(!leaked, "pin leaked into the default store despite --repo");
 }
