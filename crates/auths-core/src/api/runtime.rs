@@ -8,7 +8,7 @@
 use crate::agent::AgentCore;
 use crate::agent::AgentHandle;
 #[cfg(unix)]
-use crate::agent::AgentSession;
+use crate::agent::PeerAuthorizedAgent;
 use crate::crypto::provider_bridge;
 use crate::crypto::signer::extract_seed_from_key_bytes;
 use crate::crypto::signer::{decrypt_keypair, encrypt_keypair};
@@ -821,6 +821,14 @@ fn harden_socket_file(socket_path: &std::path::Path) -> std::io::Result<()> {
     std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))
 }
 
+/// Returns the effective user id of the current process — the only user permitted
+/// to connect to the agent socket.
+#[cfg(unix)]
+fn current_euid() -> u32 {
+    // SAFETY: `geteuid` takes no arguments, has no preconditions, and always succeeds.
+    unsafe { libc::geteuid() }
+}
+
 /// Starts the SSH agent listener using the provided `AgentHandle`.
 ///
 /// Binds to the socket path from the handle, cleans up any old socket file if present,
@@ -899,11 +907,11 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     // Mark agent as running
     handle.set_running(true);
 
-    // --- Create the agent session handler using the provided handle ---
-    let session = AgentSession::new(handle.clone());
+    // --- Create the peer-authorizing session factory ---
+    let agent = PeerAuthorizedAgent::new(handle.clone(), current_euid());
 
     // --- Start the main listener loop from ssh_agent_lib ---
-    let result = listen(listener, session).await;
+    let result = listen(listener, agent).await;
 
     // Mark agent as no longer running
     handle.set_running(false);

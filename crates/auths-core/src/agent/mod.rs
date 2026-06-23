@@ -17,3 +17,5 @@ pub use client::{
 pub use core::AgentCore;
 pub use handle::{AgentHandle, DEFAULT_IDLE_TIMEOUT};
 pub use session::AgentSession;
+#[cfg(unix)]
+pub use session::PeerAuthorizedAgent;

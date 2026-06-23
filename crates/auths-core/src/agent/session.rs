@@ -6,6 +6,8 @@
 use crate::agent::AgentHandle;
 use crate::error::AgentError as AuthsAgentError;
 use log::{debug, error, warn};
+#[cfg(unix)]
+use ssh_agent_lib::agent::Agent;
 use ssh_agent_lib::agent::Session;
 use ssh_agent_lib::error::AgentError as SSHAgentError;
 use ssh_agent_lib::proto::{AddIdentity, Credential, Identity, RemoveIdentity, SignRequest};
@@ -282,6 +284,127 @@ impl Session for AgentSession {
     }
 }
 
+/// Returns whether a connecting peer is allowed to use the agent.
+///
+/// Only the user that owns the running agent may request signatures; a connection
+/// from any other user is refused.
+///
+/// Args:
+/// * `peer_uid`: The effective user id of the connecting process.
+/// * `owner_uid`: The effective user id that owns the agent.
+///
+/// Usage:
+/// ```ignore
+/// if peer_is_authorized(peer_uid, owner_uid) { /* serve the connection */ }
+/// ```
+pub fn peer_is_authorized(peer_uid: u32, owner_uid: u32) -> bool {
+    peer_uid == owner_uid
+}
+
+/// A session for a connection, gated on peer authorization.
+///
+/// `Authorized` connections are served by an `AgentSession`; `Denied` connections
+/// have every request refused, so an unauthorized peer can neither sign nor list keys.
+#[cfg(unix)]
+pub enum MaybeAuthorized {
+    /// The peer owns the agent and is served normally.
+    Authorized(AgentSession),
+    /// The peer is not the owner; every request is refused.
+    Denied,
+}
+
+#[cfg(unix)]
+#[ssh_agent_lib::async_trait]
+impl Session for MaybeAuthorized {
+    async fn request_identities(&mut self) -> Result<Vec<Identity>, SSHAgentError> {
+        match self {
+            Self::Authorized(session) => session.request_identities().await,
+            Self::Denied => Err(SSHAgentError::Failure),
+        }
+    }
+
+    async fn sign(&mut self, request: SignRequest) -> Result<Signature, SSHAgentError> {
+        match self {
+            Self::Authorized(session) => session.sign(request).await,
+            Self::Denied => Err(SSHAgentError::Failure),
+        }
+    }
+
+    async fn add_identity(&mut self, identity: AddIdentity) -> Result<(), SSHAgentError> {
+        match self {
+            Self::Authorized(session) => session.add_identity(identity).await,
+            Self::Denied => Err(SSHAgentError::Failure),
+        }
+    }
+
+    async fn remove_identity(&mut self, identity: RemoveIdentity) -> Result<(), SSHAgentError> {
+        match self {
+            Self::Authorized(session) => session.remove_identity(identity).await,
+            Self::Denied => Err(SSHAgentError::Failure),
+        }
+    }
+
+    async fn remove_all_identities(&mut self) -> Result<(), SSHAgentError> {
+        match self {
+            Self::Authorized(session) => session.remove_all_identities().await,
+            Self::Denied => Err(SSHAgentError::Failure),
+        }
+    }
+}
+
+/// Session factory that authorizes each incoming connection by peer UID before
+/// handing it an `AgentSession`.
+///
+/// `ssh_agent_lib` calls `new_session` once per accepted connection, giving access
+/// to the connecting socket. We read the peer's credentials there and refuse any
+/// connection that is not the owning user (failing closed if the credentials
+/// cannot be read).
+#[cfg(unix)]
+pub struct PeerAuthorizedAgent {
+    handle: Arc<AgentHandle>,
+    owner_uid: u32,
+}
+
+#[cfg(unix)]
+impl PeerAuthorizedAgent {
+    /// Creates a factory that serves only connections from `owner_uid`.
+    ///
+    /// Args:
+    /// * `handle`: The agent handle that holds the unlocked keys.
+    /// * `owner_uid`: The effective user id permitted to use the agent.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let agent = PeerAuthorizedAgent::new(handle, owner_uid);
+    /// ```
+    pub fn new(handle: Arc<AgentHandle>, owner_uid: u32) -> Self {
+        Self { handle, owner_uid }
+    }
+}
+
+#[cfg(unix)]
+impl Agent<tokio::net::UnixListener> for PeerAuthorizedAgent {
+    fn new_session(&mut self, socket: &tokio::net::UnixStream) -> impl Session {
+        match socket.peer_cred() {
+            Ok(cred) if peer_is_authorized(cred.uid(), self.owner_uid) => {
+                MaybeAuthorized::Authorized(AgentSession::new(self.handle.clone()))
+            }
+            Ok(cred) => {
+                warn!(
+                    "Refusing agent connection from uid {} (agent owner uid {})",
+                    cred.uid(),
+                    self.owner_uid
+                );
+                MaybeAuthorized::Denied
+            }
+            Err(e) => {
+                error!("Refusing agent connection: cannot read peer credentials: {e}");
+                MaybeAuthorized::Denied
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,5 +561,81 @@ mod tests {
         // Remove all
         session.remove_all_identities().await.unwrap();
         assert_eq!(handle.key_count().unwrap(), 0);
+    }
+
+    #[cfg(unix)]
+    fn registered_sign_request(handle: &Arc<AgentHandle>) -> SignRequest {
+        let pkcs8 = generate_test_pkcs8();
+        handle
+            .register_key(Zeroizing::new(pkcs8))
+            .expect("register key");
+        let pubkeys = handle.public_keys().expect("public keys");
+        let pubkey_bytes: [u8; 32] = pubkeys[0]
+            .as_slice()
+            .try_into()
+            .expect("ed25519 pubkey is 32 bytes");
+        SignRequest {
+            pubkey: KeyData::Ed25519(Ed25519PublicKey(pubkey_bytes)),
+            data: b"data to sign".to_vec(),
+            flags: 0,
+        }
+    }
+
+    #[test]
+    fn peer_authorized_only_for_matching_uid() {
+        assert!(peer_is_authorized(1000, 1000));
+        assert!(!peer_is_authorized(1001, 1000));
+        assert!(!peer_is_authorized(0, 1000));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn new_session_serves_owner_uid() {
+        use tokio::net::UnixStream;
+        let (a, _b) = UnixStream::pair().expect("socketpair");
+        let owner_uid = a.peer_cred().expect("peer cred").uid();
+
+        let handle = Arc::new(AgentHandle::new(PathBuf::from("/tmp/peer-allow.sock")));
+        let request = registered_sign_request(&handle);
+
+        let mut agent = PeerAuthorizedAgent::new(handle, owner_uid);
+        let mut session = agent.new_session(&a);
+        assert!(
+            session.sign(request).await.is_ok(),
+            "the owning uid must be able to sign"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn new_session_denies_foreign_uid() {
+        use tokio::net::UnixStream;
+        let (a, _b) = UnixStream::pair().expect("socketpair");
+        let peer_uid = a.peer_cred().expect("peer cred").uid();
+
+        let handle = Arc::new(AgentHandle::new(PathBuf::from("/tmp/peer-deny.sock")));
+        let request = registered_sign_request(&handle);
+
+        // Owner is a different uid than the connecting peer: the connection must be denied
+        // even though a key is loaded and signing would otherwise succeed.
+        let mut agent = PeerAuthorizedAgent::new(handle, peer_uid.wrapping_add(1));
+        let mut session = agent.new_session(&a);
+        assert!(
+            session.sign(request).await.is_err(),
+            "a foreign-uid peer must not be able to sign"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn denied_session_refuses_every_request() {
+        let mut session = MaybeAuthorized::Denied;
+        assert!(session.request_identities().await.is_err());
+        let request = SignRequest {
+            pubkey: KeyData::Ed25519(Ed25519PublicKey([7u8; 32])),
+            data: b"x".to_vec(),
+            flags: 0,
+        };
+        assert!(session.sign(request).await.is_err());
     }
 }
