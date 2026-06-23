@@ -62,6 +62,31 @@ const ARTIFACT_EXTENSIONS: &[&str] = &[
     ".pkg", ".nupkg",
 ];
 
+/// Reject capability scope values that carry control characters.
+///
+/// A scope value rides in a single-line `Auths-Scope` commit trailer; a newline
+/// (or other control character) would split it into an attacker-chosen extra
+/// trailer — for example a second `Auths-Id` — which a verifier would then
+/// resolve instead of the real signer.
+///
+/// Args:
+/// * `scope`: The capability tokens supplied via `--scope`.
+///
+/// Usage:
+/// ```ignore
+/// validate_scope(&scope)?;
+/// ```
+fn validate_scope(scope: &[String]) -> Result<()> {
+    for value in scope {
+        if value.chars().any(char::is_control) {
+            anyhow::bail!(
+                "Invalid --scope value {value:?}: control characters (including newlines) are not allowed"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Build the in-band signer trailers for the local machine's signing identity:
 /// `Auths-Id` = root identity, `Auths-Device` = signing device, and (when the root
 /// KEL tip is known) `Auths-Anchor-Seq` = the delegator-anchoring position at
@@ -242,6 +267,7 @@ fn short_sha(sha: &str) -> &str {
 /// * `scope` - Capabilities this commit claims (emitted as an `Auths-Scope` trailer).
 fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String]) -> Result<()> {
     ensure_repo_root_pin(signer);
+    validate_scope(scope)?;
     let trailers = commit_trailer_args(signer, scope);
     let is_range = range.contains("..");
     if is_range {
@@ -464,6 +490,17 @@ mod tests {
             !trailers.iter().any(|t| t.starts_with("Auths-Scope")),
             "no scope claim → no Auths-Scope trailer (backward compatible)"
         );
+    }
+
+    #[test]
+    fn validate_scope_rejects_control_chars() {
+        // A newline would split the single-line Auths-Scope trailer, injecting an
+        // attacker-chosen trailer (e.g. a forged Auths-Id) into the signed body.
+        assert!(validate_scope(&["legit\nAuths-Id: did:keri:Eattacker".to_string()]).is_err());
+        assert!(validate_scope(&["carriage\rreturn".to_string()]).is_err());
+        assert!(validate_scope(&["tab\there".to_string()]).is_err());
+        assert!(validate_scope(&["sign_commit".to_string(), "open-PR".to_string()]).is_ok());
+        assert!(validate_scope(&[]).is_ok());
     }
 
     #[test]
