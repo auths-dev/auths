@@ -44,9 +44,19 @@ fn sign_artifact(env: &TestEnv) -> (std::path::PathBuf, std::path::PathBuf) {
     let artifact = env.repo_path.join("release.bin");
     std::fs::write(&artifact, b"artifact payload bytes\n").unwrap();
 
+    // `--key` attaches the issuer (identity) signature; without it the artifact carries only the
+    // device signature and verification fails closed on the missing issuer signature. A clean,
+    // fully dual-signed attestation is the positive control the tamper tests build on.
     let output = env
         .cmd("auths")
-        .args(["sign", artifact.to_str().unwrap()])
+        .args([
+            "sign",
+            artifact.to_str().unwrap(),
+            "--key",
+            "main",
+            "--device-key",
+            "main",
+        ])
         .output()
         .unwrap();
     assert!(
