@@ -174,7 +174,9 @@ fn daemon_op_name(cmd: &AgentSubcommand) -> Option<&'static str> {
         AgentSubcommand::Status => Some("status"),
         AgentSubcommand::InstallService { .. } => Some("install-service"),
         AgentSubcommand::UninstallService => Some("uninstall-service"),
-        AgentSubcommand::Env { .. } | AgentSubcommand::Lock | AgentSubcommand::Unlock { .. } => None,
+        AgentSubcommand::Env { .. } | AgentSubcommand::Lock | AgentSubcommand::Unlock { .. } => {
+            None
+        }
     }
 }
 

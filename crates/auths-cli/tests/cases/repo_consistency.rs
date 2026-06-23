@@ -21,22 +21,41 @@ const STORAGE_MARKERS: &[&str] = &[
 /// Markers that a file is `--repo`-aware: it threads the override (directly, or via an `env_config`
 /// whose `auths_home` the command entry already resolved from `--repo`) or deliberately rejects it.
 const REPO_AWARE: &[&str] = &[
-    "resolve_repo_path", "repo_path", "repo_opt", "ctx.repo", "--repo", "auths_home_with_config",
+    "resolve_repo_path",
+    "repo_path",
+    "repo_opt",
+    "ctx.repo",
+    "--repo",
+    "auths_home_with_config",
 ];
 
 /// Storage-touching command sources with a known, reviewed reason for not threading `--repo`, matched by
 /// path suffix under `commands/`. Adding an entry requires a reason — this list is the audit trail of
 /// `--repo` exceptions, not a place to hide new ones.
 const EXEMPT: &[(&str, &str)] = &[
-    ("verify_commit.rs", "read-only verification; reads pinned roots from the resolved registry"),
+    (
+        "verify_commit.rs",
+        "read-only verification; reads pinned roots from the resolved registry",
+    ),
     ("artifact/verify.rs", "read-only artifact verification"),
-    ("device/verify_attestation.rs", "read-only device-attestation verification (pin lookup)"),
-    ("device/pair/common.rs", "pairing internals; the store is resolved by the command entry"),
-    ("multi_sig.rs", "multi-sig session storage; --repo applicability under review"),
+    (
+        "device/verify_attestation.rs",
+        "read-only device-attestation verification (pin lookup)",
+    ),
+    (
+        "device/pair/common.rs",
+        "pairing internals; the store is resolved by the command entry",
+    ),
+    (
+        "multi_sig.rs",
+        "multi-sig session storage; --repo applicability under review",
+    ),
 ];
 
 fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -52,11 +71,18 @@ fn storage_commands_handle_repo_flag() {
     let cmd_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
     let mut files = Vec::new();
     rs_files(&cmd_dir, &mut files);
-    assert!(!files.is_empty(), "no command sources found under {cmd_dir:?}");
+    assert!(
+        !files.is_empty(),
+        "no command sources found under {cmd_dir:?}"
+    );
 
     let mut offenders = Vec::new();
     for f in &files {
-        let rel = f.strip_prefix(&cmd_dir).unwrap_or(f).to_string_lossy().replace('\\', "/");
+        let rel = f
+            .strip_prefix(&cmd_dir)
+            .unwrap_or(f)
+            .to_string_lossy()
+            .replace('\\', "/");
         let body = fs::read_to_string(f).unwrap_or_default();
         let touches_storage = STORAGE_MARKERS.iter().any(|m| body.contains(m));
         let repo_aware = REPO_AWARE.iter().any(|m| body.contains(m));

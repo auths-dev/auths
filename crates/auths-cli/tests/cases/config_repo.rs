@@ -38,9 +38,7 @@ fn config_set_honors_repo_override() {
         "config did not land in the --repo store; --repo was ignored"
     );
     assert!(
-        fs::read_to_string(&alt_config)
-            .unwrap()
-            .contains("always"),
+        fs::read_to_string(&alt_config).unwrap().contains("always"),
         "the --repo config.toml does not reflect the new value"
     );
 
