@@ -6,7 +6,15 @@ use crate::error::map_reqwest_error;
 use crate::request::{
     build_get_request, build_post_request, execute_request, parse_response_bytes,
 };
+use crate::ssrf::{SsrfBlocked, guard_registry_url};
 use crate::{default_client_builder, default_http_client};
+
+/// Translate a refused registry URL into a `NetworkError` for the network port.
+fn map_ssrf_error(err: SsrfBlocked) -> NetworkError {
+    NetworkError::InvalidResponse {
+        detail: err.to_string(),
+    }
+}
 
 /// HTTP-backed implementation of `RegistryClient`.
 ///
@@ -68,10 +76,12 @@ impl RegistryClient for HttpRegistryClient {
         registry_url: &str,
         path: &str,
     ) -> impl Future<Output = Result<Vec<u8>, NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!("{}/{}", registry_url.trim_end_matches('/'), path);
         let request = build_get_request(&self.client, &url);
 
         async move {
+            guard?;
             let response = execute_request(request, registry_url).await?;
             parse_response_bytes(response, path).await
         }
@@ -83,10 +93,12 @@ impl RegistryClient for HttpRegistryClient {
         path: &str,
         data: &[u8],
     ) -> impl Future<Output = Result<(), NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!("{}/{}", registry_url.trim_end_matches('/'), path);
         let request = build_post_request(&self.client, &url, data.to_vec());
 
         async move {
+            guard?;
             let response = execute_request(request, registry_url).await?;
             let _ = parse_response_bytes(response, path).await?;
             Ok(())
@@ -99,6 +111,7 @@ impl RegistryClient for HttpRegistryClient {
         path: &str,
         json_body: &[u8],
     ) -> impl Future<Output = Result<RegistryResponse, NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!("{}/{}", registry_url.trim_end_matches('/'), path);
         let request = self
             .client
@@ -108,6 +121,7 @@ impl RegistryClient for HttpRegistryClient {
         let endpoint = registry_url.to_string();
 
         async move {
+            guard?;
             let response = request
                 .send()
                 .await

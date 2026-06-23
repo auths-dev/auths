@@ -2,11 +2,13 @@
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
-use anyhow::{Result, bail};
-use auths_sdk::core_config::{AuthsConfig, PassphraseCachePolicy, load_config, save_config};
+use anyhow::{Context, Result, bail};
+use auths_sdk::core_config::{AuthsConfig, PassphraseCachePolicy};
+use auths_sdk::ports::ConfigStore;
 
 use crate::adapters::config_store::FileConfigStore;
 use clap::{Parser, Subcommand};
+use std::path::{Path, PathBuf};
 
 /// Manage Auths configuration.
 #[derive(Parser, Debug, Clone)]
@@ -53,18 +55,55 @@ pub enum ConfigAction {
 }
 
 impl ExecutableCommand for ConfigCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        let path = config_path(ctx.repo_path.clone())?;
         match &self.action {
-            ConfigAction::Set { key, value } => execute_set(key, value),
-            ConfigAction::Get { key } => execute_get(key),
-            ConfigAction::Show => execute_show(),
+            ConfigAction::Set { key, value } => execute_set(key, value, &path),
+            ConfigAction::Get { key } => execute_get(key, &path),
+            ConfigAction::Show => execute_show(&path),
         }
     }
 }
 
-fn execute_set(key: &str, value: &str) -> Result<()> {
-    let store = FileConfigStore;
-    let mut config = load_config(&store);
+/// Resolves the `config.toml` path for the active registry, honoring `--repo`.
+///
+/// Args:
+/// * `repo`: The optional `--repo` override; `None` selects the default
+///   `~/.auths` registry, matching the path used when `--repo` is absent.
+///
+/// Usage:
+/// ```ignore
+/// let path = config_path(ctx.repo_path.clone())?;
+/// ```
+fn config_path(repo: Option<PathBuf>) -> Result<PathBuf> {
+    let dir = match repo {
+        Some(_) => auths_sdk::storage_layout::resolve_repo_path(repo)
+            .context("Failed to resolve the repository path for the config file")?,
+        None => auths_sdk::paths::auths_home()
+            .map_err(|e| anyhow::anyhow!("Failed to resolve the Auths home directory: {e}"))?,
+    };
+    Ok(dir.join("config.toml"))
+}
+
+/// Reads the config at `path`, returning defaults when the file is absent.
+fn read_config(path: &Path) -> AuthsConfig {
+    match FileConfigStore.read(path) {
+        Ok(Some(contents)) => toml::from_str(&contents).unwrap_or_default(),
+        _ => AuthsConfig::default(),
+    }
+}
+
+/// Writes the config to `path`, creating parent directories as needed.
+fn write_config(config: &AuthsConfig, path: &Path) -> Result<()> {
+    let contents = toml::to_string_pretty(config)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize config: {e}"))?;
+    FileConfigStore
+        .write(path, &contents)
+        .map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+fn execute_set(key: &str, value: &str, path: &Path) -> Result<()> {
+    let mut config = read_config(path);
 
     match key {
         "passphrase.cache" => {
@@ -88,13 +127,13 @@ fn execute_set(key: &str, value: &str) -> Result<()> {
         ),
     }
 
-    save_config(&config, &store)?;
+    write_config(&config, path)?;
     println!("Set {} = {}", key, value);
     Ok(())
 }
 
-fn execute_get(key: &str) -> Result<()> {
-    let config = load_config(&FileConfigStore);
+fn execute_get(key: &str, path: &Path) -> Result<()> {
+    let config = read_config(path);
 
     match key {
         "passphrase.cache" => {
@@ -119,8 +158,8 @@ fn execute_get(key: &str) -> Result<()> {
     Ok(())
 }
 
-fn execute_show() -> Result<()> {
-    let config = load_config(&FileConfigStore);
+fn execute_show(path: &Path) -> Result<()> {
+    let config = read_config(path);
     if crate::ux::format::is_json_mode() {
         let json = serde_json::to_string_pretty(&config)
             .map_err(|e| anyhow::anyhow!("Failed to serialize config as JSON: {}", e))?;
@@ -161,11 +200,4 @@ fn parse_bool(s: &str) -> Result<bool> {
         "false" | "0" | "no" => Ok(false),
         _ => bail!("Invalid boolean '{}'. Use true/false, yes/no, or 1/0", s),
     }
-}
-
-fn _ensure_default_config_exists() -> Result<AuthsConfig> {
-    let store = FileConfigStore;
-    let config = load_config(&store);
-    save_config(&config, &store)?;
-    Ok(config)
 }

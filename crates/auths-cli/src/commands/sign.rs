@@ -347,6 +347,10 @@ pub struct SignCommand {
     #[arg(long = "sig-output", value_name = "PATH")]
     pub sig_output: Option<PathBuf>,
 
+    /// Overwrite the signature output file if it already exists.
+    #[arg(long)]
+    pub force: bool,
+
     /// Local alias of the identity key (for artifact signing).
     #[arg(long)]
     pub key: Option<String>,
@@ -406,6 +410,7 @@ pub fn handle_sign_unified(
                 env_config,
                 &None,
                 false,
+                cmd.force,
             )
         }
         SignTarget::CommitRange(range) => {

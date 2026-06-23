@@ -3,9 +3,48 @@
 use anyhow::{Context, Result, anyhow};
 use clap::ValueEnum;
 use std::fs;
-use std::path::PathBuf;
+use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 
 use super::{get_default_socket_path, get_log_file_path};
+
+/// Gate overwriting an already-installed service unit.
+///
+/// `--force` is explicit consent and proceeds. Otherwise this confirms interactively (a service unit
+/// controls what runs as the agent, so replacing it is a privileged change) and refuses when there is no
+/// terminal to confirm on.
+///
+/// Args:
+/// * `path`: The service unit that already exists.
+/// * `force`: Whether `--force` was passed.
+///
+/// Usage:
+/// ```ignore
+/// if unit_path.exists() { confirm_overwrite(&unit_path, force)?; }
+/// ```
+fn confirm_overwrite(path: &Path, force: bool) -> Result<()> {
+    if force {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        return Err(anyhow!(
+            "Service already installed at {}. Use --force to overwrite.",
+            path.display()
+        ));
+    }
+    let confirmed = dialoguer::Confirm::new()
+        .with_prompt(format!(
+            "A service is already installed at {}. Overwrite it? This replaces what runs as your agent.",
+            path.display()
+        ))
+        .default(false)
+        .interact()
+        .context("Failed to read overwrite confirmation")?;
+    if !confirmed {
+        return Err(anyhow!("Aborted: the existing service was left unchanged."));
+    }
+    Ok(())
+}
 
 /// Service manager type for platform-specific service installation.
 #[derive(ValueEnum, Clone, Debug, PartialEq)]
@@ -168,11 +207,8 @@ fn install_launchd_service(dry_run: bool, force: bool) -> Result<()> {
         return Ok(());
     }
 
-    if plist_path.exists() && !force {
-        return Err(anyhow!(
-            "Service already installed at {}. Use --force to overwrite.",
-            plist_path.display()
-        ));
+    if plist_path.exists() {
+        confirm_overwrite(&plist_path, force)?;
     }
 
     if let Some(parent) = plist_path.parent() {
@@ -204,11 +240,8 @@ fn install_systemd_service(dry_run: bool, force: bool) -> Result<()> {
         return Ok(());
     }
 
-    if unit_path.exists() && !force {
-        return Err(anyhow!(
-            "Service already installed at {}. Use --force to overwrite.",
-            unit_path.display()
-        ));
+    if unit_path.exists() {
+        confirm_overwrite(&unit_path, force)?;
     }
 
     if let Some(parent) = unit_path.parent() {

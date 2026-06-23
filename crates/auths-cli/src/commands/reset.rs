@@ -60,7 +60,7 @@ impl ExecutableCommand for ResetCommand {
         out.print_heading("Resetting Auths...");
         out.newline();
 
-        remove_auths_directory(&out)?;
+        remove_auths_directory(&out, ctx.repo_path.clone())?;
         clear_keychain_keys(&out, &ctx.env_config);
         unset_git_signing_config(&out)?;
 
@@ -71,10 +71,15 @@ impl ExecutableCommand for ResetCommand {
     }
 }
 
-fn remove_auths_directory(out: &Output) -> Result<()> {
-    let auths_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?
-        .join(".auths");
+/// Removes the resolved Auths storage directory, honoring `--repo`.
+///
+/// Args:
+/// * `out`: Output sink for progress messages.
+/// * `repo`: The optional `--repo` override; `None` selects the default
+///   `~/.auths` directory, matching the path used when `--repo` is absent.
+fn remove_auths_directory(out: &Output, repo: Option<std::path::PathBuf>) -> Result<()> {
+    let auths_dir = auths_sdk::storage_layout::resolve_repo_path(repo)
+        .context("Failed to resolve the repository path to reset")?;
 
     if auths_dir.exists() {
         std::fs::remove_dir_all(&auths_dir)
