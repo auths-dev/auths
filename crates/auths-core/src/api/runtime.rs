@@ -788,6 +788,39 @@ fn register_keys_with_macos_agent_internal(
     Ok(results)
 }
 
+/// Creates the directory that holds the agent socket and restricts it to owner-only
+/// access (`0o700`) so no other user can traverse into it and reach the socket.
+///
+/// Args:
+/// * `dir`: The directory to create (with parents) and lock down.
+///
+/// Usage:
+/// ```ignore
+/// harden_socket_dir(socket_path.parent().expect("socket has a parent"))?;
+/// ```
+#[cfg(unix)]
+fn harden_socket_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::create_dir_all(dir)?;
+    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+}
+
+/// Restricts a bound agent socket to owner-only read/write (`0o600`) so only the
+/// owning user can connect and request signatures.
+///
+/// Args:
+/// * `socket_path`: The path of the already-bound Unix-domain socket.
+///
+/// Usage:
+/// ```ignore
+/// harden_socket_file(socket_path)?;
+/// ```
+#[cfg(unix)]
+fn harden_socket_file(socket_path: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))
+}
+
 /// Starts the SSH agent listener using the provided `AgentHandle`.
 ///
 /// Binds to the socket path from the handle, cleans up any old socket file if present,
@@ -808,13 +841,15 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     let socket_path = handle.socket_path();
     info!("Attempting to start agent listener at {:?}", socket_path);
 
-    // --- Ensure parent directory exists ---
+    // --- Ensure parent directory exists and is owner-only ---
     if let Some(parent) = socket_path.parent()
-        && !parent.exists()
+        && !parent.as_os_str().is_empty()
     {
-        debug!("Creating parent directory for socket: {:?}", parent);
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            error!("Failed to create parent directory {:?}: {}", parent, e);
+        if let Err(e) = harden_socket_dir(parent) {
+            error!(
+                "Failed to prepare owner-only socket directory {:?}: {}",
+                parent, e
+            );
             return Err(AgentError::IO(e));
         }
     }
@@ -841,6 +876,15 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
         error!("Failed to bind listener socket at {:?}: {}", socket_path, e);
         AgentError::IO(e)
     })?;
+
+    // --- Restrict the socket to the owner before serving any request ---
+    if let Err(e) = harden_socket_file(socket_path) {
+        error!(
+            "Failed to restrict agent socket {:?} to owner-only: {}",
+            socket_path, e
+        );
+        return Err(AgentError::IO(e));
+    }
 
     // --- Listener started successfully ---
     let actual_path = socket_path
@@ -895,4 +939,45 @@ pub async fn start_agent_listener(socket_path_str: String) -> Result<(), AgentEr
     use std::path::PathBuf;
     let handle = Arc::new(AgentHandle::new(PathBuf::from(&socket_path_str)));
     start_agent_listener_with_handle(handle).await
+}
+
+#[cfg(all(test, unix))]
+mod hardening_tests {
+    use super::{harden_socket_dir, harden_socket_file};
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
+
+    fn mode_of(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path)
+            .expect("metadata")
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    #[test]
+    fn socket_dir_is_owner_only_after_harden() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("auths-agent");
+        harden_socket_dir(&dir).expect("harden dir");
+        assert!(dir.is_dir(), "directory must be created");
+        assert_eq!(
+            mode_of(&dir),
+            0o700,
+            "agent socket directory must be owner-only (0o700)"
+        );
+    }
+
+    #[test]
+    fn socket_file_is_owner_only_after_harden() {
+        let tmp = TempDir::new().unwrap();
+        let sock = tmp.path().join("agent.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&sock).expect("bind socket");
+        harden_socket_file(&sock).expect("harden socket");
+        assert_eq!(
+            mode_of(&sock),
+            0o600,
+            "agent socket must be owner-only (0o600) so no other process can connect"
+        );
+    }
 }
