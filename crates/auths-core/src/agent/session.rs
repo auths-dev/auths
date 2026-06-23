@@ -134,12 +134,7 @@ impl Session for AgentSession {
             }
         };
 
-        let core = self.handle.lock().map_err(|_| {
-            error!("AgentSession failed to lock agent core (mutex poisoned).");
-            SSHAgentError::Failure
-        })?;
-
-        match core.sign(&pubkey_bytes_to_sign_with, &request.data) {
+        match self.handle.sign(&pubkey_bytes_to_sign_with, &request.data) {
             Ok(signature_bytes) => {
                 debug!("Successfully signed data using agent core.");
                 Signature::new(algorithm, signature_bytes).map_err(|e| {
@@ -153,6 +148,10 @@ impl Session for AgentSession {
             }
             Err(AuthsAgentError::KeyNotFound) => {
                 warn!("Sign request failed: Key not found in agent core.");
+                Err(SSHAgentError::Failure)
+            }
+            Err(AuthsAgentError::AgentLocked) => {
+                warn!("Sign request refused: agent is locked.");
                 Err(SSHAgentError::Failure)
             }
             Err(other_core_error) => {
@@ -637,5 +636,26 @@ mod tests {
             flags: 0,
         };
         assert!(session.sign(request).await.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sign_resets_idle_timer() {
+        use std::time::Duration;
+        let handle = Arc::new(AgentHandle::with_timeout(
+            PathBuf::from("/tmp/idle-touch.sock"),
+            Duration::from_millis(300),
+        ));
+        let request = registered_sign_request(&handle);
+        let mut session = AgentSession::new(handle.clone());
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        session.sign(request).await.expect("sign should succeed");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        assert!(
+            !handle.is_idle_timed_out(),
+            "a successful sign must reset the idle timer so the agent stays unlocked"
+        );
     }
 }

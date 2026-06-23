@@ -829,6 +829,43 @@ fn current_euid() -> u32 {
     unsafe { libc::geteuid() }
 }
 
+/// Chooses how often to check the agent for idle timeout, bounded to a sensible
+/// range. Returns `None` when the idle timeout is disabled (zero).
+#[cfg(unix)]
+fn idle_monitor_interval(idle_timeout: std::time::Duration) -> Option<std::time::Duration> {
+    use std::time::Duration;
+    if idle_timeout.is_zero() {
+        return None;
+    }
+    Some((idle_timeout / 4).clamp(Duration::from_secs(1), Duration::from_secs(60)))
+}
+
+/// Locks the agent once it has been idle past its timeout, clearing its keys, so a
+/// single unlock does not leave signing capability available indefinitely.
+///
+/// Runs until the agent stops; intended to be spawned in the background.
+///
+/// Args:
+/// * `handle`: The agent handle to monitor and lock when idle.
+/// * `interval`: How often to check for idle timeout.
+///
+/// Usage:
+/// ```ignore
+/// tokio::spawn(run_idle_monitor(handle.clone(), interval));
+/// ```
+#[cfg(unix)]
+async fn run_idle_monitor(handle: Arc<AgentHandle>, interval: std::time::Duration) {
+    loop {
+        tokio::time::sleep(interval).await;
+        if !handle.is_running() {
+            break;
+        }
+        if let Err(e) = handle.check_idle_timeout() {
+            warn!("Idle timeout check failed: {e}");
+        }
+    }
+}
+
 /// Starts the SSH agent listener using the provided `AgentHandle`.
 ///
 /// Binds to the socket path from the handle, cleans up any old socket file if present,
@@ -907,6 +944,11 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     // Mark agent as running
     handle.set_running(true);
 
+    // --- Auto-lock the agent after it has been idle past its timeout ---
+    if let Some(interval) = idle_monitor_interval(handle.idle_timeout()) {
+        tokio::spawn(run_idle_monitor(handle.clone(), interval));
+    }
+
     // --- Create the peer-authorizing session factory ---
     let agent = PeerAuthorizedAgent::new(handle.clone(), current_euid());
 
@@ -951,8 +993,13 @@ pub async fn start_agent_listener(socket_path_str: String) -> Result<(), AgentEr
 
 #[cfg(all(test, unix))]
 mod hardening_tests {
-    use super::{harden_socket_dir, harden_socket_file};
+    use super::{
+        AgentHandle, harden_socket_dir, harden_socket_file, idle_monitor_interval, run_idle_monitor,
+    };
     use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Duration;
     use tempfile::TempDir;
 
     fn mode_of(path: &std::path::Path) -> u32 {
@@ -986,6 +1033,36 @@ mod hardening_tests {
             mode_of(&sock),
             0o600,
             "agent socket must be owner-only (0o600) so no other process can connect"
+        );
+    }
+
+    #[test]
+    fn idle_monitor_disabled_when_timeout_is_zero() {
+        assert!(idle_monitor_interval(Duration::ZERO).is_none());
+    }
+
+    #[test]
+    fn idle_monitor_interval_is_bounded() {
+        let interval = idle_monitor_interval(Duration::from_secs(30 * 60)).expect("some interval");
+        assert!(interval >= Duration::from_secs(1));
+        assert!(interval <= Duration::from_secs(60));
+    }
+
+    #[tokio::test]
+    async fn idle_monitor_locks_idle_agent() {
+        let handle = Arc::new(AgentHandle::with_timeout(
+            PathBuf::from("/tmp/idle-monitor.sock"),
+            Duration::from_millis(80),
+        ));
+        handle.set_running(true);
+        assert!(!handle.is_agent_locked());
+
+        tokio::spawn(run_idle_monitor(handle.clone(), Duration::from_millis(20)));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        assert!(
+            handle.is_agent_locked(),
+            "an agent left idle past its timeout must auto-lock"
         );
     }
 }
