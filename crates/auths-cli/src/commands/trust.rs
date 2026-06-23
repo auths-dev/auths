@@ -9,6 +9,7 @@ use auths_verifier::PublicKeyHex;
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use serde::Serialize;
+use std::path::PathBuf;
 
 /// Manage trusted identity roots.
 #[derive(Parser, Debug, Clone)]
@@ -132,20 +133,39 @@ struct PinDetails {
     kel_sequence: Option<u128>,
 }
 
+/// Resolve the pinned-identity store for the active registry, honoring `--repo`.
+///
+/// Args:
+/// * `repo`: The optional `--repo` override; `None` selects the default `~/.auths` registry.
+///
+/// Usage:
+/// ```ignore
+/// let store = pinned_store(ctx.repo_path.clone())?;
+/// ```
+fn pinned_store(repo: Option<PathBuf>) -> Result<PinnedIdentityStore> {
+    let registry = auths_sdk::storage_layout::resolve_repo_path(repo)
+        .context("Failed to resolve the repository path for the trust store")?;
+    let default = PinnedIdentityStore::default_path();
+    let file_name = default
+        .file_name()
+        .ok_or_else(|| anyhow!("pin store path has no file name"))?;
+    Ok(PinnedIdentityStore::new(registry.join(file_name)))
+}
+
 /// Handle trust subcommands.
 #[allow(clippy::disallowed_methods)]
-pub fn handle_trust(cmd: TrustCommand) -> Result<()> {
+pub fn handle_trust(cmd: TrustCommand, repo: Option<PathBuf>) -> Result<()> {
+    let store = pinned_store(repo)?;
     let now = Utc::now();
     match cmd.command {
-        TrustSubcommand::List(list_cmd) => handle_list(list_cmd),
-        TrustSubcommand::Pin(pin_cmd) => handle_pin(pin_cmd, now),
-        TrustSubcommand::Remove(remove_cmd) => handle_remove(remove_cmd),
-        TrustSubcommand::Show(show_cmd) => handle_show(show_cmd),
+        TrustSubcommand::List(list_cmd) => handle_list(list_cmd, &store),
+        TrustSubcommand::Pin(pin_cmd) => handle_pin(pin_cmd, &store, now),
+        TrustSubcommand::Remove(remove_cmd) => handle_remove(remove_cmd, &store),
+        TrustSubcommand::Show(show_cmd) => handle_show(show_cmd, &store),
     }
 }
 
-fn handle_list(_cmd: TrustListCommand) -> Result<()> {
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
+fn handle_list(_cmd: TrustListCommand, store: &PinnedIdentityStore) -> Result<()> {
     let pins = store.list()?;
 
     if is_json_mode() {
@@ -228,10 +248,8 @@ fn resolve_pin_key(cmd: &TrustPinCommand) -> Result<(PublicKeyHex, auths_crypto:
     Ok((PublicKeyHex::new_unchecked(hex::encode(pk)), curve))
 }
 
-fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
+fn handle_pin(cmd: TrustPinCommand, store: &PinnedIdentityStore, now: DateTime<Utc>) -> Result<()> {
     let (public_key_hex, curve) = resolve_pin_key(&cmd)?;
-
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
 
     // Check if already pinned
     if let Some(existing) = store.lookup(&cmd.did)? {
@@ -276,9 +294,7 @@ fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
     Ok(())
 }
 
-fn handle_remove(cmd: TrustRemoveCommand) -> Result<()> {
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
-
+fn handle_remove(cmd: TrustRemoveCommand, store: &PinnedIdentityStore) -> Result<()> {
     // Check if exists
     if store.lookup(&cmd.did)?.is_none() {
         anyhow::bail!(
@@ -310,9 +326,7 @@ fn handle_remove(cmd: TrustRemoveCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_show(cmd: TrustShowCommand) -> Result<()> {
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
-
+fn handle_show(cmd: TrustShowCommand, store: &PinnedIdentityStore) -> Result<()> {
     let pin = store.lookup(&cmd.did)?.ok_or_else(|| {
         anyhow!(
             "Identity {} is not pinned. Pin it first with: auths trust pin {}",
@@ -360,7 +374,7 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
 impl ExecutableCommand for TrustCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
-        handle_trust(self.clone())
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        handle_trust(self.clone(), ctx.repo_path.clone())
     }
 }

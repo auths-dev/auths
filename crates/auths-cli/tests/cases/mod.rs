@@ -12,6 +12,7 @@ mod revocation;
 mod sign_commit_binding;
 mod sign_verify;
 mod sign_verify_roundtrip;
+mod trust_repo;
 mod verify;
 mod verify_commit;
 mod verify_identity_bundle;
