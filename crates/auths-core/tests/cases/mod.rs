@@ -1,3 +1,4 @@
+mod agent_socket;
 mod assurance_level;
 mod ffi_context;
 mod key_export;

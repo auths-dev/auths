@@ -296,7 +296,7 @@ impl Session for AgentSession {
 /// ```ignore
 /// if peer_is_authorized(peer_uid, owner_uid) { /* serve the connection */ }
 /// ```
-pub fn peer_is_authorized(peer_uid: u32, owner_uid: u32) -> bool {
+fn peer_is_authorized(peer_uid: u32, owner_uid: u32) -> bool {
     peer_uid == owner_uid
 }
 
@@ -305,7 +305,7 @@ pub fn peer_is_authorized(peer_uid: u32, owner_uid: u32) -> bool {
 /// `Authorized` connections are served by an `AgentSession`; `Denied` connections
 /// have every request refused, so an unauthorized peer can neither sign nor list keys.
 #[cfg(unix)]
-pub enum MaybeAuthorized {
+pub(crate) enum MaybeAuthorized {
     /// The peer owns the agent and is served normally.
     Authorized(AgentSession),
     /// The peer is not the owner; every request is refused.
@@ -359,7 +359,7 @@ impl Session for MaybeAuthorized {
 /// connection that is not the owning user (failing closed if the credentials
 /// cannot be read).
 #[cfg(unix)]
-pub struct PeerAuthorizedAgent {
+pub(crate) struct PeerAuthorizedAgent {
     handle: Arc<AgentHandle>,
     owner_uid: u32,
 }
@@ -376,7 +376,7 @@ impl PeerAuthorizedAgent {
     /// ```ignore
     /// let agent = PeerAuthorizedAgent::new(handle, owner_uid);
     /// ```
-    pub fn new(handle: Arc<AgentHandle>, owner_uid: u32) -> Self {
+    pub(crate) fn new(handle: Arc<AgentHandle>, owner_uid: u32) -> Self {
         Self { handle, owner_uid }
     }
 }
@@ -636,6 +636,81 @@ mod tests {
             flags: 0,
         };
         assert!(session.sign(request).await.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn denied_session_refuses_every_request_variant() {
+        use ssh_agent_lib::proto::{
+            AddIdentityConstrained, AddSmartcardKeyConstrained, Extension, Request, Response,
+            SmartcardKey,
+        };
+
+        fn ed_keydata() -> KeyData {
+            KeyData::Ed25519(Ed25519PublicKey([0u8; 32]))
+        }
+        fn an_add_identity() -> AddIdentity {
+            AddIdentity {
+                credential: Credential::Key {
+                    privkey: KeypairData::Ed25519(SshEd25519Keypair::from_seed(&[0u8; 32])),
+                    comment: String::new(),
+                },
+            }
+        }
+        fn a_smartcard() -> SmartcardKey {
+            SmartcardKey {
+                id: String::new(),
+                pin: String::new().into(),
+            }
+        }
+
+        // Every request the SSH agent protocol defines. A denied connection must refuse
+        // all of them, so an upstream change that adds a permissive default cannot open
+        // a hole. Payloads are minimal — a denied session never inspects them.
+        let requests = vec![
+            Request::RequestIdentities,
+            Request::SignRequest(SignRequest {
+                pubkey: ed_keydata(),
+                data: Vec::new(),
+                flags: 0,
+            }),
+            Request::AddIdentity(an_add_identity()),
+            Request::RemoveIdentity(RemoveIdentity {
+                pubkey: ed_keydata(),
+            }),
+            Request::RemoveAllIdentities,
+            Request::AddSmartcardKey(a_smartcard()),
+            Request::RemoveSmartcardKey(a_smartcard()),
+            Request::Lock(String::new()),
+            Request::Unlock(String::new()),
+            Request::AddIdConstrained(AddIdentityConstrained {
+                identity: an_add_identity(),
+                constraints: Vec::new(),
+            }),
+            Request::AddSmartcardKeyConstrained(AddSmartcardKeyConstrained {
+                key: a_smartcard(),
+                constraints: Vec::new(),
+            }),
+            Request::Extension(Extension {
+                name: String::new(),
+                details: Vec::<u8>::new().into(),
+            }),
+        ];
+        assert_eq!(requests.len(), 12, "all agent request variants are covered");
+
+        for request in requests {
+            let mut session = MaybeAuthorized::Denied;
+            // Drive the real dispatcher and map its result the way the wire loop does.
+            let response = match session.handle(request).await {
+                Err(SSHAgentError::ExtensionFailure) => Response::ExtensionFailure,
+                Err(_) => Response::Failure,
+                Ok(r) => r,
+            };
+            assert!(
+                matches!(response, Response::Failure | Response::ExtensionFailure),
+                "a denied session must refuse every request variant, got {response:?}"
+            );
+        }
     }
 
     #[cfg(unix)]

@@ -352,3 +352,52 @@ fn multiple_rotations_interleaved_with_ixn() {
     let key_state = get_key_state(&repo, &init.prefix).unwrap();
     assert_eq!(key_state.sequence, 5);
 }
+
+#[test]
+fn interrupted_rotation_leaves_consistent_state() {
+    // A rotation that is interrupted and retried (here: a second rotation replaying the
+    // already-consumed next key, as a crash-and-retry would) must not append a second,
+    // competing event. The KEL is left with exactly one valid head — no half-rotated,
+    // dual-valid, or forkable state.
+    let backend = FakeRegistryBackend::new();
+    let init = create_keri_identity_with_backend(&backend, None).unwrap();
+
+    let rot1 = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    )
+    .unwrap();
+    assert_eq!(rot1.sequence, 1);
+
+    // The retry is rejected before any append (the commitment check precedes the write),
+    // so it cannot fork the KEL.
+    let interrupted = rotate_keys_with_backend(
+        &backend,
+        &init.prefix,
+        &init.next_keypair_pkcs8,
+        chrono::Utc::now(),
+        None,
+    );
+    assert!(matches!(interrupted, Err(RotationError::CommitmentMismatch)));
+
+    // Exactly one head: inception + one rotation, no competing event at any sequence.
+    let mut events = Vec::new();
+    backend
+        .visit_events(&init.prefix, 0, &mut |e| {
+            events.push(e.clone());
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+    assert_eq!(
+        events.len(),
+        2,
+        "interrupted rotation must not append a competing event"
+    );
+
+    let state = validate_kel(&events).unwrap();
+    assert_eq!(state.sequence, 1, "exactly one head at the rotated sequence");
+    assert!(!state.is_abandoned);
+}
