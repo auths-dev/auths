@@ -357,8 +357,18 @@ mod tests {
         // expensive. Assert the production Argon2id parameters meet OWASP minimums
         // (m >= 19 MiB, t >= 2) regardless of build profile — test builds derive keys
         // with weaker params for speed, so this checks the production constants.
-        const { assert!(PRODUCTION_KDF_M_COST_KIB >= 19 * 1024, "production Argon2 memory cost below the OWASP minimum (19 MiB)") };
-        const { assert!(PRODUCTION_KDF_T_COST >= 2, "production Argon2 time cost too low") };
+        const {
+            assert!(
+                PRODUCTION_KDF_M_COST_KIB >= 19 * 1024,
+                "production Argon2 memory cost below the OWASP minimum (19 MiB)"
+            )
+        };
+        const {
+            assert!(
+                PRODUCTION_KDF_T_COST >= 2,
+                "production Argon2 time cost too low"
+            )
+        };
         const { assert!(PRODUCTION_KDF_P_COST >= 1) };
     }
 }
