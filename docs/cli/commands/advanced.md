@@ -118,23 +118,6 @@ Remove Auths identity and git signing configuration
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths reset -->
 
-### auths signcommit
-
-```bash
-auths signcommit
-```
-
-<!-- BEGIN GENERATED: auths signcommit -->
-Sign a Git commit with machine identity.
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `<COMMIT>` | — | Git commit SHA or reference (e.g., HEAD, main..HEAD) |
-| `--json` | — | Output format (json or human-readable) |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths signcommit -->
-
 ### auths error list
 
 ```bash
@@ -245,27 +228,6 @@ Rotate identity keys. Stores the new key under a new alias
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths id rotate -->
-
-### auths id expand
-
-```bash
-auths id expand
-```
-
-<!-- BEGIN GENERATED: auths id expand -->
-Expand a single-device identity into multi-device via one rotation
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--add-device <CURVE>` | — | Add a device slot (repeatable). Curve name: `P256` or `Ed25519` |
-| `--signing-threshold <SIGNING_THRESHOLD>` | — | Signing threshold after expansion. Required |
-| `--rotation-threshold <ROTATION_THRESHOLD>` | — | Rotation threshold after expansion. Required |
-| `--alias <ALIAS>` | `main` | Base alias for the existing single-key identity |
-| `--next-alias <NEXT_ALIAS>` | `main` | Alias for the new multi-key identity set |
-| `-j, --json` | — | Emit machine-readable JSON |
-| `-q, --quiet` | — | Suppress non-essential output |
-| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths id expand -->
 
 ### auths id export-bundle
 
