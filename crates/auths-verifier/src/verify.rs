@@ -1005,6 +1005,66 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[tokio::test]
+    async fn verify_chain_revoked_and_expired_attestation_is_rejected() {
+        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
+        let root_did = ed25519_did(&root_pk);
+        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
+        let device_did = ed25519_did(&device_pk);
+
+        // Both revoked AND expired: the two negative signals must not cancel — the result
+        // is a terminal rejection, never Valid.
+        let att = create_signed_attestation(
+            &root_kp,
+            &device_kp,
+            &root_did,
+            &device_did,
+            Some(fixed_now()),
+            Some(fixed_now() - Duration::days(1)),
+        );
+
+        let result = test_verifier()
+            .verify_chain(&[att], &ed(&root_pk))
+            .await
+            .unwrap();
+        assert!(!result.is_valid(), "revoked+expired must not be valid");
+        assert!(
+            matches!(
+                result.status,
+                VerificationStatus::Revoked { .. } | VerificationStatus::Expired { .. }
+            ),
+            "expected a terminal revoked/expired status, got {:?}",
+            result.status
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_with_keys_rejects_a_correct_signature_under_the_wrong_key() {
+        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
+        let root_did = ed25519_did(&root_pk);
+        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
+        let device_did = ed25519_did(&device_pk);
+
+        // Validly signed by root_kp, but verified against a DIFFERENT key. A perfectly
+        // valid signature under the wrong key is still a forgery from the verifier's view —
+        // distinct from a tampered signature (this one verifies, just not under this key).
+        let att = create_signed_attestation(
+            &root_kp,
+            &device_kp,
+            &root_did,
+            &device_did,
+            None,
+            Some(fixed_now() + Duration::days(365)),
+        );
+        let (_other_kp, other_pk) = create_test_keypair(&[9u8; 32]);
+
+        let result = test_verifier().verify_with_keys(&att, &ed(&other_pk)).await;
+        assert!(
+            result.is_err(),
+            "a signature that does not verify under the supplied issuer key must be rejected"
+        );
+    }
+
     /// Helper to wrap an attestation as verified (for tests where we created it ourselves).
     fn verified(att: Attestation) -> VerifiedAttestation {
         VerifiedAttestation::dangerous_from_unchecked(att)

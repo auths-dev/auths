@@ -12,7 +12,7 @@ use auths_crypto::CurveType;
 use auths_id::keri::Event;
 use auths_id::keri::types::Prefix;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::domains::agents::{add_scoped, list, revoke_batch};
+use auths_sdk::domains::agents::{AgentError, add_scoped, list, revoke_batch};
 use auths_sdk::domains::identity::service::initialize;
 use auths_sdk::domains::identity::types::{
     CreateDeveloperIdentityConfig, IdentityConfig, InitializeResult,
@@ -136,5 +136,65 @@ fn batch_revoke_is_idempotent() {
     assert!(
         second.anchored_at_seq.is_none(),
         "already-revoked batch is a no-op (no new event)"
+    );
+}
+
+#[test]
+fn batch_revoke_empty_list_is_a_clean_noop() {
+    let (ctx, org_alias, _org_prefix, _tmp) = setup();
+
+    // The kill switch fired with nothing to kill must be a clean no-op, never an error
+    // or a spurious KEL event.
+    let receipt = revoke_batch(&ctx, &org_alias, &[]).expect("an empty batch is Ok");
+    assert!(
+        receipt.anchored_at_seq.is_none(),
+        "an empty kill-switch writes no KEL event"
+    );
+    assert!(receipt.revoked.is_empty(), "nothing is reported revoked");
+}
+
+#[test]
+fn batch_revoke_seals_only_live_agents_but_reports_the_whole_set() {
+    let (ctx, org_alias, _org_prefix, _tmp) = setup();
+    let a1 = add_agent(&ctx, &org_alias, "agent-1");
+    let a2 = add_agent(&ctx, &org_alias, "agent-2");
+
+    // Kill a1 alone, then fire a batch over BOTH. Only a2 is still live, so a new event
+    // is anchored — but the receipt reports the full requested set as revoked, and both
+    // end up revoked. (A kill switch must not silently drop an already-dead member.)
+    revoke_batch(&ctx, &org_alias, std::slice::from_ref(&a1)).expect("kill a1");
+    let receipt = revoke_batch(&ctx, &org_alias, &[a1.clone(), a2.clone()]).expect("kill both");
+
+    assert!(
+        receipt.anchored_at_seq.is_some(),
+        "a still-live member in the set anchors a new event"
+    );
+    assert_eq!(
+        receipt.revoked,
+        vec![a1, a2],
+        "the full requested set is reported revoked, not just the live one"
+    );
+    assert_eq!(
+        list(&ctx)
+            .expect("list")
+            .into_iter()
+            .filter(|a| a.revoked)
+            .count(),
+        2,
+        "both agents end revoked"
+    );
+}
+
+#[test]
+fn batch_revoke_rejects_an_unparseable_did() {
+    let (ctx, org_alias, _org_prefix, _tmp) = setup();
+
+    // A malformed agent did in the set must abort the batch (fail-closed), not be silently
+    // skipped — otherwise a typo could leave a targeted agent alive.
+    let err = revoke_batch(&ctx, &org_alias, &["not-a-did:keri".to_string()])
+        .expect_err("a malformed agent did must be rejected");
+    assert!(
+        matches!(err, AgentError::AgentNotFound { ref did } if did == "not-a-did:keri"),
+        "expected AgentNotFound, got {err:?}"
     );
 }
