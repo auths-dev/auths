@@ -94,13 +94,14 @@ fn median_leak_t(cmp: fn(&[u8], &[u8]) -> bool) -> f64 {
     ts[ts.len() / 2]
 }
 
-/// The threshold sits in the wide gap between the two regimes, set from the measured |t|
-/// across repeated runs: the constant-time `ct_eq` produces ~1–4, while the early-return
-/// control produces ~3000–11000 — three orders of magnitude apart. 100 is near the
-/// geometric midpoint, so both directions carry ~30× margin and a noisy CI runner cannot
-/// flake it either way. The negative control re-verifies the lower bound (the control must
-/// still exceed it) on every run.
-const LEAK_THRESHOLD: f64 = 100.0;
+/// The check is *relative*, not absolute. The naive early-return control leaks, so its
+/// Welch |t| is large; `subtle::ct_eq` does not, so its |t| stays small. The absolute
+/// magnitudes vary widely by runner — a busy shared CI core is far noisier than a quiet
+/// laptop (observed `ct_eq` |t| from ~3 to ~100), so a fixed threshold flakes. Instead:
+/// the control must clear a floor that proves the harness has detection power, and
+/// `ct_eq` must be many times quieter than that same control on the same run.
+const CONTROL_FLOOR: f64 = 1000.0;
+const MIN_SEPARATION: f64 = 8.0;
 
 #[test]
 fn secret_comparison_is_constant_time() {
@@ -109,15 +110,15 @@ fn secret_comparison_is_constant_time() {
     let control = median_leak_t(naive_compare);
     let ct = median_leak_t(ct_compare);
     eprintln!(
-        "[constant-time] naive(control) |t|={control:.1}  ct_eq |t|={ct:.1}  threshold={LEAK_THRESHOLD}"
+        "[constant-time] naive(control) |t|={control:.1}  ct_eq |t|={ct:.1}  control_floor={CONTROL_FLOOR}  min_separation={MIN_SEPARATION}x"
     );
 
     assert!(
-        control > LEAK_THRESHOLD,
-        "negative control failed: the harness must detect the naive compare's leak, but |t|={control:.1} <= {LEAK_THRESHOLD} — the test has no detection power",
+        control > CONTROL_FLOOR,
+        "negative control failed: the harness must detect the naive compare's leak, but |t|={control:.1} <= {CONTROL_FLOOR} — the test has no detection power",
     );
     assert!(
-        ct < LEAK_THRESHOLD,
-        "subtle::ct_eq is not constant-time on this build: |t|={ct:.1} >= {LEAK_THRESHOLD} (the leaky control measured {control:.1})",
+        ct * MIN_SEPARATION < control,
+        "subtle::ct_eq is not constant-time on this build: its leak |t|={ct:.1} is within {MIN_SEPARATION}x of the naive control's |t|={control:.1}",
     );
 }

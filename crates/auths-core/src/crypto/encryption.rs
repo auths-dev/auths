@@ -26,6 +26,15 @@ pub const ARGON2_TAG: u8 = 3;
 /// Length of embedded Argon2 parameters: 3 × u32 LE = 12 bytes.
 const ARGON2_PARAMS_LEN: usize = 12;
 
+/// Production Argon2id memory cost in KiB (64 MiB). Exposed as a const so the
+/// strength of the at-rest KDF can be asserted regardless of build profile (test
+/// builds derive keys with deliberately weak params for speed).
+pub const PRODUCTION_KDF_M_COST_KIB: u32 = 65536;
+/// Production Argon2id time cost (iterations).
+pub const PRODUCTION_KDF_T_COST: u32 = 3;
+/// Production Argon2id parallelism.
+pub const PRODUCTION_KDF_P_COST: u32 = 1;
+
 /// Returns Argon2id parameters for key derivation.
 ///
 /// Production builds use OWASP-recommended settings (m=64 MiB, t=3).
@@ -44,7 +53,12 @@ const ARGON2_PARAMS_LEN: usize = 12;
 /// ```
 pub fn get_kdf_params() -> Result<Params, AgentError> {
     #[cfg(not(any(test, feature = "test-utils")))]
-    let params = Params::new(65536, 3, 1, Some(SYMMETRIC_KEY_LEN));
+    let params = Params::new(
+        PRODUCTION_KDF_M_COST_KIB,
+        PRODUCTION_KDF_T_COST,
+        PRODUCTION_KDF_P_COST,
+        Some(SYMMETRIC_KEY_LEN),
+    );
     #[cfg(any(test, feature = "test-utils"))]
     let params = Params::new(8, 1, 1, Some(SYMMETRIC_KEY_LEN));
     params.map_err(|e| AgentError::CryptoError(format!("Invalid Argon2 params: {}", e)))
@@ -335,5 +349,26 @@ mod tests {
     fn test_argon2_encrypt_rejects_weak() {
         let result = encrypt_bytes(b"data", "weak", EncryptionAlgorithm::AesGcm256);
         assert!(matches!(result, Err(AgentError::WeakPassphrase(_))));
+    }
+
+    #[test]
+    fn keychain_kdf_cost_is_strong() {
+        // The at-rest keychain KDF must make offline brute-force of a weak passphrase
+        // expensive. Assert the production Argon2id parameters meet OWASP minimums
+        // (m >= 19 MiB, t >= 2) regardless of build profile — test builds derive keys
+        // with weaker params for speed, so this checks the production constants.
+        const {
+            assert!(
+                PRODUCTION_KDF_M_COST_KIB >= 19 * 1024,
+                "production Argon2 memory cost below the OWASP minimum (19 MiB)"
+            )
+        };
+        const {
+            assert!(
+                PRODUCTION_KDF_T_COST >= 2,
+                "production Argon2 time cost too low"
+            )
+        };
+        const { assert!(PRODUCTION_KDF_P_COST >= 1) };
     }
 }

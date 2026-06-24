@@ -14,6 +14,10 @@ use zeroize::Zeroizing;
 /// Default idle timeout (30 minutes)
 pub const DEFAULT_IDLE_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
+/// Default absolute cap on how long a single unlock keeps signing capability,
+/// measured from the last unlock and independent of activity (8 hours).
+pub const DEFAULT_MAX_UNLOCK_TTL: Duration = Duration::from_secs(8 * 60 * 60);
+
 /// A handle to an agent instance that manages its lifecycle.
 ///
 /// `AgentHandle` wraps an `AgentCore` and provides:
@@ -37,6 +41,10 @@ pub struct AgentHandle {
     last_activity: Arc<Mutex<Instant>>,
     /// Idle timeout duration (0 = never timeout)
     idle_timeout: Duration,
+    /// Timestamp of the last unlock (for the absolute unlock cap, shared across clones)
+    unlocked_at: Arc<Mutex<Instant>>,
+    /// Absolute cap on how long a single unlock keeps signing capability (0 = no cap)
+    max_unlock_ttl: Duration,
     /// Whether the agent is currently locked (shared across clones)
     locked: Arc<AtomicBool>,
 }
@@ -49,6 +57,7 @@ impl std::fmt::Debug for AgentHandle {
             .field("running", &self.is_running())
             .field("locked", &self.is_agent_locked())
             .field("idle_timeout", &self.idle_timeout)
+            .field("max_unlock_ttl", &self.max_unlock_ttl)
             .finish_non_exhaustive()
     }
 }
@@ -59,8 +68,32 @@ impl AgentHandle {
         Self::with_timeout(socket_path, DEFAULT_IDLE_TIMEOUT)
     }
 
-    /// Creates a new agent handle with the specified socket path and timeout.
+    /// Creates a new agent handle with the specified socket path and idle timeout,
+    /// using the default absolute unlock cap.
     pub fn with_timeout(socket_path: PathBuf, idle_timeout: Duration) -> Self {
+        Self::with_unlock_cap(socket_path, idle_timeout, DEFAULT_MAX_UNLOCK_TTL)
+    }
+
+    /// Creates a new agent handle with an explicit idle timeout and absolute unlock cap.
+    ///
+    /// The idle timeout locks the agent after a period of no signing (a "walked away"
+    /// control); the unlock cap locks it a fixed time after it was last unlocked,
+    /// regardless of activity, so continuous signing cannot keep it unlocked forever.
+    ///
+    /// Args:
+    /// * `socket_path`: The Unix-domain socket path.
+    /// * `idle_timeout`: Sliding inactivity timeout (0 disables).
+    /// * `max_unlock_ttl`: Absolute cap measured from the last unlock (0 disables).
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let handle = AgentHandle::with_unlock_cap(path, idle, cap);
+    /// ```
+    pub fn with_unlock_cap(
+        socket_path: PathBuf,
+        idle_timeout: Duration,
+        max_unlock_ttl: Duration,
+    ) -> Self {
         Self {
             core: Arc::new(Mutex::new(AgentCore::default())),
             socket_path,
@@ -68,6 +101,8 @@ impl AgentHandle {
             running: Arc::new(AtomicBool::new(false)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout,
+            unlocked_at: Arc::new(Mutex::new(Instant::now())),
+            max_unlock_ttl,
             locked: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -81,6 +116,8 @@ impl AgentHandle {
             running: Arc::new(AtomicBool::new(false)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            unlocked_at: Arc::new(Mutex::new(Instant::now())),
+            max_unlock_ttl: DEFAULT_MAX_UNLOCK_TTL,
             locked: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -98,6 +135,8 @@ impl AgentHandle {
             running: Arc::new(AtomicBool::new(false)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout,
+            unlocked_at: Arc::new(Mutex::new(Instant::now())),
+            max_unlock_ttl: DEFAULT_MAX_UNLOCK_TTL,
             locked: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -111,6 +150,8 @@ impl AgentHandle {
             running: Arc::new(AtomicBool::new(false)),
             last_activity: Arc::new(Mutex::new(Instant::now())),
             idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            unlocked_at: Arc::new(Mutex::new(Instant::now())),
+            max_unlock_ttl: DEFAULT_MAX_UNLOCK_TTL,
             locked: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -186,6 +227,31 @@ impl AgentHandle {
         self.idle_duration() >= self.idle_timeout
     }
 
+    /// Returns the absolute cap on how long a single unlock keeps signing capability.
+    pub fn max_unlock_ttl(&self) -> Duration {
+        self.max_unlock_ttl
+    }
+
+    /// Returns the time elapsed since the agent was last unlocked.
+    pub fn unlock_age(&self) -> Duration {
+        self.unlocked_at
+            .lock()
+            .map(|t| t.elapsed())
+            .unwrap_or(Duration::ZERO)
+    }
+
+    /// Returns whether the agent has been unlocked longer than its absolute cap.
+    ///
+    /// Unlike the idle timeout, this does not reset on activity — it bounds the total
+    /// lifetime of a single unlock so continuous signing cannot keep the agent unlocked
+    /// indefinitely. A cap of 0 disables it.
+    pub fn is_unlock_window_expired(&self) -> bool {
+        if self.max_unlock_ttl.is_zero() {
+            return false;
+        }
+        self.unlock_age() >= self.max_unlock_ttl
+    }
+
     /// Returns whether the agent is currently locked.
     pub fn is_agent_locked(&self) -> bool {
         self.locked.load(Ordering::SeqCst)
@@ -217,16 +283,25 @@ impl AgentHandle {
         log::info!("Unlocking agent");
         self.locked.store(false, Ordering::SeqCst);
         self.touch(); // Reset idle timer
+        if let Ok(mut unlocked) = self.unlocked_at.lock() {
+            *unlocked = Instant::now(); // Start the absolute unlock window
+        }
     }
 
-    /// Checks idle timeout and locks the agent if exceeded.
+    /// Locks the agent if its unlock window has ended, clearing its keys.
     ///
-    /// Call this periodically from a background task.
+    /// The agent locks when it has been idle past the idle timeout (a "walked away"
+    /// control) or when it has been unlocked longer than the absolute cap (a backstop
+    /// so continuous signing cannot keep it unlocked indefinitely). Call this
+    /// periodically from a background task. Neither control stops a process running as
+    /// the same user from using the agent within the window — they only bound the window.
     pub fn check_idle_timeout(&self) -> Result<bool, AgentError> {
-        if self.is_idle_timed_out() && !self.is_agent_locked() {
+        if (self.is_idle_timed_out() || self.is_unlock_window_expired()) && !self.is_agent_locked()
+        {
             log::info!(
-                "Agent idle for {:?}, locking due to timeout",
-                self.idle_duration()
+                "Locking agent: idle for {:?}, unlocked for {:?}",
+                self.idle_duration(),
+                self.unlock_age()
             );
             self.lock_agent()?;
             return Ok(true);
@@ -292,8 +367,14 @@ impl AgentHandle {
 
     /// Registers a key in the agent core.
     pub fn register_key(&self, pkcs8_bytes: Zeroizing<Vec<u8>>) -> Result<(), AgentError> {
-        let mut core = self.lock()?;
-        core.register_key(pkcs8_bytes)
+        {
+            let mut core = self.lock()?;
+            core.register_key(pkcs8_bytes)?;
+        }
+        if let Ok(mut unlocked) = self.unlocked_at.lock() {
+            *unlocked = Instant::now(); // Loading a key starts the absolute unlock window
+        }
+        Ok(())
     }
 
     /// Signs data using a key in the agent core.
@@ -327,6 +408,8 @@ impl Clone for AgentHandle {
             running: Arc::clone(&self.running),
             last_activity: Arc::clone(&self.last_activity),
             idle_timeout: self.idle_timeout,
+            unlocked_at: Arc::clone(&self.unlocked_at),
+            max_unlock_ttl: self.max_unlock_ttl,
             locked: Arc::clone(&self.locked),
         }
     }
@@ -573,5 +656,55 @@ mod tests {
         handle_a.lock_agent().unwrap();
         let result = handle_b.sign(pubkey, b"test data");
         assert!(matches!(result, Err(AgentError::AgentLocked)));
+    }
+
+    #[test]
+    fn absolute_cap_locks_despite_continuous_activity() {
+        // Idle timeout effectively never; only the absolute unlock cap can fire.
+        let handle = AgentHandle::with_unlock_cap(
+            PathBuf::from("/tmp/test.sock"),
+            Duration::from_secs(3600),
+            Duration::from_millis(80),
+        );
+        handle
+            .register_key(Zeroizing::new(generate_test_pkcs8()))
+            .unwrap();
+
+        // Continuous activity keeps resetting the sliding idle timer.
+        for _ in 0..6 {
+            std::thread::sleep(Duration::from_millis(25));
+            handle.touch();
+        }
+
+        assert!(
+            handle.is_unlock_window_expired(),
+            "unlock window should be expired ~150ms past an 80ms cap"
+        );
+        let locked = handle.check_idle_timeout().unwrap();
+        assert!(
+            locked,
+            "the absolute unlock cap must lock the agent regardless of activity"
+        );
+        assert!(handle.is_agent_locked());
+        assert_eq!(handle.key_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn public_keys_empty_after_lock() {
+        let handle = AgentHandle::new(PathBuf::from("/tmp/test.sock"));
+        handle
+            .register_key(Zeroizing::new(generate_test_pkcs8()))
+            .unwrap();
+        assert_eq!(handle.public_keys().unwrap().len(), 1);
+
+        handle.lock_agent().unwrap();
+
+        // Locking must clear keys before flipping the locked flag, so a listing request
+        // observed while locked cannot leak the key set.
+        assert!(handle.is_agent_locked());
+        assert!(
+            handle.public_keys().unwrap().is_empty(),
+            "locking must clear keys so the key list cannot leak while locked"
+        );
     }
 }

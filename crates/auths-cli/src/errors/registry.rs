@@ -452,6 +452,8 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5854" => Some("# AUTHS-E5854\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::AttestationFailed`\n\n## Message\n\nattestation creation failed: {0}\n\n## Suggestion\n\nCheck identity storage with `auths status`\n"),
         "AUTHS-E5855" => Some("# AUTHS-E5855\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::ResignFailed`\n\n## Message\n\nattestation re-signing failed: {0}\n"),
         "AUTHS-E5856" => Some("# AUTHS-E5856\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::InvalidCommitSha`\n\n## Message\n\ninvalid commit SHA: {0} (expected 40 or 64 hex characters)\n"),
+        "AUTHS-E5857" => Some("# AUTHS-E5857\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::DeviceRevoked`\n\n## Message\n\ndevice revoked: {0}\n"),
+        "AUTHS-E5858" => Some("# AUTHS-E5858\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::KeyRotatedOut`\n\n## Message\n\nsigning key rotated out of the KEL: {0}\n"),
 
         // --- auths-sdk (SigningError) ---
         "AUTHS-E5901" => Some("# AUTHS-E5901\n\n**Crate:** `auths-sdk`\n\n**Type:** `SigningError::IdentityFrozen`\n\n## Message\n\nidentity is frozen: {0}\n\n## Suggestion\n\nTo unfreeze: auths emergency unfreeze\n"),
@@ -839,6 +841,8 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5854",
         "AUTHS-E5855",
         "AUTHS-E5856",
+        "AUTHS-E5857",
+        "AUTHS-E5858",
         "AUTHS-E5901",
         "AUTHS-E5902",
         "AUTHS-E5903",
@@ -908,6 +912,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 368);
+        assert_eq!(all_codes().len(), 370);
     }
 }

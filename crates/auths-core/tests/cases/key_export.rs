@@ -176,3 +176,101 @@ fn test_export_nonexistent_key() {
     let result = export_key_openssh_pub("nonexistent-alias", "any-pass", keychain.as_ref());
     assert!(result.is_err(), "Should fail for nonexistent key");
 }
+
+fn byte_seq_present(haystack: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+#[test]
+fn export_output_contains_no_raw_secret() {
+    let keychain = fresh_keychain();
+    let alias = "export-secret";
+    let passphrase = "Test-passphrase1!";
+    let identity_did = IdentityDID::parse("did:keri:ExportSecret").unwrap();
+
+    let (pkcs8_bytes, _pubkey) = create_ring_compatible_pkcs8();
+    let seed = pkcs8_bytes[16..48].to_vec();
+    let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase).expect("encrypt");
+    keychain
+        .store_key(
+            &KeyAlias::new_unchecked(alias),
+            &identity_did,
+            KeyRole::Primary,
+            &encrypted,
+        )
+        .expect("store");
+
+    // Public-key export carries only public material — never the seed or private key.
+    let pub_out = export_key_openssh_pub(alias, passphrase, keychain.as_ref()).expect("pub export");
+    assert!(
+        !byte_seq_present(pub_out.as_bytes(), &seed),
+        "public export leaked the seed"
+    );
+    assert!(
+        !byte_seq_present(pub_out.as_bytes(), &pkcs8_bytes),
+        "public export leaked the private key"
+    );
+
+    // The at-rest (encrypted) export a non-interactive caller can obtain is
+    // passphrase-wrapped, never the raw secret.
+    let (_did, _role, enc_out) = keychain
+        .load_key(&KeyAlias::new_unchecked(alias))
+        .expect("load");
+    assert!(
+        !byte_seq_present(&enc_out, &seed),
+        "encrypted export leaked the seed"
+    );
+}
+
+#[test]
+fn no_secret_in_logs() {
+    use std::sync::{Mutex, OnceLock};
+
+    static LOG_BUF: OnceLock<Mutex<Vec<u8>>> = OnceLock::new();
+    struct CaptureLogger;
+    impl log::Log for CaptureLogger {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+        fn log(&self, record: &log::Record) {
+            if let Some(buf) = LOG_BUF.get() {
+                use std::io::Write;
+                let _ = writeln!(buf.lock().unwrap(), "{} {}", record.level(), record.args());
+            }
+        }
+        fn flush(&self) {}
+    }
+
+    LOG_BUF.set(Mutex::new(Vec::new())).ok();
+    // nextest runs each test in its own process, so installing a global logger is safe here.
+    let _ = log::set_boxed_logger(Box::new(CaptureLogger));
+    log::set_max_level(log::LevelFilter::Trace);
+
+    let keychain = fresh_keychain();
+    let alias = "log-secret";
+    let passphrase = "Test-passphrase1!";
+    let identity_did = IdentityDID::parse("did:keri:LogSecret").unwrap();
+    let (pkcs8_bytes, _pubkey) = create_ring_compatible_pkcs8();
+    let seed = pkcs8_bytes[16..48].to_vec();
+    let encrypted = encrypt_keypair(&pkcs8_bytes, passphrase).expect("encrypt");
+    keychain
+        .store_key(
+            &KeyAlias::new_unchecked(alias),
+            &identity_did,
+            KeyRole::Primary,
+            &encrypted,
+        )
+        .expect("store");
+    let _ = export_key_openssh_pub(alias, passphrase, keychain.as_ref());
+
+    let logs = LOG_BUF.get().unwrap().lock().unwrap().clone();
+    assert!(!byte_seq_present(&logs, &seed), "seed leaked in logs");
+    assert!(
+        !byte_seq_present(&logs, &pkcs8_bytes),
+        "private key leaked in logs"
+    );
+    assert!(
+        !byte_seq_present(&logs, passphrase.as_bytes()),
+        "passphrase leaked in logs"
+    );
+}

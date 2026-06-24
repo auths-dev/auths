@@ -8,7 +8,7 @@
 use crate::agent::AgentCore;
 use crate::agent::AgentHandle;
 #[cfg(unix)]
-use crate::agent::AgentSession;
+use crate::agent::PeerAuthorizedAgent;
 use crate::crypto::provider_bridge;
 use crate::crypto::signer::extract_seed_from_key_bytes;
 use crate::crypto::signer::{decrypt_keypair, encrypt_keypair};
@@ -788,11 +788,153 @@ fn register_keys_with_macos_agent_internal(
     Ok(results)
 }
 
+/// Ensures the directory that holds the agent socket is restricted to the owner.
+///
+/// If the directory does not exist it is created (with parents) and locked to `0o700`.
+/// If it already exists it is accepted only when it is already owner-only (no group or
+/// other access) and owned by this user; otherwise it is refused (fail closed) rather
+/// than silently widening or narrowing a directory the agent did not create. A
+/// non-directory or a symlink at the path is also refused.
+///
+/// Args:
+/// * `dir`: The directory the socket lives in.
+///
+/// Usage:
+/// ```ignore
+/// harden_socket_dir(socket_path.parent().expect("socket has a parent"))?;
+/// ```
+#[cfg(unix)]
+fn harden_socket_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    match std::fs::symlink_metadata(dir) {
+        Ok(meta) if meta.file_type().is_dir() => {
+            let mode = meta.permissions().mode() & 0o777;
+            if mode & 0o077 != 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!(
+                        "socket directory {dir:?} is group/other-accessible (mode {mode:o}); refusing"
+                    ),
+                ));
+            }
+            if meta.uid() != current_euid() {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!("socket directory {dir:?} is not owned by this user; refusing"),
+                ));
+            }
+            Ok(())
+        }
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("socket directory path {dir:?} exists but is not a directory; refusing"),
+        )),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            std::fs::create_dir_all(dir)?;
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Restricts a bound agent socket to owner-only read/write (`0o600`) so only the
+/// owning user can connect and request signatures.
+///
+/// This is best-effort defense-in-depth: there is a brief window between `bind` and
+/// this call. The authoritative, race-free control is the owner-only (`0o700`) socket
+/// directory established by [`harden_socket_dir`] — no other user can traverse into it
+/// to reach the socket regardless of the socket file's own mode.
+///
+/// Args:
+/// * `socket_path`: The path of the already-bound Unix-domain socket.
+///
+/// Usage:
+/// ```ignore
+/// harden_socket_file(socket_path)?;
+/// ```
+#[cfg(unix)]
+fn harden_socket_file(socket_path: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o600))
+}
+
+/// Returns the directory that must be restricted to the owner for a given socket
+/// path, refusing a path that has no such directory (a bare relative name) rather
+/// than leaving the socket in an unrestricted location.
+///
+/// Args:
+/// * `socket_path`: The socket path whose containing directory will be locked down.
+///
+/// Usage:
+/// ```ignore
+/// let dir = socket_dir_to_harden(socket_path)?;
+/// ```
+#[cfg(unix)]
+fn socket_dir_to_harden(socket_path: &std::path::Path) -> Result<&std::path::Path, AgentError> {
+    match socket_path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => Ok(parent),
+        _ => Err(AgentError::IO(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "agent socket path must include a directory that can be restricted to the owner",
+        ))),
+    }
+}
+
+/// Returns the effective user id of the current process — the only user permitted
+/// to connect to the agent socket.
+#[cfg(unix)]
+fn current_euid() -> u32 {
+    // SAFETY: `geteuid` takes no arguments, has no preconditions, and always succeeds.
+    unsafe { libc::geteuid() }
+}
+
+/// Chooses how often to check the agent for auto-lock, bounded to a sensible range.
+/// Returns `None` when both the idle timeout and the absolute unlock cap are disabled.
+#[cfg(unix)]
+fn idle_monitor_interval(
+    idle_timeout: std::time::Duration,
+    max_unlock_ttl: std::time::Duration,
+) -> Option<std::time::Duration> {
+    use std::time::Duration;
+    let shortest = [idle_timeout, max_unlock_ttl]
+        .into_iter()
+        .filter(|d| !d.is_zero())
+        .min()?;
+    Some((shortest / 4).clamp(Duration::from_secs(1), Duration::from_secs(60)))
+}
+
+/// Locks the agent once it has been idle past its timeout, clearing its keys, so a
+/// single unlock does not leave signing capability available indefinitely.
+///
+/// Runs until the agent stops; intended to be spawned in the background.
+///
+/// Args:
+/// * `handle`: The agent handle to monitor and lock when idle.
+/// * `interval`: How often to check for idle timeout.
+///
+/// Usage:
+/// ```ignore
+/// tokio::spawn(run_idle_monitor(handle.clone(), interval));
+/// ```
+#[cfg(unix)]
+async fn run_idle_monitor(handle: Arc<AgentHandle>, interval: std::time::Duration) {
+    loop {
+        tokio::time::sleep(interval).await;
+        if !handle.is_running() {
+            break;
+        }
+        if let Err(e) = handle.check_idle_timeout() {
+            warn!("Idle timeout check failed: {e}");
+        }
+    }
+}
+
 /// Starts the SSH agent listener using the provided `AgentHandle`.
 ///
-/// Binds to the socket path from the handle, cleans up any old socket file if present,
-/// and enters an asynchronous loop (`ssh_agent_lib::listen`) to accept and handle
-/// incoming agent connections using `AgentSession`.
+/// Binds to the socket path from the handle, restricts the socket and its directory
+/// to the owner, and enters an asynchronous loop (`ssh_agent_lib::listen`) that
+/// authorizes each connection by peer UID before serving it.
 ///
 /// Requires a `tokio` runtime context. Runs indefinitely on success.
 ///
@@ -808,15 +950,14 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     let socket_path = handle.socket_path();
     info!("Attempting to start agent listener at {:?}", socket_path);
 
-    // --- Ensure parent directory exists ---
-    if let Some(parent) = socket_path.parent()
-        && !parent.exists()
-    {
-        debug!("Creating parent directory for socket: {:?}", parent);
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            error!("Failed to create parent directory {:?}: {}", parent, e);
-            return Err(AgentError::IO(e));
-        }
+    // --- Ensure the socket lives in an owner-only directory ---
+    let socket_dir = socket_dir_to_harden(socket_path)?;
+    if let Err(e) = harden_socket_dir(socket_dir) {
+        error!(
+            "Failed to prepare owner-only socket directory {:?}: {}",
+            socket_dir, e
+        );
+        return Err(AgentError::IO(e));
     }
 
     // --- Clean up existing socket file (if any) ---
@@ -842,6 +983,15 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
         AgentError::IO(e)
     })?;
 
+    // --- Restrict the socket to the owner before serving any request ---
+    if let Err(e) = harden_socket_file(socket_path) {
+        error!(
+            "Failed to restrict agent socket {:?} to owner-only: {}",
+            socket_path, e
+        );
+        return Err(AgentError::IO(e));
+    }
+
     // --- Listener started successfully ---
     let actual_path = socket_path
         .canonicalize()
@@ -855,11 +1005,16 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     // Mark agent as running
     handle.set_running(true);
 
-    // --- Create the agent session handler using the provided handle ---
-    let session = AgentSession::new(handle.clone());
+    // --- Auto-lock the agent after it has been idle, or unlocked past its cap ---
+    if let Some(interval) = idle_monitor_interval(handle.idle_timeout(), handle.max_unlock_ttl()) {
+        tokio::spawn(run_idle_monitor(handle.clone(), interval));
+    }
+
+    // --- Create the peer-authorizing session factory ---
+    let agent = PeerAuthorizedAgent::new(handle.clone(), current_euid());
 
     // --- Start the main listener loop from ssh_agent_lib ---
-    let result = listen(listener, session).await;
+    let result = listen(listener, agent).await;
 
     // Mark agent as no longer running
     handle.set_running(false);
@@ -895,4 +1050,119 @@ pub async fn start_agent_listener(socket_path_str: String) -> Result<(), AgentEr
     use std::path::PathBuf;
     let handle = Arc::new(AgentHandle::new(PathBuf::from(&socket_path_str)));
     start_agent_listener_with_handle(handle).await
+}
+
+#[cfg(all(test, unix))]
+mod hardening_tests {
+    use super::{
+        AgentHandle, harden_socket_dir, harden_socket_file, idle_monitor_interval,
+        run_idle_monitor, socket_dir_to_harden,
+    };
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::Duration;
+    use tempfile::TempDir;
+
+    fn mode_of(path: &std::path::Path) -> u32 {
+        match std::fs::metadata(path) {
+            Ok(meta) => meta.permissions().mode() & 0o777,
+            Err(e) => panic!("metadata({path:?}): {e}"),
+        }
+    }
+
+    #[test]
+    fn socket_dir_is_owner_only_after_harden() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("auths-agent");
+        harden_socket_dir(&dir).expect("harden dir");
+        assert!(dir.is_dir(), "directory must be created");
+        assert_eq!(
+            mode_of(&dir),
+            0o700,
+            "agent socket directory must be owner-only (0o700)"
+        );
+    }
+
+    #[test]
+    fn socket_file_is_owner_only_after_harden() {
+        let tmp = TempDir::new().unwrap();
+        let sock = tmp.path().join("agent.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&sock).expect("bind socket");
+        harden_socket_file(&sock).expect("harden socket");
+        assert_eq!(
+            mode_of(&sock),
+            0o600,
+            "agent socket must be owner-only (0o600) so no other process can connect"
+        );
+    }
+
+    #[test]
+    fn refuses_preexisting_group_accessible_socket_dir() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("loose");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // A pre-existing directory we did not lock down must be refused, not narrowed.
+        assert!(harden_socket_dir(&dir).is_err());
+        assert_eq!(
+            mode_of(&dir),
+            0o755,
+            "must not silently chmod a directory it does not own"
+        );
+    }
+
+    #[test]
+    fn accepts_preexisting_owner_only_socket_dir() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("tight");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(harden_socket_dir(&dir).is_ok());
+    }
+
+    #[test]
+    fn socket_with_no_restrictable_directory_is_rejected() {
+        // A bare/relative socket name has no directory we can lock down to 0o700,
+        // so the listener must refuse it rather than skip directory hardening.
+        assert!(socket_dir_to_harden(std::path::Path::new("agent.sock")).is_err());
+        assert!(socket_dir_to_harden(std::path::Path::new("")).is_err());
+        let dir = socket_dir_to_harden(std::path::Path::new("/home/u/.auths/agent.sock"))
+            .expect("an absolute socket path has a directory to harden");
+        assert_eq!(dir, std::path::Path::new("/home/u/.auths"));
+    }
+
+    #[test]
+    fn idle_monitor_disabled_when_timeout_is_zero() {
+        assert!(idle_monitor_interval(Duration::ZERO, Duration::ZERO).is_none());
+    }
+
+    #[test]
+    fn idle_monitor_interval_is_bounded() {
+        let interval = idle_monitor_interval(
+            Duration::from_secs(30 * 60),
+            Duration::from_secs(8 * 60 * 60),
+        )
+        .expect("some interval");
+        assert!(interval >= Duration::from_secs(1));
+        assert!(interval <= Duration::from_secs(60));
+    }
+
+    #[tokio::test]
+    async fn idle_monitor_locks_idle_agent() {
+        let handle = Arc::new(AgentHandle::with_timeout(
+            PathBuf::from("/tmp/idle-monitor.sock"),
+            Duration::from_millis(80),
+        ));
+        handle.set_running(true);
+        assert!(!handle.is_agent_locked());
+
+        tokio::spawn(run_idle_monitor(handle.clone(), Duration::from_millis(20)));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        assert!(
+            handle.is_agent_locked(),
+            "an agent left idle past its timeout must auto-lock"
+        );
+    }
 }

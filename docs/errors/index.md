@@ -338,6 +338,8 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5854](AUTHS-E5854.md) | `auths-sdk` | `ArtifactSigningError::AttestationFailed` | attestation creation failed: {0} |
 | [AUTHS-E5855](AUTHS-E5855.md) | `auths-sdk` | `ArtifactSigningError::ResignFailed` | attestation re-signing failed: {0} |
 | [AUTHS-E5856](AUTHS-E5856.md) | `auths-sdk` | `ArtifactSigningError::InvalidCommitSha` | invalid commit SHA: {0} (expected 40 or 64 hex characters) |
+| [AUTHS-E5857](AUTHS-E5857.md) | `auths-sdk` | `ArtifactSigningError::DeviceRevoked` | device revoked: {0} |
+| [AUTHS-E5858](AUTHS-E5858.md) | `auths-sdk` | `ArtifactSigningError::KeyRotatedOut` | signing key rotated out of the KEL: {0} |
 | [AUTHS-E5901](AUTHS-E5901.md) | `auths-sdk` | `SigningError::IdentityFrozen` | identity is frozen: {0} |
 | [AUTHS-E5902](AUTHS-E5902.md) | `auths-sdk` | `SigningError::KeyResolution` | key resolution failed: {0} |
 | [AUTHS-E5903](AUTHS-E5903.md) | `auths-sdk` | `SigningError::SigningFailed` | signing operation failed: {0} |

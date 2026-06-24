@@ -194,6 +194,34 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_rotation_is_detected_or_prevented() {
+        // The documented kt=1 accepted risk: with a single-signer shared KEL, two
+        // controllers can each author a rotation at the same sequence, forking the KEL.
+        // Authoring does not prevent it, so it must be surfaced — detect_duplicity flags
+        // the two competing heads rather than silently accepting both as valid.
+        let events = vec![
+            ev("did:keri:EShared", 0, "Eicp"),
+            ev("did:keri:EShared", 1, "Erot1"),
+            ev("did:keri:EShared", 2, "ErotControllerA"),
+            ev("did:keri:EShared", 2, "ErotControllerB"),
+        ];
+        match detect_duplicity(&events) {
+            DuplicityReport::Diverging {
+                shared_kel_prefix,
+                seq,
+                event_saids,
+            } => {
+                assert_eq!(shared_kel_prefix.as_str(), "did:keri:EShared");
+                assert_eq!(seq, 2, "divergence is at the concurrent rotation");
+                assert_eq!(event_saids.len(), 2);
+            }
+            DuplicityReport::Clean => {
+                panic!("concurrent rotations at the same sequence must be flagged, not accepted")
+            }
+        }
+    }
+
+    #[test]
     fn diverging_report_is_diverging() {
         let report = DuplicityReport::Diverging {
             #[allow(clippy::disallowed_methods)]
