@@ -1011,7 +1011,11 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     }
 
     // --- Create the peer-authorizing session factory ---
-    let agent = PeerAuthorizedAgent::new(handle.clone(), current_euid());
+    // Per-request signing is gated by an injected SignAuthorizer. The default is
+    // permissive (preserves existing behavior); a host enables per-caller approval by
+    // injecting a PerCallerAuthorizer backed by a platform biometric / approval prompt.
+    let authorizer: Arc<dyn crate::agent::SignAuthorizer> = Arc::new(crate::agent::AllowAllSigning);
+    let agent = PeerAuthorizedAgent::new(handle.clone(), current_euid(), authorizer);
 
     // --- Start the main listener loop from ssh_agent_lib ---
     let result = listen(listener, agent).await;
