@@ -352,12 +352,8 @@ fn rotated_out_key_cannot_sign() {
     let ctx =
         build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
 
-    // Snapshot the current key under a second alias pointing at the same identity AID.
-    let (root_did, role, enc) = keychain.load_key(&root_alias).expect("load current key");
-    let stale_alias = KeyAlias::new_unchecked("stale-prev");
-    keychain
-        .store_key(&stale_alias, &root_did, role, &enc)
-        .expect("snapshot the pre-rotation key");
+    // Capture the current key bytes BEFORE rotation; rotation mutates the keystore.
+    let (root_did, role, old_enc) = keychain.load_key(&root_alias).expect("load current key");
 
     let try_sign = |device_alias: &KeyAlias| -> Result<(), ArtifactSigningError> {
         let params = ArtifactSigningParams {
@@ -371,9 +367,9 @@ fn rotated_out_key_cannot_sign() {
         sign_artifact(params, &ctx).map(|_| ())
     };
 
-    // Before rotation the snapshot is the current key, so it signs.
+    // The current key signs before rotation.
     assert!(
-        try_sign(&stale_alias).is_ok(),
+        try_sign(&root_alias).is_ok(),
         "the current key should sign before rotation"
     );
 
@@ -385,7 +381,21 @@ fn rotated_out_key_cannot_sign() {
     };
     rotate_identity(config, &ctx, &SystemClock).expect("rotate identity");
 
-    // The snapshot now holds a key that was rotated out → the producer refuses to sign.
+    // Store the captured pre-rotation key under a stale alias AFTER rotation (so it is
+    // not cleared by the rotation), pointing at the same identity AID. It is now a
+    // rotated-out key.
+    let stale_alias = KeyAlias::new_unchecked("stale-prev");
+    keychain
+        .store_key(&stale_alias, &root_did, role, &old_enc)
+        .expect("store the rotated-out key");
+
+    // The current alias still signs (its key is the new KEL head).
+    assert!(
+        try_sign(&root_alias).is_ok(),
+        "the rotated (current) key should still sign"
+    );
+
+    // Signing with the rotated-out key is refused.
     let denied = try_sign(&stale_alias);
     assert!(
         matches!(denied, Err(ArtifactSigningError::KeyRotatedOut(_))),
