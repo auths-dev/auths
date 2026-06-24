@@ -946,7 +946,10 @@ async fn run_idle_monitor(handle: Arc<AgentHandle>, interval: std::time::Duratio
 /// - `Err(AgentError)` if binding/setup fails or the listener loop exits with an error.
 #[cfg(unix)]
 #[allow(clippy::disallowed_methods)] // INVARIANT: Unix socket lifecycle — socket dir creation and cleanup is inherently I/O
-pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Result<(), AgentError> {
+pub async fn start_agent_listener_with_handle(
+    handle: Arc<AgentHandle>,
+    authorizer: Arc<dyn crate::agent::SignAuthorizer>,
+) -> Result<(), AgentError> {
     let socket_path = handle.socket_path();
     info!("Attempting to start agent listener at {:?}", socket_path);
 
@@ -1011,7 +1014,9 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
     }
 
     // --- Create the peer-authorizing session factory ---
-    let agent = PeerAuthorizedAgent::new(handle.clone(), current_euid());
+    // Per-request signing is gated by the injected SignAuthorizer; the host chooses the
+    // policy (per-caller approval for an interactive agent, permissive for headless).
+    let agent = PeerAuthorizedAgent::new(handle.clone(), current_euid(), authorizer);
 
     // --- Start the main listener loop from ssh_agent_lib ---
     let result = listen(listener, agent).await;
@@ -1049,7 +1054,7 @@ pub async fn start_agent_listener_with_handle(handle: Arc<AgentHandle>) -> Resul
 pub async fn start_agent_listener(socket_path_str: String) -> Result<(), AgentError> {
     use std::path::PathBuf;
     let handle = Arc::new(AgentHandle::new(PathBuf::from(&socket_path_str)));
-    start_agent_listener_with_handle(handle).await
+    start_agent_listener_with_handle(handle, Arc::new(crate::agent::AllowAllSigning)).await
 }
 
 #[cfg(all(test, unix))]
