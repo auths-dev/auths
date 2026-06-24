@@ -538,10 +538,14 @@ fn enforce_signer_authority(
             device_did.as_str()
         ))
     })?;
-    let is_current = state.current_keys.iter().any(|k| {
-        k.parse()
-            .map(|pk| pk.as_bytes() == device_pk_bytes)
-            .unwrap_or(false)
+    let is_current = state.current_keys.iter().any(|k| match k.parse() {
+        // Public keys, decoded from CESR (curve-tag-aware) to raw bytes; a plain
+        // comparison is correct — no secret is involved.
+        Ok(pk) => {
+            let key_bytes: &[u8] = pk.as_bytes();
+            key_bytes == device_pk_bytes
+        }
+        Err(_) => false,
     });
     if !is_current {
         return Err(ArtifactSigningError::KeyRotatedOut(

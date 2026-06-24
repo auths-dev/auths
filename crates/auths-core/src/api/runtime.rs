@@ -1065,11 +1065,10 @@ mod hardening_tests {
     use tempfile::TempDir;
 
     fn mode_of(path: &std::path::Path) -> u32 {
-        std::fs::metadata(path)
-            .expect("metadata")
-            .permissions()
-            .mode()
-            & 0o777
+        match std::fs::metadata(path) {
+            Ok(meta) => meta.permissions().mode() & 0o777,
+            Err(e) => panic!("metadata({path:?}): {e}"),
+        }
     }
 
     #[test]
