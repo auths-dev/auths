@@ -50,7 +50,10 @@ async fn locked_agent_refuses_signing_over_the_socket() {
     let socket_path = dir.join("agent.sock");
 
     let handle = Arc::new(AgentHandle::new(socket_path.clone()));
-    let server = tokio::spawn(start_agent_listener_with_handle(handle.clone()));
+    let server = tokio::spawn(start_agent_listener_with_handle(
+        handle.clone(),
+        Arc::new(auths_core::agent::AllowAllSigning),
+    ));
     wait_until_running(&socket_path).await;
 
     let pkcs8 = generate_ed25519_pkcs8();

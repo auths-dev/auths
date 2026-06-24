@@ -380,14 +380,68 @@ fn run_agent_foreground(
         timeout,
     ));
 
+    let authorizer = build_sign_authorizer({
+        use std::io::IsTerminal;
+        std::io::stdin().is_terminal()
+    });
+
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
     let result = rt.block_on(async {
-        auths_sdk::agent_core::start_agent_listener_with_handle(handle.clone()).await
+        auths_sdk::agent_core::start_agent_listener_with_handle(handle.clone(), authorizer).await
     });
 
     cleanup_stale_files(&[pid_path, env_path, socket]);
 
     result.map_err(|e| anyhow!("Agent error: {}", e))
+}
+
+/// Builds the per-request signing authorizer for the agent. An interactive agent gates
+/// each new connecting process behind an approval prompt (so an unlocked agent does not
+/// grant silent signing to every same-user process); a daemonized / non-interactive
+/// agent is permissive, since there is no human present to approve.
+///
+/// Args:
+/// * `interactive`: whether the agent has a terminal to prompt on.
+///
+/// Usage:
+/// ```ignore
+/// let auth = build_sign_authorizer(std::io::stdin().is_terminal());
+/// ```
+#[cfg(unix)]
+fn build_sign_authorizer(
+    interactive: bool,
+) -> std::sync::Arc<dyn auths_sdk::agent_core::SignAuthorizer> {
+    if interactive {
+        std::sync::Arc::new(auths_sdk::agent_core::PerCallerAuthorizer::new(
+            approve_caller,
+        ))
+    } else {
+        std::sync::Arc::new(auths_sdk::agent_core::AllowAllSigning)
+    }
+}
+
+/// Prompts the operator to approve signing for a newly connected caller. Returns true to
+/// approve and pin that caller for the unlock window.
+///
+/// Args:
+/// * `peer`: the connecting process's identity.
+///
+/// Usage:
+/// ```ignore
+/// let approved = approve_caller(&peer);
+/// ```
+#[cfg(unix)]
+fn approve_caller(peer: &auths_sdk::agent_core::PeerIdentity) -> bool {
+    let who = match peer.pid {
+        Some(pid) => format!("process pid {pid} (uid {})", peer.uid),
+        None => format!("a process (uid {})", peer.uid),
+    };
+    eprintln!("\nauths agent: a new caller — {who} — is requesting a signature.");
+    dialoguer::Confirm::new()
+        .with_prompt("Approve signing for this caller?")
+        .default(false)
+        .interact()
+        .unwrap_or(false)
 }
 
 #[cfg(not(unix))]
