@@ -375,3 +375,36 @@ async fn valid_then_revoked_presentation_transition() {
         "after revocation, a fresh presentation of the same credential must be rejected"
     );
 }
+
+#[tokio::test]
+async fn malformed_nonce_length_is_rejected_as_a_client_error() {
+    let h = setup();
+    let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+    let audience = Audience::parse(AUDIENCE).unwrap();
+    let store = InMemoryChallengeStore::new(16);
+    let now = chrono::Utc::now();
+
+    // Present over a 31-byte nonce (a real challenge is always 32). The nonce length is
+    // checked at the wire boundary, before the challenge is consumed or any signature is
+    // trusted — so a mis-sized nonce is a 400 client error, never a path to a bypass.
+    let envelope = present_credential(
+        &h.ctx,
+        &subject_alias,
+        &cred,
+        AUDIENCE,
+        PresentationChallenge::Challenge {
+            nonce: vec![0u8; 31],
+        },
+    )
+    .expect("present");
+    let wire = WirePresentation::from_envelope(&envelope);
+
+    let err = authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
+        .await
+        .expect_err("a 31-byte nonce must be rejected");
+    assert_eq!(
+        err.http_status(),
+        400,
+        "a mis-sized nonce is a client error, got {err:?}"
+    );
+}
