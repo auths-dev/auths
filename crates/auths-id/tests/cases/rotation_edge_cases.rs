@@ -381,7 +381,10 @@ fn interrupted_rotation_leaves_consistent_state() {
         chrono::Utc::now(),
         None,
     );
-    assert!(matches!(interrupted, Err(RotationError::CommitmentMismatch)));
+    assert!(matches!(
+        interrupted,
+        Err(RotationError::CommitmentMismatch)
+    ));
 
     // Exactly one head: inception + one rotation, no competing event at any sequence.
     let mut events = Vec::new();
@@ -398,6 +401,9 @@ fn interrupted_rotation_leaves_consistent_state() {
     );
 
     let state = validate_kel(&events).unwrap();
-    assert_eq!(state.sequence, 1, "exactly one head at the rotated sequence");
+    assert_eq!(
+        state.sequence, 1,
+        "exactly one head at the rotated sequence"
+    );
     assert!(!state.is_abandoned);
 }

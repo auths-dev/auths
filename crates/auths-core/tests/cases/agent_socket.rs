@@ -62,11 +62,10 @@ async fn locked_agent_refuses_signing_over_the_socket() {
 
     let sign_path = socket_path.clone();
     let unlocked_pubkey = pubkey.clone();
-    let unlocked = tokio::task::spawn_blocking(move || {
-        agent_sign(&sign_path, &unlocked_pubkey, b"payload")
-    })
-    .await
-    .expect("sign task");
+    let unlocked =
+        tokio::task::spawn_blocking(move || agent_sign(&sign_path, &unlocked_pubkey, b"payload"))
+            .await
+            .expect("sign task");
     assert!(
         unlocked.is_ok(),
         "an unlocked agent should sign over the socket"

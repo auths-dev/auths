@@ -1140,8 +1140,11 @@ mod hardening_tests {
 
     #[test]
     fn idle_monitor_interval_is_bounded() {
-        let interval = idle_monitor_interval(Duration::from_secs(30 * 60), Duration::from_secs(8 * 60 * 60))
-            .expect("some interval");
+        let interval = idle_monitor_interval(
+            Duration::from_secs(30 * 60),
+            Duration::from_secs(8 * 60 * 60),
+        )
+        .expect("some interval");
         assert!(interval >= Duration::from_secs(1));
         assert!(interval <= Duration::from_secs(60));
     }

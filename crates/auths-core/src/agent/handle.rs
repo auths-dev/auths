@@ -296,7 +296,8 @@ impl AgentHandle {
     /// periodically from a background task. Neither control stops a process running as
     /// the same user from using the agent within the window — they only bound the window.
     pub fn check_idle_timeout(&self) -> Result<bool, AgentError> {
-        if (self.is_idle_timed_out() || self.is_unlock_window_expired()) && !self.is_agent_locked() {
+        if (self.is_idle_timed_out() || self.is_unlock_window_expired()) && !self.is_agent_locked()
+        {
             log::info!(
                 "Locking agent: idle for {:?}, unlocked for {:?}",
                 self.idle_duration(),
