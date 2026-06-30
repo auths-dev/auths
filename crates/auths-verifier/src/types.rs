@@ -28,10 +28,10 @@ pub struct VerificationReport {
     pub anchored: Option<auths_keri::AnchorStatus>,
     /// Structured duplicity warning from the shared-KEL detector.
     ///
-    /// Fail-open: `Valid` with a `Some(Diverging { … })` warning still
-    /// means the attestation signature verified. The warning surfaces
-    /// so CLI / iOS / CI can render a banner and point the user at
-    /// `auths device remove` to resolve.
+    /// Fail-closed: a `Some(Diverging { … })` warning makes [`VerificationReport::is_valid`]
+    /// return `false` even though `status` still records that the attestation *signature*
+    /// verified — a forked KEL is not trustworthy. The structured warning also lets
+    /// CLI / iOS / CI render a banner and point the user at `auths device remove` to resolve.
     ///
     /// `None` indicates no divergence was observed (or no shared-KEL
     /// replay was performed).
@@ -54,9 +54,11 @@ pub struct VerificationReport {
 }
 
 impl VerificationReport {
-    /// Returns true only when the verification status is Valid.
+    /// Returns true only when the signature status is `Valid` **and** no duplicity warning is
+    /// present. Fail-closed: a valid signature on a KEL that has forked (`Some(Diverging)`) is not
+    /// trustworthy, so the trust decision refuses even though `status` records the signature as valid.
     pub fn is_valid(&self) -> bool {
-        matches!(self.status, VerificationStatus::Valid)
+        matches!(self.status, VerificationStatus::Valid) && self.duplicity_warning.is_none()
     }
 
     /// Creates a new valid VerificationReport with the given chain.
@@ -94,9 +96,9 @@ impl VerificationReport {
         }
     }
 
-    /// Attach a duplicity warning to this report. Does not change `status` —
-    /// fail-open policy: a diverging shared KEL is an orthogonal signal to
-    /// per-attestation signature validity.
+    /// Attach a duplicity warning to this report. Leaves `status` (the *signature* verdict)
+    /// unchanged, but makes [`VerificationReport::is_valid`] fail closed — a diverging shared
+    /// KEL is not trustworthy even when the per-attestation signature verified.
     pub fn with_duplicity_warning(mut self, warning: crate::duplicity::DuplicityReport) -> Self {
         self.duplicity_warning = Some(warning);
         self
