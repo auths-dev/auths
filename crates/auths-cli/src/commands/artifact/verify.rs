@@ -8,6 +8,7 @@ use auths_verifier::core::Attestation;
 use auths_verifier::evidence_pack::{
     TransparencyInclusion, parse_log_key_hex, verify_artifact_log_inclusion,
 };
+use auths_verifier::freshness::FreshnessPolicy;
 use auths_verifier::oidc_policy::{OidcPolicyJoin, OidcSubjectPolicy};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
@@ -912,7 +913,7 @@ async fn verify_commit_in_process(sha: &str) -> bool {
     )
     .await
     {
-        Ok(verdict) if verdict.is_valid() => true,
+        Ok(verdict) if verdict.is_trusted(&FreshnessPolicy::default()) => true,
         Ok(verdict) => {
             if !is_json_mode() {
                 eprintln!("Commit {short} is not authorized by a pinned trusted root: {verdict:?}");

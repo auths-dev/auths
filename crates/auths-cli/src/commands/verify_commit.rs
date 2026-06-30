@@ -637,18 +637,17 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
             result.signer = Some(signer_did);
             result.error = if trusted {
                 None
+            } else if duplicitous_root {
+                Some(format!(
+                    "Root {root_did} shows KEL duplicity (a fork) — not trusted. \
+                     Resolve with `auths device remove`."
+                ))
             } else {
                 Some(format!(
                     "commit verified but its freshness is {freshness:?}; the supplied slice is \
                      older than the verifier's trust window"
                 ))
             };
-            if duplicitous_root {
-                result.warnings.push(format!(
-                    "Root {root_did} shows KEL duplicity (a fork) — trusting the first event \
-                     seen. Resolve with `auths device remove`."
-                ));
-            }
         }
         CommitVerdict::Unsigned => {
             result.error = Some("No signature found".to_string());
@@ -1093,8 +1092,9 @@ mod tests {
     }
 
     #[test]
-    fn verify_output_flags_fork() {
-        // A Valid verdict on a duplicitous root must surface a non-fatal fork warning.
+    fn verify_output_fails_closed_on_fork() {
+        // A Valid verdict on a duplicitous root must FAIL CLOSED (not trusted) and explain why —
+        // the relying party cannot tell which branch is real.
         let result = verdict_to_result(
             "sha".into(),
             CommitVerdict::Valid {
@@ -1105,14 +1105,16 @@ mod tests {
                 freshness: auths_verifier::freshness::Freshness::Unknown,
             },
         );
-        assert!(result.valid);
+        assert!(!result.valid, "a duplicitous root must fail closed");
         assert!(
             result
-                .warnings
-                .iter()
-                .any(|w| w.contains("fork") || w.contains("duplicity")),
-            "expected a fork/duplicity warning, got {:?}",
-            result.warnings
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .to_lowercase()
+                .contains("duplicity"),
+            "expected a duplicity error, got {:?}",
+            result.error
         );
     }
 
