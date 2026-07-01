@@ -5,7 +5,7 @@
 - id: DD-1
   title: after `auths init`, the identity DID and the primary device DID differ
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: cli
   covers:
@@ -15,8 +15,8 @@
     for a fresh developer identity (the primary device reuses the root AID)'
   - crates/auths-sdk/src/domains/identity/local.rs resolve_local_signer returns signer_did
     == root_did whenever a local root exists
-  observed: 'RED at baseline 2026-07-01: ours=identity_did==device_did (did:keri:EFo7VdDcfbndDBvx5Gb5yhdog0ycLAF-JTVg7d4as7la)
-    oracle=distinct (device #0 must be a delegated AID)'
+  observed: 'GREEN at 2026-07-01 (device0-delegation cycle): identity_did (did:keri:EOapF1KnNwH2mbXtl5ODi8TcURgZ6gmUNsf5RxTcusxi)
+    != device_did (did:keri:EEJ6ANX5jErrTk7G8f-vq3HwXRbSRRKI750AW3D__BM9)'
   smallest_fix: 'init delegates device #0 (its own dip AID) and resolve_local_signer reports
     it, so whoami''s identity_did != device_did.
 
@@ -27,7 +27,7 @@
 - id: DD-2
   title: a commit signs and verifies end-to-end under the delegated device
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: cli
   covers:
@@ -37,8 +37,9 @@
     but the device signature key comes from auto_detect_device_key (sign.rs:393), which lists
     keys by the ROOT DID (key_detect.rs:63) — flip one without the other and the trailer claims
     device #0 while the root key signs, so verification fails'
-  observed: 'RED at baseline 2026-07-01: ours=device(did:keri:EK2Xek7_nEjHYAMtQvhXuy3-K-fT0V_B8u4dAUYsgFB9)==identity(did:keri:EK2Xek7_nEjHYAMtQvhXuy3-K-fT0V_B8u4dAUYsgFB9)
-    oracle=device #0''s delegated AID, verified by its own key'
+  observed: 'GREEN at 2026-07-01 (device0-delegation cycle): artifact signs+verifies AND is
+    signed by device #0 (did:keri:EEx5E_KmG51NbUdpkBkqHQ2SvaLf3L3A2CSgoK18xr0I), distinct from
+    identity (did:keri:EEUOrexPRQRFY_bKsHaIwOHBvDEopa1eNdqXMYTbY7fU)'
   smallest_fix: 'init + resolve_local_signer + auto_detect_device_key agree on device #0''s
     key and AID, so `auths sign` then `auths verify` round-trips GREEN with Auths-Device ==
     device #0''s did:keri.
@@ -50,7 +51,7 @@
 - id: DD-3
   title: the primary device is independently revocable and the root identity survives
   class: missing-surface
-  status: open
+  status: closed
   severity: headline
   reads: cli
   covers:
@@ -60,8 +61,8 @@
     by abandoning the whole identity, because device == root'
   - 'crates/auths-id/src/keri/delegation.rs revoke_delegated_device: single-author root ixn,
     the device key is not needed — needs device #0 to have its own AID to target'
-  observed: 'RED at baseline 2026-07-01: ours=device==identity (did:keri:EEy6exO1Nb-8GWoPfIHdlHA0YzBpm5OG17Qm7tmniB2U)
-    oracle=distinct (cannot revoke a device that IS the identity — DD-1)'
+  observed: 'GREEN at 2026-07-01 (device0-delegation cycle): device #0 revoked; root (did:keri:EBjH9IPKnCFVc0OpbHT6WXUTkJwNAke5HMg-GKnMizpY)
+    survives; the revoked device can no longer sign a verifiable artifact'
   smallest_fix: '`auths device remove <device#0>` revokes the delegated device; the root identity
     still verifies and a NEW commit from the revoked device is rejected.
 
@@ -72,7 +73,7 @@
 - id: DD-4
   title: one canonical device DID — no did:key/did:keri split across surfaces
   class: missing-surface
-  status: open
+  status: closed
   severity: feature
   reads: cli
   covers:
@@ -80,8 +81,8 @@
   evidence:
   - 'device_did_collapse_notes.md §1: whoami reports the device as did:keri while the attestation
     subject is did:key — two representations, and the did:keri one collapses to the root'
-  observed: 'RED at baseline 2026-07-01: ours=whoami(did:keri:EF6bfXqnLqymXsFTpHwxBzLt1ysvm4H9Zfh1HgNWhfs-)!=attestation(did:key:zDnaewzc59DDRPDioEuNFfU2jmk14EfXX9B8dA2zAWLEJthMn)
-    oracle=one canonical delegated did:keri everywhere'
+  observed: 'GREEN at 2026-07-01 (device0-delegation cycle): one canonical device DID across
+    surfaces: did:keri:EOTkG1ZPYH5mzvfH01D0Im8yyvsukGjUx72OzAfJKgnD'
   smallest_fix: 'every surface (whoami, attestation subject, Auths-Device trailer) reports
     device #0''s single delegated did:keri; did:key stays underlying key material only.
 

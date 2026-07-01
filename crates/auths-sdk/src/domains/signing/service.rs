@@ -649,7 +649,15 @@ pub fn sign_artifact(
     }
     let device_pk_bytes = device_resolved.public_key_bytes;
 
-    let device_did = CanonicalDid::from_public_key_did_key(&device_pk_bytes, device_resolved.curve);
+    // Prefer the device key's stored delegated `did:keri` AID (device #0's own identifier)
+    // over a raw `did:key` derived from the pubkey, so the device is reported by ONE
+    // canonical `did:keri` everywhere (attestation subject == whoami's device_did). Falls
+    // back to `did:key` for keys with no stored KERI identity (ephemeral/raw signers).
+    let device_did = device_resolved
+        .identity_did
+        .clone()
+        .map(CanonicalDid::from)
+        .unwrap_or_else(|| CanonicalDid::from_public_key_did_key(&device_pk_bytes, device_resolved.curve));
 
     let artifact_meta = params
         .artifact
@@ -680,7 +688,10 @@ pub fn sign_artifact(
         device_is_hardware,
         now,
         &rid,
-        &managed.controller_did,
+        // Self-issued by the signing principal: the delegated device #0 (or the root when
+        // signing directly). The root key stays cold — the KEL delegation, not a per-artifact
+        // root signature, is what ties device #0 back to the root identity at verify time.
+        &device_did,
         &device_did,
         &device_pk_bytes,
         device_curve,
@@ -740,7 +751,7 @@ fn create_and_sign_attestation(
     device_is_hardware: bool,
     now: DateTime<Utc>,
     rid: &ResourceId,
-    controller_did: &IdentityDID,
+    issuer: &CanonicalDid,
     subject: &CanonicalDid,
     device_pk_bytes: &[u8],
     device_curve: auths_crypto::CurveType,
@@ -759,7 +770,7 @@ fn create_and_sign_attestation(
     };
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
 
-    let issuer_canonical = CanonicalDid::from(controller_did.clone());
+    let issuer_canonical = issuer.clone();
     let mut attestation = create_signed_attestation(
         now,
         auths_id::attestation::create::AttestationInput {

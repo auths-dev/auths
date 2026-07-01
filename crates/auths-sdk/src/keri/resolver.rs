@@ -184,8 +184,26 @@ pub fn resolve_current_public_key(
             did: did.to_string(),
             source,
         })?;
+    // A delegated device's KEL opens with a `dip` whose validation needs the delegator
+    // (root) KEL to confirm the anchoring seal — a plain `icp` root needs no lookup.
+    // Resolve the delegator from the same registry and seed a seal-index lookup so the
+    // device's own signing key state replays without the root having to co-sign.
+    let delegator_kel = match kel.first() {
+        Some(Event::Dip(dip)) => Some(
+            KelResolverChain::local(registry)
+                .resolve_kel(&format!("did:keri:{}", dip.di))
+                .map_err(|source| CurrentKeyError::Resolve {
+                    did: did.to_string(),
+                    source,
+                })?,
+        ),
+        _ => None,
+    };
+    let lookup = delegator_kel
+        .as_deref()
+        .map(auths_keri::KelSealIndex::from_events);
     let state = auths_keri::TrustedKel::from_trusted_source(&kel)
-        .replay()
+        .replay_with_lookup(lookup.as_ref().map(|l| l as &dyn auths_keri::DelegatorKelLookup))
         .map_err(|e| CurrentKeyError::InvalidKel {
             did: did.to_string(),
             reason: e.to_string(),

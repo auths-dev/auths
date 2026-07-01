@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
 use auths_sdk::core_config::EnvironmentConfig;
-use auths_sdk::keychain::{KeyAlias, KeyStorage};
+use auths_sdk::keychain::{IdentityDID, KeyAlias, KeyStorage};
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::storage::RegistryIdentityStorage;
 use dialoguer::Select;
@@ -17,6 +17,34 @@ fn filter_signing_aliases(aliases: Vec<KeyAlias>) -> Vec<KeyAlias> {
         .into_iter()
         .filter(|a| !a.as_str().contains("--next-"))
         .collect()
+}
+
+/// This root's live delegated device #0 as an `IdentityDID`, or `None` if the root has no
+/// delegated device.
+///
+/// Device #0's signing key is stored in the keychain under the device's OWN AID (not the
+/// root's), so day-to-day signing is the device's — distinct from the root identity. This
+/// selection mirrors `resolve_local_signer` (first non-revoked delegation) so the key that
+/// signs matches the `Auths-Device` trailer the signer reports.
+///
+/// Args:
+/// * `repo_path`: Path to the identity repository (the KEL/registry root).
+/// * `root_did`: The root controller's `did:keri`.
+///
+/// Usage:
+/// ```ignore
+/// let signer = delegated_primary_device_did(&repo_path, &identity.controller_did)
+///     .unwrap_or_else(|| identity.controller_did.clone());
+/// ```
+fn delegated_primary_device_did(repo_path: &Path, root_did: &IdentityDID) -> Option<IdentityDID> {
+    let root_prefix = auths_sdk::keri::parse_did_keri(root_did.as_str()).ok()?;
+    let backend = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(repo_path),
+    );
+    let devices =
+        auths_sdk::keri::delegation::list_delegated_devices(&backend, &root_prefix).ok()?;
+    let device = devices.iter().find(|d| !d.revoked)?;
+    IdentityDID::from_prefix(device.device_prefix.as_str()).ok()
 }
 
 fn select_device_key_interactive(aliases: &[KeyAlias]) -> Result<String> {
@@ -59,8 +87,13 @@ pub fn auto_detect_device_key(
 
     let keychain = auths_sdk::keychain::get_platform_keychain_with_config(env_config)
         .context("Failed to access keychain")?;
+    // Prefer this root's delegated device #0's OWN key (stored under the device's AID), so
+    // the device SIGNATURE is device #0's, not the root's. Fall back to the root's keys
+    // (a root with no delegated device — e.g. CI signing directly).
+    let signing_identity = delegated_primary_device_did(&repo_path, &identity.controller_did)
+        .unwrap_or_else(|| identity.controller_did.clone());
     let aliases = keychain
-        .list_aliases_for_identity(&identity.controller_did)
+        .list_aliases_for_identity(&signing_identity)
         .map_err(|e| anyhow!("Failed to list key aliases: {e}"))?;
 
     let signing_aliases = filter_signing_aliases(aliases);
