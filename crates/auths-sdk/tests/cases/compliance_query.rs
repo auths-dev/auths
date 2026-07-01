@@ -20,9 +20,9 @@ use auths_sdk::domains::compliance::query::{
     ComplianceFramework, EvidencePack, ReleaseRecord, build_evidence_pack,
     build_offline_evidence_pack, load_witness_policy, verify_evidence_pack_offline,
 };
-use auths_sdk::identity::initialize_registry_identity;
 use auths_sdk::domains::org::audit::AuthorityAtSigning;
 use auths_sdk::domains::org::{add_member, revoke_member};
+use auths_sdk::identity::initialize_registry_identity;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::Role;
 

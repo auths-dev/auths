@@ -191,7 +191,11 @@ fn list_delegated_devices_reflects_revocation() {
 
     // Two added devices plus the init-created device #0, none revoked yet.
     let listed = list_delegated_devices(&ctx).expect("list devices");
-    assert_eq!(listed.len(), 3, "both delegations plus device #0 are recorded");
+    assert_eq!(
+        listed.len(),
+        3,
+        "both delegations plus device #0 are recorded"
+    );
     assert_eq!(listed.iter().filter(|d| !d.revoked).count(), 3);
 
     // Revoke one → the live set drops by one (the revoked delegation is still recorded).

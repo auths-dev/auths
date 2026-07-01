@@ -101,7 +101,13 @@ fn initialize_developer(
             key_alias.clone(),
         )
     } else {
-        delegate_primary_device(&controller_did, &key_alias, ctx, keychain, passphrase_provider)?
+        delegate_primary_device(
+            &controller_did,
+            &key_alias,
+            ctx,
+            keychain,
+            passphrase_provider,
+        )?
     };
     let platform_claim = bind_platform_claim(&config.platform);
     let git_configured = configure_git_signing(

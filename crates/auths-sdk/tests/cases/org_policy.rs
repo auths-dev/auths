@@ -12,12 +12,12 @@ use auths_crypto::CurveType;
 use auths_id::keri::Said;
 use auths_id::policy::Outcome;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::identity::initialize_registry_identity;
 use auths_sdk::domains::org::error::OrgError;
 use auths_sdk::domains::org::policy::{
     Expr, evaluate_with_org_policy, load_org_policy, set_org_policy,
 };
 use auths_sdk::domains::org::{add_member, list_members, member_policy_context, revoke_member};
+use auths_sdk::identity::initialize_registry_identity;
 use auths_verifier::Prefix;
 use auths_verifier::core::Role;
 

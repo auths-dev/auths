@@ -203,7 +203,11 @@ pub fn resolve_current_public_key(
         .as_deref()
         .map(auths_keri::KelSealIndex::from_events);
     let state = auths_keri::TrustedKel::from_trusted_source(&kel)
-        .replay_with_lookup(lookup.as_ref().map(|l| l as &dyn auths_keri::DelegatorKelLookup))
+        .replay_with_lookup(
+            lookup
+                .as_ref()
+                .map(|l| l as &dyn auths_keri::DelegatorKelLookup),
+        )
         .map_err(|e| CurrentKeyError::InvalidKel {
             did: did.to_string(),
             reason: e.to_string(),

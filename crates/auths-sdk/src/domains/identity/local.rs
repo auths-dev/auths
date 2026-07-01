@@ -60,8 +60,10 @@ pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupErro
         let root_did = managed.controller_did.to_string();
         let anchor_seq = root_tip_seq(ctx, &root_did);
         if let Ok(root_prefix) = auths_id::keri::parse_did_keri(&root_did)
-            && let Ok(devices) =
-                auths_id::keri::delegation::list_delegated_devices(ctx.registry.as_ref(), &root_prefix)
+            && let Ok(devices) = auths_id::keri::delegation::list_delegated_devices(
+                ctx.registry.as_ref(),
+                &root_prefix,
+            )
             && let Some(dev) = devices.iter().find(|d| !d.revoked)
         {
             return Ok(LocalSigner {

@@ -20,7 +20,6 @@ use auths_id::testing::fakes::{
     FakeAttestationSink, FakeAttestationSource, FakeIdentityStorage, FakeRegistryBackend,
 };
 use auths_sdk::context::AuthsContext;
-use auths_sdk::identity::initialize_registry_identity;
 use auths_sdk::domains::org::error::OrgError;
 use auths_sdk::domains::org::offline_verify::OrgBundleError;
 use auths_sdk::domains::org::{
@@ -28,6 +27,7 @@ use auths_sdk::domains::org::{
     list_members, list_offboarding_records, load_offboarding_record, member_policy_context,
     resolve_member_authority, revoke_member, verify_offboarding_record,
 };
+use auths_sdk::identity::initialize_registry_identity;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{Ed25519PublicKey, Role};
 use auths_verifier::types::CanonicalDid;

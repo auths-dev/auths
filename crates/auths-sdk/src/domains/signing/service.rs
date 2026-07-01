@@ -657,7 +657,9 @@ pub fn sign_artifact(
         .identity_did
         .clone()
         .map(CanonicalDid::from)
-        .unwrap_or_else(|| CanonicalDid::from_public_key_did_key(&device_pk_bytes, device_resolved.curve));
+        .unwrap_or_else(|| {
+            CanonicalDid::from_public_key_did_key(&device_pk_bytes, device_resolved.curve)
+        });
 
     let artifact_meta = params
         .artifact
