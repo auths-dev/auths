@@ -5,23 +5,19 @@
 use std::sync::Arc;
 
 use auths_core::PrefilledPassphraseProvider;
-use auths_core::signing::{PassphraseProvider, StorageSigner};
+use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::testing::IsolatedKeychainHandle;
 use auths_crypto::CurveType;
 use auths_id::keri::Said;
 use auths_id::policy::Outcome;
 use auths_sdk::context::AuthsContext;
-use auths_sdk::domains::identity::service::initialize;
-use auths_sdk::domains::identity::types::{
-    CreateDeveloperIdentityConfig, IdentityConfig, InitializeResult,
-};
+use auths_sdk::identity::initialize_registry_identity;
 use auths_sdk::domains::org::error::OrgError;
 use auths_sdk::domains::org::policy::{
     Expr, evaluate_with_org_policy, load_org_policy, set_org_policy,
 };
 use auths_sdk::domains::org::{add_member, list_members, member_policy_context, revoke_member};
-use auths_sdk::domains::signing::types::GitSigningScope;
 use auths_verifier::Prefix;
 use auths_verifier::core::Role;
 
@@ -33,25 +29,19 @@ const PASS: &str = "Test-passphrase1!";
 fn setup() -> (AuthsContext, KeyAlias, Prefix, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let keychain = IsolatedKeychainHandle::new();
-    let signer = StorageSigner::new(keychain.clone());
     let provider = PrefilledPassphraseProvider::new(PASS);
-    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("org-key"))
-        .with_git_signing_scope(GitSigningScope::Skip)
-        .build();
     let boot_ctx = build_test_context(tmp.path(), Arc::new(keychain.clone()));
-    let result = match initialize(
-        IdentityConfig::Developer(config),
-        &boot_ctx,
-        Arc::new(keychain.clone()),
-        &signer,
+    // Bare org root (no delegated device #0) — mirror create_org, whose roster holds only
+    // the members it explicitly adds.
+    let (_org_did, org_alias) = initialize_registry_identity(
+        Arc::clone(&boot_ctx.registry),
+        &KeyAlias::new_unchecked("org-key"),
         &provider,
+        &keychain,
         None,
+        CurveType::default(),
     )
-    .unwrap()
-    {
-        InitializeResult::Developer(r) => r,
-        _ => unreachable!(),
-    };
+    .expect("init bare org identity");
 
     let arc_provider: Arc<dyn PassphraseProvider + Send + Sync> =
         Arc::new(PrefilledPassphraseProvider::new(PASS));
@@ -69,7 +59,7 @@ fn setup() -> (AuthsContext, KeyAlias, Prefix, tempfile::TempDir) {
             .unwrap()
             .to_string(),
     );
-    (ctx, result.key_alias, org_prefix, tmp)
+    (ctx, org_alias, org_prefix, tmp)
 }
 
 fn policy_bytes(expr: &Expr) -> Vec<u8> {

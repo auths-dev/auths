@@ -189,19 +189,19 @@ fn list_delegated_devices_reflects_revocation() {
     )
     .expect("add phone");
 
-    // Two delegated devices, none revoked yet.
+    // Two added devices plus the init-created device #0, none revoked yet.
     let listed = list_delegated_devices(&ctx).expect("list devices");
-    assert_eq!(listed.len(), 2, "both delegations are recorded");
-    assert_eq!(listed.iter().filter(|d| !d.revoked).count(), 2);
+    assert_eq!(listed.len(), 3, "both delegations plus device #0 are recorded");
+    assert_eq!(listed.iter().filter(|d| !d.revoked).count(), 3);
 
-    // Revoke one → the live set drops to one (the revoked delegation is still recorded).
+    // Revoke one → the live set drops by one (the revoked delegation is still recorded).
     remove_device(&ctx, &root_alias, &d1.device_did).expect("revoke laptop");
     let listed = list_delegated_devices(&ctx).expect("list after revoke");
-    assert_eq!(listed.len(), 2);
+    assert_eq!(listed.len(), 3);
     assert_eq!(
         listed.iter().filter(|d| !d.revoked).count(),
-        1,
-        "only one device is live after revocation"
+        2,
+        "the laptop is revoked; the phone and device #0 stay live"
     );
     assert!(
         listed

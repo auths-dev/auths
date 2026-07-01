@@ -274,10 +274,17 @@ fn agent_list_excludes_devices() {
     assert_eq!(agents.len(), 1, "exactly one agent");
     assert_eq!(agents[0].agent_did, agent.agent_did);
 
-    // `device list` shows the device, never the agent.
+    // `device list` shows delegated devices (including the init-created device #0), never
+    // the agent.
     let devices = list_delegated_devices(&ctx).expect("list devices");
-    assert_eq!(devices.len(), 1, "exactly one device");
-    assert_eq!(devices[0].device_did, device.device_did);
+    assert!(
+        devices.iter().any(|d| d.device_did == device.device_did),
+        "the delegated device appears in the device list"
+    );
+    assert!(
+        !devices.iter().any(|d| d.device_did == agent.agent_did),
+        "the agent never appears in the device list"
+    );
 }
 
 #[test]
