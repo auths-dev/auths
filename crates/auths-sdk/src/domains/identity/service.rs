@@ -82,17 +82,20 @@ fn initialize_developer(
     config: CreateDeveloperIdentityConfig,
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
-    signer: &dyn SecureSigner,
+    _signer: &dyn SecureSigner,
     passphrase_provider: &dyn PassphraseProvider,
     git_config: Option<&dyn GitConfigProvider>,
 ) -> Result<DeveloperIdentityResult, SetupError> {
     let now = ctx.clock.now();
     let (controller_did, key_alias, reused) =
         resolve_or_create_identity(&config, ctx, keychain, passphrase_provider, now)?;
+    // Delegate device #0 so the primary device has its own AID, distinct from the root
+    // identity (fixes identity_did == device_did; makes the device independently revocable).
+    // A re-run over an existing identity keeps the existing device DID.
     let device_did = if reused {
         derive_device_did(&key_alias, keychain, passphrase_provider)?
     } else {
-        bind_device(&key_alias, ctx, keychain, signer, passphrase_provider, now)?
+        delegate_primary_device(&controller_did, &key_alias, ctx, keychain, passphrase_provider)?
     };
     let platform_claim = bind_platform_claim(&config.platform);
     let git_configured = configure_git_signing(
@@ -386,6 +389,51 @@ fn bind_device(
     })?;
 
     Ok(device_did)
+}
+
+/// Delegate device #0 at init so the primary device gets its OWN delegated AID,
+/// distinct from the root identity. The root incepts (`icp`); this then mints a
+/// delegated `dip` for the device (its own freshly-generated key) and anchors it in
+/// the root KEL, so `identity_did != device_did` and the device is independently
+/// revocable (delegator-side, via the root's revocation seal). Returns the device's
+/// delegated `did:keri`.
+///
+/// Args:
+/// * `controller_did`: the root identity's `did:keri` (the delegator).
+/// * `root_alias`: keychain alias of the root's signing key (signs the anchoring `ixn`).
+/// * `ctx`: SDK context (registry holds the root + new device KELs).
+/// * `keychain`: key storage (the device's new key is stored under a `-device` alias).
+/// * `passphrase_provider`: passphrase source for the key operations.
+fn delegate_primary_device(
+    controller_did: &IdentityDID,
+    root_alias: &KeyAlias,
+    ctx: &AuthsContext,
+    keychain: &(dyn KeyStorage + Send + Sync),
+    passphrase_provider: &dyn PassphraseProvider,
+) -> Result<CanonicalDid, SetupError> {
+    let root_prefix = auths_id::keri::parse_did_keri(controller_did.as_str()).map_err(|e| {
+        SetupError::StorageError(auths_id::error::StorageError::InvalidData(e.to_string()).into())
+    })?;
+    let (_pk, curve) = auths_core::storage::keychain::extract_public_key_bytes(
+        keychain,
+        root_alias,
+        passphrase_provider,
+    )?;
+    let device_alias = KeyAlias::new_unchecked(format!("{}-device", root_alias.as_str()));
+    let dev = auths_id::keri::delegation::incept_delegated_device(
+        std::sync::Arc::clone(&ctx.registry),
+        &root_prefix,
+        root_alias,
+        curve,
+        &device_alias,
+        curve,
+        passphrase_provider,
+        keychain,
+    )
+    .map_err(|e| {
+        SetupError::StorageError(auths_id::error::StorageError::InvalidData(e.to_string()).into())
+    })?;
+    Ok(CanonicalDid::from(dev.device_did))
 }
 
 fn bind_platform_claim(platform: &Option<PlatformVerification>) -> Option<PlatformClaimResult> {
