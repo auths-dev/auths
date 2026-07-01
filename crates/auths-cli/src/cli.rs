@@ -26,6 +26,7 @@ use crate::commands::error_lookup::ErrorLookupCommand;
 use crate::commands::id::IdCommand;
 use crate::commands::init::InitCommand;
 use crate::commands::ipex::IpexCommand;
+use crate::commands::keri_emit::KeriEmitCommand;
 use crate::commands::key::KeyCommand;
 use crate::commands::key_state::KeyStateCommand;
 use crate::commands::learn::LearnCommand;
@@ -129,6 +130,8 @@ pub enum RootCommand {
     KeyState(KeyStateCommand),
     #[command(hide = true, name = "did-webs")]
     DidWebs(DidWebsCommand),
+    #[command(hide = true, name = "keri-emit")]
+    KeriEmit(KeriEmitCommand),
     #[command(hide = true, name = "tls-cert")]
     TlsCert(TlsCertCommand),
     #[command(hide = true)]
