@@ -92,15 +92,21 @@ fn initialize_developer(
     // Delegate device #0 so the primary device has its own AID, distinct from the root
     // identity (fixes identity_did == device_did; makes the device independently revocable).
     // A re-run over an existing identity keeps the existing device DID.
-    let device_did = if reused {
-        derive_device_did(&key_alias, keychain, passphrase_provider)?
+    // `git_signing_alias` is the key git signs commits with. For a fresh identity that is
+    // delegated device #0's key, so the SSH signature matches the `Auths-Device` trailer;
+    // a re-run over an existing identity keeps signing with the root's key.
+    let (device_did, git_signing_alias) = if reused {
+        (
+            derive_device_did(&key_alias, keychain, passphrase_provider)?,
+            key_alias.clone(),
+        )
     } else {
         delegate_primary_device(&controller_did, &key_alias, ctx, keychain, passphrase_provider)?
     };
     let platform_claim = bind_platform_claim(&config.platform);
     let git_configured = configure_git_signing(
         &config.git_signing_scope,
-        &key_alias,
+        &git_signing_alias,
         git_config,
         config.sign_binary_path.as_deref(),
     )?;
@@ -396,7 +402,8 @@ fn bind_device(
 /// delegated `dip` for the device (its own freshly-generated key) and anchors it in
 /// the root KEL, so `identity_did != device_did` and the device is independently
 /// revocable (delegator-side, via the root's revocation seal). Returns the device's
-/// delegated `did:keri`.
+/// delegated `did:keri` and its keychain alias (the alias git signs commits with, so the
+/// SSH signature is device #0's — matching the `Auths-Device` trailer).
 ///
 /// Args:
 /// * `controller_did`: the root identity's `did:keri` (the delegator).
@@ -410,7 +417,7 @@ fn delegate_primary_device(
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
-) -> Result<CanonicalDid, SetupError> {
+) -> Result<(CanonicalDid, KeyAlias), SetupError> {
     let root_prefix = auths_id::keri::parse_did_keri(controller_did.as_str()).map_err(|e| {
         SetupError::StorageError(auths_id::error::StorageError::InvalidData(e.to_string()).into())
     })?;
@@ -433,7 +440,7 @@ fn delegate_primary_device(
     .map_err(|e| {
         SetupError::StorageError(auths_id::error::StorageError::InvalidData(e.to_string()).into())
     })?;
-    Ok(CanonicalDid::from(dev.device_did))
+    Ok((CanonicalDid::from(dev.device_did), device_alias))
 }
 
 fn bind_platform_claim(platform: &Option<PlatformVerification>) -> Option<PlatformClaimResult> {
