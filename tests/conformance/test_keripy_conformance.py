@@ -227,3 +227,81 @@ def test_ipex_admit(run_auths, write_json):
     assert canon(out) == canon(load_vector("ipex-admit.json"))
     # The prior must thread the grant's SAID (the IPEX loop-closing detail).
     assert out["p"] == json.loads(grant_res.stdout)["d"]
+
+
+# ── Surface 7: delegated inception (dip) — the Workstream A interop claim ─────
+def test_dip_delegated_inception(run_auths):
+    """auths `keri-emit dip` == keripy delegated inception (byte-for-byte AID).
+
+    The interop claim for the device-delegation model: a delegate auths incepts as
+    a delegated identifier must compute the SAME delegated AID (`d == i`) keripy
+    would, or a keripy verifier would reject it. Delegate key = the deterministic
+    ed2 key; delegator = the ed AID.
+    """
+    delegator = o.icp_ed().pre
+    key = o.ed2_verfer().qb64
+
+    out = run_auths(["keri-emit", "dip", "--key", key, "--delegator", delegator]).json
+    expected = o.dip(delegator, key)
+
+    assert canon(out) == canon(expected), (
+        f"\n  auths : {canon(out)}\n  keripy: {canon(expected)}"
+    )
+    assert out["d"] == out["i"], "a delegated AID is self-addressing (d == i)"
+    assert out["di"] == delegator, "di names the delegator"
+
+
+# ── Surface 8: delegator-side revocation ixn ─────────────────────────────────
+def test_revocation_ixn_is_keripy_parseable(run_auths):
+    """auths `keri-emit ixn --seal-digest` == keripy interact with a digest seal.
+
+    auths revokes a lost device delegator-side: a single-author root `ixn`
+    anchoring the device's prefix as a digest seal. This asserts the EVENT is
+    byte-identical to keripy's `interact(data=[{"d": ...}])` — i.e. a keripy
+    verifier can parse/replay it. Whether keripy *interprets* that digest seal as a
+    device revocation is a separate protocol-semantics question (see the interop
+    findings write-up) — this surface only proves the wire event conforms.
+    """
+    icp = o.icp_ed()
+    pre, prev = icp.pre, icp.said
+    device_prefix = o.dip(pre, o.ed2_verfer().qb64)["i"]
+
+    out = run_auths(
+        [
+            "keri-emit", "ixn",
+            "--pre", pre,
+            "--sn", "1",
+            "--prev", prev,
+            "--seal-digest", device_prefix,
+        ]
+    ).json
+    expected = o.ixn_digest_seal(pre, 1, prev, device_prefix)
+
+    assert canon(out) == canon(expected), (
+        f"\n  auths : {canon(out)}\n  keripy: {canon(expected)}"
+    )
+    assert out["a"] == [{"d": device_prefix}], "the ixn anchors the device-prefix digest seal"
+
+
+# ── Surface 7b: delegated inception WITH pre-rotation (auths's real dip shape) ─
+def test_dip_with_pre_rotation(run_auths):
+    """auths dip with a next-key commitment (`nt=1`, `n=[…]`) == keripy.
+
+    auths's real delegated inception carries pre-rotation (a next-key digest), so
+    this proves the *actual* shape — not just the bare form — computes the same
+    delegated AID keripy would. Any valid CESR digest serves as the commitment
+    (both sides embed it identically and SAID over it).
+    """
+    delegator = o.icp_ed().pre
+    key = o.ed2_verfer().qb64
+    nxt = o.icp_ed().said  # a valid CESR Blake3 digest used as the next-key commitment
+
+    out = run_auths(
+        ["keri-emit", "dip", "--key", key, "--delegator", delegator, "--next", nxt]
+    ).json
+    expected = o.dip(delegator, key, next_said=nxt)
+
+    assert canon(out) == canon(expected), (
+        f"\n  auths : {canon(out)}\n  keripy: {canon(expected)}"
+    )
+    assert out["nt"] == "1" and out["n"] == [nxt], "pre-rotation: nt=1, n=[commitment]"
