@@ -1,0 +1,111 @@
+# gaps.yaml — the live ledger: verified observations only.
+# Entries arrive here through `baseline` (the promotion ceremony); the
+# `observed` field quotes actual dated output, never a prediction.
+
+- id: DD-1
+  title: after `auths init`, the identity DID and the primary device DID differ
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: cli
+  covers:
+  - DD-1
+  evidence:
+  - 'device_did_collapse_notes.md §1: `auths whoami --json` reports identity_did == device_did
+    for a fresh developer identity (the primary device reuses the root AID)'
+  - crates/auths-sdk/src/domains/identity/local.rs resolve_local_signer returns signer_did
+    == root_did whenever a local root exists
+  observed: 'RED at baseline 2026-07-01: ours=identity_did==device_did (did:keri:EFo7VdDcfbndDBvx5Gb5yhdog0ycLAF-JTVg7d4as7la)
+    oracle=distinct (device #0 must be a delegated AID)'
+  smallest_fix: 'init delegates device #0 (its own dip AID) and resolve_local_signer reports
+    it, so whoami''s identity_did != device_did.
+
+    '
+  probe: probes/dd-1.sh
+  unlocks: the device is a first-class identifier, separable from the identity
+
+- id: DD-2
+  title: a commit signs and verifies end-to-end under the delegated device
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: cli
+  covers:
+  - DD-2
+  evidence:
+  - 'the coupling: the commit trailer Auths-Device comes from resolve_local_signer (sign.rs:98)
+    but the device signature key comes from auto_detect_device_key (sign.rs:393), which lists
+    keys by the ROOT DID (key_detect.rs:63) — flip one without the other and the trailer claims
+    device #0 while the root key signs, so verification fails'
+  observed: 'RED at baseline 2026-07-01: ours=device(did:keri:EK2Xek7_nEjHYAMtQvhXuy3-K-fT0V_B8u4dAUYsgFB9)==identity(did:keri:EK2Xek7_nEjHYAMtQvhXuy3-K-fT0V_B8u4dAUYsgFB9)
+    oracle=device #0''s delegated AID, verified by its own key'
+  smallest_fix: 'init + resolve_local_signer + auto_detect_device_key agree on device #0''s
+    key and AID, so `auths sign` then `auths verify` round-trips GREEN with Auths-Device ==
+    device #0''s did:keri.
+
+    '
+  probe: probes/dd-2.sh
+  unlocks: the headline gate — the refactor cannot be "done" while signing is broken underneath
+
+- id: DD-3
+  title: the primary device is independently revocable and the root identity survives
+  class: missing-surface
+  status: open
+  severity: headline
+  reads: cli
+  covers:
+  - DD-3
+  evidence:
+  - 'device_did_collapse_notes.md §3: today a compromised primary device can only be remediated
+    by abandoning the whole identity, because device == root'
+  - 'crates/auths-id/src/keri/delegation.rs revoke_delegated_device: single-author root ixn,
+    the device key is not needed — needs device #0 to have its own AID to target'
+  observed: 'RED at baseline 2026-07-01: ours=device==identity (did:keri:EEy6exO1Nb-8GWoPfIHdlHA0YzBpm5OG17Qm7tmniB2U)
+    oracle=distinct (cannot revoke a device that IS the identity — DD-1)'
+  smallest_fix: '`auths device remove <device#0>` revokes the delegated device; the root identity
+    still verifies and a NEW commit from the revoked device is rejected.
+
+    '
+  probe: probes/dd-3.sh
+  unlocks: '"lost my device" recovery without nuking the identity'
+
+- id: DD-4
+  title: one canonical device DID — no did:key/did:keri split across surfaces
+  class: missing-surface
+  status: open
+  severity: feature
+  reads: cli
+  covers:
+  - DD-4
+  evidence:
+  - 'device_did_collapse_notes.md §1: whoami reports the device as did:keri while the attestation
+    subject is did:key — two representations, and the did:keri one collapses to the root'
+  observed: 'RED at baseline 2026-07-01: ours=whoami(did:keri:EF6bfXqnLqymXsFTpHwxBzLt1ysvm4H9Zfh1HgNWhfs-)!=attestation(did:key:zDnaewzc59DDRPDioEuNFfU2jmk14EfXX9B8dA2zAWLEJthMn)
+    oracle=one canonical delegated did:keri everywhere'
+  smallest_fix: 'every surface (whoami, attestation subject, Auths-Device trailer) reports
+    device #0''s single delegated did:keri; did:key stays underlying key material only.
+
+    '
+  probe: probes/dd-4.sh
+  unlocks: interop consumers see one device identity, not two conflicting ones
+
+- id: DD-5
+  title: the delegated inception is keripy byte-identical (KERI interop of the model)
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: cli
+  covers:
+  - DD-5
+  evidence:
+  - 'PR #360: `auths keri-emit dip` == keripy 1.3.4 delegated inception, byte-for-byte, incl.
+    the delegated AID (d==i); bare and with pre-rotation; 24/24 conformance tests pass'
+  observed: 'GREEN at baseline 2026-07-01: auths keri-emit dip == keripy delegated inception
+    (byte-identical)'
+  smallest_fix: 'keri-emit dip serializes via the real auths_keri finalizers; the SAID equals
+    keripy''s.
+
+    '
+  probe: probes/dd-5.sh
+  unlocks: the device-delegation model is proven interoperable before the signing model is
+    touched

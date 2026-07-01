@@ -53,13 +53,26 @@ impl LocalSigner {
 /// // commit trailer: `Auths-Id: {signer.root_did}` + `Auths-Device: {signer.signer_did}`
 /// ```
 pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupError> {
-    // Root machine: the icp-rooted controller is the signer (signs directly).
+    // Root machine: prefer this root's delegated device #0 as the signer (its own AID,
+    // distinct from the root) so identity_did != device_did. Fall back to the root
+    // signing directly (a root identity with no delegated device — e.g. CI).
     if let Ok(managed) = ctx.identity_storage.load_identity() {
-        let did = managed.controller_did.to_string();
-        let anchor_seq = root_tip_seq(ctx, &did);
+        let root_did = managed.controller_did.to_string();
+        let anchor_seq = root_tip_seq(ctx, &root_did);
+        if let Ok(root_prefix) = auths_id::keri::parse_did_keri(&root_did)
+            && let Ok(devices) =
+                auths_id::keri::delegation::list_delegated_devices(ctx.registry.as_ref(), &root_prefix)
+            && let Some(dev) = devices.iter().find(|d| !d.revoked)
+        {
+            return Ok(LocalSigner {
+                signer_did: format!("did:keri:{}", dev.device_prefix),
+                root_did,
+                anchor_seq,
+            });
+        }
         return Ok(LocalSigner {
-            signer_did: did.clone(),
-            root_did: did,
+            signer_did: root_did.clone(),
+            root_did,
             anchor_seq,
         });
     }
