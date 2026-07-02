@@ -20,6 +20,7 @@ pub mod identity;
 pub mod identity_sign;
 pub mod org;
 pub mod pairing;
+pub mod passphrase;
 pub mod policy;
 pub mod presentation;
 pub mod rotation;
@@ -58,6 +59,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign::sign_action, m)?)?;
     m.add_function(wrap_pyfunction!(sign::verify_action_envelope, m)?)?;
     m.add_function(wrap_pyfunction!(sign::verify_bytes, m)?)?;
+
+    m.add("PASSPHRASE_MIN_LEN", passphrase::PASSPHRASE_MIN_LEN)?;
+    m.add_function(wrap_pyfunction!(passphrase::validate_passphrase, m)?)?;
 
     m.add_function(wrap_pyfunction!(token::get_token, m)?)?;
 

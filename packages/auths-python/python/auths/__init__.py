@@ -13,6 +13,7 @@ from auths._errors import (
     VerificationError,
 )
 from auths._native import (
+    PASSPHRASE_MIN_LEN,
     ChainLink,
     CredentialReport,
     CredentialStatus,
@@ -26,6 +27,7 @@ from auths._native import (
     sign_action,
     sign_artifact_bytes_raw,
     sign_bytes,
+    validate_passphrase,
     verify_action_envelope,
     verify_bytes,
     verify_at_time,
@@ -95,4 +97,8 @@ __all__ = [
     "AuthsError",
     "ChainLink",
     "VerificationStatus",
+
+    # Passphrase policy (pre-flight validation)
+    "validate_passphrase",
+    "PASSPHRASE_MIN_LEN",
 ]
