@@ -83,6 +83,23 @@ fn commit_valid_names_as_of_and_freshness() {
 }
 
 #[test]
+fn duplicitous_root_is_not_trusted_even_when_fresh() {
+    use auths_verifier::freshness::FreshnessPolicy;
+    let verdict = CommitVerdict::Valid {
+        signer_did: "did:keri:Edev".to_string(),
+        root_did: "did:keri:Eroot".to_string(),
+        duplicitous_root: true,
+        as_of: 2,
+        freshness: Freshness::Fresh,
+    };
+    // Fail-closed: a forked root KEL is not trusted even with a fresh, valid signature —
+    // the relying party cannot tell which branch is real.
+    assert!(!verdict.is_trusted(&FreshnessPolicy::default()));
+    // is_valid() stays true: the signature/chain verified; only the trust gate fails closed.
+    assert!(verdict.is_valid());
+}
+
+#[test]
 fn verification_report_valid_names_as_of_and_freshness() {
     let report = VerificationReport::valid(vec![]);
     assert!(report.is_valid());

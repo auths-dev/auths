@@ -207,13 +207,23 @@ impl CommitVerdict {
         }
     }
 
-    /// Whether this verdict is trusted under a freshness policy: it is `Valid` AND its
-    /// freshness clears the policy. A bare `Valid` is never trusted without freshness — the
-    /// relying party's policy (not the signer) decides the tolerance (ADR 009).
+    /// Whether this verdict is trusted under a freshness policy: it is `Valid`, its root KEL is
+    /// **not duplicitous** (a fork fails closed — the relying party cannot tell which branch is
+    /// real), AND its freshness clears the policy. A bare `Valid` is never trusted without
+    /// freshness — the relying party's policy (not the signer) decides the tolerance (ADR 009).
     ///
     /// Args:
     /// * `policy`: the relying party's freshness policy.
     pub fn is_trusted(&self, policy: &FreshnessPolicy) -> bool {
+        if matches!(
+            self,
+            CommitVerdict::Valid {
+                duplicitous_root: true,
+                ..
+            }
+        ) {
+            return false;
+        }
         self.is_valid() && policy.trusts(self.freshness())
     }
 

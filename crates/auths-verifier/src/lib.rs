@@ -253,6 +253,26 @@ mod tests {
     }
 
     #[test]
+    fn is_valid_is_false_when_a_duplicity_warning_is_present() {
+        // Fail-closed: a valid signature on a KEL that has forked is not trustworthy.
+        // The signature `status` stays Valid, but the trust decision (`is_valid`) refuses.
+        let report = VerificationReport::with_status(VerificationStatus::Valid, vec![])
+            .with_duplicity_warning(crate::duplicity::DuplicityReport::Diverging {
+                #[allow(clippy::disallowed_methods)]
+                shared_kel_prefix: crate::types::IdentityDID::new_unchecked(
+                    "did:keri:EShared".to_string(),
+                ),
+                seq: 2,
+                event_saids: vec!["ErotA".into(), "ErotB".into()],
+            });
+        assert!(matches!(report.status, VerificationStatus::Valid));
+        assert!(
+            !report.is_valid(),
+            "a diverging KEL must fail closed, not warn-and-pass"
+        );
+    }
+
+    #[test]
     fn verification_report_serializes_to_expected_json() {
         let chain = vec![
             ChainLink::valid(
