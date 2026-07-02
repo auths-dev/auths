@@ -1,22 +1,16 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use auths_infra_http::HttpRegistryClient;
 use auths_sdk::ports::RegistryClient;
-use auths_sdk::workflows::compliance::ArtifactDigest;
-use auths_transparency::{
-    FsTileStore, LogOrigin, LogSigningKey, LogWriter, SignedCheckpoint, hash_leaf,
-};
+use auths_transparency::SignedCheckpoint;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use super::executable::ExecutableCommand;
 use crate::config::CliConfig;
 use crate::ux::format::{JsonResponse, is_json_mode};
-
-/// PKCS#8 signing-key file kept inside the local log directory.
-const LOG_KEY_FILE: &str = "log.key";
 
 #[derive(Args, Debug, Clone)]
 #[command(about = "Inspect, verify, and operate the transparency log")]
@@ -280,65 +274,21 @@ async fn handle_verify(args: &VerifyArgs) -> Result<()> {
     Ok(())
 }
 
-/// Load the log signing key from `<log-dir>/log.key`, creating it on first
-/// use when `create` is set (the append path); proving against a log that
-/// does not exist yet is an error, not a key-generation event.
-fn load_log_key(log_dir: &Path, create: bool) -> Result<LogSigningKey> {
-    let path = log_dir.join(LOG_KEY_FILE);
-    match std::fs::read(&path) {
-        Ok(der) => LogSigningKey::from_pkcs8_der(&der)
-            .with_context(|| format!("Failed to parse log signing key at {}", path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound && create => {
-            let key = LogSigningKey::generate().context("Failed to generate log signing key")?;
-            let der = key
-                .to_pkcs8_der()
-                .context("Failed to encode log signing key")?;
-            std::fs::write(&path, der)
-                .with_context(|| format!("Failed to write {}", path.display()))?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-                    .with_context(|| format!("Failed to restrict {}", path.display()))?;
-            }
-            Ok(key)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            bail!("No log at {} — append an artifact first", log_dir.display())
-        }
-        Err(e) => {
-            Err(e).with_context(|| format!("Failed to read log signing key at {}", path.display()))
-        }
-    }
-}
-
-fn local_log_writer(log_dir: &Path, origin: &str, create: bool) -> Result<LogWriter<FsTileStore>> {
-    let origin = LogOrigin::new(origin).map_err(|e| anyhow::anyhow!("invalid --origin: {e}"))?;
-    if create {
-        std::fs::create_dir_all(log_dir)
-            .with_context(|| format!("Failed to create {}", log_dir.display()))?;
-    }
-    let key = load_log_key(log_dir, create)?;
-    Ok(LogWriter::new(
-        FsTileStore::new(log_dir.to_path_buf()),
-        key,
-        origin,
-    ))
-}
-
 #[allow(clippy::disallowed_methods)] // CLI is the presentation boundary (checkpoint timestamp)
 async fn handle_append(args: &AppendArgs) -> Result<()> {
-    let digest = ArtifactDigest::parse(&args.artifact)
-        .map_err(|e| anyhow::anyhow!("invalid --artifact value: {e}"))?;
-    let writer = local_log_writer(&args.log_dir, &args.origin, true)?;
+    let appended = auths_sdk::workflows::transparency::append_artifact_digest(
+        &args.log_dir,
+        &args.origin,
+        &args.artifact,
+        chrono::Utc::now(),
+    )
+    .await
+    .context("Failed to append artifact to transparency log")?;
 
-    let leaf_hash = hash_leaf(digest.as_str().as_bytes());
-    let appended = writer.append(leaf_hash, chrono::Utc::now()).await?;
     let checkpoint = &appended.signed_checkpoint.checkpoint;
-
     let result = AppendResult {
-        artifact_digest: digest.as_str().to_string(),
-        leaf_hash: hex::encode(leaf_hash.as_bytes()),
+        artifact_digest: appended.artifact_digest,
+        leaf_hash: hex::encode(appended.leaf_hash.as_bytes()),
         index: appended.index,
         size: checkpoint.size,
         root: hex::encode(checkpoint.root.as_bytes()),
@@ -360,12 +310,13 @@ async fn handle_append(args: &AppendArgs) -> Result<()> {
 }
 
 async fn handle_prove(args: &ProveArgs) -> Result<()> {
-    let digest = ArtifactDigest::parse(&args.artifact)
-        .map_err(|e| anyhow::anyhow!("invalid --artifact value: {e}"))?;
-    let writer = local_log_writer(&args.log_dir, &args.origin, false)?;
-
-    let leaf_hash = hash_leaf(digest.as_str().as_bytes());
-    let inclusion = writer.prove(&leaf_hash).await?;
+    let inclusion = auths_sdk::workflows::transparency::prove_artifact_digest(
+        &args.log_dir,
+        &args.origin,
+        &args.artifact,
+    )
+    .await
+    .context("Failed to prove artifact inclusion")?;
 
     if let Some(out) = &args.out {
         let json = serde_json::to_string_pretty(&inclusion)
@@ -375,7 +326,7 @@ async fn handle_prove(args: &ProveArgs) -> Result<()> {
             JsonResponse::success("log prove", &inclusion).print()?;
         } else {
             println!("Inclusion evidence written");
-            println!("  Artifact: {}", digest.as_str());
+            println!("  Artifact: {}", args.artifact);
             println!("  Index:    {}", inclusion.inclusion_proof.index);
             println!("  Size:     {}", inclusion.inclusion_proof.size);
             println!("  Out:      {}", out.display());

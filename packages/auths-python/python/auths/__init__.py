@@ -50,6 +50,7 @@ from auths.pairing import PairingResponse, PairingResult, PairingService, Pairin
 from auths.trust import TrustEntry, TrustLevel, TrustService
 from auths.witness import Witness, WitnessService
 from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
+from auths.tlog import LogAppendResult, log_append, log_prove, log_verify_inclusion
 from auths.attestation_query import Attestation, AttestationService
 from auths.commit import CommitSigningResult
 from auths.jwt import AuthsClaims

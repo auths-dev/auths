@@ -634,6 +634,11 @@ pub fn validate_commit_sha(sha: &str) -> Result<String, ArtifactSigningError> {
 /// };
 /// let result = sign_artifact(params, &ctx)?;
 /// ```
+// A straight-line dual-signature pipeline: resolve the issuer (root) + device keys,
+// build and sign the attestation, then anchor it on the root KEL. The steps are
+// sequential with shared locals; splitting the flow would scatter it across helpers
+// without making any one part clearer.
+#[allow(clippy::too_many_lines)]
 pub fn sign_artifact(
     params: ArtifactSigningParams,
     ctx: &AuthsContext,

@@ -23,6 +23,7 @@ pub mod presentation;
 pub mod rotation;
 pub mod runtime;
 pub mod sign;
+pub mod tlog;
 pub mod token;
 pub mod trust;
 pub mod types;
@@ -93,6 +94,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes_raw, m)?)?;
+
+    m.add_class::<tlog::PyLogAppendResult>()?;
+    m.add_function(wrap_pyfunction!(tlog::log_append, m)?)?;
+    m.add_function(wrap_pyfunction!(tlog::log_prove, m)?)?;
+    m.add_function(wrap_pyfunction!(tlog::log_verify_inclusion, m)?)?;
 
     m.add_class::<commit_sign::PyCommitSignResult>()?;
     m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;
