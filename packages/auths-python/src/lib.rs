@@ -14,6 +14,7 @@ pub mod commit_sign;
 pub mod commit_verify;
 pub mod device_ext;
 pub mod diagnostics;
+pub mod dsse;
 pub mod identity;
 pub mod identity_sign;
 pub mod org;
@@ -99,6 +100,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tlog::log_append, m)?)?;
     m.add_function(wrap_pyfunction!(tlog::log_prove, m)?)?;
     m.add_function(wrap_pyfunction!(tlog::log_verify_inclusion, m)?)?;
+
+    m.add_function(wrap_pyfunction!(dsse::dsse_sign_statement, m)?)?;
+    m.add_function(wrap_pyfunction!(dsse::dsse_verify_statement, m)?)?;
 
     m.add_class::<commit_sign::PyCommitSignResult>()?;
     m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;
