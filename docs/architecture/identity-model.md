@@ -15,20 +15,20 @@ Auths uses three KERI (Key Event Receipt Infrastructure) concepts adapted for Gi
 ## Identity vs. Device
 
 !!! info "The one thing to remember"
-    **Your identity is not your key.** Keys live on devices and can be rotated. Your identity (`did:keri:E...`) is permanent and survives key changes.
+    **Your identity is not your key.** Your root identity (`did:keri:E...`) is permanent and survives key changes. Each device is a KERI **delegated identifier** with its *own* `did:keri:` AID that the root anchored — so the device signs day to day while the root key can stay cold.
 
 ```mermaid
 flowchart TD
-    A["<strong>IDENTITY</strong><br/>did:keri:E...<br/><small>Permanent, derived from KEL</small>"]
-    B["<strong>DEVICE A</strong><br/>did:key:z6Mk...<br/><small>laptop</small>"]
-    C["<strong>DEVICE B</strong><br/>did:key:z6Mk...<br/><small>phone</small>"]
+    A["<strong>ROOT IDENTITY</strong><br/>did:keri:E...<br/><small>Permanent, derived from its icp KEL</small>"]
+    B["<strong>DEVICE #0</strong><br/>did:keri:E...<br/><small>laptop — delegated (dip), its own KEL</small>"]
+    C["<strong>DEVICE / AGENT</strong><br/>did:keri:E...<br/><small>phone — delegated (dip), its own KEL</small>"]
 
-    A -->|"signed attestation"| B
-    A -->|"signed attestation"| C
+    A -->|"delegation: dip anchored by an ixn on the root KEL"| B
+    A -->|"delegation: dip anchored by an ixn on the root KEL"| C
 ```
 
-- **Identity** (`did:keri:E...`): Your stable cryptographic identifier. Derived from the inception event's SAID. Survives key rotation.
-- **Device** (`did:key:z6Mk...`): A per-machine Ed25519 keypair. Devices are instruments that act on behalf of an identity, authorized via signed attestations.
+- **Root identity** (`did:keri:E...`): Your stable cryptographic identifier, derived from the inception (`icp`) event's SAID. It is the trust anchor a verifier pins (`.auths/roots`) and it anchors delegations; its key is touched rarely — to add or revoke a device — so it can stay cold.
+- **Device** (`did:keri:E...`): A KERI **delegated identifier** (`dip`) with its own key and its own KEL, anchored by the root. `auths init` (developer profile) delegates a first device — **device #0** — automatically, so a fresh identity already has `identity_did != device_did`. Devices rotate independently (`drt`) and are independently revocable (a single root-authored `ixn` — no device key required). Commit trailers carry the device's `did:keri:` form (`Auths-Device`); the *authoritative* device identity is this delegated `did:keri:` AID, not the raw `did:key:` (below). Agents are modeled the same way — a role-marked delegated identifier — so devices and agents are one `dip`/`drt` concept. See [device-model.md](device-model.md).
 
 ## DID Derivation
 
@@ -60,9 +60,9 @@ pub fn compute_said(event_json: &[u8]) -> Said {
 }
 ```
 
-### did:key (device)
+### did:key (raw key material)
 
-Device identifiers use the `did:key` method, which encodes the public key directly in the DID string:
+A raw signing key has a `did:key` encoding that packs the public key directly into the string. Under delegation this is the *underlying key material* — a device's authoritative identity is its delegated `did:keri:` AID (above), not this `did:key`. The `did:key` form is still used for ephemeral / one-time CI signers and wherever a bare public key is referenced.
 
 1. Prepend the Ed25519 multicodec prefix `[0xED, 0x01]` to the 32-byte public key
 2. Encode as Base58btc
@@ -146,6 +146,12 @@ Anchors data in the KEL without changing keys. Used to link attestations, delega
 | `s` | string | Sequence number |
 | `p` | string | Previous event SAID |
 | `a` | Seal[] | Anchored seals (the primary purpose of IXN events) |
+
+### Delegated Inception (`dip`) / Delegated Rotation (`drt`)
+
+Devices and agents are **delegated identifiers**: each runs its own KEL that begins with a `dip` (delegated inception) rather than an `icp`, and rotates with `drt` (delegated rotation) rather than `rot`. A `dip` mirrors an `icp` plus a `di` field naming its **delegator** (the root's prefix); a `drt` mirrors a `rot` with that delegation binding preserved. For a `dip`, `i == d` (the delegated AID is self-addressing over its own inception).
+
+A delegated event is only valid once the delegator has **anchored** it: the root appends an `ixn` to *its* KEL carrying a seal that references the delegated event (`validate_delegation` checks both sides of this binding). So a device's authority is provable from two linked KELs — the device's own `dip`/`drt` chain, and the root `ixn` that anchored the `dip`. Revoking a delegated identifier is a single root-authored `ixn` anchoring a `Seal::Digest` of the delegated prefix — no device key required.
 
 > KEL events carry **no in-body signature** and **no in-body timestamp**. Signatures attach out-of-band as CESR indexed-signature groups; see [SPEC.md] §1 for the normative per-type field sets.
 

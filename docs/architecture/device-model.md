@@ -1,261 +1,72 @@
-# Device model: attestations vs. KEL controllers
+# Device model: KERI delegated identifiers
 
-> **Historical note (June 2026):** The Model D (delegation) decision recorded below has since
-> been **implemented**. Devices are now KERI delegated identifiers (`dip`/`drt`) anchored by the
-> root identity, commit verification is KEL replay against the `.auths/roots` pin, and the
-> attestation-based device management and `allowed_signers` flow described in §1 as "today" no
-> longer ships. §1 is retained as the verified pre-migration state; the decision rationale
-> remains authoritative. Current model: `identity-model.md`.
+Devices — and agents — are KERI **delegated identifiers** anchored by the root identity. This note describes the model as it ships today, then retains the design decision that chose it.
 
-**Status:** Decision *recorded, not yet taken* (2026-06-02). This note is the authoritative
-description of how devices actually relate to an identity **today**, and the scoped plan for
-making the shared-KEL controller model live if/when we choose to.
-
-> For the broader picture — what it takes for *every* trust decision to be KERI-native (witnesses +
-> OOBI, ACDC/TEL), not just device membership — see `keri-only-roadmap.md`. This note is its Tier 1.
-
-> **Corrects the record:** `multi_device_accepted_risks.md` describes a "Stage 1 shipped" world
-> where "the user's identity is a shared KEL whose controllers are those device DIDs." That is
-> *aspirational — ahead of the code*. The shared-KEL controller machinery exists and is unit-tested
-> in `auths-id`, but **no command or workflow calls it**. Device management is 100% attestation-based
-> in the shipping product. See §1.
+> **Status:** Model **D (delegation)** is **implemented and shipping.** `auths init` delegates a first device (device #0); commit verification is KEL replay against the `.auths/roots` pin; devices are independently revocable. The pre-migration attestation-based device management and `.auths/allowed_signers` allowlist described in earlier revisions of this note **no longer ship** for commit trust. Identity primitives: [identity-model.md](identity-model.md). For the broader "every trust decision KERI-native" picture (witnesses + OOBI, ACDC/TEL), see `keri-only-roadmap.md` — this is its Tier 1.
 
 ---
 
-## Design decision (2026-06-03): the multi-device key-custody model
+## The current model
 
-> **This section supersedes the shared-`k[]`-controller framing in the rest of this note for the
-> *multi-device* case.** Recorded after a design pass on Epic A. **Decided (2026-06-03): Model D
-> (delegation).**
->
-> The KERI delegation primitives this rests on already exist and are tested lower in the stack —
-> `DipEvent`/`DrtEvent` construction (`auths-keri/src/events.rs:616`), `validate_delegated_inception`
-> (`validate.rs:683`), `validate_delegation` (`validate.rs:260`, which already verifies the delegator
-> *anchored* the delegated event), and the `ixn` anchoring machinery (`auths-id/src/keri/anchor.rs`).
-> The shared-`k[]` detour was the wrong layer; delegation was waiting underneath.
+### Devices are delegated identifiers
 
-### The problem a design pass surfaced
+- Each device is a delegated identifier (`dip`) with its own `did:keri:` AID and its own KEL, anchored by the root via an `ixn` on the root KEL (`validate_delegation` checks both sides of the binding).
+- `auths init` (developer profile) delegates **device #0** automatically, so a fresh identity already has `identity_did != device_did`. Device #0's key is stored under the device's own AID (alias `<root>-device`, e.g. `main-device`); the root key (`main`) is touched only to add or revoke a device, so it stays cold.
+- Devices rotate independently (`drt`). **Agents are the same primitive** with a role marker — `device` and `agent` are one `dip`/`drt` concept, distinguished by a `DelegatedRole` (`list_delegated_devices` filters `Device`; agent listing filters `Agent`).
 
-The shared-KEL model records each device as an entry in the identity KEL's `k[]`, and treats adding or
-removing a device as a `rot`. But KERI **pre-rotation** requires every key in a rotation's new `k[]` to
-be the revealed pre-image of a prior `n[]` commitment — and **a single device holds only its own
-pre-committed next key**. It has the *digests* of the other devices' next keys (from prior `n[]`), never
-the pre-images. Therefore:
+### Commit signing — device #0 signs, the root stays cold
 
-> **One device cannot author a keripy-valid `rot` that rotates a multi-device `k[]`.** It cannot produce
-> the revealed next keys of the other controllers.
+- `git commit` signs with **device #0's** key: `auths init` sets git `user.signingkey = auths:<device#0 alias>` and `gpg.ssh.program = auths-sign`, so a commit gets an SSHSIG from device #0. `auths sign HEAD` then writes the in-band trailers.
+- Trailers: **`Auths-Id`** = the root `did:keri:` (the policy authority), **`Auths-Device`** = the signer's `did:keri:` (device #0), **`Auths-Anchor-Seq`** = the root KEL tip observed at signing (lets a verifier order a commit against a later revocation).
+- `resolve_local_signer` picks the signer uniformly: on a developer machine it is delegated **device #0** (root cold); a root with no delegated device — e.g. a CI identity — signs directly (`signer == root`); on a paired machine it is that machine's own delegated device, chaining to its delegator (`dip.di`).
 
-The current `rotate_registry_identity_multi` "works" only because it decrypts **every** survivor's next
-key from the *local* keychain (`rotate.rs` survivor loop) — i.e. it assumes **one host holds all
-controllers' keys**. That is single-host-many-keys, **not** device-bound multi-device. The dual-index
-removal fixtures were keripy-validated under exactly that one-host assumption (one test held `s0..s4`).
+### Commit verification — KEL replay against a pinned root
 
-### The two coherent models
+- Verification reads the `Auths-Id`/`Auths-Device` trailers, replays the **device** KEL (a `dip` is replayed *with the delegator lookup*, so the device's key state resolves without the root co-signing) and the **root** KEL, then checks the SSHSIG against the device's current key.
+- Trust is a **pin, not an allowlist**: the root must be in `.auths/roots`, and the trailer-claimed root may only *select* a pinned root. There is **no `ssh-keygen` subprocess and no `.auths/allowed_signers`** — the `commit_trust` workflow is the successor to that allowlist.
+- The result is a `CommitVerdict` (`RootNotPinned`, `RootAbandoned`, `DelegationSealNotFound`, superseded/revoked-device, valid, …).
 
-**Model D — Delegation (recommended).** Each device is a KERI **delegated identifier** (`dip`) of the
-root identity. The root **anchors** a delegation seal (`ixn`) authorizing a device; removal anchors a
-revocation. Each device runs its own KEL and rotates independently (`drt`).
-- **keripy-valid** — delegated AIDs are standard KERI.
-- **True device-bound** — each device holds only its own key + KEL.
-- **Single-author set changes** — device add/remove is an `ixn` anchor signed by the root's *current*
-  key (no pre-rotation reveal, no other device's private key). Simpler than a shrink `rot`.
-- **Verification** — a commit signer's device KEL chains to a root-anchored delegation → authorized.
-- **Unifies with agents** — Epic E models agents as delegated identifiers too: devices and agents
-  become one `dip`/`drt` concept.
-- **Reuses what's built** — `dip`/`drt` events, device KELs, the dual-index CESR primitive, the
-  verification core. The shared-`k[]` controller layer (`shared_kel.rs`) is retired for multi-device.
-- **Tradeoff** — introduces a root/primary asymmetry (the root key anchors delegations). For developer
-  identity this is desirable (a clear root of trust); root-key loss is a recovery concern, not a
-  per-operation one, since set changes are `ixn` anchors the delegates don't need to co-sign.
+### Revocation — independent, root-authored, order-aware
 
-**Model S — Per-device-custody shared KEL.** Keep `k[]` = device verkeys. A rotation's author rotates
-**only its own slot** (reveals its own next key), **carries** the other survivors forward from prior
-`k[]`/`n[]` (public state), and appends provided controllers.
-- Single-author ✓ and passes the *auths* validator (kt=1 met by the author; prior nt met by its one
-  reveal).
-- **But the carried slots are not revealed pre-images, so the shared KEL diverges from keripy
-  pre-rotation.** Auths-valid, not keripy-valid.
+- `auths device remove --device-did <d> --key <root-key>` revokes a delegated device: a single `ixn` on the root KEL anchoring a `Seal::Digest` of the device prefix (`revoke_delegated_device`). No device key is needed, and the root identity survives.
+- Revocation is **order-aware**: a commit signed *before* the revocation (its `Auths-Anchor-Seq` precedes it) stays valid; a *new* commit from a revoked device is rejected fail-closed, and signing with a revoked device is refused at sign time (`AUTHS-E5857`).
 
-### Recommendation: **Model D (delegation)**
+> **Use `auths device remove`, not `auths emergency`.** The registry-aware revocation path is `device remove`. The legacy `auths emergency rotate-now` / `revoke-device` commands use a separate GitKel backend that cannot see registry-backed delegated devices; rotating a delegated device's key is not yet supported.
 
-keripy-faithfulness is a stated project value (Wave 0 byte-interop; the dual-index validator was built
-against keripy). Model S formalizes a keripy divergence for the shared KEL; Model D stays keripy-native,
-is the cleaner device-bound model, supports independent device rotation, makes device add/remove a
-simple `ixn` anchor (no shrink-`rot` gymnastics), and **unifies devices with agents**.
+### Attestations — still the artifact & metadata layer
 
-### Impact on Epic A (Model D — decided)
+Attestations did not go away; they moved off the commit-trust path.
 
-- fn-143.1 → "incept/author a **delegated device identifier** + root-anchored delegation seal" (replaces
-  the keychain-layout work).
-- fn-143.3 / .4 → "delegate / revoke a device" via root `ixn` anchoring (replaces shared-KEL add/shrink
-  rotations).
-- fn-143.2 (provided-controller append) is largely **superseded**; its lesson — a remote device's key is
-  never held locally — carries into the delegation pairing handshake.
-- **Retained:** device KELs, `dip`/`drt`, the dual-index CESR primitive, verification core, witnesses
-  (Epic D). `shared_kel.rs`'s controller-set helpers are retired for multi-device.
+- **Artifact signing** (`auths sign <file>`) produces a **dual-signed** attestation: the **issuer** is the root identity (its key co-signs the issuer slot) and the **device** is device #0 (its key signs the device slot). The issuer must be the root — a bundle / pinned-root verifier resolves the *issuer*, so an attestation self-issued under a delegated device does not verify statelessly.
+- Attestations still carry **metadata** — capabilities, expiry, revocation, OIDC binding — that a KEL cannot hold.
+- Attestations are **no longer the trust source for commit verification** (that is KEL replay + pinned roots).
 
 ---
 
-## TL;DR
+## The design decision (Model D) — recorded 2026-06-03, implemented since
 
-- **Commit signing is decoupled from the device model.** `auths-sign` signs with a local keychain
-  key and never reads attestations or the KEL. Switching models cannot break signing.
-- **Verification trusts `.auths/allowed_signers`**, which is *generated from attestations* today.
-  This is the single coupling point: change the device model and you must repoint the generator.
-- **The two models are complementary, not rival.** `k[]` holds keys; attestations hold metadata
-  (email, capabilities, expiry, OIDC binding). A controller model would keep attestations anyway.
-- **The hard part is already built.** Dual-index CESR signatures + true shrink-`k` removal authoring
-  (Epic B) are done and tested. What's missing is the *wiring* that creates a multi-controller shared
-  KEL in the first place — a bounded feature, not a rewrite.
+Two coherent multi-device models were considered:
+
+- **Model D — Delegation (chosen).** Each device is a KERI delegated identifier (`dip`) of the root; the root **anchors** a delegation seal (`ixn`) to authorize a device, and a revocation `ixn` to remove it. Each device runs its own KEL and rotates independently (`drt`). This is keripy-valid, truly device-bound (each device holds only its own key), gives **single-author set changes** (an `ixn` signed by the root's *current* key — no pre-rotation reveal, no other device's private key), and **unifies devices with agents**. Its one tradeoff is a root/primary asymmetry — desirable for a developer identity (a clear root of trust); root-key loss is a recovery concern, not a per-operation one.
+- **Model S — Per-device-custody shared KEL (rejected).** Keep `k[]` = device verkeys and grow/shrink the set by rotation. This founders on KERI **pre-rotation**: a rotation's new `k[]` must reveal the pre-images of prior `n[]` commitments, but a single device holds only *its own* pre-committed next key — it cannot author a keripy-valid `rot` that rotates a multi-device `k[]`. Carrying the other controllers' slots forward from public state is *auths*-valid but **not keripy-valid**.
+
+keripy-faithfulness is a stated project value (byte-interop with keripy 1.3.4), so Model D — keripy-native, device-bound, independently rotatable, and unifying devices with agents — was chosen over formalizing a shared-KEL divergence. The delegation primitives it rests on (`DipEvent`/`DrtEvent`, `validate_delegated_inception`, `validate_delegation`, the `ixn` anchoring machinery) already existed and were tested lower in the stack; the shared-`k[]` controller helpers (`shared_kel.rs`) are retired for multi-device.
 
 ---
 
-## 1. What's actually true today (verified against the code)
+## Attestations vs. delegation: two layers, not rivals
 
-### 1.1 Signing — independent of the device model
+They answer different questions:
 
-`crates/auths-cli/src/bin/sign.rs` resolves a keychain alias (`auths:<alias>`), signs the git
-buffer, and emits an SSHSIG. It loads no identity, no attestation, no KEL. **Any device-model change
-is invisible to the signing path.**
+- **"Is this device cryptographically part of the identity?"** — a **delegation** question, provable from the KEL alone: the device's `dip` plus the root's anchoring `ixn`, ordered, and revocable by a further `ixn`.
+- **"What is this device allowed to do, and what is its email / expiry / OIDC binding?"** — an **attestation** question: metadata a KEL cannot hold.
 
-### 1.2 Verification — anchored on `allowed_signers`
-
-`crates/auths-cli/src/commands/verify_commit.rs` verifies in two phases:
-
-1. **Always:** the SSH signature is checked against `.auths/allowed_signers`
-   (`verify_commit.rs:29-30`, via `ssh-keygen -Y find-principals|verify`). This is the load-bearing
-   trust decision for commit verification.
-2. **Optional (`--identity-bundle`):** a device→identity attestation chain is checked via
-   `verify_chain`. Not used in the common path.
-
-Commit verification **does not read KEL key-state.** It reads `allowed_signers`.
-
-### 1.3 `allowed_signers` is generated *from attestations*
-
-`crates/auths-sdk/src/workflows/allowed_signers.rs::sync` (`:363`) calls
-`storage.load_all_attestations()` (`:382`) and emits one entry per attestation —
-`principal_from_attestation()` + `att.device_public_key` (`:387,:390,:497`).
-
-**This is the only place the device model touches verification.** Verification keeps working for
-*any* source, as long as `allowed_signers` stays populated.
-
-### 1.4 The shared-KEL controller model is dormant
-
-`crates/auths-id/src/keri/shared_kel.rs` defines `ControllerDescriptor`, `rot_add_controller`,
-`rot_remove_controller`, `rot_swap_controller`, `apply_shared_kel_change`, and
-`resolve_controller_index` (`:185`). `initialize_registry_identity_multi`
-(`identity/initialize.rs:245`) incepts a multi-controller KEL.
-
-**None of these have a caller outside their own unit tests.** `auths init` uses the single-controller
-`initialize_registry_identity` (`:126`). `auths device link` creates an **attestation**
-(`domains/device/service.rs:70` → `create_signed_attestation`). `revoke`/`extend` mutate attestations
-(`:135`, `:202`). No command grows or shrinks a controller set.
-
-### 1.5 Blast radius, honestly scoped
-
-| Path | Source of truth today | Under a controller model |
-|------|----------------------|--------------------------|
-| `auths sign` / commit signing | local keychain key | **no change** |
-| `auths verify` | `.auths/allowed_signers` | **no change** *if* `allowed_signers` stays populated |
-| `allowed_signers` generation | attestations (`sync`) | repoint to `k[]`, or dual-source |
-| `auths status`, `device list` | attestations | cosmetic — read `k[]` |
-| `device link` / `revoke` / `extend` | create/mutate attestations | unchanged, *or* also author a rotation |
-| `device remove` | returns `RemovalNotYetSupported` (`authorization.rs:320`) | real shrink-`k` rotation |
-| `auths init`, `rotate`, `id show`, `agent` | not device-model dependent | **no change** |
+Delegation supplies cryptographic membership; attestations supply metadata. Both stay.
 
 ---
 
-## 2. The two models are layers, not rivals
+## Open questions & accepted risks
 
-**Attestation** (`crates/auths-verifier/src/core.rs::Attestation`) — an issuer-signed, device-
-counter-signed record binding a device `did:key:` to an identity `did:keri:`, carrying metadata:
-email, capabilities, expiry, revocation, OIDC binding. Stored as a git ref; cheap to write; self-
-contained for offline verification.
-
-**KEL controller** (`ControllerDescriptor`) — a slot in the identity KEL's `k[]`. Membership is part
-of the signed event log: provable from the KEL alone, ordered, and removable by rotation. Holds
-*keys*, not metadata.
-
-These answer different questions. "Is this device cryptographically part of the identity?" is a `k[]`
-question. "What is this device allowed to do, and what's its email/expiry?" is an attestation
-question. A controller model **adds** the first; it does not remove the need for the second.
-
----
-
-## 3. Gains vs. costs of moving membership into `k[]`
-
-**Gains**
-- Device membership is provable from the KEL itself — no separately-signed ref to fetch/trust.
-- Removal is a real, ordered KEL event (not a revocation flag), verifiable offline from the log.
-- Threshold policies become expressible (`kt=2`, "2-of-3 devices must sign").
-
-**Costs**
-- Every add/remove is a **KEL rotation** — heavier than writing an attestation ref (advances key
-  state, consumes a pre-committed next-key).
-- Offline verifiers need each device's KEL present to resolve its current key — more state to ship
-  than a self-contained attestation.
-- The **kt=1 duplicity risk** (`multi_device_accepted_risks.md`) becomes consensus-critical the moment
-  membership lives in `k[]`.
-- `k[]` can't hold email/capabilities/expiry — attestations stay regardless, so you run both layers.
-
----
-
-## 4. Recommended posture
-
-**Keep attestations as the metadata + `allowed_signers` layer. Treat KEL controllership as an opt-in
-security upgrade** for devices you want cryptographically bound to the identity. The two coexist:
-`allowed_signers` can be dual-sourced (attestation-derived **and** controller-derived entries) so
-neither path regresses. This avoids a rip-and-replace and lets controllership land incrementally.
-
----
-
-## 5. Scoped wiring plan (for whoever picks this up)
-
-### Already done (Epic B — dual-index CESR signatures)
-- `IndexedSignature` carries `prior_index`; dual-index `2A`/`2E` emission + a code-directed parser,
-  byte-identical to keripy 1.3.4.
-- The validator binds each rotation signature to the prior commitment it reveals and meets the prior
-  threshold over the prior `n[]` (shrink-`k` removal is accepted).
-- `rotate_registry_identity_multi(..., RotationShape { remove_indices, .. })` authors a true shrink
-  rotation; `rot_remove_controller` is unblocked. End-to-end test: a 3-controller shared KEL rotates
-  to 2 and replays (`auths-id` `shared_kel_removes_controller_three_to_two`).
-
-### Missing — the wiring that makes it live
-1. **An "add controller" path.** Nothing creates a multi-controller shared KEL today. Decide where
-   the first controller comes from (convert `auths init` to incept a single-controller *shared* KEL,
-   or lazily promote on first device add), then have `device link`/`pair` author a growth rotation via
-   `rot_add_controller` instead of (or alongside) the attestation.
-2. **SDK `remove_device()` workflow** in `domains/device/service.rs` (sibling of `link/revoke/extend`):
-   load KEL state → `resolve_controller_index(target_did)` → `RotationShape { remove_indices }` →
-   `rotate_registry_identity_multi` → persist. All orchestration in the SDK, per the layering rules.
-3. **CLI `auths device remove`** → call SDK `remove_device()`; delete the `RemovalNotYetSupported`
-   branch (`authorization.rs:320`). Presentation only.
-4. **Repoint `allowed_signers::sync`** to include controller-derived entries (dual-source), so removing
-   a controller actually drops its verify authority.
-5. **`auths status` / `device list`** to surface the controller set alongside attestations.
-6. **Retire `RemovalNotYetSupported`** once `authorization.rs:320` and `pair/lan.rs:57` no longer
-   reference it.
-
-### Decisions to settle *before* building
-- Does `auths init` always create a shared KEL (uniform model), or only multi-device identities?
-- What does `device revoke` mean once controllers exist — attestation revocation, `k[]` removal, or
-  both? (They are distinct trust events.)
-- Is controllership default-on for every device, or opt-in for "trusted" devices only?
-- Do we stay `kt=1` (accept the duplicity risk) or move to `kt≥2` (and pay the coordination cost)?
-  The threshold upgrade path is sketched in `essays/design/multi_device.md`.
-
-### Suggested sequence
-Settle the decisions above → (1) add-controller path with dual-sourced `allowed_signers` → (2)+(3)
-remove path end-to-end → (5) status/list surfacing → (6) cleanup. Each step is independently testable
-and shippable; the cryptographic core it rests on is already verified.
-
----
-
-## 6. Open questions
-
-- **Migration of existing identities.** If `init` starts creating shared KELs, what happens to
-  identities incepted single-controller? (Pre-launch, zero users — likely a non-issue, but record it.)
-- **Verifier state distribution.** Controller-based verification needs device KELs available offline;
-  define how a verifier obtains them (bundle? registry fetch?).
-- **Duplicity surfacing.** `auths_verifier::duplicity::detect_duplicity` exists; wire it into the
-  controller add/remove UX before membership becomes consensus-critical.
+- **kt=1 duplicity.** The root KEL runs `kt=1` with no witnesses in the default posture; concurrent rotations on different hosts can fork it. `auths_verifier::duplicity::detect_duplicity` surfaces divergence; full detail in `multi_device_accepted_risks.md`, and the threshold (`kt≥2`) upgrade path in `essays/design/multi_device.md`.
+- **Stateless verification needs the device KEL.** A `--identity-bundle` verifier resolves trust from the bundle's root, but replaying a delegated-device signature needs that device's KEL and the root's anchoring `ixn` available (from a trusted registry or the bundle). How bundles carry delegated-device KELs for fully offline verification is worth confirming as the stateless path is exercised.
+- **Delegated-device key rotation** is not yet supported (see the revocation note above); the current remediation for a compromised device is `device remove` + pairing a new device.
