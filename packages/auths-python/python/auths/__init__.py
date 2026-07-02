@@ -13,6 +13,7 @@ from auths._errors import (
     VerificationError,
 )
 from auths._native import (
+    PASSPHRASE_MIN_LEN,
     ChainLink,
     CredentialReport,
     CredentialStatus,
@@ -26,7 +27,9 @@ from auths._native import (
     sign_action,
     sign_artifact_bytes_raw,
     sign_bytes,
+    validate_passphrase,
     verify_action_envelope,
+    verify_bytes,
     verify_at_time,
     verify_attestation,
     verify_chain,
@@ -50,6 +53,8 @@ from auths.pairing import PairingResponse, PairingResult, PairingService, Pairin
 from auths.trust import TrustEntry, TrustLevel, TrustService
 from auths.witness import Witness, WitnessService
 from auths.artifact import ArtifactPublishResult, ArtifactSigningResult
+from auths.tlog import LogAppendResult, log_append, log_prove, log_verify_inclusion
+from auths import dsse
 from auths.attestation_query import Attestation, AttestationService
 from auths.commit import CommitSigningResult
 from auths.jwt import AuthsClaims
@@ -92,4 +97,8 @@ __all__ = [
     "AuthsError",
     "ChainLink",
     "VerificationStatus",
+
+    # Passphrase policy (pre-flight validation)
+    "validate_passphrase",
+    "PASSPHRASE_MIN_LEN",
 ]
