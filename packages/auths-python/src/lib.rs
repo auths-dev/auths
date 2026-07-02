@@ -57,6 +57,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign::sign_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_action, m)?)?;
     m.add_function(wrap_pyfunction!(sign::verify_action_envelope, m)?)?;
+    m.add_function(wrap_pyfunction!(sign::verify_bytes, m)?)?;
 
     m.add_function(wrap_pyfunction!(token::get_token, m)?)?;
 

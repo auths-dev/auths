@@ -27,6 +27,7 @@ from auths._native import (
     sign_artifact_bytes_raw,
     sign_bytes,
     verify_action_envelope,
+    verify_bytes,
     verify_at_time,
     verify_attestation,
     verify_chain,
