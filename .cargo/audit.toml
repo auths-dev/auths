@@ -36,6 +36,19 @@ ignore = [
     # already patched to 0.103.13; this 0.101.7 copy is pinned until the AWS SDK
     # ships rustls 0.23+.
     "RUSTSEC-2026-0104",
+
+    # paste 1.0.15 unmaintained (via rmcp -> the MCP server stack). Proc-macro-only,
+    # no runtime surface; no maintained drop-in replacement. Already ignored in deny.toml.
+    "RUSTSEC-2024-0436",
+
+    # proc-macro-error2 2.0.1 unmaintained (transitive build-time proc-macro dep). No
+    # runtime code path; no fix available upstream.
+    "RUSTSEC-2026-0173",
+
+    # rmcp 0.9.1 DNS-rebinding in the Streamable HTTP server transport (via
+    # auths-mcp-gateway). Fix is a breaking upgrade to rmcp >= 1.4.0 — tracked and
+    # deferred in issue #362. Temporary ignore so unrelated PRs aren't blocked.
+    "RUSTSEC-2026-0189",
 ]
 
 [yanked]
