@@ -473,6 +473,45 @@ fn resolve_required_key(
     })?
 }
 
+/// Resolve the root identity's own signing key — the issuer of an artifact attestation when
+/// no explicit `--key` is given. Picks the first non-rotation (`--next-`) alias stored under
+/// the root's AID and loads it. A delegated device's key is deliberately NOT used here: the
+/// device signs the device slot, the root signs the issuer slot.
+///
+/// Args:
+/// * `controller_did`: the root identity whose signing key issues the attestation.
+/// * `keychain`: key storage holding the root's key under its AID.
+/// * `passphrase_provider`: passphrase source for decrypting the key.
+///
+/// Usage:
+/// ```ignore
+/// let issuer = resolve_root_issuer_key(&managed.controller_did, keychain, provider)?;
+/// ```
+fn resolve_root_issuer_key(
+    controller_did: &IdentityDID,
+    keychain: &(dyn KeyStorage + Send + Sync),
+    passphrase_provider: &dyn PassphraseProvider,
+) -> Result<ResolvedKey, ArtifactSigningError> {
+    let alias = keychain
+        .list_aliases_for_identity(controller_did)
+        .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?
+        .into_iter()
+        .find(|a| !a.as_str().contains("--next-"))
+        .ok_or_else(|| {
+            ArtifactSigningError::KeyResolutionFailed(format!(
+                "no signing key found for root identity {}",
+                controller_did.as_str()
+            ))
+        })?;
+    resolve_required_key(
+        &SigningKeyMaterial::Alias(alias),
+        "__artifact_issuer__",
+        keychain,
+        passphrase_provider,
+        "Enter passphrase for identity key:",
+    )
+}
+
 /// Refuses to sign with a device whose delegated identity has been revoked by the
 /// root, or whose key has been rotated out of its identity's KEL.
 ///
@@ -607,13 +646,26 @@ pub fn sign_artifact(
     let keychain = ctx.key_storage.as_ref();
     let passphrase_provider = ctx.passphrase_provider.as_ref();
 
-    let identity_resolved = resolve_optional_key(
-        params.identity_key.as_ref(),
-        "__artifact_identity__",
-        keychain,
-        passphrase_provider,
-        "Enter passphrase for identity key:",
-    )?;
+    // The attestation is issued by the ROOT identity (the dual-signature model: issuer +
+    // device). Resolve the issuer's key — an explicit `--key`, otherwise the root's own
+    // signing key, NOT the delegated device (device #0 signs only the device slot). A
+    // delegated device is not the root's key, so it cannot produce a valid issuer signature
+    // or a root-KEL anchor.
+    let issuer_did = CanonicalDid::from(managed.controller_did.clone());
+    let identity_resolved = match params.identity_key.as_ref() {
+        Some(explicit) => resolve_optional_key(
+            Some(explicit),
+            "__artifact_identity__",
+            keychain,
+            passphrase_provider,
+            "Enter passphrase for identity key:",
+        )?,
+        None => Some(resolve_root_issuer_key(
+            &managed.controller_did,
+            keychain,
+            passphrase_provider,
+        )?),
+    };
 
     let device_resolved = resolve_required_key(
         &params.device_key,
@@ -690,10 +742,10 @@ pub fn sign_artifact(
         device_is_hardware,
         now,
         &rid,
-        // Self-issued by the signing principal: the delegated device #0 (or the root when
-        // signing directly). The root key stays cold — the KEL delegation, not a per-artifact
-        // root signature, is what ties device #0 back to the root identity at verify time.
-        &device_did,
+        // Dual-signature: the root identity is the issuer (its key co-signs) and the
+        // delegated device #0 is the subject/device signer. The issuer is the verifiable
+        // trust anchor a bundle/pinned-root verifier resolves.
+        &issuer_did,
         &device_did,
         &device_pk_bytes,
         device_curve,
@@ -704,6 +756,9 @@ pub fn sign_artifact(
         validated_commit_sha,
     )?;
 
+    // Anchor the attestation digest on the root KEL under the issuer's (root's) key. The
+    // issuer key controls the root KEL, so the anchoring ixn is a valid root event that
+    // stateless (identity-bundle) verification accepts.
     if let Some(ref alias) = identity_alias {
         anchor_artifact_attestation(ctx, &managed.controller_did, alias, &attestation_json, now)?;
     }

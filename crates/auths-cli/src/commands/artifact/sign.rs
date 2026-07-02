@@ -60,12 +60,10 @@ pub fn handle_sign(
 
     let params = ArtifactSigningParams {
         artifact: Arc::new(FileArtifact::new(file)),
-        // A file attestation must be attributable to the signing identity, so it always
-        // carries an issuer signature: use the explicit `--key` when given, otherwise the
-        // same key that signs as the device (for a single-key identity they are one key).
-        identity_key: Some(SigningKeyMaterial::Alias(KeyAlias::new_unchecked(
-            key.unwrap_or(device_key),
-        ))),
+        // The issuer is the root identity. Pass an explicit `--key` through; otherwise leave it
+        // to the SDK, which resolves the ROOT's own key for the issuer signature (NOT the
+        // delegated device — device #0 signs only the device slot below).
+        identity_key: key.map(|k| SigningKeyMaterial::Alias(KeyAlias::new_unchecked(k))),
         device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(device_key)),
         expires_in,
         note,

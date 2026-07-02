@@ -393,15 +393,14 @@ def scenario_rotation(r: Runner, work: Path) -> None:
         else:
             r.skip("verify HEAD (after rotate)", "post-rotation commit failed")
 
-        # Pre-rotation commits get the explicit superseded classification —
-        # recognized legacy, never confused with a forgery.
+        # Commits are signed by the delegated device #0, and `id rotate` rotates the ROOT
+        # key — which does NOT rotate the device's key. The delegation persists across the
+        # root rotation, so a device-#0-signed pre-rotation commit stays valid. (Superseding
+        # a device's commits requires rotating/revoking THAT device, not the root — device
+        # key rotation is tracked separately as #205.)
         if pre_sha:
-            sup = r.run("verify pre-rotation commit (expect superseded)",
-                        ["verify", pre_sha], cwd=repo, expect_failure=True)
-            combined = sup.stdout + sup.stderr
-            if sup.ok and "superseded" not in combined:
-                sup.ok = False
-                sup.note = "expected the SignedBySupersededKey classification"
+            r.run("verify pre-rotation commit (survives root rotation)",
+                  ["verify", pre_sha], cwd=repo)
 
 
 def scenario_ci(auths: Path, work: Path, report: Report) -> None:
