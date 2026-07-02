@@ -68,6 +68,11 @@ pub enum MultiSigError {
     /// Underlying KEL validator rejected the combined event.
     #[error("Validation error: {0}")]
     Validation(String),
+
+    /// The bundle's stored canonical bytes do not match its event — a tampered bundle that would
+    /// turn a signer into a blind-signing oracle. Refuse rather than sign attacker-chosen bytes.
+    #[error("bundle canonical bytes do not match its event (tampered bundle)")]
+    BundleMismatch,
 }
 
 /// Serialized bundle written by [`begin_multi_sig_event`] and read by
@@ -110,6 +115,30 @@ pub fn begin_multi_sig_event(
     Ok(bundle)
 }
 
+/// Recompute the canonical signing bytes from a bundle's event — the source of truth — and reject a
+/// bundle whose stored `canonical_bytes` disagree with it.
+///
+/// A signer must never sign coordinator-provided bytes blindly: a tampered bundle (a benign `event`
+/// shown to the operator, but `canonical_bytes` belonging to a malicious event) would otherwise harvest
+/// a valid signature over an event the signer never approved. `combine` already re-derives the canonical
+/// bytes from the event when it verifies; this keeps `sign_partial` consistent so the two never diverge.
+///
+/// Args:
+/// * `bundle`: The unsigned-event bundle read from disk.
+///
+/// Usage:
+/// ```ignore
+/// let canonical = bundle_canonical(&bundle)?; // BundleMismatch if the stored bytes were tampered
+/// ```
+fn bundle_canonical(bundle: &UnsignedEventBundle) -> Result<Vec<u8>, MultiSigError> {
+    let canonical = serialize_for_signing(&bundle.event)
+        .map_err(|e| MultiSigError::Serialization(e.to_string()))?;
+    if canonical != bundle.canonical_bytes {
+        return Err(MultiSigError::BundleMismatch);
+    }
+    Ok(canonical)
+}
+
 /// Produce one indexed signature from `key_alias` at `signer_index`.
 ///
 /// Loads the keypair, decrypts it with the passphrase from
@@ -125,6 +154,10 @@ pub fn sign_partial(
     let raw = fs::read(unsigned_bundle_path)?;
     let bundle: UnsignedEventBundle =
         serde_json::from_slice(&raw).map_err(|e| MultiSigError::Serialization(e.to_string()))?;
+
+    // The event is the source of truth; never sign the bundle's stored bytes blindly. A tampered
+    // bundle is refused here, before any key is loaded (blind-signing defense).
+    let canonical = bundle_canonical(&bundle)?;
 
     let keys = match &bundle.event {
         Event::Icp(icp) => &icp.k,
@@ -162,7 +195,7 @@ pub fn sign_partial(
     let keypair = Ed25519KeyPair::from_pkcs8(&decrypted)
         .map_err(|e| MultiSigError::Signing(format!("Ed25519 load: {e}")))?;
     let _pub_bytes = keypair.public_key().as_ref().to_vec();
-    let sig = keypair.sign(&bundle.canonical_bytes);
+    let sig = keypair.sign(&canonical);
 
     Ok(IndexedSignature {
         index: signer_index,
@@ -378,5 +411,46 @@ mod tests {
         assert_eq!(back.index, 1);
         assert_eq!(back.sig.len(), 64);
         assert_eq!(back.sig, sig.sig);
+    }
+
+    #[test]
+    fn bundle_canonical_rejects_a_tampered_bundle() {
+        // A bundle whose stored canonical_bytes belong to a DIFFERENT event must be refused — signing
+        // them would harvest a valid signature over an event the signer never approved. Before this
+        // fix, sign_partial signed `bundle.canonical_bytes` directly, with no such check (RED).
+        let (shown_icp, _) = make_three_key_icp();
+        let (attacker_icp, _) = make_three_key_icp();
+        let shown = Event::Icp(shown_icp);
+        let attacker = Event::Icp(attacker_icp);
+
+        let tampered = UnsignedEventBundle {
+            event: shown.clone(),
+            signer_aliases: vec!["dev-a".to_string()],
+            canonical_bytes: serialize_for_signing(&attacker).unwrap(), // bytes of a different event
+            said: shown.said().as_str().to_string(),
+        };
+
+        let err = bundle_canonical(&tampered).unwrap_err();
+        assert!(
+            matches!(err, MultiSigError::BundleMismatch),
+            "a tampered bundle must be rejected (blind-signing defense), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn bundle_canonical_accepts_a_consistent_bundle() {
+        // The legitimate bundle (canonical_bytes == serialize_for_signing(event)) is accepted, and the
+        // returned bytes are exactly the event's own canonicalization — what a signer must sign.
+        let (icp, _) = make_three_key_icp();
+        let event = Event::Icp(icp);
+        let consistent = UnsignedEventBundle {
+            event: event.clone(),
+            signer_aliases: vec![],
+            canonical_bytes: serialize_for_signing(&event).unwrap(),
+            said: event.said().as_str().to_string(),
+        };
+
+        let canonical = bundle_canonical(&consistent).expect("consistent bundle accepted");
+        assert_eq!(canonical, serialize_for_signing(&event).unwrap());
     }
 }
