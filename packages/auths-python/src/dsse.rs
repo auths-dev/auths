@@ -12,7 +12,9 @@ use auths_core::signing::PrefilledPassphraseProvider;
 use auths_core::storage::keychain::{
     KeyAlias, KeyStorage, extract_public_key_bytes, get_platform_keychain_with_config,
 };
-use auths_sdk::workflows::dsse::{DsseError, sign_intoto_statement, verify_intoto_statement};
+use auths_sdk::workflows::dsse::{
+    DsseError, sign_intoto_statement, sign_intoto_statement_with_seed, verify_intoto_statement,
+};
 
 use crate::identity::{make_keychain_config, resolve_passphrase};
 
@@ -81,6 +83,45 @@ pub fn dsse_sign_statement(
     )
     .map_err(map_dsse_err)?;
 
+    serde_json::to_string(&envelope)
+        .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] {e}")))
+}
+
+/// DSSE-sign an in-toto Statement with a raw private seed (an ephemeral agent).
+///
+/// The same as `dsse_sign_statement` but for an in-memory identity whose 32-byte
+/// seed is held directly rather than in a keychain. The envelope verifies through
+/// the same `dsse_verify_statement` path.
+///
+/// Args:
+/// * `statement_json`: The complete in-toto Statement to wrap and sign.
+/// * `private_key_hex`: The agent's 32-byte private seed, hex-encoded.
+/// * `keyid_did`: The agent's `did:keri:`, recorded as the signature keyid.
+/// * `curve`: Optional curve (`"p256"` default, `"ed25519"`).
+#[pyfunction]
+#[pyo3(signature = (statement_json, private_key_hex, keyid_did, curve=None))]
+pub fn dsse_sign_statement_with_key(
+    _py: Python<'_>,
+    statement_json: String,
+    private_key_hex: String,
+    keyid_did: String,
+    curve: Option<&str>,
+) -> PyResult<String> {
+    let seed_vec = hex::decode(&private_key_hex).map_err(|e| {
+        PyValueError::new_err(format!(
+            "[AUTHS_INVALID_INPUT] invalid private key hex: {e}"
+        ))
+    })?;
+    let seed: [u8; 32] = seed_vec
+        .as_slice()
+        .try_into()
+        .map_err(|_| PyValueError::new_err("[AUTHS_INVALID_INPUT] private key must be 32 bytes"))?;
+    let curve_type = match curve {
+        Some("ed25519") | Some("Ed25519") => auths_crypto::CurveType::Ed25519,
+        _ => auths_crypto::CurveType::default(),
+    };
+    let envelope = sign_intoto_statement_with_seed(&seed, curve_type, &keyid_did, &statement_json)
+        .map_err(map_dsse_err)?;
     serde_json::to_string(&envelope)
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_SERIALIZATION_ERROR] {e}")))
 }

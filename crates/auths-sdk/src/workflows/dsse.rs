@@ -122,6 +122,50 @@ pub fn sign_intoto_statement(
     })
 }
 
+/// DSSE-sign an in-toto Statement with a raw 32-byte seed (no keychain).
+///
+/// The same as [`sign_intoto_statement`] but for an ephemeral in-memory identity
+/// whose seed is held directly rather than in a keychain — it signs the DSSE PAE
+/// with `auths_crypto::typed_sign`. The resulting envelope is byte-compatible and
+/// verifies through the same [`verify_intoto_statement`] path.
+///
+/// Args:
+/// * `seed` — The signer's 32-byte private seed.
+/// * `curve` — The seed's curve (carried in-band on the signature).
+/// * `keyid` — The signer's `did:keri:`, recorded as the signature `keyid`.
+/// * `statement_json` — The complete in-toto Statement to wrap and sign.
+///
+/// Usage:
+/// ```ignore
+/// let env = sign_intoto_statement_with_seed(&seed, curve, agent_did, &statement)?;
+/// ```
+pub fn sign_intoto_statement_with_seed(
+    seed: &[u8; 32],
+    curve: CurveType,
+    keyid: &str,
+    statement_json: &str,
+) -> Result<DsseEnvelope, DsseError> {
+    let value: serde_json::Value = serde_json::from_str(statement_json)
+        .map_err(|e| DsseError::InvalidStatement(format!("statement is not JSON: {e}")))?;
+    validate_intoto_statement(&value)?;
+
+    let payload = statement_json.as_bytes();
+    let to_sign = dsse_pae(DSSE_INTOTO_PAYLOAD_TYPE, payload);
+    let typed_seed = auths_crypto::TypedSeed::from_curve(curve, *seed);
+    let sig = auths_crypto::typed_sign(&typed_seed, &to_sign)
+        .map_err(|e| DsseError::Signing(e.to_string()))?;
+
+    Ok(DsseEnvelope {
+        payload_type: DSSE_INTOTO_PAYLOAD_TYPE.to_string(),
+        payload: BASE64.encode(payload),
+        signatures: vec![DsseSignature {
+            keyid: keyid.to_string(),
+            curve: curve_tag(curve).to_string(),
+            sig: BASE64.encode(&sig),
+        }],
+    })
+}
+
 /// Verify a DSSE-wrapped in-toto Statement against a pinned public key, offline.
 ///
 /// Recomputes the PAE over the decoded payload and checks that `pinned_public_key`
@@ -230,6 +274,33 @@ mod tests {
         envelope.payload = BASE64.encode(intoto_statement("RED").as_bytes());
         let err =
             verify_intoto_statement(&serde_json::to_string(&envelope).unwrap(), &pk).unwrap_err();
+        assert!(matches!(err, DsseError::Verification(_)));
+    }
+
+    #[test]
+    fn sign_with_seed_round_trips_and_binds() {
+        let signer = generate_typed_signer(CurveType::P256);
+        let seed = *signer.seed().as_bytes();
+        let env = sign_intoto_statement_with_seed(
+            &seed,
+            signer.curve(),
+            "did:keri:EAgent",
+            &intoto_statement("GREEN"),
+        )
+        .unwrap();
+        let stmt =
+            verify_intoto_statement(&serde_json::to_string(&env).unwrap(), signer.public_key())
+                .unwrap();
+        assert_eq!(stmt["predicate"]["gate"], "GREEN");
+
+        let mut envelope: DsseEnvelope =
+            serde_json::from_str(&serde_json::to_string(&env).unwrap()).unwrap();
+        envelope.payload = BASE64.encode(intoto_statement("RED").as_bytes());
+        let err = verify_intoto_statement(
+            &serde_json::to_string(&envelope).unwrap(),
+            signer.public_key(),
+        )
+        .unwrap_err();
         assert!(matches!(err, DsseError::Verification(_)));
     }
 

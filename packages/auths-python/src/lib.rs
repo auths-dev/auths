@@ -15,6 +15,7 @@ pub mod commit_verify;
 pub mod device_ext;
 pub mod diagnostics;
 pub mod dsse;
+pub mod ephemeral;
 pub mod identity;
 pub mod identity_sign;
 pub mod org;
@@ -102,7 +103,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tlog::log_verify_inclusion, m)?)?;
 
     m.add_function(wrap_pyfunction!(dsse::dsse_sign_statement, m)?)?;
+    m.add_function(wrap_pyfunction!(dsse::dsse_sign_statement_with_key, m)?)?;
     m.add_function(wrap_pyfunction!(dsse::dsse_verify_statement, m)?)?;
+
+    m.add_class::<ephemeral::PyEphemeralAgent>()?;
+    m.add_function(wrap_pyfunction!(ephemeral::create_ephemeral_agent, m)?)?;
 
     m.add_class::<commit_sign::PyCommitSignResult>()?;
     m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;
