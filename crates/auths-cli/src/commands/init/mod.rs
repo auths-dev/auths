@@ -351,7 +351,7 @@ fn run_developer_setup(
     ));
     out.print_success(&format!(
         "This device authorized: {}",
-        result.device_did.as_str()
+        crate::ux::product_id(result.device_did.as_str())
     ));
 
     // PLATFORM VERIFICATION

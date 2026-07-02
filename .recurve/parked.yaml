@@ -1,5 +1,0 @@
-# Parked gaps — run state, not claim truth (the ledger never records
-# parking). Attempt journals are observations, never conclusions.
-- gap: AGENT-MCP-6
-  reason: blocked on AGT-3 live runtime (#279)
-  parked_at: '2026-06-15'

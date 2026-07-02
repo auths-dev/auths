@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use auths_core::PrefilledPassphraseProvider;
 use auths_core::ports::clock::SystemClock;
-use auths_core::signing::{PassphraseProvider, StorageSigner};
+use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::testing::IsolatedKeychainHandle;
 use auths_crypto::CurveType;
@@ -20,10 +20,6 @@ use auths_id::testing::fakes::{
     FakeAttestationSink, FakeAttestationSource, FakeIdentityStorage, FakeRegistryBackend,
 };
 use auths_sdk::context::AuthsContext;
-use auths_sdk::domains::identity::service::initialize;
-use auths_sdk::domains::identity::types::{
-    CreateDeveloperIdentityConfig, IdentityConfig, InitializeResult,
-};
 use auths_sdk::domains::org::error::OrgError;
 use auths_sdk::domains::org::offline_verify::OrgBundleError;
 use auths_sdk::domains::org::{
@@ -31,7 +27,7 @@ use auths_sdk::domains::org::{
     list_members, list_offboarding_records, load_offboarding_record, member_policy_context,
     resolve_member_authority, revoke_member, verify_offboarding_record,
 };
-use auths_sdk::domains::signing::types::GitSigningScope;
+use auths_sdk::identity::initialize_registry_identity;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{Ed25519PublicKey, Role};
 use auths_verifier::types::CanonicalDid;
@@ -40,29 +36,25 @@ use crate::cases::helpers::{build_test_context, build_test_context_with_provider
 
 const PASS: &str = "Test-passphrase1!";
 
-/// Initialize a developer identity to act as the **org** AID (the delegator).
+/// Initialize a **bare** registry identity to act as the **org** AID (the delegator).
+///
+/// A real org is created by `create_org` via `initialize_registry_identity`, which never
+/// delegates a primary device — so the org's roster holds only the members it explicitly
+/// adds. Using a developer identity here would seed a spurious device #0 into the roster.
 fn setup_org_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
     let keychain = IsolatedKeychainHandle::new();
-    let signer = StorageSigner::new(keychain.clone());
     let provider = PrefilledPassphraseProvider::new(PASS);
-    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("org-key"))
-        .with_git_signing_scope(GitSigningScope::Skip)
-        .build();
     let ctx = build_test_context(registry_path, Arc::new(keychain.clone()));
-    let result = match initialize(
-        IdentityConfig::Developer(config),
-        &ctx,
-        Arc::new(keychain.clone()),
-        &signer,
+    let (_org_did, org_alias) = initialize_registry_identity(
+        Arc::clone(&ctx.registry),
+        &KeyAlias::new_unchecked("org-key"),
         &provider,
+        &keychain,
         None,
+        CurveType::default(),
     )
-    .unwrap()
-    {
-        InitializeResult::Developer(r) => r,
-        _ => unreachable!(),
-    };
-    (result.key_alias, keychain)
+    .expect("init bare org identity");
+    (org_alias, keychain)
 }
 
 /// `(ctx, org signing alias, org prefix, tmp)` for a fresh org AID delegator.

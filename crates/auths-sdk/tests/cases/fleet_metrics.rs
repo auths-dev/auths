@@ -3,18 +3,14 @@
 use std::sync::Arc;
 
 use auths_core::PrefilledPassphraseProvider;
-use auths_core::signing::{PassphraseProvider, StorageSigner};
+use auths_core::signing::PassphraseProvider;
 use auths_core::storage::keychain::KeyAlias;
 use auths_core::testing::IsolatedKeychainHandle;
 use auths_crypto::CurveType;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::agents::{add_scoped, revoke};
-use auths_sdk::domains::identity::service::initialize;
-use auths_sdk::domains::identity::types::{
-    CreateDeveloperIdentityConfig, IdentityConfig, InitializeResult,
-};
 use auths_sdk::domains::org::metrics::fleet_metrics;
-use auths_sdk::domains::signing::types::GitSigningScope;
+use auths_sdk::identity::initialize_registry_identity;
 use auths_verifier::Prefix;
 
 const PASS: &str = "Test-passphrase1!";
@@ -22,25 +18,19 @@ const PASS: &str = "Test-passphrase1!";
 fn setup() -> (AuthsContext, KeyAlias, Prefix, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let keychain = IsolatedKeychainHandle::new();
-    let signer = StorageSigner::new(keychain.clone());
     let provider = PrefilledPassphraseProvider::new(PASS);
-    let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("org-key"))
-        .with_git_signing_scope(GitSigningScope::Skip)
-        .build();
     let boot = crate::cases::helpers::build_test_context(tmp.path(), Arc::new(keychain.clone()));
-    let result = match initialize(
-        IdentityConfig::Developer(config),
-        &boot,
-        Arc::new(keychain.clone()),
-        &signer,
+    // Bare org root (no delegated device #0) — mirror create_org. The fleet roster then holds
+    // only the agents/members this test adds, so device #0 never inflates the counts.
+    let (_org_did, org_alias) = initialize_registry_identity(
+        Arc::clone(&boot.registry),
+        &KeyAlias::new_unchecked("org-key"),
         &provider,
+        &keychain,
         None,
+        CurveType::default(),
     )
-    .unwrap()
-    {
-        InitializeResult::Developer(r) => r,
-        _ => unreachable!(),
-    };
+    .expect("init bare org identity");
     let arc_provider: Arc<dyn PassphraseProvider + Send + Sync> =
         Arc::new(PrefilledPassphraseProvider::new(PASS));
     let ctx = crate::cases::helpers::build_test_context_with_provider(
@@ -58,7 +48,7 @@ fn setup() -> (AuthsContext, KeyAlias, Prefix, tempfile::TempDir) {
             .unwrap()
             .to_string(),
     );
-    (ctx, result.key_alias, org_prefix, tmp)
+    (ctx, org_alias, org_prefix, tmp)
 }
 
 #[test]

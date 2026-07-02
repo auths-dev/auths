@@ -1,4 +1,4 @@
-# auths-network — claims, probed
+# auths — claims, probed
 
 > **Reader:** anyone meeting this project's improvement loop for the first
 > time. Your next action: run the three commands below; everything else
