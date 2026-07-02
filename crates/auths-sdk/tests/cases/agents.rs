@@ -350,3 +350,66 @@ fn scope_cannot_exceed_delegator() {
         "got {err:?}"
     );
 }
+
+#[test]
+fn scoped_agent_may_narrow_the_delegator_scope() {
+    let (ctx, root_alias, root_prefix, _tmp) = setup();
+
+    // Give the delegator [read, write], so the subset check actually runs (not the
+    // unconstrained-root path).
+    let (_pk, root_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        &root_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .expect("root curve");
+    mark_agent_scope(
+        ctx.registry.as_ref(),
+        &root_prefix,
+        &root_alias,
+        root_curve,
+        &root_prefix,
+        &AgentScope {
+            capabilities: vec![
+                Capability::parse("read").unwrap(),
+                Capability::parse("write").unwrap(),
+            ],
+            expires_at: None,
+        },
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .expect("anchor delegator scope");
+
+    // Delegating [read] — a strict subset of [read, write] — must be allowed. The subset
+    // rule narrows; it must not reject a legitimate narrowing (a false-reject would be a
+    // usability regression and push callers toward over-broad grants).
+    let agent = add_scoped(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("narrowed-bot"),
+        CurveType::Ed25519,
+        &[Capability::parse("read").unwrap()],
+        None,
+    )
+    .expect("narrowing the delegator's scope to a subset must be allowed");
+    assert!(agent.agent_did.starts_with("did:keri:"));
+}
+
+#[test]
+fn scoped_agent_with_empty_scope_is_allowed() {
+    let (ctx, root_alias, _root_prefix, _tmp) = setup();
+
+    // An empty scope is a subset of any delegator scope — a capability-less, anchor-only
+    // agent (e.g. an identity placeholder) is valid, not an error.
+    let agent = add_scoped(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("no-scope-bot"),
+        CurveType::Ed25519,
+        &[],
+        None,
+    )
+    .expect("an empty scope is a valid (capability-less) delegation");
+    assert!(agent.agent_did.starts_with("did:keri:"));
+}
