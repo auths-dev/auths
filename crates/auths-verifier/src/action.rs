@@ -97,6 +97,50 @@ impl ActionEnvelope {
 mod tests {
     use super::*;
 
+    /// BG-3 (#258): the raw-seed `sign_action` → `verify_action_envelope`
+    /// roundtrip that the Python `test_sign_and_verify_roundtrip` exercises,
+    /// reproduced at the Rust level (the Python `.so` cannot be dlopen'd on
+    /// this macOS 27 toolchain). Signs canonical bytes with a raw Ed25519 seed
+    /// and verifies with the seed's RFC-8032 public key after a JSON wire
+    /// round-trip — exactly the crate calls the Python bindings make.
+    #[test]
+    fn raw_seed_action_sign_verify_roundtrip_bg3() {
+        use auths_crypto::{RingCryptoProvider, TypedSeed, typed_public_key, typed_sign};
+
+        let seed = [0xaau8; 32]; // Python test's TEST_SEED_HEX = "a" * 64
+        let ts = TypedSeed::Ed25519(seed);
+        let pk = typed_public_key(&ts).expect("derive Ed25519 public key from seed");
+
+        // sign_action
+        let mut env = ActionEnvelope {
+            version: "1.0".into(),
+            action_type: "tool_call".into(),
+            identity: "did:keri:ETest123".into(),
+            payload: serde_json::json!({"tool": "read_file", "path": "/etc/config.json"}),
+            timestamp: "2026-07-04T00:00:00Z".into(),
+            signature: String::new(),
+            attestation_chain: None,
+            environment: None,
+        };
+        let canonical = env.canonical_bytes().expect("canonical bytes at sign time");
+        let sig = typed_sign(&ts, &canonical).expect("sign canonical bytes");
+        env.signature = hex::encode(&sig);
+
+        // wire round-trip (serialize → reparse), as the envelope crosses the boundary
+        let wire = serde_json::to_string(&env).expect("serialize envelope");
+        let parsed: ActionEnvelope = serde_json::from_str(&wire).expect("reparse envelope");
+
+        // verify_action_envelope
+        let canonical2 = parsed.canonical_bytes().expect("canonical bytes at verify time");
+        assert_eq!(
+            canonical, canonical2,
+            "canonical signing bytes changed across the JSON wire round-trip"
+        );
+        let sig2 = hex::decode(&parsed.signature).expect("decode signature hex");
+        RingCryptoProvider::ed25519_verify(&pk, &canonical2, &sig2)
+            .expect("raw-seed sign_action -> verify_action_envelope must round-trip (BG-3/#258)");
+    }
+
     #[test]
     fn roundtrip_serialization() {
         let envelope = ActionEnvelope {
