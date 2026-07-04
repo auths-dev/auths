@@ -239,6 +239,26 @@ pub enum IdSubcommand {
         max_age_secs: u64,
     },
 
+    /// Export a KEL-derived `allowed_signers` file so plain `git` / `ssh` can
+    /// verify this identity's signatures on machines without auths installed.
+    ///
+    /// Point git at it with:
+    ///   git config gpg.ssh.allowedSignersFile <file>
+    AllowedSigners {
+        /// Key alias whose current public key to export.
+        #[arg(long, help = "Key alias to export the signing key for")]
+        alias: String,
+
+        /// Principal to bind the key to (usually the committer email). Defaults
+        /// to the identity DID. Must match the signer identity git checks.
+        #[arg(long, help = "Principal for the allowed_signers line (default: identity DID)")]
+        principal: Option<String>,
+
+        /// Write to this file instead of stdout.
+        #[arg(long = "output", short = 'o', help = "Output file (default: stdout)")]
+        output_file: Option<PathBuf>,
+    },
+
     /// Publish this identity to a public registry for discovery.
     Register {
         /// Registry URL to publish to.
@@ -860,6 +880,49 @@ pub fn handle_id(
             println!("\nUsage in CI:");
             println!("   auths verify --identity-bundle {:?} HEAD", output_file);
 
+            Ok(())
+        }
+
+        IdSubcommand::AllowedSigners {
+            alias,
+            principal,
+            output_file,
+        } => {
+            let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
+            let identity = identity_storage
+                .load_identity()
+                .with_context(|| format!("Failed to load identity from {:?}", repo_path))?;
+            let principal =
+                principal.unwrap_or_else(|| identity.controller_did.as_str().to_string());
+
+            let keychain = get_platform_keychain()?;
+            let alias_typed = KeyAlias::new_unchecked(&alias);
+            let (public_key_bytes, curve) = auths_sdk::keychain::extract_public_key_bytes(
+                keychain.as_ref(),
+                &alias_typed,
+                passphrase_provider.as_ref(),
+            )
+            .with_context(|| format!("Failed to extract public key for '{}'", alias))?;
+
+            let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &public_key_bytes)
+                .with_context(|| format!("'{}' is not a valid signing key", alias))?;
+            let openssh = auths_sdk::workflows::git_integration::public_key_to_ssh(&device_pk)
+                .context("Failed to encode signing key as OpenSSH")?;
+            // allowed_signers line: `<principal> <keytype> <base64>`. The OpenSSH
+            // encoding already carries `<keytype> <base64>`; trim any trailing
+            // comment so the line is exactly the two fields ssh expects.
+            let key_field = openssh.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+            let line = format!("{principal} {key_field}\n");
+
+            match &output_file {
+                Some(path) => {
+                    fs::write(path, &line)
+                        .with_context(|| format!("Failed to write allowed_signers to {:?}", path))?;
+                    println!("✅ Wrote allowed_signers for {} to {:?}", principal, path);
+                    println!("   git config gpg.ssh.allowedSignersFile {:?}", path);
+                }
+                None => print!("{line}"),
+            }
             Ok(())
         }
 
