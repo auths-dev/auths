@@ -12,6 +12,7 @@ categories = ["cryptography"]
 
 [dependencies]
 auths-crypto = { workspace = true, features = ["native"] }
+hmac.workspace = true
 auths-keri.workspace = true
 ring.workspace = true
 p256 = { version = "=0.13.2", features = ["ecdh", "ecdsa", "pkcs8"] }

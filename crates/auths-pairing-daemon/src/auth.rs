@@ -405,6 +405,23 @@ fn keri_pubkeys_equal(a: &auths_keri::KeriPublicKey, b: &auths_keri::KeriPublicK
 mod tests {
     use super::*;
 
+    /// Byte-compat guard: the client builds its `Auths-HMAC` lookup header via
+    /// the shared `auths-pairing-protocol::lookup_auth` builder, and this
+    /// daemon's `verify_hmac` must accept it. If the two copies of the
+    /// canonicalization ever drift, this fails — which is what makes keeping the
+    /// pure builders on both sides safe.
+    #[test]
+    fn hmac_lookup_client_header_is_accepted() {
+        use auths_pairing_protocol::lookup_auth::{LOOKUP_PATH, build_lookup_authorization};
+        let short_code = "ABC123";
+        let ts = 1_700_000_000_i64;
+        let nonce = [7u8; 16];
+        let header = build_lookup_authorization(short_code, ts, &nonce);
+        let parsed = parse_authorization(&header).expect("client header parses");
+        verify_hmac(&parsed, "GET", LOOKUP_PATH, b"", short_code, ts)
+            .expect("daemon verify_hmac must accept the client-built lookup header");
+    }
+
     #[test]
     fn parse_authorization_happy_path() {
         let auth =
