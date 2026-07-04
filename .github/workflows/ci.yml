@@ -67,6 +67,37 @@ jobs:
       - run: cargo clippy --all-targets -p auths-crypto -p auths-core -p auths-keri -p auths-pairing-protocol -p auths-pairing-daemon --features cnsa -- -D warnings
       - run: cargo run -p xtask -- check-clippy-sync
 
+  pre-commit:
+    name: Pre-commit hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-precommit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-precommit-
+      # Run the same hooks developers run locally, so a commit that passes local
+      # hooks cannot fail CI on format/lint/hygiene drift. The workspace
+      # cargo-fmt and cargo-clippy hooks run byte-identical commands in the
+      # dedicated `fmt` and `clippy` jobs above (and the pre-push AST checks in
+      # `xtask-checks`), so they are skipped here to avoid re-linting the whole
+      # workspace a second time. Everything else — file hygiene, actionlint,
+      # workflow-secret scan, SDK-boundary, and the packages/ fmt+clippy — runs
+      # here and nowhere else.
+      - uses: pre-commit/action@v3.0.1
+        env:
+          SKIP: cargo-fmt,cargo-clippy
+
   xtask-checks:
     name: Tree-sitter enforcement
     runs-on: ubuntu-latest
