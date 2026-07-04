@@ -13,9 +13,9 @@ use auths_core::signing::StorageSigner;
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, extract_public_key_bytes};
 use auths_id::attestation::create::{AttestationInput, create_signed_attestation};
 use auths_id::keri::delegation::{
-    DelegatedRole, incept_delegated_device, list_delegated_devices, mark_agent_scope,
-    mark_delegated_agent, read_agent_scope, revoke_delegated_device,
-    revoke_delegated_devices_batch, rotate_delegated_device,
+    BulkAgentSpec, DelegatedRole, incept_delegated_agents_bulk, incept_delegated_device,
+    list_delegated_devices, mark_agent_scope, mark_delegated_agent, read_agent_scope,
+    revoke_delegated_device, revoke_delegated_devices_batch, rotate_delegated_device,
 };
 use auths_id::keri::{Event, anchor_and_persist_via_backend, parse_did_keri};
 use auths_id::storage::git_refs::AttestationMetadata;
@@ -187,6 +187,127 @@ pub fn add_scoped(
         agent_did: agent.device_did.as_str().to_string(),
         agent_prefix: agent.device_prefix.as_str().to_string(),
     })
+}
+
+/// Bulk-onboard agents: each batch of `batch_size` is incepted with ONE root
+/// anchoring `ixn` and ONE atomic commit (issue #255 / PRD KL-9), instead of the
+/// three root events and three-plus commits per agent the per-agent path costs.
+///
+/// Per-agent semantics match [`add`]: a device-signed `dip`, the dip anchor seal,
+/// the `agent:{prefix}` role marker, and the signed delegation attestation — the
+/// anchors are simply co-located in the shared batch `ixn`. Unscoped only:
+/// scope/expiry seals stay on the per-agent [`add_scoped`] path. Witness receipting
+/// happens per batch, not per agent (none is attempted here).
+pub fn add_bulk(
+    ctx: &AuthsContext,
+    root_alias: &KeyAlias,
+    agent_aliases: &[KeyAlias],
+    agent_curve: auths_crypto::CurveType,
+    batch_size: usize,
+) -> Result<Vec<AgentDelegationResult>, AgentError> {
+    for alias in agent_aliases {
+        if ctx.key_storage.load_key(alias).is_ok() {
+            return Err(AgentError::AlreadyDelegated {
+                alias: alias.as_str().to_string(),
+            });
+        }
+    }
+    let managed =
+        ctx.identity_storage
+            .load_identity()
+            .map_err(|e| AgentError::IdentityNotFound {
+                did: format!("identity load failed: {e}"),
+            })?;
+    let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
+        AgentError::IdentityNotFound {
+            did: format!("invalid root did:keri: {e}"),
+        }
+    })?;
+    let (_pk, root_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        root_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .map_err(AgentError::CryptoError)?;
+
+    let signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
+    let issuer_canonical = CanonicalDid::from(managed.controller_did.clone());
+    let mut out = Vec::with_capacity(agent_aliases.len());
+
+    for chunk in agent_aliases.chunks(batch_size.max(1)) {
+        let specs: Vec<BulkAgentSpec> = chunk
+            .iter()
+            .map(|alias| BulkAgentSpec {
+                device_alias: alias.clone(),
+                device_curve: agent_curve,
+            })
+            .collect();
+
+        // Per agent: build + sign the delegation attestation (mirroring
+        // record_delegation_attestation), stage its blob into the shared batch,
+        // and hand its digest seal back to join the batch ixn.
+        let mut idx = 0usize;
+        let bulk = incept_delegated_agents_bulk(
+            ctx.registry.as_ref(),
+            &root_prefix,
+            root_alias,
+            root_curve,
+            &specs,
+            ctx.passphrase_provider.as_ref(),
+            ctx.key_storage.as_ref(),
+            |bundle, batch| {
+                let agent_alias = &chunk[idx];
+                idx += 1;
+                let (agent_pk, agent_pk_curve) = extract_public_key_bytes(
+                    ctx.key_storage.as_ref(),
+                    agent_alias,
+                    ctx.passphrase_provider.as_ref(),
+                )
+                .map_err(|e| auths_id::error::InitError::Crypto(e.to_string()))?;
+                let now = ctx.clock.now();
+                let meta = AttestationMetadata {
+                    timestamp: Some(now),
+                    expires_at: None,
+                    note: None,
+                };
+                let subject = CanonicalDid::from(bundle.device_did.clone());
+                let attestation = create_signed_attestation(
+                    now,
+                    AttestationInput {
+                        rid: &managed.storage_id,
+                        issuer: &issuer_canonical,
+                        subject: &subject,
+                        device_public_key: &agent_pk,
+                        device_curve: agent_pk_curve,
+                        payload: None,
+                        meta: &meta,
+                        identity_alias: Some(root_alias),
+                        device_alias: Some(agent_alias),
+                        delegated_by: None,
+                        commit_sha: None,
+                        signer_type: Some(SignerType::Agent),
+                        oidc_binding: None,
+                    },
+                    &signer,
+                    ctx.passphrase_provider.as_ref(),
+                )
+                .map_err(|e| auths_id::error::InitError::Keri(e.to_string()))?;
+                let said = auths_id::keri::anchor::attestation_said(&attestation)
+                    .map_err(|e| auths_id::error::InitError::Keri(e.to_string()))?;
+                batch.stage_attestation(attestation);
+                Ok(vec![auths_id::keri::Seal::digest(said.as_str())])
+            },
+        )
+        .map_err(AgentError::DelegationError)?;
+
+        for device in bulk.devices {
+            out.push(AgentDelegationResult {
+                agent_did: device.device_did.as_str().to_string(),
+                agent_prefix: device.device_prefix.as_str().to_string(),
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// Sign and anchor the attestation for a freshly delegated agent.

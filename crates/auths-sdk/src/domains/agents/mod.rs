@@ -16,8 +16,8 @@ pub mod error;
 pub mod scope;
 
 pub use delegation::{
-    AgentDelegationResult, AgentInfo, BatchRevocation, add, add_scoped, list, revoke, revoke_batch,
-    rotate,
+    AgentDelegationResult, AgentInfo, BatchRevocation, add, add_bulk, add_scoped, list, revoke,
+    revoke_batch, rotate,
 };
 pub use error::AgentError;
 pub use scope::{DelegationError, DelegatorScope, RequestedScope, validate_delegation_constraints};
