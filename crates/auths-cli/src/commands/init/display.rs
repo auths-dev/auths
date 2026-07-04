@@ -1,12 +1,26 @@
 //! Display functions for init command results.
 
-use crate::ux::format::Output;
+use crate::ux::format::{JsonResponse, Output, is_json_mode};
 
 pub(crate) fn display_developer_result(
     out: &Output,
     result: &auths_sdk::result::DeveloperIdentityResult,
     registered: Option<&str>,
 ) {
+    if is_json_mode() {
+        let _ = JsonResponse::success(
+            "init",
+            serde_json::json!({
+                "profile": "developer",
+                "identity": result.identity_did.to_string(),
+                "device": result.device_did.to_string(),
+                "key_alias": result.key_alias.to_string(),
+                "registry": registered,
+            }),
+        )
+        .print();
+        return;
+    }
     out.newline();
     if registered.is_some() {
         out.print_heading("You are on the Web of Trust!");
@@ -45,6 +59,18 @@ pub(crate) fn display_ci_result(
     result: &auths_sdk::result::CiIdentityResult,
     ci_vendor: Option<&str>,
 ) {
+    if is_json_mode() {
+        let _ = JsonResponse::success(
+            "init",
+            serde_json::json!({
+                "profile": "ci",
+                "identity": result.identity_did.to_string(),
+                "env": result.env_block,
+            }),
+        )
+        .print();
+        return;
+    }
     out.print_success(&format!("CI identity: {}", &result.identity_did));
     out.newline();
 
@@ -69,6 +95,20 @@ pub(crate) fn display_ci_result(
 }
 
 pub(crate) fn display_agent_result(out: &Output, result: &auths_sdk::result::AgentIdentityResult) {
+    if is_json_mode() {
+        let did_json = result.agent_did.as_ref().map(|d| d.to_string());
+        let caps: Vec<String> = result.capabilities.iter().map(|c| c.to_string()).collect();
+        let _ = JsonResponse::success(
+            "init",
+            serde_json::json!({
+                "profile": "agent",
+                "identity": did_json,
+                "capabilities": caps,
+            }),
+        )
+        .print();
+        return;
+    }
     out.print_heading("Agent Setup Complete!");
     out.newline();
     let did_display = result

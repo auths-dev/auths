@@ -214,6 +214,14 @@ pub fn parse_threshold_cli(
 }
 
 fn resolve_interactive(cmd: &InitCommand) -> Result<bool> {
+    // `--json` is a machine-readable contract: never prompt, so a parser on the
+    // other end gets a single JSON object on stdout and nothing blocks on input.
+    if crate::ux::format::is_json_mode() {
+        if cmd.interactive {
+            return Err(anyhow!("--interactive cannot be combined with --json"));
+        }
+        return Ok(false);
+    }
     if cmd.interactive {
         if !std::io::stdin().is_terminal() {
             return Err(anyhow!(
