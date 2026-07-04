@@ -496,7 +496,7 @@ pub fn incept_delegated_agents_bulk(
         anchored_dip.source_seal = Some(source_seal.clone());
         let mut attachment = bundle.attachment;
         attachment.extend_from_slice(
-            &serialize_source_seal_couples(&[source_seal.clone()])
+            &serialize_source_seal_couples(std::slice::from_ref(&source_seal))
                 .map_err(|e| InitError::Keri(format!("source seal serialization: {e}")))?,
         );
         batch.stage_event(
