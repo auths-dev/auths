@@ -175,6 +175,7 @@ fn run_checks() -> Vec<Check> {
 
     // Domain checks are all Critical
     checks.push(check_keychain_accessible());
+    checks.push(check_identity_home());
     checks.push(check_auths_repo());
     checks.push(check_identity_valid(now));
 
@@ -429,6 +430,39 @@ fn check_keychain_accessible() -> Check {
         detail,
         suggestion,
         category: CheckCategory::Critical,
+    }
+}
+
+/// Advisory: report which identity home directory is in effect and why.
+///
+/// Resolution is `AUTHS_HOME` (env override, when set and non-empty) then the
+/// `~/.auths` default. Surfacing the winner and its source turns "why can't it
+/// find my identity" into a one-glance answer instead of a guessing game.
+fn check_identity_home() -> Check {
+    let env_home = std::env::var("AUTHS_HOME")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let (passed, detail, suggestion) = match auths_sdk::paths::auths_home() {
+        Ok(path) => {
+            let source = if env_home.is_some() {
+                "from AUTHS_HOME"
+            } else {
+                "default ~/.auths"
+            };
+            (true, format!("{} ({source})", path.display()), None)
+        }
+        Err(e) => (
+            false,
+            format!("cannot resolve: {e}"),
+            Some("Set AUTHS_HOME, or ensure a home directory is available".to_string()),
+        ),
+    };
+    Check {
+        name: "Identity home".to_string(),
+        passed,
+        detail,
+        suggestion,
+        category: CheckCategory::Advisory,
     }
 }
 
