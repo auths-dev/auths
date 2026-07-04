@@ -29,6 +29,7 @@ pub mod ipex;
 pub mod keri_emit;
 pub mod key;
 pub mod key_detect;
+pub mod kel;
 pub mod key_state;
 pub mod learn;
 pub mod log;

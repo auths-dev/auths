@@ -104,6 +104,7 @@ fn run() -> Result<()> {
         RootCommand::Id(cmd) => cmd.execute(&ctx),
         RootCommand::Device(cmd) => cmd.execute(&ctx),
         RootCommand::Key(cmd) => cmd.execute(&ctx),
+        RootCommand::Kel(cmd) => cmd.execute(&ctx),
         RootCommand::KeyState(cmd) => cmd.execute(&ctx),
         RootCommand::DidWebs(cmd) => cmd.execute(&ctx),
         RootCommand::KeriEmit(cmd) => cmd.execute(&ctx),

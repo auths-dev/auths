@@ -28,6 +28,7 @@ use crate::commands::init::InitCommand;
 use crate::commands::ipex::IpexCommand;
 use crate::commands::keri_emit::KeriEmitCommand;
 use crate::commands::key::KeyCommand;
+use crate::commands::kel::KelCommand;
 use crate::commands::key_state::KeyStateCommand;
 use crate::commands::learn::LearnCommand;
 use crate::commands::log::LogCommand;
@@ -126,6 +127,7 @@ pub enum RootCommand {
     Device(DeviceCommand),
     #[command(hide = true)]
     Key(KeyCommand),
+    Kel(KelCommand),
     #[command(hide = true, name = "key-state")]
     KeyState(KeyStateCommand),
     #[command(hide = true, name = "did-webs")]
