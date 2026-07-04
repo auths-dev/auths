@@ -87,6 +87,8 @@ jobs:
         run: |
           bash scripts/check-arch.sh
           bash scripts/check_sdk_boundary.sh
+      - name: Crypto primitive inventory is current
+        run: python3 scripts/check_primitive_inventory.py
 
   smoke:
     name: Golden-path smoke test
