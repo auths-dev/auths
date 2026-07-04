@@ -571,7 +571,31 @@ fn is_process_running(pid: u32) -> bool {
     signal::kill(Pid::from_raw(pid as i32), None).is_ok()
 }
 
-#[cfg(not(unix))]
+/// Windows: a PID is running if we can open it and `GetExitCodeProcess`
+/// reports `STILL_ACTIVE` (259). `OpenProcess` failing (no such PID, or access
+/// denied) is treated as not-running, matching the Unix `kill(pid, 0)` check.
+#[cfg(windows)]
+fn is_process_running(pid: u32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, FALSE};
+    use windows::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    const STILL_ACTIVE: u32 = 259;
+    // SAFETY: standard Win32 open/query/close of a process handle; the handle is
+    // always closed, and all pointers point to live stack locals.
+    unsafe {
+        let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) {
+            Ok(h) => h,
+            Err(_) => return false,
+        };
+        let mut code: u32 = 0;
+        let running = GetExitCodeProcess(handle, &mut code).is_ok() && code == STILL_ACTIVE;
+        let _ = CloseHandle(handle);
+        running
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn is_process_running(_pid: u32) -> bool {
     false
 }
