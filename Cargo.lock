@@ -435,6 +435,7 @@ dependencies = [
  "toml",
  "url",
  "which",
+ "windows 0.58.0",
  "zeroize",
 ]
 
@@ -623,6 +624,7 @@ dependencies = [
  "auths-crypto",
  "auths-keri",
  "auths-oidc-port",
+ "auths-pairing-protocol",
  "auths-verifier",
  "axum",
  "chrono",
@@ -843,6 +845,7 @@ dependencies = [
  "chrono",
  "hex",
  "hkdf",
+ "hmac",
  "ml-kem",
  "p256 0.13.2",
  "rand 0.8.6",

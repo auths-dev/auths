@@ -1,71 +1,17 @@
 //! Status workflow — aggregates identity, device, and agent state for user-friendly reporting.
 
-use crate::result::{
-    AgentStatus, DeviceReadiness, DeviceStatus, IdentityStatus, NextStep, StatusReport,
-};
+use crate::result::{DeviceReadiness, NextStep};
 use chrono::{DateTime, Duration, Utc};
-use std::path::Path;
 
-/// Status workflow for reporting Auths state.
+/// Status rules for reporting Auths state.
 ///
-/// This workflow aggregates information from identity storage, device attestations,
-/// and agent status to produce a unified StatusReport suitable for CLI display.
-///
-/// Usage:
-/// ```ignore
-/// let report = StatusWorkflow::query(&ctx, Utc::now())?;
-/// println!("Identity: {}", report.identity.controller_did);
-/// ```
+/// The consumed surface is [`StatusWorkflow::compute_readiness`] (per-device
+/// readiness from expiry/revocation) and [`StatusWorkflow::next_steps_from_readiness`]
+/// (the next-step rules). The CLI (`auths status`) loads identity/devices/agent
+/// itself and calls these — they are the single source of truth for the rules.
 pub struct StatusWorkflow;
 
 impl StatusWorkflow {
-    /// Query the current status of the Auths system.
-    ///
-    /// Args:
-    /// * `repo_path` - Path to the Auths repository.
-    /// * `now` - Current time for expiry calculations.
-    ///
-    /// Returns a StatusReport with identity, device, and agent state.
-    ///
-    /// This is a placeholder implementation; the real version will integrate
-    /// with IdentityStorage, AttestationSource, and agent discovery ports.
-    pub fn query(repo_path: &Path, _now: DateTime<Utc>) -> Result<StatusReport, String> {
-        let _ = repo_path; // Placeholder to avoid unused warning
-        // TODO: In full implementation, load identity from IdentityStorage
-        let identity = None; // Placeholder
-
-        // TODO: In full implementation, load attestations from AttestationSource
-        // and aggregate by device with expiry checking
-        let devices = Vec::new(); // Placeholder
-
-        // TODO: In full implementation, check agent socket and PID
-        let agent = AgentStatus {
-            running: false,
-            pid: None,
-            socket_path: None,
-        };
-
-        // Compute next steps based on current state
-        let next_steps = Self::compute_next_steps(&identity, &devices, &agent);
-
-        Ok(StatusReport {
-            identity,
-            devices,
-            agent,
-            next_steps,
-        })
-    }
-
-    /// Compute suggested next steps from the aggregated state.
-    fn compute_next_steps(
-        identity: &Option<IdentityStatus>,
-        devices: &[DeviceStatus],
-        agent: &AgentStatus,
-    ) -> Vec<NextStep> {
-        let readinesses: Vec<DeviceReadiness> = devices.iter().map(|d| d.readiness).collect();
-        Self::next_steps_from_readiness(identity.is_some(), &readinesses, agent.running)
-    }
-
     /// The next-step rules, keyed on the minimal facts they need — identity presence, each device's
     /// readiness, and whether the signing agent is live. The single source of truth for these rules,
     /// including the recovery single-point-of-failure signpost, so any presentation layer (the CLI)
@@ -216,15 +162,7 @@ mod tests {
 
     #[test]
     fn test_next_steps_no_identity() {
-        let steps = StatusWorkflow::compute_next_steps(
-            &None,
-            &[],
-            &AgentStatus {
-                running: false,
-                pid: None,
-                socket_path: None,
-            },
-        );
+        let steps = StatusWorkflow::next_steps_from_readiness(false, &[], false);
         assert!(!steps.is_empty());
         assert!(steps[0].command.contains("init"));
     }

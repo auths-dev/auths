@@ -12,6 +12,7 @@ categories = ["cryptography"]
 
 [dependencies]
 auths-crypto = { workspace = true, features = ["native"] }
+hmac.workspace = true
 auths-keri.workspace = true
 ring.workspace = true
 p256 = { version = "=0.13.2", features = ["ecdh", "ecdsa", "pkcs8"] }
@@ -33,7 +34,7 @@ schemars = { version = "0.8", optional = true }
 # fn-129.T10: optional hybrid post-quantum KEM slot. Pinned exactly — the
 # `ml-kem` crate is UNAUDITED as of 2026; see `src/pq_hybrid.rs`. Default
 # disabled; this dep is only compiled in when `pq-hybrid` is enabled.
-ml-kem = { version = "0.2", default-features = false, features = ["zeroize"], optional = true }
+ml-kem = { version = "=0.2.3", default-features = false, features = ["zeroize"], optional = true }
 
 [features]
 default = ["subkey-chain-v1"]

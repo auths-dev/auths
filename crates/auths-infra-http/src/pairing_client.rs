@@ -117,14 +117,29 @@ impl PairingRelayClient for HttpPairingRelayClient {
         registry_url: &str,
         code: &str,
     ) -> impl Future<Output = Result<GetSessionResponse, NetworkError>> + Send {
+        use auths_pairing_protocol::lookup_auth::{LOOKUP_PATH, build_lookup_authorization};
         let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
-        let url = format!(
-            "{}/v1/pairing/sessions/by-code/{}",
-            registry_url.trim_end_matches('/'),
-            code
-        );
+        let url = format!("{}{}", registry_url.trim_end_matches('/'), LOOKUP_PATH);
         let endpoint = registry_url.to_string();
-        let req = self.client.get(&url);
+
+        // Prove knowledge of the short code without sending it in the clear: HMAC
+        // a canonical GET with a key derived from the code. The timestamp and a
+        // fresh random nonce bind the request against replay.
+        #[allow(clippy::disallowed_methods)] // wire boundary: no clock is injected into the relay client
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut nonce = [0u8; 16];
+        {
+            use rand::RngCore;
+            let mut rng = rand::rngs::OsRng;
+            rng.fill_bytes(&mut nonce);
+        }
+        let req = self
+            .client
+            .get(&url)
+            .header("Authorization", build_lookup_authorization(code, ts, &nonce));
 
         async move {
             guard?;

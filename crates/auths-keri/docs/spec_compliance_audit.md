@@ -1,3 +1,11 @@
+> ⚠️ **STALE (as of 2026-07-04) — historical document.** Many deviations listed
+> below have since been implemented: decimal/hex and weighted/fractional
+> thresholds, delegated inception/rotation (`dip`/`drt`), non-transferable and
+> abandonment enforcement, witness-receipt quorum gating, and dual-index ("Big")
+> CESR sigers. Do not treat this as the current gap list. **`SPEC.md` is the
+> authoritative wire-format contract**; consult it and the live `validate.rs`
+> tests, not this file.
+
 # KERI Spec Compliance Audit: `auths-keri`
 
 **Spec reference:** [Trust over IP KSWG KERI Specification v1.1](https://trustoverip.github.io/kswg-keri-specification/)

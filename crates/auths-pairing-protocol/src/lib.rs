@@ -37,6 +37,7 @@
 pub mod channel_binding;
 pub mod domain_separation;
 pub mod envelope;
+pub mod lookup_auth;
 mod error;
 #[cfg(feature = "pq-hybrid")]
 pub mod pq_hybrid;

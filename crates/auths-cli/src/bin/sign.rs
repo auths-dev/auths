@@ -297,8 +297,29 @@ fn run_sign(args: &Args) -> Result<()> {
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();
-    let signature_pem =
-        CommitSigningWorkflow::execute(&ctx, params, now).map_err(anyhow::Error::new)?;
+
+    // Signing can block on a hardware biometric prompt or a passphrase entry.
+    // If it stalls past a couple of seconds, tell the user why instead of
+    // leaving the terminal frozen with no explanation. The notice goes to
+    // stderr only — stdout carries the gpg.ssh.program protocol. The channel
+    // wakes the notice thread the instant signing finishes, so a fast sign
+    // adds no latency.
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let notice = std::thread::spawn(move || {
+        if done_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .is_err()
+        {
+            eprintln!(
+                "auths-sign: waiting for signing approval — touch your security key or enter your passphrase…"
+            );
+        }
+    });
+    let signing_result =
+        CommitSigningWorkflow::execute(&ctx, params, now).map_err(anyhow::Error::new);
+    let _ = done_tx.send(());
+    let _ = notice.join();
+    let signature_pem = signing_result?;
 
     let sig_path = format!("{}.sig", buffer_file.display());
     fs::write(&sig_path, &signature_pem)

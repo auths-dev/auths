@@ -130,6 +130,13 @@ fn canonicalize_and_said<T: serde::Serialize>(data: &T) -> Result<Said, AnchorEr
     compute_said(&value).map_err(|e| AnchorError::Serialization(e.to_string()))
 }
 
+/// The anchoring SAID for an attestation (canonical JSON → SAID) — the same
+/// digest [`try_stage_anchor`] seals. Exposed so bulk flows that carry many
+/// attestation seals in one shared `ixn` seal the identical value.
+pub fn attestation_said<T: serde::Serialize>(attestation: &T) -> Result<Said, AnchorError> {
+    canonicalize_and_said(attestation)
+}
+
 fn sign_ixn(
     ixn: &IxnEvent,
     signer: &dyn SecureSigner,
