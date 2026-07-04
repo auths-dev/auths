@@ -36,8 +36,8 @@ this table; keep the `crate` / `version` columns exact.
 | ECDSA P-256 (RFC 6979 deterministic) | p256 | 0.13.2 |
 | secp256k1 Schnorr (BIP-340, optional) | k256 | 0.13 |
 
-Post-quantum signatures (ML-DSA / FIPS 204) are **not yet in the tree** — tracked
-as PRD PQ-2/PQ-3. Update this section when they land.
+Post-quantum signatures (ML-DSA / FIPS 204) are **not yet in the tree**. Update
+this section when they land.
 
 ### Hashing
 

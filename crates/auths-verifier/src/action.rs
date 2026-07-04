@@ -97,14 +97,12 @@ impl ActionEnvelope {
 mod tests {
     use super::*;
 
-    /// BG-3 (#258): the raw-seed `sign_action` → `verify_action_envelope`
-    /// roundtrip that the Python `test_sign_and_verify_roundtrip` exercises,
-    /// reproduced at the Rust level (the Python `.so` cannot be dlopen'd on
-    /// this macOS 27 toolchain). Signs canonical bytes with a raw Ed25519 seed
-    /// and verifies with the seed's RFC-8032 public key after a JSON wire
-    /// round-trip — exactly the crate calls the Python bindings make.
+    /// The raw-seed `sign_action` → `verify_action_envelope` roundtrip the
+    /// Python bindings wrap, reproduced at the crate level: sign canonical bytes
+    /// with a raw Ed25519 seed and verify with the seed's RFC-8032 public key
+    /// after a JSON wire round-trip.
     #[test]
-    fn raw_seed_action_sign_verify_roundtrip_bg3() {
+    fn raw_seed_action_sign_verify_roundtrip() {
         use auths_crypto::{RingCryptoProvider, TypedSeed, typed_public_key, typed_sign};
 
         let seed = [0xaau8; 32]; // Python test's TEST_SEED_HEX = "a" * 64
@@ -138,7 +136,7 @@ mod tests {
         );
         let sig2 = hex::decode(&parsed.signature).expect("decode signature hex");
         RingCryptoProvider::ed25519_verify(&pk, &canonical2, &sig2)
-            .expect("raw-seed sign_action -> verify_action_envelope must round-trip (BG-3/#258)");
+            .expect("raw-seed sign_action -> verify_action_envelope must round-trip");
     }
 
     #[test]

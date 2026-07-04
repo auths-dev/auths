@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drift guard for docs/security/primitive-inventory.md (PRD CR-7).
+"""Drift guard for docs/security/primitive-inventory.md.
 
 Parses the pin table in the inventory doc and asserts every `<crate> = <version>`
 row matches a real pin in some Cargo.toml in the workspace. Fails (exit 1) if a

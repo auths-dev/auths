@@ -73,9 +73,9 @@ class TestSignAndVerifyRoundtrip:
             pytest.skip("cryptography package not installed")
 
     def test_sign_and_verify_roundtrip(self):
-        # auths#258 (fixed): raw-seed sign_action -> verify_action_envelope now
-        # round-trips. The Rust-level regression guard is
-        # auths-verifier action::tests::raw_seed_action_sign_verify_roundtrip_bg3.
+        # Raw-seed sign_action -> verify_action_envelope round-trips. The
+        # crate-level regression guard is
+        # auths-verifier action::tests::raw_seed_action_sign_verify_roundtrip.
         pub_hex = self._get_public_key_hex()
         envelope_json = sign_action(
             TEST_SEED_HEX, "tool_call",
