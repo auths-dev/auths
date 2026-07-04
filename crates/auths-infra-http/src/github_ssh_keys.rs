@@ -194,16 +194,27 @@ async fn post_ssh_key_with_retry(
 
         let status = resp.status().as_u16();
 
-        // Success: key created
+        // Success: key created. Return the real key id — never a placeholder,
+        // since callers store it as the key's metadata handle.
         if status == 201 {
-            match resp.json::<SshKeyResponse>().await {
-                Ok(key) => return Ok(key.id.to_string()),
-                Err(_e) => {
-                    // If deserialization fails but we got 201, the key was created.
-                    // Return a placeholder - metadata storage will verify it worked.
-                    return Ok("created".to_string());
-                }
+            let body = resp.text().await.unwrap_or_default();
+            // Primary: typed parse.
+            if let Ok(key) = serde_json::from_str::<SshKeyResponse>(&body) {
+                return Ok(key.id.to_string());
             }
+            // Fallback: response shape changed but the id is still present — pull it directly.
+            if let Some(id) = serde_json::from_str::<serde_json::Value>(&body)
+                .ok()
+                .and_then(|v| v.get("id").and_then(serde_json::Value::as_u64))
+            {
+                return Ok(id.to_string());
+            }
+            // 201 but no extractable id: surface it, don't fabricate a handle.
+            return Err(PlatformError::Platform {
+                message: format!(
+                    "GitHub returned 201 Created but the SSH-key id could not be parsed: {body}"
+                ),
+            });
         }
 
         // 422: Unprocessable Entity - likely duplicate, treat as success
