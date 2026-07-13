@@ -1,0 +1,28 @@
+[package]
+name = "scale-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Bulk agent-onboarding scale benchmark for the auths org root KEL (issue #255 / PRD KL-9)"
+
+# Detached from the parent workspace on purpose: the benchmark must run
+# unchanged against main and against comparison branches without touching
+# the workspace manifest.
+[workspace]
+
+[dependencies]
+auths-sdk = { path = "../../crates/auths-sdk" }
+auths-core = { path = "../../crates/auths-core", features = ["test-utils"] }
+auths-id = { path = "../../crates/auths-id" }
+auths-crypto = { path = "../../crates/auths-crypto" }
+auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"] }
+auths-verifier = { path = "../../crates/auths-verifier" }
+anyhow = "1"
+serde_json = "1"
+
+[features]
+# Enable on branches that ship agents::add_bulk (the KL-9 bulk-onboarding path).
+bulk = []
+
+[profile.release]
+debug = "line-tables-only"
