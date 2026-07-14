@@ -112,7 +112,7 @@ fn load_events(args: &KelValidateArgs, ctx: &CliConfig) -> Result<(String, Vec<E
         return Ok((path.display().to_string(), events));
     }
 
-    let auths_home = auths_sdk::paths::auths_home()?;
+    let auths_home = auths_sdk::storage_layout::resolve_repo_path(ctx.repo_path.clone())?;
     let did = match &args.did {
         Some(d) => d.clone(),
         None => {
