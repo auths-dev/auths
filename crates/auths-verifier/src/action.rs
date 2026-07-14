@@ -129,7 +129,9 @@ mod tests {
         let parsed: ActionEnvelope = serde_json::from_str(&wire).expect("reparse envelope");
 
         // verify_action_envelope
-        let canonical2 = parsed.canonical_bytes().expect("canonical bytes at verify time");
+        let canonical2 = parsed
+            .canonical_bytes()
+            .expect("canonical bytes at verify time");
         assert_eq!(
             canonical, canonical2,
             "canonical signing bytes changed across the JSON wire round-trip"

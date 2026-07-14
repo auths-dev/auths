@@ -251,7 +251,10 @@ pub enum IdSubcommand {
 
         /// Principal to bind the key to (usually the committer email). Defaults
         /// to the identity DID. Must match the signer identity git checks.
-        #[arg(long, help = "Principal for the allowed_signers line (default: identity DID)")]
+        #[arg(
+            long,
+            help = "Principal for the allowed_signers line (default: identity DID)"
+        )]
         principal: Option<String>,
 
         /// Write to this file instead of stdout.
@@ -911,13 +914,18 @@ pub fn handle_id(
             // allowed_signers line: `<principal> <keytype> <base64>`. The OpenSSH
             // encoding already carries `<keytype> <base64>`; trim any trailing
             // comment so the line is exactly the two fields ssh expects.
-            let key_field = openssh.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+            let key_field = openssh
+                .split_whitespace()
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" ");
             let line = format!("{principal} {key_field}\n");
 
             match &output_file {
                 Some(path) => {
-                    fs::write(path, &line)
-                        .with_context(|| format!("Failed to write allowed_signers to {:?}", path))?;
+                    fs::write(path, &line).with_context(|| {
+                        format!("Failed to write allowed_signers to {:?}", path)
+                    })?;
                     println!("✅ Wrote allowed_signers for {} to {:?}", principal, path);
                     println!("   git config gpg.ssh.allowedSignersFile {:?}", path);
                 }
