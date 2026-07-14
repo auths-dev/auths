@@ -66,7 +66,7 @@ this section when they land.
 | Primitive | crate | version |
 |---|---|---|
 | X25519 ECDH (pairing) | x25519-dalek | 2 |
-| ML-KEM-768 (PQ-hybrid pairing, optional, **UNAUDITED**, off by default) | ml-kem | 0.2 |
+| ML-KEM-768 (PQ-hybrid pairing, optional, **UNAUDITED**, off by default) | ml-kem | 0.2.3 |
 
 ### Encoding & hygiene
 
