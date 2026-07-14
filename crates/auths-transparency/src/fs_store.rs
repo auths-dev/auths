@@ -2,6 +2,10 @@ use std::path::PathBuf;
 
 use crate::error::TransparencyError;
 use crate::store::TileStore;
+use crate::writer::LogSigningKey;
+
+/// PKCS#8 signing-key file kept inside a local log directory.
+const LOG_KEY_FILE: &str = "log.key";
 
 /// Filesystem-backed tile store.
 ///
@@ -34,6 +38,60 @@ impl FsTileStore {
     /// ```
     pub fn new(base_path: PathBuf) -> Self {
         Self { base_path }
+    }
+
+    /// Create the store's base directory (and any missing parents).
+    ///
+    /// Args:
+    /// * none beyond `self`.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// store.ensure_base_dir()?;
+    /// ```
+    pub fn ensure_base_dir(&self) -> Result<(), TransparencyError> {
+        std::fs::create_dir_all(&self.base_path)
+            .map_err(|e| TransparencyError::StoreError(e.to_string()))
+    }
+
+    /// Load the log's signing key from `<base>/log.key`, minting and
+    /// persisting a fresh one (mode `0600` on Unix) on first use when `create`
+    /// is set.
+    ///
+    /// Returns `Ok(None)` when the key is absent and `create` is false, so a
+    /// caller can distinguish "no log here yet" from an I/O failure without
+    /// itself touching the filesystem.
+    ///
+    /// Args:
+    /// * `create` — Generate and persist a key if none exists yet.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let key = store.load_or_create_key(true)?.expect("created on first use");
+    /// ```
+    pub fn load_or_create_key(
+        &self,
+        create: bool,
+    ) -> Result<Option<LogSigningKey>, TransparencyError> {
+        let path = self.base_path.join(LOG_KEY_FILE);
+        match std::fs::read(&path) {
+            Ok(der) => LogSigningKey::from_pkcs8_der(&der).map(Some),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && create => {
+                let key = LogSigningKey::generate()?;
+                let der = key.to_pkcs8_der()?;
+                std::fs::write(&path, &der)
+                    .map_err(|e| TransparencyError::StoreError(e.to_string()))?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                        .map_err(|e| TransparencyError::StoreError(e.to_string()))?;
+                }
+                Ok(Some(key))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(TransparencyError::StoreError(e.to_string())),
+        }
     }
 }
 

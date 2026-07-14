@@ -8,9 +8,8 @@ use auths_keri::witness::independence::{
     IndependencePolicy, Infrastructure, Jurisdiction, OperatorId, Organization, WitnessOperatorInfo,
 };
 use auths_transparency::{
-    BundleVerificationReport, ConsistencyProof, FsTileStore, LogOrigin, LogSigningKey, LogWriter,
-    MerkleHash, OfflineBundle, SignedCheckpoint, TransparencyError, TrustRoot, TrustRootWitness,
-    hash_leaf,
+    BundleVerificationReport, ConsistencyProof, FsTileStore, LogOrigin, LogWriter, MerkleHash,
+    OfflineBundle, SignedCheckpoint, TransparencyError, TrustRoot, TrustRootWitness, hash_leaf,
 };
 use auths_verifier::Ed25519PublicKey;
 use auths_verifier::evidence_pack::TransparencyInclusion;
@@ -18,9 +17,6 @@ use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 use crate::domains::compliance::releases::ArtifactDigest;
-
-/// PKCS#8 signing-key file kept inside a local log directory.
-const LOG_KEY_FILE: &str = "log.key";
 
 /// Errors from transparency verification workflows.
 #[derive(Debug, Error)]
@@ -52,16 +48,6 @@ pub enum TransparencyWorkflowError {
     /// No local transparency log exists at the given directory yet.
     #[error("no transparency log at {0} — append an artifact first")]
     LogNotFound(PathBuf),
-
-    /// Local transparency-log file I/O failed.
-    #[error("transparency log I/O error at {path}: {source}")]
-    LogIo {
-        /// Path whose access failed.
-        path: PathBuf,
-        /// Underlying I/O error.
-        #[source]
-        source: std::io::Error,
-    },
 
     /// An underlying transparency-log operation (append, prove, key) failed.
     #[error("transparency log error: {0}")]
@@ -419,41 +405,10 @@ pub struct AppendedArtifact {
     pub signed_checkpoint: SignedCheckpoint,
 }
 
-/// Load the log signing key from `<log_dir>/log.key`, creating it on first
-/// use when `create` is set (the append path); proving against a log that
-/// does not exist yet is an error, not a key-generation event.
-fn load_log_key(log_dir: &Path, create: bool) -> Result<LogSigningKey, TransparencyWorkflowError> {
-    let path = log_dir.join(LOG_KEY_FILE);
-    match std::fs::read(&path) {
-        Ok(der) => LogSigningKey::from_pkcs8_der(&der).map_err(TransparencyWorkflowError::from),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound && create => {
-            let key = LogSigningKey::generate()?;
-            let der = key.to_pkcs8_der()?;
-            std::fs::write(&path, der).map_err(|source| TransparencyWorkflowError::LogIo {
-                path: path.clone(),
-                source,
-            })?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(
-                    |source| TransparencyWorkflowError::LogIo {
-                        path: path.clone(),
-                        source,
-                    },
-                )?;
-            }
-            Ok(key)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(
-            TransparencyWorkflowError::LogNotFound(log_dir.to_path_buf()),
-        ),
-        Err(source) => Err(TransparencyWorkflowError::LogIo { path, source }),
-    }
-}
-
 /// Open a writer over the local tile-backed log, validating the origin and
-/// (when `create`) ensuring the log directory and signing key exist.
+/// (when `create`) ensuring the log directory and signing key exist. The
+/// filesystem work — creating the directory and loading or minting the signing
+/// key — lives on [`FsTileStore`] so the workflow stays I/O-free.
 fn open_log_writer(
     log_dir: &Path,
     origin: &str,
@@ -461,18 +416,14 @@ fn open_log_writer(
 ) -> Result<LogWriter<FsTileStore>, TransparencyWorkflowError> {
     let origin = LogOrigin::new(origin)
         .map_err(|e| TransparencyWorkflowError::InvalidInput(format!("invalid log origin: {e}")))?;
+    let store = FsTileStore::new(log_dir.to_path_buf());
     if create {
-        std::fs::create_dir_all(log_dir).map_err(|source| TransparencyWorkflowError::LogIo {
-            path: log_dir.to_path_buf(),
-            source,
-        })?;
+        store.ensure_base_dir()?;
     }
-    let key = load_log_key(log_dir, create)?;
-    Ok(LogWriter::new(
-        FsTileStore::new(log_dir.to_path_buf()),
-        key,
-        origin,
-    ))
+    let key = store
+        .load_or_create_key(create)?
+        .ok_or_else(|| TransparencyWorkflowError::LogNotFound(log_dir.to_path_buf()))?;
+    Ok(LogWriter::new(store, key, origin))
 }
 
 /// Append an artifact digest to a local tile-backed transparency log.
