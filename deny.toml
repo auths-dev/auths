@@ -77,6 +77,13 @@ ignore = [
   "RUSTSEC-2023-0071",
   # paste unmaintained (RUSTSEC-2024-0436) — transitive via rmcp; no safe upgrade available
   "RUSTSEC-2024-0436",
+  # rmcp Streamable HTTP server DNS rebinding (RUSTSEC-2026-0189) — not exploitable
+  # here: rmcp is used only by auths-mcp-gateway with the `transport-io` (stdio) and
+  # `transport-child-process` features; the vulnerable Streamable HTTP server transport
+  # is never enabled, and the advisory states stdio/child-process transports are
+  # unaffected. The fix (rmcp >= 1.4.0) is a major upgrade from our pinned 0.9 with no
+  # security benefit for this transport posture.
+  "RUSTSEC-2026-0189",
 ]
 
 [sources]
