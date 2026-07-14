@@ -26,10 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
       - name: Install cargo-deny
-        run: |
-          if ! cargo deny --version 2>/dev/null | grep -q "0.19"; then
-            cargo install cargo-deny --locked
-          fi
+        uses: taiki-e/install-action@cargo-deny
       - name: cargo deny check ${{ matrix.checks }}
         run: cargo deny --manifest-path ./Cargo.toml check ${{ matrix.checks }}
 

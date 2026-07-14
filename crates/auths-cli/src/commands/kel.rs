@@ -112,19 +112,14 @@ fn load_events(args: &KelValidateArgs, ctx: &CliConfig) -> Result<(String, Vec<E
         return Ok((path.display().to_string(), events));
     }
 
-    let auths_home = auths_sdk::paths::auths_home()?;
+    let auths_home = auths_sdk::storage_layout::resolve_repo_path(ctx.repo_path.clone())?;
     let did = match &args.did {
         Some(d) => d.clone(),
         None => {
-            let sdk_ctx = crate::factories::storage::build_auths_context(
-                &auths_home,
-                &ctx.env_config,
-                None,
-            )?;
+            let sdk_ctx =
+                crate::factories::storage::build_auths_context(&auths_home, &ctx.env_config, None)?;
             auths_sdk::workflows::commit_trust::local_self_root(&sdk_ctx).ok_or_else(|| {
-                anyhow!(
-                    "no local identity found — run `auths init` first, or pass --kel/--did"
-                )
+                anyhow!("no local identity found — run `auths init` first, or pass --kel/--did")
             })?
         }
     };

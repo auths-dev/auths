@@ -125,7 +125,8 @@ impl PairingRelayClient for HttpPairingRelayClient {
         // Prove knowledge of the short code without sending it in the clear: HMAC
         // a canonical GET with a key derived from the code. The timestamp and a
         // fresh random nonce bind the request against replay.
-        #[allow(clippy::disallowed_methods)] // wire boundary: no clock is injected into the relay client
+        #[allow(clippy::disallowed_methods)]
+        // wire boundary: no clock is injected into the relay client
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
@@ -136,10 +137,10 @@ impl PairingRelayClient for HttpPairingRelayClient {
             let mut rng = rand::rngs::OsRng;
             rng.fill_bytes(&mut nonce);
         }
-        let req = self
-            .client
-            .get(&url)
-            .header("Authorization", build_lookup_authorization(code, ts, &nonce));
+        let req = self.client.get(&url).header(
+            "Authorization",
+            build_lookup_authorization(code, ts, &nonce),
+        );
 
         async move {
             guard?;

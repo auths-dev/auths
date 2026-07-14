@@ -439,9 +439,7 @@ fn check_keychain_accessible() -> Check {
 /// `~/.auths` default. Surfacing the winner and its source turns "why can't it
 /// find my identity" into a one-glance answer instead of a guessing game.
 fn check_identity_home() -> Check {
-    let env_home = std::env::var("AUTHS_HOME")
-        .ok()
-        .filter(|s| !s.is_empty());
+    let env_home = std::env::var("AUTHS_HOME").ok().filter(|s| !s.is_empty());
     let (passed, detail, suggestion) = match auths_sdk::paths::auths_home() {
         Ok(path) => {
             let source = if env_home.is_some() {
