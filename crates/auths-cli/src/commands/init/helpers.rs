@@ -42,23 +42,6 @@ fn url_is_github(url: &str) -> bool {
     })
 }
 
-/// Whether the working directory is inside a git repository.
-///
-/// Decides whether a non-interactive `auths init` can scope signing config to
-/// "this repo": `git config --local` outside a repository is an error, and
-/// `auths init` from a home directory is an ordinary first run.
-///
-/// Usage:
-/// ```ignore
-/// let scope = if in_git_repository() { Local } else { Global };
-/// ```
-pub(crate) fn in_git_repository() -> bool {
-    git_command(&["rev-parse", "--is-inside-work-tree"])
-        .output()
-        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
-        .unwrap_or(false)
-}
-
 /// Whether the current repository has a GitHub remote.
 ///
 /// Used to decide whether `auths init` offers to link GitHub by default — linking

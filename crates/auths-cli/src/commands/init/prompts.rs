@@ -13,7 +13,6 @@ use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::types::{GitSigningScope, IdentityConflictPolicy};
 
 use super::GitScopeArg;
-use super::helpers::in_git_repository;
 
 use super::InitCommand;
 use super::InitProfile;
