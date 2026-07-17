@@ -3,7 +3,6 @@ name = "auths-witness"
 description = "Slim, hardened KERI rct-witness server binary over the shared auths-core witness library"
 version.workspace = true
 edition = "2024"
-publish = false
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

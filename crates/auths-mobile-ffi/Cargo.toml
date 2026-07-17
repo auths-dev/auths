@@ -4,7 +4,7 @@ name = "auths-mobile-ffi"
 # out of the main workspace (UniFFI / cross-target resolver concerns), so
 # `version.workspace = true` cannot resolve. Keep in sync with the main
 # workspace version at `../../Cargo.toml` on each release cut.
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "UniFFI bindings for Auths mobile identity creation (iOS/Android)"
 publish = true

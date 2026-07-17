@@ -154,11 +154,17 @@ jobs:
         working-directory: packages/auths-node
         run: pnpm artifacts
 
+      # Trusted publishing (OIDC): tokenless auth via this workflow's OIDC
+      # identity against each package's trusted publisher on npmjs.com — no
+      # NPM_TOKEN. Requires npm >= 11.5.1 (setup-node ships older) AND a trusted
+      # publisher configured for @auths-dev/sdk and every @auths-dev/sdk-<platform>
+      # package (napi publishes each platform package separately).
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish platform packages
         working-directory: packages/auths-node
         run: npx napi prepublish -t npm --no-gh-release
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish main package
         working-directory: packages/auths-node
@@ -169,5 +175,3 @@ jobs:
           else
             npm publish --ignore-scripts --provenance --access public
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

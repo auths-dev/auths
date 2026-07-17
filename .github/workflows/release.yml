@@ -26,10 +26,31 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Build the verifier from the tagged checkout rather than downloading a
+      # pinned release. The release being cut is newer than any published CLI,
+      # and the KEL/verification format moves between releases — a pinned older
+      # `auths` cannot resolve a KEL that this release's signing tooling
+      # produced. Building from source makes the verifier match, by construction.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.93"
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: release-verify
+          cache-on-failure: true
+
+      - name: Build auths from source
+        run: |
+          cargo build --release --locked -p auths-cli
+          echo "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
+
       - name: Verify commit signatures
         uses: auths-dev/verify@c7bee200ff881005bd13bd67f514b57edbfd0500 # v1
         with:
-          auths-version: '0.1.3'
+          # No auths-version: use the `auths` we just built from this tag.
           identity-bundle: .auths/ci-bundle.json
 
   build:
