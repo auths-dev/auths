@@ -383,7 +383,10 @@ mod tests {
 
     impl crate::ports::git::RepoIndex for FakeIndex {
         fn stage(&self, path: &Path) -> Result<(), crate::ports::git::IndexError> {
-            self.staged.lock().expect("staged lock").push(path.to_path_buf());
+            self.staged
+                .lock()
+                .expect("staged lock")
+                .push(path.to_path_buf());
             Ok(())
         }
 
@@ -398,8 +401,7 @@ mod tests {
         let repo = tmp.path();
         let index = FakeIndex::new();
 
-        let outcome =
-            pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
+        let outcome = pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
 
         assert_eq!(outcome, RootPinOutcome::PinnedAndStaged);
         assert!(is_pinned_root(&FsStore, &repo.join(".auths"), "did:keri:Eroot").expect("pinned"));
@@ -424,8 +426,7 @@ mod tests {
         add_pinned_root(&FsStore, &auths_dir, "did:keri:Eroot").expect("pre-write");
         let index = FakeIndex::new(); // tracks nothing
 
-        let outcome =
-            pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
+        let outcome = pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
 
         assert_eq!(outcome, RootPinOutcome::Staged);
         assert_eq!(
@@ -443,11 +444,13 @@ mod tests {
         add_pinned_root(&FsStore, &auths_dir, "did:keri:Eroot").expect("pre-write");
         let index = FakeIndex::with_tracked(vec![auths_dir.join("roots")]);
 
-        let outcome =
-            pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
+        let outcome = pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
 
         assert_eq!(outcome, RootPinOutcome::AlreadyTracked);
-        assert!(index.staged().is_empty(), "nothing to do; must not touch the index");
+        assert!(
+            index.staged().is_empty(),
+            "nothing to do; must not touch the index"
+        );
     }
 
     #[test]

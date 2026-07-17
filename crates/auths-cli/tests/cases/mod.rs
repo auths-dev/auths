@@ -18,6 +18,7 @@ mod revocation;
 mod sign_commit_binding;
 mod sign_verify;
 mod sign_verify_roundtrip;
+mod third_party_verify;
 mod trust_pin_control;
 mod trust_repo;
 mod verify;
