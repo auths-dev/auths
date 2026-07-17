@@ -36,8 +36,12 @@ CRATES_IO_API = "https://crates.io/api/v1/crates"
 # Topological order computed from `cargo metadata` (a crate may only appear
 # after every internal dependency it has). Regenerate when crate deps change:
 # each batch contains crates whose internal deps are all in earlier batches.
-# Deliberately excluded: auths-radicle (deprecated), auths-api (server bin),
-# auths-test-utils (test helper, only a dev-dependency of published crates).
+#
+# Every publishable workspace member must be either in a batch here or in
+# EXCLUDED_FROM_PUBLISH below — `validate_batches()` enforces that, so a crate
+# can no longer silently fall out of the release (which is exactly what happened
+# to auths-mcp-core/-gateway: built, wired, and never published because nothing
+# checked they were listed).
 PUBLISH_BATCHES: list[list[str]] = [
     ["auths", "auths-crypto", "auths-telemetry", "auths-utils"],
     ["auths-keri", "auths-oidc-port"],
@@ -48,11 +52,90 @@ PUBLISH_BATCHES: list[list[str]] = [
     ["auths-id"],
     ["auths-storage"],
     ["auths-sdk"],
-    ["auths-infra-git", "auths-mcp-server", "auths-scim-server"],
-    ["auths-cli"],
+    ["auths-infra-git", "auths-mcp-core", "auths-mcp-server", "auths-scim-server"],
+    ["auths-cli", "auths-mcp-gateway"],
 ]
 
+# Publishable workspace members deliberately NOT published to crates.io, each
+# with the reason. Keeping this explicit is what makes the coverage check
+# meaningful: an omission is a decision recorded here, never an accident.
+EXCLUDED_FROM_PUBLISH: dict[str, str] = {
+    "auths-api": "org control-plane server binary; not a library anyone depends on from crates.io",
+    "murmur-core": "belongs to the Murmur messenger — a separate product with its own release",
+    "murmur-relay": "belongs to the Murmur messenger — a separate product with its own release",
+}
+
 SLEEP_BETWEEN_BATCHES = 60
+
+
+def workspace_members() -> list[str]:
+    """Crate names of the `[workspace] members` under `crates/`.
+
+    Read from the root Cargo.toml so the coverage check sees exactly what
+    `cargo` would build, not whatever happens to sit in the crates/ directory.
+    """
+    text = CARGO_TOML.read_text()
+    members_block = re.search(r"members\s*=\s*\[(.*?)\]", text, re.DOTALL)
+    if not members_block:
+        return []
+    paths = re.findall(r'"(crates/[^"]+)"', members_block.group(1))
+    names = []
+    for p in paths:
+        crate_toml = CARGO_TOML.parent / p / "Cargo.toml"
+        if not crate_toml.exists():
+            continue
+        name = re.search(r'^\s*name\s*=\s*"([^"]+)"', crate_toml.read_text(), re.MULTILINE)
+        if name:
+            names.append(name.group(1))
+    return names
+
+
+def is_publishable(crate_name: str) -> bool:
+    """Whether a workspace member is publishable (no `publish = false`)."""
+    for p in re.findall(r'"(crates/[^"]+)"', CARGO_TOML.read_text()):
+        crate_toml = CARGO_TOML.parent / p / "Cargo.toml"
+        if not crate_toml.exists():
+            continue
+        text = crate_toml.read_text()
+        name = re.search(r'^\s*name\s*=\s*"([^"]+)"', text, re.MULTILINE)
+        if name and name.group(1) == crate_name:
+            return not re.search(r"^\s*publish\s*=\s*false", text, re.MULTILINE)
+    return False
+
+
+def validate_batches() -> list[str]:
+    """Return coverage errors: publishable members neither batched nor excluded,
+    plus batch/exclusion entries that no longer name a publishable member."""
+    batched = [c for batch in PUBLISH_BATCHES for c in batch]
+    errors: list[str] = []
+
+    dupes = sorted({c for c in batched if batched.count(c) > 1})
+    for c in dupes:
+        errors.append(f"{c} appears in PUBLISH_BATCHES more than once")
+
+    batched_set = set(batched)
+    overlap = batched_set & set(EXCLUDED_FROM_PUBLISH)
+    for c in sorted(overlap):
+        errors.append(f"{c} is both batched and excluded — pick one")
+
+    for crate in sorted(workspace_members()):
+        if not is_publishable(crate):
+            if crate in batched_set:
+                errors.append(f"{crate} has publish=false but is in a batch")
+            continue
+        if crate not in batched_set and crate not in EXCLUDED_FROM_PUBLISH:
+            errors.append(
+                f"{crate} is publishable but is neither in a batch nor in "
+                f"EXCLUDED_FROM_PUBLISH — add it to the release or record why not"
+            )
+
+    members = set(workspace_members())
+    for crate in sorted(batched_set - members):
+        errors.append(f"{crate} is batched but is not a workspace member")
+    for crate in sorted(set(EXCLUDED_FROM_PUBLISH) - members):
+        errors.append(f"{crate} is excluded but is not a workspace member")
+
+    return errors
 
 
 def get_workspace_version() -> str:
@@ -137,6 +220,28 @@ def publish_crate(crate_name: str) -> bool:
 
 
 def main() -> None:
+    # Coverage is checked on every run — a batch that has drifted out of sync
+    # with the workspace is a release bug whether or not we are publishing today.
+    errors = validate_batches()
+    if "--validate" in sys.argv:
+        if errors:
+            print("PUBLISH_BATCHES coverage FAILED:", file=sys.stderr)
+            for e in errors:
+                print(f"  - {e}", file=sys.stderr)
+            sys.exit(1)
+        members = [c for c in workspace_members() if is_publishable(c)]
+        print(
+            f"PUBLISH_BATCHES coverage OK: {len(members)} publishable members "
+            f"({sum(len(b) for b in PUBLISH_BATCHES)} batched, "
+            f"{len(EXCLUDED_FROM_PUBLISH)} excluded)"
+        )
+        return
+    if errors:
+        print("ERROR: PUBLISH_BATCHES coverage is out of date:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        sys.exit(1)
+
     publish = "--publish" in sys.argv
 
     version = get_workspace_version()
