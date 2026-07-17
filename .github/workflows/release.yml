@@ -71,8 +71,15 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
 
+      # auths-mcp-gateway ships alongside the CLI: `@auths/mcp`'s launcher shells out
+      # to this binary and its build step defers the binary to "a release-CI step",
+      # which is this one. Without it the published launcher has nothing to run.
       - name: Build release binaries
-        run: cargo build --release --locked --package auths-cli --target ${{ matrix.target }}
+        run: >
+          cargo build --release --locked
+          --package auths-cli
+          --package auths-mcp-gateway
+          --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: matrix.ext == '.tar.gz'
@@ -81,6 +88,8 @@ jobs:
           cp target/${{ matrix.target }}/release/auths staging/ || true
           cp target/${{ matrix.target }}/release/auths-sign staging/ || true
           cp target/${{ matrix.target }}/release/auths-verify staging/ || true
+          # No `|| true`: a silently absent gateway is how it shipped to nobody.
+          cp target/${{ matrix.target }}/release/auths-mcp-gateway staging/
           tar -czf ${{ matrix.asset_name }}${{ matrix.ext }} -C staging .
 
       - name: Package (Windows)
@@ -91,6 +100,8 @@ jobs:
           Copy-Item target/${{ matrix.target }}/release/auths.exe staging/ -ErrorAction SilentlyContinue
           Copy-Item target/${{ matrix.target }}/release/auths-sign.exe staging/ -ErrorAction SilentlyContinue
           Copy-Item target/${{ matrix.target }}/release/auths-verify.exe staging/ -ErrorAction SilentlyContinue
+          # No SilentlyContinue: a silently absent gateway is how it shipped to nobody.
+          Copy-Item target/${{ matrix.target }}/release/auths-mcp-gateway.exe staging/
           Compress-Archive -Path staging/* -DestinationPath ${{ matrix.asset_name }}${{ matrix.ext }}
 
       - name: Generate SHA256 checksum (Unix)

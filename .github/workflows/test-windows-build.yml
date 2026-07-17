@@ -22,14 +22,23 @@ jobs:
         with:
           key: x86_64-pc-windows-msvc
 
-      - name: Build CLI
-        run: cargo build --release --package auths-cli --target x86_64-pc-windows-msvc
+      # Mirrors the release workflow's package set exactly. It previously built only
+      # auths-cli, so auths-mcp-gateway had never been compiled for Windows — a gap
+      # that would have surfaced as a broken Windows release rather than a red CI run.
+      - name: Build CLI + MCP gateway
+        run: >
+          cargo build --release
+          --package auths-cli
+          --package auths-mcp-gateway
+          --target x86_64-pc-windows-msvc
 
-      - name: Verify binary
+      - name: Verify binaries
         run: |
           dir target\x86_64-pc-windows-msvc\release\auths.exe
           target\x86_64-pc-windows-msvc\release\auths.exe --version
           target\x86_64-pc-windows-msvc\release\auths.exe --help
+          dir target\x86_64-pc-windows-msvc\release\auths-mcp-gateway.exe
+          target\x86_64-pc-windows-msvc\release\auths-mcp-gateway.exe --help
 
       - name: Package
         run: |
@@ -37,6 +46,7 @@ jobs:
           Copy-Item target/x86_64-pc-windows-msvc/release/auths.exe staging/
           Copy-Item target/x86_64-pc-windows-msvc/release/auths-sign.exe staging/ -ErrorAction SilentlyContinue
           Copy-Item target/x86_64-pc-windows-msvc/release/auths-verify.exe staging/ -ErrorAction SilentlyContinue
+          Copy-Item target/x86_64-pc-windows-msvc/release/auths-mcp-gateway.exe staging/
           Compress-Archive -Path staging/* -DestinationPath auths-windows-x86_64.zip
 
       - uses: actions/upload-artifact@v4
