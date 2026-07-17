@@ -13,7 +13,6 @@ use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::types::{GitSigningScope, IdentityConflictPolicy};
 
 use super::GitScopeArg;
-use super::helpers::in_git_repository;
 
 use super::InitCommand;
 use super::InitProfile;
@@ -118,19 +117,16 @@ pub(crate) fn prompt_for_conflict_policy(
 
 /// Resolve the git-signing scope from an explicit `--git-scope`, else by asking.
 ///
-/// Non-interactive runs default to **local when standing in a git repository**,
-/// and global otherwise. They used to default to `Global` unconditionally with no
-/// way to override, so `auths init --non-interactive` — the scripted, CI and agent
-/// path — silently rewrote the user's `~/.gitconfig` and repointed
-/// `core.hooksPath` machine-wide, disabling every repo's own `.git/hooks` (husky,
-/// pre-commit, prek) in the process.
+/// The default is **global**, matching the interactive prompt's own default and
+/// the command's stated job ("Create your signing identity and configure Git").
+/// Setting up signing for one repo and silently not for the next is its own
+/// surprise, and `git config --local` outside a repository is an error — running
+/// `auths init` from a home directory is an ordinary first run.
 ///
-/// The repo test is what makes the conservative default safe rather than merely
-/// strict: `git config --local` outside a repository is an error, and running
-/// `auths init` from your home directory is an ordinary first run. There, global
-/// is the only scope that means anything — and a user who is not standing in a
-/// repository is not being surprised by machine-wide config. `--git-scope` decides
-/// it outright either way.
+/// The real gap this closes is that the scope was previously **unchooseable**
+/// non-interactively: `--non-interactive` hard-returned `Global` with no override,
+/// so a scripted, CI or agent init had no way to keep its hands off the user's
+/// `~/.gitconfig`. `--git-scope local|global|skip` decides it outright.
 ///
 /// Args:
 /// * `interactive`: Whether there is a TTY to prompt at.
@@ -148,11 +144,7 @@ pub(crate) fn prompt_for_git_scope(
         return scope.resolve();
     }
     if !interactive {
-        return if in_git_repository() {
-            GitScopeArg::Local.resolve()
-        } else {
-            GitScopeArg::Global.resolve()
-        };
+        return GitScopeArg::Global.resolve();
     }
 
     let choice = Select::new()

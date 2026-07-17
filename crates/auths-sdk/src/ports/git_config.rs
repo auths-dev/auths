@@ -22,4 +22,11 @@ pub trait GitConfigProvider: Send + Sync {
 
     /// Remove a git config key. Returns Ok(()) even if the key was not set.
     fn unset(&self, key: &str) -> Result<(), GitConfigError>;
+
+    /// Read a git config key at this provider's scope. `None` when unset.
+    ///
+    /// Needed so a caller can refuse to clobber a value it did not write —
+    /// `core.hooksPath` in particular, where overwriting a hook manager's path
+    /// (husky, pre-commit, prek) silently disables every hook it installed.
+    fn get(&self, key: &str) -> Result<Option<String>, GitConfigError>;
 }

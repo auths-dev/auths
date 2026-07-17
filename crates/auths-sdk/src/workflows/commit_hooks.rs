@@ -141,6 +141,17 @@ pub enum CommitHookError {
     /// The local signing identity could not be resolved for a trailer refresh.
     #[error("could not resolve the local signer: {0}")]
     Signer(String),
+
+    /// `core.hooksPath` already points somewhere else — a hook manager owns it.
+    #[error(
+        "core.hooksPath is already set to {existing} (a hook manager like husky, pre-commit or prek owns it). Auths will not overwrite it: core.hooksPath replaces .git/hooks entirely, so doing so would silently disable every hook it installed. Copy the auths prepare-commit-msg and pre-push hooks from {wanted} into {existing}, or re-run with --git-scope skip and wire them yourself."
+    )]
+    HooksPathOccupied {
+        /// The path already configured.
+        existing: String,
+        /// The managed hooks directory auths wanted to point at.
+        wanted: String,
+    },
 }
 
 fn write_file(path: &Path, content: &str) -> Result<(), CommitHookError> {
@@ -321,6 +332,21 @@ pub fn enable_commit_trailers(
     let hooks_dir_str = hooks_dir
         .to_str()
         .ok_or_else(|| CommitHookError::NonUtf8Path(hooks_dir.clone()))?;
+
+    // Never clobber a core.hooksPath we did not write. `core.hooksPath` *replaces*
+    // .git/hooks, so pointing it at ours would silently disable every hook a
+    // manager (husky, pre-commit, prek) had installed — a class of breakage the
+    // user would experience as "my pre-commit checks stopped running" with nothing
+    // to connect it to `auths init`. Refuse, and let the caller explain.
+    if let Some(existing) = git_config.get("core.hooksPath")?
+        && existing != hooks_dir_str
+    {
+        return Err(CommitHookError::HooksPathOccupied {
+            existing,
+            wanted: hooks_dir_str.to_string(),
+        });
+    }
+
     git_config.set("core.hooksPath", hooks_dir_str)?;
     Ok(())
 }
@@ -436,6 +462,59 @@ mod tests {
                 "{name} must chain to the repo's own hook"
             );
         }
+    }
+
+    /// `core.hooksPath` *replaces* `.git/hooks`, so pointing it at ours when a hook
+    /// manager already owns it silently disables every hook that manager installed.
+    /// The user experiences that as "my pre-commit checks stopped running", with
+    /// nothing connecting it to `auths init`. Refuse, and say what to do instead.
+    #[test]
+    fn enable_refuses_to_clobber_a_hook_managers_hooks_path() {
+        use crate::testing::fakes::FakeGitConfigProvider;
+
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let git_config = FakeGitConfigProvider::new();
+        git_config
+            .set("core.hooksPath", "/repo/.husky")
+            .expect("pre-existing hook manager");
+
+        let err = enable_commit_trailers(
+            tmp.path(),
+            "did:keri:Eroot",
+            "did:keri:Edevice",
+            &git_config,
+        )
+        .expect_err("must refuse to clobber");
+
+        assert!(matches!(err, CommitHookError::HooksPathOccupied { .. }));
+        assert_eq!(
+            GitConfigProvider::get(&git_config, "core.hooksPath").expect("get"),
+            Some("/repo/.husky".to_string()),
+            "the hook manager's path must survive untouched"
+        );
+        // The message has to be actionable, not just a refusal.
+        let msg = err.to_string();
+        assert!(msg.contains("/repo/.husky") && msg.contains("--git-scope skip"));
+    }
+
+    #[test]
+    fn enable_is_idempotent_when_hooks_path_is_already_ours() {
+        use crate::testing::fakes::FakeGitConfigProvider;
+
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let ours = tmp.path().join(HOOKS_DIR);
+        let git_config = FakeGitConfigProvider::new();
+        git_config
+            .set("core.hooksPath", &ours.to_string_lossy())
+            .expect("ours already");
+
+        enable_commit_trailers(
+            tmp.path(),
+            "did:keri:Eroot",
+            "did:keri:Edevice",
+            &git_config,
+        )
+        .expect("re-running init over our own config must be fine");
     }
 
     /// A registry mirror must never block a code push.
