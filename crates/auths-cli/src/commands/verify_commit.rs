@@ -41,10 +41,11 @@ pub struct VerifyCommitCommand {
     #[arg(long, num_args = 1..)]
     pub witness_keys: Vec<String>,
 
-    /// Fetch a signer's KEL from this git remote when it is absent locally
-    /// (opt-in). The local registry stays the trusted floor — a remote can only
-    /// advance the key-state, never roll it back. Without this flag, resolution
-    /// is local-only (no network).
+    /// Override the git remote a signer's KEL is fetched from when it is absent
+    /// locally. Defaults to the repo's own `origin`, which is where the managed
+    /// pre-push hook mirrors it. The local registry stays the trusted floor — a
+    /// remote can only advance the key-state, never roll it back, and nothing is
+    /// fetched when the KEL is already local.
     #[arg(long)]
     pub remote: Option<String>,
 
@@ -405,8 +406,19 @@ async fn resolve_signer_kel(
         auths_sdk::keri::verify_prefix_binding(&prefix, &events).map_err(|e| e.to_string())?;
         Ok(events)
     } else {
-        let chain = match &cmd.remote {
-            Some(url) => auths_sdk::keri::KelResolverChain::with_remote(registry, url.clone()),
+        // Default the transport to the repo's own `origin`. The managed pre-push
+        // hook mirrors refs/auths/registry there, but `git clone` fetches only
+        // refs/heads/* and refs/tags/* — so in a fresh clone the KEL sits on the
+        // remote and not in the working copy. Resolution stays local-first: the
+        // chain only reaches for the remote when the KEL is absent locally, so
+        // this costs nothing in the common case and fires exactly where
+        // verification would otherwise fail.
+        let remote = cmd
+            .remote
+            .clone()
+            .or_else(crate::commands::verify_helpers::repo_origin_url);
+        let chain = match remote {
+            Some(url) => auths_sdk::keri::KelResolverChain::with_remote(registry, url),
             None => auths_sdk::keri::KelResolverChain::local(registry),
         };
         chain.resolve_kel(did).map_err(|e| e.to_string())
