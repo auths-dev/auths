@@ -130,10 +130,10 @@ pub struct UnifiedVerifyCommand {
     #[arg(long, value_name = "PATH")]
     pub signature: Option<PathBuf>,
 
-    /// Fetch a signer's KEL from this git remote when it is absent locally
-    /// (opt-in). The local registry stays the trusted floor — a remote can only
-    /// advance the key-state, never roll it back. Without it, resolution is
-    /// local-only (no network).
+    /// Override the git remote a signer's KEL is fetched from when it is absent
+    /// locally. Defaults to the repo's own `origin`. The local registry stays the
+    /// trusted floor — a remote can only advance the key-state, never roll it
+    /// back, and nothing is fetched when the KEL is already local.
     #[arg(long)]
     pub remote: Option<String>,
 
