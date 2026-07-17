@@ -1041,6 +1041,78 @@ mod tests {
         );
     }
 
+    /// Regression: after `rotate_identity`, every KEL event — the inception AND
+    /// the rotation — must have a stored signature attachment.
+    ///
+    /// This is the exact precondition `auths id export-bundle` enforces: it reads
+    /// `registry.get_attachment(prefix, seq)` for each event and aborts with "KEL
+    /// event at seq N has no stored signature attachment" if any is missing. The
+    /// shipped 0.1.3 wheel's rotate dropped the rot attachment, so `export-bundle`
+    /// bricked after a rotation and stateless CI verification (a core claim) died
+    /// with it. The fix threads the CESR-signed attachment through `apply_rotation`;
+    /// this test exists so it can never regress silently again.
+    #[test]
+    fn rotate_persists_a_signature_attachment_for_every_kel_event() {
+        let (_keychain_guard, ctx) = fake_ctx("Test-passphrase1!");
+
+        let signer = StorageSigner::new(MemoryKeychainHandle);
+        let provider = PrefilledPassphraseProvider::new("Test-passphrase1!");
+        let config = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked("bundle-key"))
+            .with_git_signing_scope(GitSigningScope::Skip)
+            .build();
+        let key_alias = match initialize(
+            IdentityConfig::Developer(config),
+            &ctx,
+            Arc::new(MemoryKeychainHandle),
+            &signer,
+            &provider,
+            None,
+        )
+        .unwrap()
+        {
+            InitializeResult::Developer(r) => r.key_alias,
+            _ => unreachable!(),
+        };
+
+        let rotation_config = IdentityRotationConfig {
+            repo_path: std::path::PathBuf::from("/unused"),
+            identity_key_alias: Some(key_alias),
+            next_key_alias: Some(KeyAlias::new_unchecked("rotated-key")),
+        };
+        rotate_identity(rotation_config, &ctx, &SystemClock).unwrap();
+
+        let prefix = auths_id::keri::parse_did_keri(
+            ctx.identity_storage
+                .load_identity()
+                .unwrap()
+                .controller_did
+                .as_str(),
+        )
+        .unwrap();
+
+        // The rotation advances the KEL to at least seq 1 (icp@0, rot@1). Walk
+        // every event and assert its attachment is present and non-empty — exactly
+        // what export-bundle does before it will emit a verifiable bundle.
+        let tip = ctx.registry.get_key_state(&prefix).unwrap().sequence;
+        assert!(tip >= 1, "a rotation must advance the KEL past inception");
+        for seq in 0..=tip {
+            let att = ctx
+                .registry
+                .get_attachment(&prefix, seq)
+                .unwrap()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "KEL event at seq {seq} has no stored signature attachment — \
+                         export-bundle would abort here (the shipped-0.1.3 rotate bug)"
+                    )
+                });
+            assert!(
+                !att.is_empty(),
+                "attachment for seq {seq} is present but empty — not a real signature"
+            );
+        }
+    }
+
     fn p(s: &str) -> Prefix {
         Prefix::new_unchecked(s.to_string())
     }
