@@ -612,23 +612,34 @@ fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
     ExpiryStatus::Ok
 }
 
+/// Report on the configured registry, if there is one.
+///
+/// There is no default registry, so with none configured this passes with
+/// "not configured" rather than failing: a registry is optional, and auths is
+/// fully functional — identity, signing, verification — without one. Previously
+/// this probed a baked-in default that returned 404, so every `auths doctor` run
+/// reported a failing check for a service the user neither had nor needed.
 fn check_registry_connectivity() -> Check {
-    use auths_sdk::registration::DEFAULT_REGISTRY_URL;
+    let Ok(base) = std::env::var("AUTHS_REGISTRY_URL") else {
+        return Check {
+            name: "Registry connectivity".to_string(),
+            passed: true,
+            detail: "not configured (optional — signing and verification need no registry)"
+                .to_string(),
+            suggestion: None,
+            category: CheckCategory::Advisory,
+        };
+    };
 
-    let url = format!("{DEFAULT_REGISTRY_URL}/health");
+    let url = format!("{base}/health");
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build();
 
     let (passed, detail) = match client {
         Ok(client) => match client.get(&url).send() {
-            Ok(resp) if resp.status().is_success() => {
-                (true, format!("{DEFAULT_REGISTRY_URL} (reachable)"))
-            }
-            Ok(resp) => (
-                false,
-                format!("{DEFAULT_REGISTRY_URL} (HTTP {})", resp.status()),
-            ),
+            Ok(resp) if resp.status().is_success() => (true, format!("{base} (reachable)")),
+            Ok(resp) => (false, format!("{base} (HTTP {})", resp.status())),
             Err(e) => (false, format!("unreachable: {e}")),
         },
         Err(e) => (false, format!("HTTP client error: {e}")),

@@ -17,14 +17,14 @@ pub enum AccountSubcommand {
     /// Show account status and rate limits
     Status {
         /// Registry URL to query
-        #[arg(long, default_value = "https://registry.auths.dev")]
-        registry_url: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry_url: Option<String>,
     },
     /// Show API usage history
     Usage {
         /// Registry URL to query
-        #[arg(long, default_value = "https://registry.auths.dev")]
-        registry_url: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry_url: Option<String>,
         /// Number of days to show
         #[arg(long, default_value = "7")]
         days: u32,
@@ -112,8 +112,13 @@ fn handle_usage(registry_url: &str, days: u32) -> Result<()> {
 impl ExecutableCommand for AccountCommand {
     fn execute(&self, _ctx: &CliConfig) -> Result<()> {
         match &self.subcommand {
-            AccountSubcommand::Status { registry_url } => handle_status(registry_url),
-            AccountSubcommand::Usage { registry_url, days } => handle_usage(registry_url, *days),
+            AccountSubcommand::Status { registry_url } => handle_status(
+                &crate::commands::verify_helpers::require_registry(registry_url.clone())?,
+            ),
+            AccountSubcommand::Usage { registry_url, days } => handle_usage(
+                &crate::commands::verify_helpers::require_registry(registry_url.clone())?,
+                *days,
+            ),
         }
     }
 }

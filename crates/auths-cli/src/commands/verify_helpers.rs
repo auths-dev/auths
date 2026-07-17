@@ -87,3 +87,27 @@ pub fn parse_witness_keys(keys: &[String]) -> Result<Vec<(String, Vec<u8>)>> {
         })
         .collect()
 }
+
+/// The registry URL to use, or an actionable error when none is configured.
+///
+/// There is no default registry: auths is offline-first, and the one that used to
+/// be baked in (`https://registry.auths.dev`) returned HTTP 404 — a default that
+/// looks configured and fails at the network. Registry-dependent verbs resolve
+/// through here so the refusal is stated once, at the CLI boundary, in terms of
+/// what the user can do about it.
+///
+/// Args:
+/// * `configured`: The value of `--registry` / `AUTHS_REGISTRY_URL`, if any.
+///
+/// Usage:
+/// ```ignore
+/// let registry = require_registry(cmd.registry.clone())?;
+/// ```
+pub fn require_registry(configured: Option<String>) -> Result<String> {
+    configured.ok_or_else(|| {
+        anyhow!(
+            "{}",
+            auths_sdk::domains::identity::error::RegistrationError::NoRegistryConfigured
+        )
+    })
+}

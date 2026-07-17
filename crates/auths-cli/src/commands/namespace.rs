@@ -8,7 +8,6 @@ use crate::config::CliConfig;
 use crate::factories::storage::build_auths_context;
 use auths_crypto::AuthsErrorInfo;
 use auths_infra_http::resolve_verified_platform_context;
-use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::keychain::KeyAlias;
 use auths_sdk::namespace_registry::NamespaceVerifierRegistry;
 use auths_sdk::ports::{Ecosystem, PackageName};
@@ -139,8 +138,10 @@ impl ExecutableCommand for NamespaceCommand {
     }
 }
 
-fn resolve_registry_url(registry_url: Option<String>) -> String {
-    registry_url.unwrap_or_else(|| DEFAULT_REGISTRY_URL.to_string())
+/// The registry to publish namespace claims to. There is no default — see
+/// `verify_helpers::require_registry`.
+fn resolve_registry_url(registry_url: Option<String>) -> Result<String> {
+    crate::commands::verify_helpers::require_registry(registry_url)
 }
 
 fn load_identity_and_alias(
@@ -220,7 +221,7 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             registry_url,
             key,
         } => {
-            let registry_url = resolve_registry_url(registry_url);
+            let registry_url = resolve_registry_url(registry_url)?;
             let (controller_did, key_alias, auths_ctx) = load_identity_and_alias(ctx, key)?;
             let signer = StorageSigner::new(std::sync::Arc::clone(&auths_ctx.key_storage));
             let passphrase_provider = ctx.passphrase_provider.clone();
@@ -376,7 +377,7 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             registry_url,
             key,
         } => {
-            let registry_url = resolve_registry_url(registry_url);
+            let registry_url = resolve_registry_url(registry_url)?;
             let (controller_did, key_alias, auths_ctx) = load_identity_and_alias(ctx, key)?;
             let signer = StorageSigner::new(std::sync::Arc::clone(&auths_ctx.key_storage));
             let passphrase_provider = ctx.passphrase_provider.clone();
@@ -419,7 +420,7 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             registry_url,
             key,
         } => {
-            let registry_url = resolve_registry_url(registry_url);
+            let registry_url = resolve_registry_url(registry_url)?;
             let (controller_did, key_alias, auths_ctx) = load_identity_and_alias(ctx, key)?;
             let signer = StorageSigner::new(std::sync::Arc::clone(&auths_ctx.key_storage));
             let passphrase_provider = ctx.passphrase_provider.clone();
@@ -460,7 +461,7 @@ pub fn handle_namespace(cmd: NamespaceCommand, ctx: &CliConfig) -> Result<()> {
             package_name,
             registry_url,
         } => {
-            let registry_url = resolve_registry_url(registry_url);
+            let registry_url = resolve_registry_url(registry_url)?;
 
             println!("Looking up namespace {}/{}...", ecosystem, package_name);
 

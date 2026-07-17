@@ -134,6 +134,18 @@ pub enum RotationError {
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum RegistrationError {
+    /// A registry-dependent verb was invoked with no registry configured.
+    ///
+    /// There is no default: auths is offline-first and every core workflow —
+    /// identity, signing, verification — works without a registry.
+    #[error(
+        "no registry configured. Auths needs no registry: identity, signing and \
+         verification are local and git-native, and a signer's KEL reaches a \
+         verifier over the same git remote as the code. Pass --registry <url> or \
+         set AUTHS_REGISTRY_URL only if you are running one."
+    )]
+    NoRegistryConfigured,
+
     /// The identity is already registered at the target registry.
     #[error("identity already registered at this registry")]
     AlreadyRegistered,
@@ -261,6 +273,7 @@ impl AuthsErrorInfo for RotationError {
 impl AuthsErrorInfo for RegistrationError {
     fn error_code(&self) -> &'static str {
         match self {
+            Self::NoRegistryConfigured => "AUTHS-E5400",
             Self::AlreadyRegistered => "AUTHS-E5401",
             Self::QuotaExceeded => "AUTHS-E5402",
             Self::NetworkError(e) => e.error_code(),
@@ -273,6 +286,9 @@ impl AuthsErrorInfo for RegistrationError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
+            Self::NoRegistryConfigured => Some(
+                "Registration is optional — signing and verification need no registry. Pass --registry <url> or set AUTHS_REGISTRY_URL only if you run one",
+            ),
             Self::AlreadyRegistered => Some(
                 "This identity is already registered; use `auths id show` to see registration details",
             ),

@@ -15,7 +15,6 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::domains::identity::service::initialize;
 use auths_sdk::domains::identity::types::IdentityConfig;
 use auths_sdk::domains::identity::types::InitializeResult;
@@ -39,7 +38,7 @@ use gather::{
     submit_registration,
 };
 use guided::GuidedSetup;
-use helpers::offer_shell_completions;
+use helpers::{git_remote_is_github, offer_shell_completions};
 use prompts::{prompt_platform_verification, prompt_profile};
 
 const DEFAULT_KEY_ALIAS: &str = "main";
@@ -53,6 +52,31 @@ pub enum InitProfile {
     Ci,
     /// Restricted signing identity for AI agents
     Agent,
+}
+
+/// Where `auths init` writes git signing configuration.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum GitScopeArg {
+    /// This repository only (`git config --local`).
+    Local,
+    /// Every repository on this machine (`git config --global`).
+    Global,
+    /// Do not touch git configuration at all.
+    Skip,
+}
+
+impl GitScopeArg {
+    /// Resolve to the SDK scope, reading the working directory for `Local`.
+    pub(crate) fn resolve(self) -> Result<GitSigningScope> {
+        Ok(match self {
+            Self::Local => GitSigningScope::Local {
+                repo_path: std::env::current_dir()
+                    .map_err(|e| anyhow!("Failed to determine current working directory: {e}"))?,
+            },
+            Self::Global => GitSigningScope::Global,
+            Self::Skip => GitSigningScope::Skip,
+        })
+    }
 }
 
 impl std::fmt::Display for InitProfile {
@@ -125,13 +149,35 @@ pub struct InitCommand {
     #[clap(long)]
     pub dry_run: bool,
 
-    /// Registry URL for identity registration
-    #[clap(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-    pub registry: String,
+    /// Registry URL for identity registration. No default: auths needs no
+    /// registry, and registration is opt-in via `--register`.
+    #[clap(long, env = "AUTHS_REGISTRY_URL")]
+    pub registry: Option<String>,
 
     /// Register identity with the Auths Registry after creation
     #[clap(long)]
     pub register: bool,
+
+    /// Link your GitHub account and upload your SSH signing key, so your commits
+    /// show as Verified on github.com.
+    ///
+    /// Defaults to on when this repo has a GitHub remote and there is a TTY to
+    /// confirm at. Unrelated to `--register`, which publishes to the Auths
+    /// Registry.
+    #[clap(long)]
+    pub github: bool,
+
+    /// Skip linking GitHub, even when this repo has a GitHub remote.
+    #[clap(long = "no-github", conflicts_with = "github")]
+    pub no_github: bool,
+
+    /// Where to write git signing config: local (this repo), global (every repo
+    /// on this machine), or skip.
+    ///
+    /// Interactive runs ask. Non-interactive runs default to `local` — a scripted
+    /// or CI init should not silently rewrite your `~/.gitconfig`.
+    #[clap(long, value_enum)]
+    pub git_scope: Option<GitScopeArg>,
 
     /// Scaffold a GitHub Actions workflow using the auths attest-action
     #[clap(long)]
@@ -364,8 +410,29 @@ fn run_developer_setup(
     ));
 
     // PLATFORM VERIFICATION
+    //
+    // Linking GitHub is what uploads the SSH signing key, and that is the only
+    // thing that makes a user's commits render as "Verified" to everyone else.
+    // It was previously gated behind `--register` — a flag whose documented job is
+    // publishing to the Auths Registry, an unrelated (and dead) host. So the
+    // default first run left commits Unverified on github.com while the code to
+    // fix that sat one boolean away.
+    //
+    // Research puts a number on the cost: 73.73% of commit-signature verification
+    // failures in the wild are `unknown_key` — developers sign and never register
+    // the key ("a usability problem, not a cryptographic one", arXiv:2604.14014).
+    // Auths mints the key, signs with it, and can upload it; withholding that by
+    // default forfeits the product's clearest advantage over gitsign, whose certs
+    // GitHub structurally cannot verify.
+    let link_github = if cmd.no_github {
+        false
+    } else if cmd.github {
+        true
+    } else {
+        interactive && git_remote_is_github()
+    };
     guide.section("Platform Verification");
-    let proof_url = if interactive && cmd.register {
+    let proof_url = if link_github {
         out.print_info("Link your GitHub account");
         out.newline();
         match prompt_platform_verification(
@@ -458,7 +525,7 @@ fn run_developer_setup(
     guide.section("Registration & Summary");
     let registered = submit_registration(
         &registry_path,
-        &cmd.registry,
+        cmd.registry.as_deref(),
         proof_url,
         !cmd.register, // skip unless --register is explicitly passed
         out,
@@ -666,8 +733,11 @@ mod tests {
             force: false,
             confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,
@@ -679,7 +749,9 @@ mod tests {
         assert_eq!(cmd.key_alias, "main");
         assert!(!cmd.force);
         assert!(!cmd.dry_run);
-        assert_eq!(cmd.registry, "https://registry.auths.dev");
+        // No default: auths needs no registry, and the one that used to be baked
+        // in returned 404. Registration is opt-in and must name its registry.
+        assert_eq!(cmd.registry, None);
         assert!(!cmd.register);
         assert!(!cmd.github_action);
     }
@@ -694,8 +766,11 @@ mod tests {
             force: true,
             confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,
@@ -730,8 +805,11 @@ mod tests {
             force: false,
             confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,
@@ -750,8 +828,11 @@ mod tests {
             force: false,
             confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,

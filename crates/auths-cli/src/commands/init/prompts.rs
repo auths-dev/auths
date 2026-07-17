@@ -12,6 +12,8 @@ use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::types::{GitSigningScope, IdentityConflictPolicy};
 
+use super::GitScopeArg;
+
 use super::InitCommand;
 use super::InitProfile;
 use super::helpers::get_auths_repo_path;
@@ -113,9 +115,32 @@ pub(crate) fn prompt_for_conflict_policy(
     Ok(IdentityConflictPolicy::ForceNew)
 }
 
-pub(crate) fn prompt_for_git_scope(interactive: bool) -> Result<GitSigningScope> {
+/// Resolve the git-signing scope from an explicit `--git-scope`, else by asking.
+///
+/// Non-interactive runs default to **local**. They used to default to `Global`
+/// with no way to override, so `auths init --non-interactive` — the scripted,
+/// CI and agent path — silently rewrote the user's `~/.gitconfig` and repointed
+/// `core.hooksPath` machine-wide, disabling every repo's own `.git/hooks`
+/// (husky, pre-commit, prek) in the process. Scoping to the repo you are standing
+/// in is the conservative default; `--git-scope global` opts back in.
+///
+/// Args:
+/// * `interactive`: Whether there is a TTY to prompt at.
+/// * `requested`: An explicit `--git-scope`, if given.
+///
+/// Usage:
+/// ```ignore
+/// let scope = prompt_for_git_scope(interactive, cmd.git_scope)?;
+/// ```
+pub(crate) fn prompt_for_git_scope(
+    interactive: bool,
+    requested: Option<GitScopeArg>,
+) -> Result<GitSigningScope> {
+    if let Some(scope) = requested {
+        return scope.resolve();
+    }
     if !interactive {
-        return Ok(GitSigningScope::Global);
+        return GitScopeArg::Local.resolve();
     }
 
     let choice = Select::new()
