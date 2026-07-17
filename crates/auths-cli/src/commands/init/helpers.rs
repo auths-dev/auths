@@ -10,6 +10,79 @@ use std::process::Command;
 use auths_sdk::workflows::diagnostics::{MIN_GIT_VERSION, parse_git_version};
 
 use crate::subprocess::git_command;
+
+/// The host of a git remote URL, for both URL (`https://host/o/r`) and scp-like
+/// (`git@host:o/r`) forms. `None` when no host can be read.
+fn remote_host(url: &str) -> Option<&str> {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    // The authority ends at the first '/'; for scp-like forms the ':' inside it
+    // terminates the host instead.
+    let authority = &rest[..rest.find('/').unwrap_or(rest.len())];
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let host = host.split(':').next().unwrap_or(host);
+    (!host.is_empty()).then_some(host)
+}
+
+/// Whether a git remote URL points at GitHub.
+///
+/// Matches on the parsed host, never a substring: `github.com.evil.example` is a
+/// different host that a `contains("github.com")` check would happily accept.
+///
+/// Args:
+/// * `url`: A git remote URL in URL or scp-like form.
+///
+/// Usage:
+/// ```ignore
+/// assert!(url_is_github("git@github.com:auths-dev/auths.git"));
+/// ```
+fn url_is_github(url: &str) -> bool {
+    remote_host(url).is_some_and(|host| {
+        host.eq_ignore_ascii_case("github.com")
+            || host.to_ascii_lowercase().ends_with(".github.com")
+    })
+}
+
+/// Whether the working directory is inside a git repository.
+///
+/// Decides whether a non-interactive `auths init` can scope signing config to
+/// "this repo": `git config --local` outside a repository is an error, and
+/// `auths init` from a home directory is an ordinary first run.
+///
+/// Usage:
+/// ```ignore
+/// let scope = if in_git_repository() { Local } else { Global };
+/// ```
+pub(crate) fn in_git_repository() -> bool {
+    git_command(&["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
+        .unwrap_or(false)
+}
+
+/// Whether the current repository has a GitHub remote.
+///
+/// Used to decide whether `auths init` offers to link GitHub by default — linking
+/// is what uploads the SSH signing key, and that is the only thing that makes a
+/// user's commits render as Verified to everyone else. Offering it where it cannot
+/// apply would be noise; withholding it where it can is the status quo that leaves
+/// commits Unverified.
+///
+/// Usage:
+/// ```ignore
+/// let offer = interactive && git_remote_is_github();
+/// ```
+pub(crate) fn git_remote_is_github() -> bool {
+    let Ok(output) = git_command(&["remote", "-v"]).output() else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.split_whitespace().nth(1))
+        .any(url_is_github)
+}
 use crate::ux::format::Output;
 
 pub(crate) fn get_auths_repo_path() -> Result<PathBuf> {
@@ -585,5 +658,57 @@ mod tests {
         let hint = shell_reload_hint(Shell::Bash, path);
         assert!(hint.contains("source"));
         assert!(hint.contains("/tmp/completions/auths"));
+    }
+
+    #[test]
+    fn github_remotes_are_recognised_across_url_forms() {
+        for url in [
+            "git@github.com:auths-dev/auths.git",
+            "https://github.com/auths-dev/auths.git",
+            "ssh://git@github.com/auths-dev/auths",
+            "https://user@github.com/o/r.git",
+        ] {
+            assert!(url_is_github(url), "expected GitHub: {url}");
+        }
+    }
+
+    /// An explicit `--git-scope` decides outright, in every direction. The
+    /// CWD-dependent default (local inside a repo, global outside) is covered by
+    /// the integration suite, which can control the working directory; asserting
+    /// it here would make the result depend on where cargo happened to run.
+    #[test]
+    fn explicit_git_scope_is_honoured_in_every_direction() {
+        use auths_sdk::types::GitSigningScope;
+
+        use super::super::GitScopeArg;
+        use super::super::prompts::prompt_for_git_scope;
+
+        assert!(matches!(
+            prompt_for_git_scope(false, Some(GitScopeArg::Global)).expect("global"),
+            GitSigningScope::Global
+        ));
+        assert!(matches!(
+            prompt_for_git_scope(false, Some(GitScopeArg::Skip)).expect("skip"),
+            GitSigningScope::Skip
+        ));
+        assert!(matches!(
+            prompt_for_git_scope(false, Some(GitScopeArg::Local)).expect("local"),
+            GitSigningScope::Local { .. }
+        ));
+    }
+
+    #[test]
+    fn non_github_remotes_are_not_recognised() {
+        for url in [
+            "git@gitlab.com:o/r.git",
+            "https://bitbucket.org/o/r.git",
+            "https://git.example.com/o/r.git",
+            "",
+            // Must not match a host that merely *contains* the string.
+            "https://github.com.evil.example/o/r.git",
+            "https://notgithub.com/o/r.git",
+        ] {
+            assert!(!url_is_github(url), "expected non-GitHub: {url}");
+        }
     }
 }

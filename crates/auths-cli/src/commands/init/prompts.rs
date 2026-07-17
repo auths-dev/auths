@@ -12,6 +12,9 @@ use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::types::{GitSigningScope, IdentityConflictPolicy};
 
+use super::GitScopeArg;
+use super::helpers::in_git_repository;
+
 use super::InitCommand;
 use super::InitProfile;
 use super::helpers::get_auths_repo_path;
@@ -113,9 +116,43 @@ pub(crate) fn prompt_for_conflict_policy(
     Ok(IdentityConflictPolicy::ForceNew)
 }
 
-pub(crate) fn prompt_for_git_scope(interactive: bool) -> Result<GitSigningScope> {
+/// Resolve the git-signing scope from an explicit `--git-scope`, else by asking.
+///
+/// Non-interactive runs default to **local when standing in a git repository**,
+/// and global otherwise. They used to default to `Global` unconditionally with no
+/// way to override, so `auths init --non-interactive` — the scripted, CI and agent
+/// path — silently rewrote the user's `~/.gitconfig` and repointed
+/// `core.hooksPath` machine-wide, disabling every repo's own `.git/hooks` (husky,
+/// pre-commit, prek) in the process.
+///
+/// The repo test is what makes the conservative default safe rather than merely
+/// strict: `git config --local` outside a repository is an error, and running
+/// `auths init` from your home directory is an ordinary first run. There, global
+/// is the only scope that means anything — and a user who is not standing in a
+/// repository is not being surprised by machine-wide config. `--git-scope` decides
+/// it outright either way.
+///
+/// Args:
+/// * `interactive`: Whether there is a TTY to prompt at.
+/// * `requested`: An explicit `--git-scope`, if given.
+///
+/// Usage:
+/// ```ignore
+/// let scope = prompt_for_git_scope(interactive, cmd.git_scope)?;
+/// ```
+pub(crate) fn prompt_for_git_scope(
+    interactive: bool,
+    requested: Option<GitScopeArg>,
+) -> Result<GitSigningScope> {
+    if let Some(scope) = requested {
+        return scope.resolve();
+    }
     if !interactive {
-        return Ok(GitSigningScope::Global);
+        return if in_git_repository() {
+            GitScopeArg::Local.resolve()
+        } else {
+            GitScopeArg::Global.resolve()
+        };
     }
 
     let choice = Select::new()

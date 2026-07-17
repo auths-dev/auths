@@ -14,7 +14,6 @@ use auths_sdk::{
 use auths_verifier::{IdentityBundle, IdentityDID};
 use clap::ValueEnum;
 
-use super::register::DEFAULT_REGISTRY_URL;
 use crate::commands::registry_overrides::RegistryOverrides;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
@@ -265,8 +264,8 @@ pub enum IdSubcommand {
     /// Publish this identity to a public registry for discovery.
     Register {
         /// Registry URL to publish to.
-        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-        registry: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry: Option<String>,
     },
 
     /// Add a platform claim to an already-registered identity.
@@ -934,9 +933,10 @@ pub fn handle_id(
             Ok(())
         }
 
-        IdSubcommand::Register { registry } => {
-            super::register::handle_register(&repo_path, &registry)
-        }
+        IdSubcommand::Register { registry } => super::register::handle_register(
+            &repo_path,
+            &crate::commands::verify_helpers::require_registry(registry.clone())?,
+        ),
 
         IdSubcommand::Claim(claim_cmd) => {
             super::claim::handle_claim(&claim_cmd, &repo_path, passphrase_provider, env_config, now)

@@ -2,7 +2,6 @@ use anyhow::{Context, Result, anyhow};
 use auths_sdk::attestation::create_signed_attestation;
 use auths_sdk::attestation::create_signed_revocation;
 use auths_sdk::identity::DidResolver;
-use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Parser, Subcommand};
 use serde_json;
@@ -243,8 +242,8 @@ pub enum OrgSubcommand {
         code: String,
 
         /// Registry URL to contact
-        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-        registry: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry: Option<String>,
     },
 
     /// Manage the org-wide authorization policy (anchored on the org KEL)
@@ -1074,6 +1073,7 @@ pub fn handle_org(
         }
 
         OrgSubcommand::Join { code, registry } => {
+            let registry = crate::commands::verify_helpers::require_registry(registry)?;
             handle_join(&code, &registry, passphrase_provider.as_ref())
         }
 

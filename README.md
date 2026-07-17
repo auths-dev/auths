@@ -92,12 +92,19 @@ Want the whole loop in one shot? `auths demo` signs and verifies a sample artifa
 
 Auths stores your identity and device attestations in a Git repository (`~/.auths` by default). Each device link is a cryptographically signed attestation stored as a Git ref.
 
-- **Identity**: A `did:keri` derived from your Ed25519 key
+- **Identity**: A `did:keri` derived from your P-256 key (Ed25519 is also supported; P-256 is the default because it is what the iOS Secure Enclave can hold)
 - **Devices**: `did:key` identifiers linked via signed attestations
 - **Keys**: Stored in your OS keychain (macOS Keychain, or encrypted file fallback)
 - **Attestations**: Stored in Git refs under `refs/auths/`
+- **Trust**: Your repo commits `.auths/roots` — the trusted root a clone anchors to — and your KEL travels to that repo's remote alongside your code, so `git clone && auths verify HEAD` works with no setup
 
 No central server. No blockchain. Just Git and cryptography.
+
+### What "verify" actually checks
+
+Auths signs commits with a standard SSH signature (`ecdsa-sha2-nistp256`), so `auths verify` replays the signer's key history — their KEL — and checks the signature against the key that was valid **at signing time**, then confirms that key chains back to a root the repository pins.
+
+Sigstore and GitHub can verify offline too. The difference is narrower than "offline vs online" and worth stating precisely: their offline path checks a signature against a **trust-root snapshot** you refreshed at some point, so a key rotation or revocation you have not downloaded is one you cannot see. A KEL carries its own rotation history, so key state verifies without refreshing a trust root. That matters most for **long-lived device keys**, which is Auths's model.
 
 ---
 

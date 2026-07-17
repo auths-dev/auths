@@ -17,8 +17,6 @@ use console::style;
 use crate::factories::storage::build_auths_context;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
-use super::register::DEFAULT_REGISTRY_URL;
-
 const DEFAULT_GITHUB_CLIENT_ID: &str = "Ov23lio2CiTHBjM2uIL4";
 
 #[allow(clippy::disallowed_methods)]
@@ -38,20 +36,20 @@ pub enum ClaimPlatform {
     /// Link your GitHub account to your identity via OAuth device flow.
     Github {
         /// Registry URL to publish the claim to.
-        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-        registry: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry: Option<String>,
     },
     /// Link your npm account to your identity via access token.
     Npm {
         /// Registry URL to publish the claim to.
-        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-        registry: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry: Option<String>,
     },
     /// Link your PyPI account to your identity via API token.
     Pypi {
         /// Registry URL to publish the claim to.
-        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-        registry: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry: Option<String>,
     },
 }
 
@@ -78,6 +76,7 @@ pub fn handle_claim(
             let oauth = HttpGitHubOAuthProvider::new();
             let publisher = HttpGistPublisher::new();
 
+            let registry_url = crate::commands::verify_helpers::require_registry(registry_url)?;
             let config = GitHubClaimConfig {
                 client_id: github_client_id(),
                 registry_url,
@@ -154,7 +153,9 @@ pub fn handle_claim(
                 style(&profile.login).bold()
             );
 
-            let config = NpmClaimConfig { registry_url };
+            let config = NpmClaimConfig {
+                registry_url: crate::commands::verify_helpers::require_registry(registry_url)?,
+            };
 
             let response = rt
                 .block_on(claim_npm_identity(
@@ -203,7 +204,9 @@ pub fn handle_claim(
 
             println!("  Claiming PyPI identity as {}...", style(trimmed).bold());
 
-            let config = PypiClaimConfig { registry_url };
+            let config = PypiClaimConfig {
+                registry_url: crate::commands::verify_helpers::require_registry(registry_url)?,
+            };
 
             let rt = tokio::runtime::Runtime::new().context("failed to create async runtime")?;
             let response = rt

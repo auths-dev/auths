@@ -94,24 +94,23 @@ fn test_init_happy_path() {
         "AUTHS_HOME should be initialized as git repo"
     );
 
-    // Init sets git config --global, which writes to our temp .gitconfig
-    // (redirected via GIT_CONFIG_GLOBAL env var in the subprocess)
-    let gitconfig = std::fs::read_to_string(env.home.path().join(".gitconfig")).unwrap();
+    // A non-interactive init scopes signing config to *this repo*, never the
+    // machine: a scripted or CI init must not rewrite the user's ~/.gitconfig,
+    // nor repoint core.hooksPath machine-wide (which would disable every other
+    // repo's own hooks). `--git-scope global` opts back in.
+    let global = std::fs::read_to_string(env.home.path().join(".gitconfig")).unwrap();
     assert!(
-        gitconfig.contains("ssh"),
-        "gitconfig should contain ssh signing format, got: {}",
-        gitconfig
+        !global.contains("auths-sign"),
+        "a scripted init must not write global git config, got: {global}"
     );
-    assert!(
-        gitconfig.contains("auths-sign"),
-        "gitconfig should reference auths-sign program, got: {}",
-        gitconfig
-    );
-    assert!(
-        gitconfig.contains("signingkey"),
-        "gitconfig should contain signing key, got: {}",
-        gitconfig
-    );
+
+    let local = std::fs::read_to_string(env.repo_path.join(".git").join("config")).unwrap();
+    for expected in ["ssh", "auths-sign", "signingkey"] {
+        assert!(
+            local.contains(expected),
+            "repo-local git config should contain {expected}, got: {local}"
+        );
+    }
 
     // KEL-native trust: init pins the local identity as a trusted root in
     // <repo>/.auths/roots (no allowed_signers allowlist is written anymore).
