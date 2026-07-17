@@ -290,6 +290,7 @@ AUTHS-E5315 = auths-sdk::AgentError::Revoked
 AUTHS-E5316 = auths-sdk::AgentError::OutsideDelegatorScope
 AUTHS-E5317 = auths-sdk::AgentError::AttestationError
 AUTHS-E5318 = auths-sdk::AgentError::AnchorError
+AUTHS-E5400 = auths-sdk::RegistrationError::NoRegistryConfigured
 AUTHS-E5401 = auths-sdk::RegistrationError::AlreadyRegistered
 AUTHS-E5402 = auths-sdk::RegistrationError::QuotaExceeded
 AUTHS-E5403 = auths-sdk::RegistrationError::InvalidDidFormat

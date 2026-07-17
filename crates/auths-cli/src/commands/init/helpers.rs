@@ -42,6 +42,23 @@ fn url_is_github(url: &str) -> bool {
     })
 }
 
+/// Whether the working directory is inside a git repository.
+///
+/// Decides whether a non-interactive `auths init` can scope signing config to
+/// "this repo": `git config --local` outside a repository is an error, and
+/// `auths init` from a home directory is an ordinary first run.
+///
+/// Usage:
+/// ```ignore
+/// let scope = if in_git_repository() { Local } else { Global };
+/// ```
+pub(crate) fn in_git_repository() -> bool {
+    git_command(&["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .map(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).trim() == "true")
+        .unwrap_or(false)
+}
+
 /// Whether the current repository has a GitHub remote.
 ///
 /// Used to decide whether `auths init` offers to link GitHub by default — linking
@@ -655,23 +672,17 @@ mod tests {
         }
     }
 
-    /// A scripted init must not rewrite the user's `~/.gitconfig`. It used to
-    /// default to `Global` with no flag to scope it, which also repointed
-    /// `core.hooksPath` machine-wide and disabled every repo's own hooks.
+    /// An explicit `--git-scope` decides outright, in every direction. The
+    /// CWD-dependent default (local inside a repo, global outside) is covered by
+    /// the integration suite, which can control the working directory; asserting
+    /// it here would make the result depend on where cargo happened to run.
     #[test]
-    fn non_interactive_init_defaults_to_local_git_scope() {
+    fn explicit_git_scope_is_honoured_in_every_direction() {
         use auths_sdk::types::GitSigningScope;
 
         use super::super::GitScopeArg;
         use super::super::prompts::prompt_for_git_scope;
 
-        let scope = prompt_for_git_scope(false, None).expect("non-interactive scope");
-        assert!(
-            matches!(scope, GitSigningScope::Local { .. }),
-            "a scripted init must not touch global git config, got {scope:?}"
-        );
-
-        // …and an explicit request is still honoured in both directions.
         assert!(matches!(
             prompt_for_git_scope(false, Some(GitScopeArg::Global)).expect("global"),
             GitSigningScope::Global
@@ -679,6 +690,10 @@ mod tests {
         assert!(matches!(
             prompt_for_git_scope(false, Some(GitScopeArg::Skip)).expect("skip"),
             GitSigningScope::Skip
+        ));
+        assert!(matches!(
+            prompt_for_git_scope(false, Some(GitScopeArg::Local)).expect("local"),
+            GitSigningScope::Local { .. }
         ));
     }
 

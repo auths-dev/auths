@@ -390,6 +390,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5318" => Some("# AUTHS-E5318\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AnchorError`\n\n## Message\n\nagent delegation attestation anchoring failed: {0}\n"),
 
         // --- auths-sdk (RegistrationError) ---
+        "AUTHS-E5400" => Some("# AUTHS-E5400\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::NoRegistryConfigured`\n\n## Message\n\nno registry configured. Auths needs no registry: identity, signing and verification are local and git-native, and a signer's KEL reaches a verifier over the same git remote as the code. Pass --registry <url> or set AUTHS_REGISTRY_URL only if you are running one.\n"),
         "AUTHS-E5401" => Some("# AUTHS-E5401\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::AlreadyRegistered`\n\n## Message\n\nidentity already registered at this registry\n"),
         "AUTHS-E5402" => Some("# AUTHS-E5402\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::QuotaExceeded`\n\n## Message\n\nregistration quota exceeded — try again later\n\n## Suggestion\n\nWait a few minutes and try again\n"),
         "AUTHS-E5403" => Some("# AUTHS-E5403\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::InvalidDidFormat`\n\n## Message\n\ninvalid DID format: {did}\n"),
@@ -789,6 +790,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5316",
         "AUTHS-E5317",
         "AUTHS-E5318",
+        "AUTHS-E5400",
         "AUTHS-E5401",
         "AUTHS-E5402",
         "AUTHS-E5403",
@@ -912,6 +914,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 370);
+        assert_eq!(all_codes().len(), 371);
     }
 }
