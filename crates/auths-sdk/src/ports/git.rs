@@ -115,3 +115,34 @@ pub trait GitLogProvider: Send + Sync {
         limit: Option<usize>,
     ) -> Result<Vec<CommitRecord>, GitProviderError>;
 }
+
+/// Errors from staging a path into a repository index.
+#[derive(Debug, thiserror::Error)]
+pub enum IndexError {
+    /// The `git add` invocation failed with the given message.
+    #[error("could not stage {path}: {message}")]
+    Stage {
+        /// The path that failed to stage.
+        path: String,
+        /// The underlying git error output.
+        message: String,
+    },
+}
+
+/// Port for staging paths into a repository's index.
+///
+/// Distinct from [`GitLogProvider`] (read-only history) because staging mutates
+/// the working repository. Kept behind a port so trust-pin distribution stays a
+/// testable SDK workflow rather than CLI subprocess glue.
+///
+/// Usage:
+/// ```ignore
+/// index.stage(&repo_root.join(".auths/roots"))?;
+/// ```
+pub trait RepoIndex: Send + Sync {
+    /// Stage `path` into the index, as `git add -- <path>` would.
+    fn stage(&self, path: &std::path::Path) -> Result<(), IndexError>;
+
+    /// Whether `path` is already tracked by the repository.
+    fn is_tracked(&self, path: &std::path::Path) -> bool;
+}

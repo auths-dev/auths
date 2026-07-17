@@ -35,11 +35,23 @@ pub const HOOKS_DIR: &str = "githooks";
 
 /// The managed `prepare-commit-msg` hook. Version-stamped so `auths doctor` can
 /// detect a stale install; bump the version when editing.
+///
+/// The pin block is a **repair path only** — `auths init` owns pinning and staging
+/// via `roots::pin_root_in_repo`. It exists for repos entered after init ran
+/// elsewhere. Two constraints shape it, both learned the hard way:
+///
+/// 1. It keys off **tracked-ness, not existence**. The previous version skipped
+///    when `.auths/roots` merely existed — which `auths init` had just created —
+///    so the pin was never staged and never travelled.
+/// 2. A `git add` here lands in the **next** commit, not this one: git has already
+///    snapshotted the index by the time `prepare-commit-msg` runs. The message says
+///    so rather than claiming otherwise.
 pub const PREPARE_COMMIT_MSG_HOOK: &str = r#"#!/bin/sh
-# auths prepare-commit-msg hook v1 — managed by `auths init`, checked by
+# auths prepare-commit-msg hook v2 — managed by `auths init`, checked by
 # `auths doctor`. Injects the Auths-Id / Auths-Device trailers so `auths verify`
-# can replay the signer's KEL, and seeds the repo's committed .auths/roots trust
-# pin on first use. Chains to the repo's own hook when one exists.
+# can replay the signer's KEL, and repairs a missing/untracked .auths/roots trust
+# pin (the committed trust declaration teammates and CI inherit).
+# Chains to the repo's own hook when one exists.
 
 MSG_FILE="$1"
 AUTHS_HOME="${AUTHS_REPO:-$HOME/.auths}"
@@ -47,11 +59,17 @@ TRAILERS="$AUTHS_HOME/commit-trailers"
 
 if [ -f "$TRAILERS" ]; then
     TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"
-    if [ -n "$TOPLEVEL" ] && [ -f "$AUTHS_HOME/root-pin" ] && [ ! -e "$TOPLEVEL/.auths/roots" ]; then
-        mkdir -p "$TOPLEVEL/.auths" &&
-            cp "$AUTHS_HOME/root-pin" "$TOPLEVEL/.auths/roots" &&
-            git add -- "$TOPLEVEL/.auths/roots" >/dev/null 2>&1 &&
-            echo "auths: pinned your identity root in .auths/roots (committed with this commit)" >&2
+    if [ -n "$TOPLEVEL" ] && [ -f "$AUTHS_HOME/root-pin" ]; then
+        PIN="$TOPLEVEL/.auths/roots"
+        [ -e "$PIN" ] || {
+            mkdir -p "$TOPLEVEL/.auths" && cp "$AUTHS_HOME/root-pin" "$PIN"
+        }
+        # Stage only when git isn't tracking it yet. This lands in the NEXT commit:
+        # git snapshotted the index before this hook ran.
+        if [ -e "$PIN" ] && ! git ls-files --error-unmatch -- "$PIN" >/dev/null 2>&1; then
+            git add -- "$PIN" >/dev/null 2>&1 &&
+                echo "auths: staged .auths/roots — your trust pin lands in your next commit" >&2
+        fi
     fi
     while IFS= read -r trailer; do
         case "$trailer" in
@@ -275,6 +293,36 @@ mod tests {
         assert!(!hook_is_current(home));
         install_commit_hooks(home, "did:keri:Eroot", "did:keri:Edevice").expect("reinstall");
         assert!(hook_is_current(home));
+    }
+
+    /// The hook must key the pin repair off *tracked-ness*, not existence. The v1
+    /// hook skipped whenever `.auths/roots` existed — which `auths init` had just
+    /// created — so the pin was never staged and third-party verification was
+    /// impossible. Guard the fix so it cannot silently regress.
+    #[test]
+    fn hook_repairs_pin_on_tracked_ness_not_existence() {
+        assert!(
+            PREPARE_COMMIT_MSG_HOOK.contains("ls-files --error-unmatch"),
+            "pin repair must test tracked-ness, not mere existence"
+        );
+        assert!(
+            !PREPARE_COMMIT_MSG_HOOK.contains("[ ! -e \"$TOPLEVEL/.auths/roots\" ]"),
+            "the v1 existence guard defeated the mechanism it guarded"
+        );
+    }
+
+    /// `git add` inside prepare-commit-msg lands in the NEXT commit — git has
+    /// already snapshotted the index. The hook must not claim otherwise.
+    #[test]
+    fn hook_does_not_claim_the_pin_lands_in_this_commit() {
+        assert!(
+            !PREPARE_COMMIT_MSG_HOOK.contains("committed with this commit"),
+            "false: a git add here lands in the next commit, not this one"
+        );
+        assert!(
+            PREPARE_COMMIT_MSG_HOOK.contains("next commit"),
+            "the hook must tell the truth about when the pin lands"
+        );
     }
 
     #[cfg(unix)]

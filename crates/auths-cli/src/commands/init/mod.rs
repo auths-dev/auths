@@ -24,6 +24,7 @@ use auths_sdk::keychain::KeyStorage;
 use auths_sdk::ports::git_config::GitConfigProvider;
 use auths_sdk::signing::PrefilledPassphraseProvider;
 use auths_sdk::signing::StorageSigner;
+use auths_sdk::workflows::roots::RootPinOutcome;
 
 use crate::adapters::git_config::SystemGitConfigProvider;
 use crate::config::CliConfig;
@@ -423,22 +424,32 @@ fn run_developer_setup(
 
     // Pin the local identity as a trusted root for KEL-native verification (Epic B):
     // the committed `<repo>/.auths/roots` is the root of trust — no allowed_signers file.
-    // The hook seeds the same pin into every repo on first signed commit; this covers
-    // the repo the user is standing in right now.
+    // Staging is the load-bearing half: a pin that is written but never staged never
+    // reaches a cloner, so every third-party verification path dead-ends on it. We do
+    // not author a commit on the user's behalf — the pin rides their next one.
     if let Ok(output) = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"]).output()
         && output.status.success()
     {
         let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
         let root_did = result.identity_did.to_string();
-        match auths_sdk::workflows::roots::add_pinned_root(
+        let index = crate::adapters::git_index::SystemRepoIndex::at(root.clone());
+        match auths_sdk::workflows::roots::pin_root_in_repo(
             &crate::adapters::config_store::FileConfigStore,
-            &root.join(".auths"),
+            &index,
+            &root,
             &root_did,
         ) {
-            Ok(()) => out.println(&format!(
-                "  Pinned trusted root: {}",
+            Ok(RootPinOutcome::AlreadyTracked) => out.println(&format!(
+                "  Trusted root already pinned: {}",
                 crate::ux::product_id(&root_did)
             )),
+            Ok(_) => {
+                out.println(&format!(
+                    "  Pinned trusted root: {}",
+                    crate::ux::product_id(&root_did)
+                ));
+                out.println("  Staged .auths/roots — your next commit lets clones verify you");
+            }
             Err(e) => out.println(&format!("  Note: could not pin trusted root ({e})")),
         }
     }
