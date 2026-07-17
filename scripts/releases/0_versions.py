@@ -121,6 +121,22 @@ def stamp_workspace_deps(workspace_version: str) -> None:
         f.write_text(text)
 
 
+# uv-managed Python packages carry their own version inside uv.lock. When only
+# pyproject.toml is bumped, `uv sync --locked` in the publish workflows refuses
+# the now-stale lock — which is exactly what broke the FastAPI and Python-SDK
+# publishes on 0.1.5. `uv lock` rewrites just this one line; we stamp it directly
+# (anchored to the editable package's own `[[package]]` block, where the version
+# is unique) so `--check` catches the drift with no `uv` on PATH — it runs in CI.
+UV_LOCKS: list[tuple[str, str]] = [
+    ("packages/auths-python/uv.lock", "auths"),
+    ("packages/auths-fastapi/uv.lock", "auths-fastapi"),
+]
+
+
+def uv_lock_re(name: str) -> re.Pattern:
+    return re.compile(r'(name = "' + re.escape(name) + r'"\nversion = )"([^"]+)"')
+
+
 def set_workspace_version(new_version: str) -> None:
     if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?", new_version):
         print(f"ERROR: '{new_version}' is not a valid semver version", file=sys.stderr)
@@ -174,6 +190,19 @@ def main() -> None:
     dep_drift = workspace_dep_drift(workspace_version)
     dep_status = "ok" if dep_drift == 0 else f"{dep_drift} DRIFT"
     print(f"  Cargo.toml internal dependency versions: {dep_status}")
+
+    py_version = pep440_version(workspace_version)
+    for rel, name in UV_LOCKS:
+        path = REPO_ROOT / rel
+        if not path.exists():
+            continue
+        pattern = uv_lock_re(name)
+        match = pattern.search(path.read_text())
+        current = match.group(2) if match else None
+        status = "ok" if current == py_version else f"DRIFT (expected {py_version})"
+        print(f"  {path.relative_to(REPO_ROOT)}: {current} — {status}")
+        if match and current != py_version:
+            drifted.append((path, pattern, py_version))
 
     if not drifted and dep_drift == 0:
         print("\nAll package versions are in sync.")

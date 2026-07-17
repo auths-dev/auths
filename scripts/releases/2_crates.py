@@ -239,7 +239,13 @@ def publish_crate(crate_name: str) -> bool:
         cwd=CARGO_TOML.parent,
     )
     if result.returncode != 0:
-        if "already exists" in result.stderr:
+        # An already-published version is success, not failure — this is what
+        # makes re-running after a partial (or racing) run safe. cargo's local
+        # check words it "already exists"; the crates.io registry rejects a
+        # duplicate upload with 400 "already uploaded" (hit when another run — e.g.
+        # a second tag push publishing concurrently — got there first). Treat both.
+        stderr_lower = result.stderr.lower()
+        if "already exists" in stderr_lower or "already uploaded" in stderr_lower:
             print(f"  {crate_name} already published — skipping.", flush=True)
             return True
         print(f"  ERROR: cargo publish -p {crate_name} failed (exit {result.returncode})", file=sys.stderr)
