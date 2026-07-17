@@ -41,6 +41,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check package versions match the workspace version
         run: python3 scripts/releases/0_versions.py --check
+      - name: Every publishable crate is in the release (or explicitly excluded)
+        run: python3 scripts/releases/2_crates.py --validate
 
   clippy:
     name: Clippy
