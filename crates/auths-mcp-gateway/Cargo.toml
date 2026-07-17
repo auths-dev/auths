@@ -16,7 +16,7 @@ name = "auths-mcp-gateway"
 path = "src/main.rs"
 
 [dependencies]
-auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.3" }
+auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.4" }
 # The gateway resolves the agent + delegator KELs from the sandbox registry so the
 # native per-call gate can authenticate each signed call (no shelling on the
 # enforcement path — D2).
