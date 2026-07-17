@@ -27,8 +27,14 @@ impl GitDiagnosticProvider for PosixDiagnosticAdapter {
         })
     }
 
+    /// Read the **effective** value of a git config key, not the global one.
+    ///
+    /// `auths init` scopes signing config to the repo by default — a scripted init
+    /// must not rewrite the user's `~/.gitconfig` — so reading `--global` would
+    /// report a correctly configured repo as broken. The effective value is also
+    /// what git itself will use, which is the thing a diagnostic should check.
     fn get_git_config(&self, key: &str) -> Result<Option<String>, DiagnosticError> {
-        let output = crate::subprocess::git_command(&["config", "--global", "--get", key])
+        let output = crate::subprocess::git_command(&["config", "--get", key])
             .output()
             .map_err(|e| DiagnosticError::ExecutionFailed(e.to_string()))?;
 

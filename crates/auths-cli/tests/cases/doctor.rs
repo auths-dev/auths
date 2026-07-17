@@ -48,10 +48,13 @@ fn test_doctor_detects_missing_gpg_format() {
     let env = TestEnv::new();
     env.init_identity();
 
-    // Remove gpg.format from global config
+    // Remove gpg.format from the scope `auths init` actually wrote it to. A
+    // non-interactive init scopes signing config to the repo, not the machine, so
+    // unsetting --global here would silently no-op and the check would pass for
+    // the wrong reason.
     let unset = env
         .git_cmd()
-        .args(["config", "--global", "--unset", "gpg.format"])
+        .args(["config", "--local", "--unset", "gpg.format"])
         .output()
         .unwrap();
     assert!(unset.status.success(), "unset should succeed");
