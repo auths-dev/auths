@@ -86,6 +86,41 @@ fi
 exit 0
 "#;
 
+/// The managed `pre-push` hook. Mirrors `refs/auths/registry` to the remote the
+/// code is going to, so a clone of that remote can resolve the signer's KEL.
+///
+/// Three properties are deliberate:
+///
+/// * **Non-fatal.** A registry mirror must never block a code push. Every failure
+///   path exits 0 — no write access to the remote is the common, expected case.
+/// * **Opt-out via `auths.autopush=false`.** The registry is public by
+///   construction (a KEL is public keys and events), but pushing to a remote you
+///   do not own should stay refusable.
+/// * **Chains to the repo's own `pre-push`.** `core.hooksPath` *replaces*
+///   `.git/hooks`, so a managed hook that did not chain would silently disable
+///   every repo-local pre-push (husky, pre-commit, prek) on the machine.
+pub const PRE_PUSH_HOOK: &str = r#"#!/bin/sh
+# auths pre-push hook v1 — managed by `auths init`, checked by `auths doctor`.
+# Mirrors refs/auths/registry to the remote being pushed to, so a clone of that
+# remote carries the KEL `auths verify` needs. Fast-forward-only and non-fatal:
+# a registry mirror must never block a code push. Disable with:
+#   git config auths.autopush false
+
+REMOTE_URL="$2"
+
+if [ -n "$REMOTE_URL" ] &&
+    [ "$(git config --get auths.autopush 2>/dev/null)" != "false" ] &&
+    command -v auths >/dev/null 2>&1; then
+    auths registry push "$REMOTE_URL" >/dev/null 2>&1 || true
+fi
+
+REPO_HOOK="$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-push"
+if [ -x "$REPO_HOOK" ]; then
+    exec "$REPO_HOOK" "$@"
+fi
+exit 0
+"#;
+
 /// Failure installing the commit hook or writing its data files.
 #[derive(Debug, thiserror::Error)]
 pub enum CommitHookError {
@@ -121,6 +156,22 @@ fn write_file(path: &Path, content: &str) -> Result<(), CommitHookError> {
     })
 }
 
+/// Write a hook script and mark it executable (no-op on non-unix).
+fn write_executable(path: &Path, content: &str) -> Result<(), CommitHookError> {
+    write_file(path, content)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).map_err(
+            |source| CommitHookError::Write {
+                path: path.to_path_buf(),
+                source,
+            },
+        )?;
+    }
+    Ok(())
+}
+
 /// Path of the managed hook file under `auths_home`.
 ///
 /// Args:
@@ -134,7 +185,24 @@ pub fn hook_path(auths_home: &Path) -> PathBuf {
     auths_home.join(HOOKS_DIR).join("prepare-commit-msg")
 }
 
-/// Whether the managed hook file exists with the current script content.
+/// Path of the managed `pre-push` hook file under `auths_home`.
+///
+/// Args:
+/// * `auths_home`: The auths data directory (`~/.auths` or a CI registry path).
+///
+/// Usage:
+/// ```ignore
+/// let hook = pre_push_hook_path(&auths_home);
+/// ```
+pub fn pre_push_hook_path(auths_home: &Path) -> PathBuf {
+    auths_home.join(HOOKS_DIR).join("pre-push")
+}
+
+/// Whether both managed hook files exist with the current script content.
+///
+/// Covers `prepare-commit-msg` *and* `pre-push`: a stale or missing pre-push
+/// means the signer's KEL never reaches the remote, which `auths doctor` should
+/// surface as an actionable "re-run auths init" rather than a silent gap.
 ///
 /// Args:
 /// * `auths_home`: The auths data directory.
@@ -144,9 +212,13 @@ pub fn hook_path(auths_home: &Path) -> PathBuf {
 /// if !hook_is_current(&auths_home) { /* doctor: re-run auths init */ }
 /// ```
 pub fn hook_is_current(auths_home: &Path) -> bool {
-    std::fs::read_to_string(hook_path(auths_home))
-        .map(|content| content == PREPARE_COMMIT_MSG_HOOK)
-        .unwrap_or(false)
+    let matches = |path: PathBuf, expected: &str| {
+        std::fs::read_to_string(path)
+            .map(|content| content == expected)
+            .unwrap_or(false)
+    };
+    matches(hook_path(auths_home), PREPARE_COMMIT_MSG_HOOK)
+        && matches(pre_push_hook_path(auths_home), PRE_PUSH_HOOK)
 }
 
 /// Install the `prepare-commit-msg` hook under `<auths_home>/githooks` and write
@@ -170,18 +242,8 @@ pub fn install_commit_hooks(
     root_did: &str,
     device_did: &str,
 ) -> Result<PathBuf, CommitHookError> {
-    let hook = hook_path(auths_home);
-    write_file(&hook, PREPARE_COMMIT_MSG_HOOK)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).map_err(
-            |source| CommitHookError::Write {
-                path: hook.clone(),
-                source,
-            },
-        )?;
-    }
+    write_executable(&hook_path(auths_home), PREPARE_COMMIT_MSG_HOOK)?;
+    write_executable(&pre_push_hook_path(auths_home), PRE_PUSH_HOOK)?;
     write_file(
         &auths_home.join(TRAILERS_FILE),
         &format!("Auths-Id: {root_did}\nAuths-Device: {device_did}\n"),
@@ -331,10 +393,61 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::TempDir::new().expect("temp dir");
         install_commit_hooks(tmp.path(), "did:keri:Eroot", "did:keri:Edevice").expect("install");
-        let mode = std::fs::metadata(hook_path(tmp.path()))
-            .expect("metadata")
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o111, 0o111, "hook must be executable");
+        for path in [hook_path(tmp.path()), pre_push_hook_path(tmp.path())] {
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o111, 0o111, "{} must be executable", path.display());
+        }
+    }
+
+    #[test]
+    fn install_writes_the_pre_push_hook() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        install_commit_hooks(tmp.path(), "did:keri:Eroot", "did:keri:Edevice").expect("install");
+        let hook = std::fs::read_to_string(pre_push_hook_path(tmp.path())).expect("pre-push");
+        assert_eq!(hook, PRE_PUSH_HOOK);
+        assert!(hook_is_current(tmp.path()));
+    }
+
+    #[test]
+    fn stale_pre_push_is_detected_by_hook_is_current() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        install_commit_hooks(tmp.path(), "did:keri:Eroot", "did:keri:Edevice").expect("install");
+        std::fs::write(pre_push_hook_path(tmp.path()), "#!/bin/sh\n# old\n").expect("overwrite");
+        assert!(
+            !hook_is_current(tmp.path()),
+            "a stale pre-push means the KEL never reaches the remote; doctor must see it"
+        );
+    }
+
+    /// `core.hooksPath` *replaces* `.git/hooks`, so a managed hook that does not
+    /// chain silently disables every repo-local hook on the machine (husky,
+    /// pre-commit, prek). Both managed hooks must exec the repo's own.
+    #[test]
+    fn managed_hooks_chain_to_the_repos_own_hook() {
+        for (name, hook) in [
+            ("prepare-commit-msg", PREPARE_COMMIT_MSG_HOOK),
+            ("pre-push", PRE_PUSH_HOOK),
+        ] {
+            assert!(
+                hook.contains(&format!("hooks/{name}")) && hook.contains("exec \"$REPO_HOOK\""),
+                "{name} must chain to the repo's own hook"
+            );
+        }
+    }
+
+    /// A registry mirror must never block a code push.
+    #[test]
+    fn pre_push_is_non_fatal_and_opt_outable() {
+        assert!(
+            PRE_PUSH_HOOK.contains("|| true"),
+            "registry push failure must not fail the code push"
+        );
+        assert!(
+            PRE_PUSH_HOOK.contains("auths.autopush"),
+            "pushing to a remote you do not own must stay refusable"
+        );
     }
 }
