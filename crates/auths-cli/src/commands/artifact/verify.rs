@@ -501,9 +501,30 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
                     valid = false;
                 }
                 Some(sha) => {
-                    // Verify the commit is signed by a trusted key.
-                    // Uses in-process verification via auths-verifier (no git shell-out).
-                    let commit_sig_ok = verify_commit_in_process(sha).await;
+                    // Verify the commit is signed by a trusted key. With an identity
+                    // bundle the commit leg verifies against the bundle's evidenced
+                    // KELs (the stateless CI posture — same doctrine as
+                    // `auths verify <sha> --identity-bundle`); otherwise the local
+                    // registry resolves the signer in-process (no git shell-out).
+                    let commit_sig_ok = match &identity_bundle {
+                        Some(bundle_path) => {
+                            match crate::commands::verify_commit::commit_trusted_via_bundle(
+                                sha,
+                                bundle_path,
+                            )
+                            .await
+                            {
+                                Ok(()) => true,
+                                Err(reason) => {
+                                    if !is_json_mode() {
+                                        eprintln!("  Commit-anchor leg failed: {reason}");
+                                    }
+                                    false
+                                }
+                            }
+                        }
+                        None => verify_commit_in_process(sha).await,
+                    };
 
                     if !commit_sig_ok {
                         valid = false;
@@ -643,7 +664,12 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
             commit_sha: commit_sha_val,
             commit_verified,
             oidc_join,
-            error: log_anchor_error.or(oidc_error),
+            error: log_anchor_error.or(oidc_error).or_else(|| {
+                (!valid).then(|| {
+                    "attestation chain or its commit-anchor leg did not verify (see lines above)"
+                        .to_string()
+                })
+            }),
         },
     )
 }
@@ -703,6 +729,18 @@ fn resolve_identity_key(
     identity_bundle: &Option<PathBuf>,
     attestation: &Attestation,
 ) -> Result<(auths_verifier::DevicePublicKey, CanonicalDid)> {
+    // An ephemeral (`did:key:`) attestation is SELF-signed: its chain leg can only
+    // verify against the issuer's own in-band key — the bundle's root never signed
+    // it. The bundle still anchors the COMMIT leg (artifact ← ephemeral key ←
+    // commit ← maintainer), enforced in the ephemeral commit-anchor step below.
+    if attestation.issuer.as_str().starts_with("did:key:") {
+        let issuer = &attestation.issuer;
+        let (pk_bytes, curve) = resolve_pk_from_did(issuer)
+            .with_context(|| format!("Failed to resolve public key from issuer DID '{issuer}'"))?;
+        let pk = auths_verifier::DevicePublicKey::try_new(curve, &pk_bytes)
+            .map_err(|e| anyhow!("Invalid issuer public key resolved from DID: {e}"))?;
+        return Ok((pk, issuer.clone()));
+    }
     if let Some(bundle_path) = identity_bundle {
         let bundle_content = fs::read_to_string(bundle_path)
             .with_context(|| format!("Failed to read identity bundle: {:?}", bundle_path))?;
