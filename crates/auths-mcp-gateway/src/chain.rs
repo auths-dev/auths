@@ -18,6 +18,12 @@ use std::process::Command;
 
 use auths_mcp_core::{Cents, NonZeroCents};
 
+/// Work-repo index for the one-time call-template warming sign at session setup, kept
+/// clear of the runtime call sequence (which starts at 0).
+const WARM_CALL_IDX: usize = usize::MAX;
+/// Work-repo index for the one-time settlement-template warming sign at session setup.
+const WARM_SETTLE_IDX: usize = usize::MAX - 1;
+
 /// A built delegation chain in a sandbox registry: the parent root and a delegated
 /// scoped agent, both resolvable from the org registry the verifier replays.
 pub struct Chain {
@@ -35,6 +41,9 @@ pub struct Chain {
     pub agent_did: String,
     /// The agent's keychain alias (its delegate signing key).
     agent_alias: String,
+    /// The granted capability scope (dotted gateway form), used to pre-warm the
+    /// in-process signing templates at session setup so the metered path never forks git.
+    scope: Vec<String>,
     /// Whether the agent's delegation has been revoked this session.
     revoked: bool,
     /// In-process per-call signing: the first call of each kind runs the full
@@ -218,7 +227,7 @@ impl Chain {
         materialize_agent_machine(&org_repo, &agent_repo, &root_did)?;
 
         let inproc = crate::inproc_sign::InprocState::new(&agent_alias);
-        Ok(Self {
+        let chain = Self {
             auths_bin,
             org_repo,
             agent_repo,
@@ -226,9 +235,64 @@ impl Chain {
             root_did,
             agent_did,
             agent_alias,
+            scope: scope.to_vec(),
             revoked: false,
             inproc,
-        })
+        };
+        chain.warm_signing_templates();
+        Ok(chain)
+    }
+
+    /// Pre-harvest the in-process signing templates at session setup, so the metered hot
+    /// path never forks `git`/`auths sign`.
+    ///
+    /// Runs the one-time subprocess signing ceremony ONCE per granted call capability and
+    /// once for settlement, harvesting each `CommitTemplate` into `InprocState`. From the
+    /// FIRST metered call onward, `sign_call`/`sign_settlement` take the pure in-process
+    /// path (the ~6 s cold cost is paid here at init, not on a brokered call). Best-effort:
+    /// a warming failure only leaves the lazy subprocess fallback in charge for that
+    /// template — the real call resurfaces any genuine error — so it never fails setup.
+    ///
+    /// Args:
+    /// * (none) — warms every capability in the chain's granted scope.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let chain = Chain::build(&lab, &scope)?; // warms internally
+    /// ```
+    pub fn warm_signing_templates(&self) {
+        let warmup = br#"{"warmup":true}"#;
+        for capability in &self.scope {
+            if capability == "settle" {
+                continue;
+            }
+            if let Err(e) = self.sign_call(
+                WARM_CALL_IDX,
+                warmup,
+                capability,
+                auths_mcp_core::SPEND_LOG_GENESIS,
+            ) {
+                eprintln!(
+                    "auths-mcp-gateway: warming the '{capability}' call template failed ({e}) — \
+                     first metered call falls back to the subprocess signer"
+                );
+            }
+        }
+        if let Some(actual) = NonZeroCents::new(Cents::new(1))
+            && let Err(e) = self.sign_settlement(
+                WARM_SETTLE_IDX,
+                auths_mcp_core::SPEND_LOG_GENESIS,
+                "warmup",
+                actual,
+                "warmup",
+                Cents::new(0),
+            )
+        {
+            eprintln!(
+                "auths-mcp-gateway: warming the settlement template failed ({e}) — \
+                 first settlement falls back to the subprocess signer"
+            );
+        }
     }
 
     /// Revoke the agent's delegation (mid-session kill-switch). The next signed
