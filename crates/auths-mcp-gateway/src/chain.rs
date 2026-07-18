@@ -261,6 +261,9 @@ impl Chain {
     /// let chain = Chain::build(&lab, &scope)?; // warms internally
     /// ```
     pub fn warm_signing_templates(&self) {
+        // Decrypt the session signing key once now (the Argon2id keychain unlock), so the
+        // first in-process sign on the metered path does not pay it.
+        self.inproc.prewarm_session_key();
         let warmup = br#"{"warmup":true}"#;
         for capability in &self.scope {
             if capability == "settle" {

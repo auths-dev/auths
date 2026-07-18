@@ -170,6 +170,21 @@ impl InprocState {
             .as_ref()
     }
 
+    /// Force the one-time session-key decrypt (the Argon2id keychain unlock) now, so the
+    /// first in-process sign on the metered path does not pay it. Best-effort: if the key
+    /// cannot be loaded the lazy path still handles (and logs) it on first use.
+    ///
+    /// Args:
+    /// * (none) — uses the session's configured keychain alias.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// inproc.prewarm_session_key(); // at session setup
+    /// ```
+    pub fn prewarm_session_key(&self) {
+        let _ = self.session_key();
+    }
+
     /// Learn the CALL commit shape for `capability` from a subprocess-signed commit.
     pub fn learn_call(&self, capability: &str, raw: &[u8]) {
         #[allow(clippy::expect_used)] // INVARIANT: poisoned mutex = another thread panicked
