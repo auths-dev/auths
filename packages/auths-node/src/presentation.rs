@@ -31,6 +31,8 @@ pub enum PresentationStatus {
     CredentialNotValid,
     /// The request JSON could not be parsed; see `message`.
     MalformedRequest,
+    /// A supplied KEL failed signature authentication (forged or missing attachments).
+    KelUnauthenticated,
     /// A request slice exceeded its bound; see `field`.
     InputTooLarge,
     /// The request schema version is not understood by this build.
@@ -62,6 +64,8 @@ pub enum CredentialStatus {
     IssuerKelDuplicitous,
     /// The request JSON could not be parsed; see `message`.
     MalformedRequest,
+    /// A supplied KEL failed signature authentication (forged or missing attachments).
+    KelUnauthenticated,
     /// A request slice exceeded its bound; see `field`.
     InputTooLarge,
     /// The request schema version is not understood by this build.
@@ -193,6 +197,7 @@ fn presentation_status(kind: &str) -> PresentationStatus {
         "subjectKelInvalid" => PresentationStatus::SubjectKelInvalid,
         "credentialNotValid" => PresentationStatus::CredentialNotValid,
         "malformedRequest" => PresentationStatus::MalformedRequest,
+        "kelUnauthenticated" => PresentationStatus::KelUnauthenticated,
         "inputTooLarge" => PresentationStatus::InputTooLarge,
         "unsupportedSchemaVersion" => PresentationStatus::UnsupportedSchemaVersion,
         _ => PresentationStatus::Unknown,
@@ -211,6 +216,7 @@ fn credential_status(kind: &str) -> CredentialStatus {
         "witnessQuorumNotMet" => CredentialStatus::WitnessQuorumNotMet,
         "issuerKelDuplicitous" => CredentialStatus::IssuerKelDuplicitous,
         "malformedRequest" => CredentialStatus::MalformedRequest,
+        "kelUnauthenticated" => CredentialStatus::KelUnauthenticated,
         "inputTooLarge" => CredentialStatus::InputTooLarge,
         "unsupportedSchemaVersion" => CredentialStatus::UnsupportedSchemaVersion,
         _ => CredentialStatus::Unknown,

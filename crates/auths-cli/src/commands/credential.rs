@@ -143,6 +143,14 @@ pub enum CredentialSubcommand {
             help = "The base64url challenge nonce from /v1/auth/challenge."
         )]
         nonce: String,
+
+        /// Also emit the wire-ready evidence (credential + attachment-carrying KELs + TEL)
+        /// a relying party without a registry replica verifies the presentation against.
+        #[arg(
+            long = "with-evidence",
+            help = "Emit JSON with the header AND the verifiable evidence bundle (for relying parties that hold no replica of your KEL)."
+        )]
+        with_evidence: bool,
     },
 }
 
@@ -231,6 +239,7 @@ pub fn handle_credential(
             said,
             audience,
             nonce,
+            with_evidence,
         } => {
             let ctx = build_auths_context(&repo_path, env_config, Some(passphrase_provider))?;
             let subject_alias = KeyAlias::new_unchecked(subject);
@@ -250,14 +259,37 @@ pub fn handle_credential(
                 .map_err(anyhow::Error::new)?;
             let header = format!("Auths-Presentation {token}");
 
-            if is_json_mode() {
-                JsonResponse::success(
-                    "credential present",
-                    serde_json::json!({ "authorization": header }),
+            let evidence = if with_evidence {
+                Some(
+                    auths_sdk::domains::credentials::load_presentation_evidence(
+                        &ctx,
+                        &subject_alias,
+                        &said,
+                    )
+                    .map_err(anyhow::Error::new)?,
                 )
-                .print()?;
             } else {
-                println!("{header}");
+                None
+            };
+
+            match evidence {
+                Some(evidence) => {
+                    // --with-evidence is machine-facing: always JSON, one object a
+                    // relying party splices into its verify request.
+                    JsonResponse::success(
+                        "credential present",
+                        serde_json::json!({ "authorization": header, "evidence": evidence }),
+                    )
+                    .print()?;
+                }
+                None if is_json_mode() => {
+                    JsonResponse::success(
+                        "credential present",
+                        serde_json::json!({ "authorization": header }),
+                    )
+                    .print()?;
+                }
+                None => println!("{header}"),
             }
             Ok(())
         }
