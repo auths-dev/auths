@@ -49,33 +49,6 @@ pub fn discover_project_bundle() -> Option<std::path::PathBuf> {
     bundle.is_file().then_some(bundle)
 }
 
-/// The current repository's `origin` URL, when there is one.
-///
-/// Used as the default KEL transport: a repo carries its signer's KEL on the same
-/// remote it carries its code (the managed `pre-push` hook mirrors
-/// `refs/auths/registry` there), but a plain `git clone` fetches only
-/// `refs/heads/*` and `refs/tags/*` — so the ref is on the remote and not in the
-/// clone. Without this, `auths verify` in a fresh clone fails with "KEL not found"
-/// while the KEL sits one fetch away on the remote it was cloned from.
-///
-/// Resolution stays local-first: the chain only reaches for the remote when the
-/// KEL is absent locally, and the local registry remains the trusted floor.
-///
-/// Usage:
-/// ```ignore
-/// let fallback = repo_origin_url();
-/// ```
-pub fn repo_origin_url() -> Option<String> {
-    let output = crate::subprocess::git_command(&["remote", "get-url", "origin"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (!url.is_empty()).then_some(url)
-}
-
 /// The human-readable label for a surfaced freshness verdict (ADR 009).
 ///
 /// Shared by every verify command so an offline verdict renders "freshness unknown"

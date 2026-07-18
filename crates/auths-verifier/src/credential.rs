@@ -300,7 +300,7 @@ pub fn verify_credential_sync(
         return CredentialVerdict::IssuerKelDuplicitous;
     }
 
-    // rt-002-allow: issuer_kel is supplied by the caller from the local trusted registry / an already-authenticated bundle, and the ACDC + TEL lifecycle anchors below are bound to this issuer key-state. Residual: untrusted WASM credential input — a signature-carrying presentation format is the tracked RT-002 follow-up.
+    // rt-002-allow: issuer_kel is authenticated before it reaches here — local trusted registry, authenticated bundle, or the JSON contract's authenticate_kel boundary (validate_signed_kel over the wire attachments). The ACDC + TEL lifecycle anchors below are bound to this issuer key-state.
     let issuer_state = match TrustedKel::from_trusted_source(issuer_kel).replay() {
         Ok(state) => state,
         Err(_) => return CredentialVerdict::RegistryNotEstablished,

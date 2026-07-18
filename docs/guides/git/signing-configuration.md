@@ -161,7 +161,7 @@ This runs `git rebase --exec` under the hood to amend each commit with a fresh s
 
 ## How Verification Finds Your Key
 
-Verification is KEL-native: `auths verify` reads the commit's `Auths-Device` trailer and resolves the signer's current key state from their key event log — no key list file to generate, distribute, or keep in sync. Keys are resolved from the local identity store by default, with opt-in remote resolution (`--remote` / `--oobi`) and explicit trust pinning (`auths trust pin`). See [Verifying Commits](verifying-commits.md).
+Verification is KEL-native: `auths verify` reads the commit's `Auths-Device` trailer and resolves the signer's current key state from their key event log — no key list file to generate, distribute, or keep in sync. Keys resolve from the local identity store, or from the committed identity bundle (`.auths/ci-bundle.json`, produced by `auths id export-bundle`) that travels with the clone — plus explicit trust pinning (`auths trust pin`). See [Verifying Commits](verifying-commits.md).
 
 > **Note on native Git verification:** Git's own `git verify-commit` / `git log --show-signature` rely on Git's `gpg.ssh.allowedSignersFile` mechanism, which Auths no longer generates. Use `auths verify` instead — it understands the identity model behind the signature, not just the raw SSH key.
 

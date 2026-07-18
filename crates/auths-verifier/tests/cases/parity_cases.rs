@@ -89,6 +89,27 @@ pub fn presentation_cases() -> Vec<Case> {
             "credentialNotValid",
         ),
         c(
+            "forged-subject-kel-attachment",
+            tampered(PRESENTATION_VALID, |v| {
+                v["subjectKelAttachmentsB64"][0] = zero_sig_b64();
+            }),
+            "kelUnauthenticated",
+        ),
+        c(
+            "forged-issuer-kel-attachment",
+            tampered(PRESENTATION_VALID, |v| {
+                v["issuerKelAttachmentsB64"][0] = zero_sig_b64();
+            }),
+            "kelUnauthenticated",
+        ),
+        c(
+            "stripped-subject-kel-attachments",
+            tampered(PRESENTATION_VALID, |v| {
+                v["subjectKelAttachmentsB64"] = serde_json::json!([]);
+            }),
+            "kelUnauthenticated",
+        ),
+        c(
             "truncated",
             PRESENTATION_VALID[..PRESENTATION_VALID.len() / 2].to_string(),
             "malformedRequest",
@@ -133,6 +154,20 @@ pub fn credential_cases() -> Vec<Case> {
                     serde_json::Value::String("admin".into());
             }),
             "saidMismatch",
+        ),
+        c(
+            "forged-issuer-kel-attachment",
+            tampered(CREDENTIAL_VALID, |v| {
+                v["issuerKelAttachmentsB64"][0] = zero_sig_b64();
+            }),
+            "kelUnauthenticated",
+        ),
+        c(
+            "stripped-issuer-kel-attachments",
+            tampered(CREDENTIAL_VALID, |v| {
+                v["issuerKelAttachmentsB64"] = serde_json::json!([]);
+            }),
+            "kelUnauthenticated",
         ),
         c(
             "truncated",

@@ -29,6 +29,7 @@ export type Capability = string & { readonly __brand: "Capability" };
 /** Request-layer failures shared by both verdict unions (never a verification outcome). */
 export type RequestError =
   | { kind: "malformedRequest"; message: string }
+  | { kind: "kelUnauthenticated"; field: string; detail: string }
   | { kind: "inputTooLarge"; field: string; count: number; limit: number }
   | { kind: "unsupportedSchemaVersion"; got: number; expected: number };
 

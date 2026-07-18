@@ -59,7 +59,7 @@ const EXPIRY_FIELD: &str = "expiry";
 /// replay error (`SubjectKelInvalid`), which is the correct fail-closed outcome.
 fn replay_subject(subject_kel: &[Event], subject_delegator_kel: &[Event]) -> Option<KeyState> {
     let lookup = KelSealIndex::from_events(subject_delegator_kel);
-    // rt-002-allow: subject_kel/delegator_kel are supplied by the caller from the local trusted registry / an authenticated bundle, and the presentation signature is bound to the resulting subject key-state. Residual: untrusted WASM presentation input — signature-carrying transport is the tracked RT-002 follow-up.
+    // rt-002-allow: subject_kel/delegator_kel are authenticated before they reach here — local trusted registry, authenticated bundle, or the JSON contract's authenticate_kel boundary (validate_signed_kel over the wire attachments). The presentation signature is additionally bound to the resulting subject key-state.
     TrustedKel::from_trusted_source(subject_kel)
         .replay_with_lookup(Some(&lookup))
         .ok()

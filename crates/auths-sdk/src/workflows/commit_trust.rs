@@ -87,9 +87,8 @@ pub fn local_self_root(ctx: &crate::context::AuthsContext) -> Option<String> {
 /// `registry`, then replays them to decide whether the commit's signer is a device
 /// delegated under a root pinned in `pinned_roots`. This is the trust primitive the
 /// artifact-provenance path uses for the human-signed commit an ephemeral attestation
-/// is bound to. Witnessed and transport-aware verification (the `auths verify`
-/// command) layers `--remote`/`--oobi` and witness receipts on top of the same
-/// `auths_verifier` KEL primitive.
+/// is bound to. Witnessed verification (the `auths verify` command) layers
+/// witness receipts on top of the same `auths_verifier` KEL primitive.
 ///
 /// Args:
 /// * `registry`: The registry backend holding identity KELs.

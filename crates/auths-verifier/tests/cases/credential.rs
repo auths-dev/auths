@@ -8,10 +8,10 @@
 use auths_crypto::{CurveType, RingCryptoProvider};
 use auths_keri::witness::{Receipt, ReceiptTag, SignedReceipt, StoredReceipt};
 use auths_keri::{
-    Acdc, CesrKey, Event, IcpEvent, IcpEventInit, Iss, IxnEvent, KeriPublicKey, KeriSequence,
-    Prefix, Rev, Said, Seal, TelAnchorSeal, TelEvent, Threshold, Vcp, VersionString,
+    Acdc, CesrKey, Event, IcpEvent, IcpEventInit, IndexedSignature, Iss, IxnEvent, KeriPublicKey,
+    KeriSequence, Prefix, Rev, Said, Seal, TelAnchorSeal, TelEvent, Threshold, Vcp, VersionString,
     compute_capability_schema_said, compute_next_commitment, encode_tel_nonce, finalize_icp_event,
-    finalize_ixn_event,
+    finalize_ixn_event, serialize_attachment, serialize_for_signing,
 };
 use auths_verifier::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use auths_verifier::{CredentialVerdict, LifecycleEvent, SignedAcdc, VerifierWitnessPolicy};
@@ -170,11 +170,34 @@ fn build_credential(
     (acdc.clone(), SignedAcdc { acdc, signature })
 }
 
+/// One CESR signature attachment per event, each signed by `signer` (single-signer KELs).
+fn kel_attachments(signer: &Signer, kel: &[Event]) -> Vec<Vec<u8>> {
+    kel.iter()
+        .map(|event| {
+            let canonical = serialize_for_signing(event).expect("canonical event bytes");
+            serialize_attachment(&[IndexedSignature {
+                index: 0,
+                prior_index: None,
+                sig: signer.sign(&canonical),
+            }])
+            .expect("attachment")
+        })
+        .collect()
+}
+
+/// Base64 each raw attachment for the JSON contract's `…KelAttachmentsB64` arrays.
+fn attachments_b64(attachments: &[Vec<u8>]) -> Vec<String> {
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD;
+    attachments.iter().map(|a| b64.encode(a)).collect()
+}
+
 /// A complete issuer KEL + TEL fixture for one credential lifecycle.
 struct Fixture {
     issuer: Signer,
     issuer_aid: Prefix,
     issuer_kel: Vec<Event>,
+    issuer_kel_attachments: Vec<Vec<u8>>,
     tel: Vec<TelEvent>,
     registry: Said,
     iss_said: Said,
@@ -287,10 +310,12 @@ fn build_fixture(spec: &FixtureSpec) -> Fixture {
         tel.push(TelEvent::Rev(rev));
     }
 
+    let issuer_kel_attachments = kel_attachments(&issuer, &kel);
     Fixture {
         issuer,
         issuer_aid,
         issuer_kel: kel,
+        issuer_kel_attachments,
         tel,
         registry,
         iss_said: iss.d.clone(),
@@ -891,6 +916,7 @@ async fn credential_json_contract_matches_sync() {
                     "signatureB64": b64.encode(&f.signed.signature),
                 },
                 "issuerKel": f.issuer_kel,
+                "issuerKelAttachmentsB64": attachments_b64(&f.issuer_kel_attachments),
                 "tel": f.tel,
                 "receipts": [],
                 "witnessPolicy": "warn",
@@ -939,6 +965,7 @@ async fn emit_credential_fixtures() {
             "schemaVersion": 1,
             "credential": { "acdc": f.signed.acdc, "signatureB64": b64.encode(&f.signed.signature) },
             "issuerKel": f.issuer_kel,
+            "issuerKelAttachmentsB64": attachments_b64(&f.issuer_kel_attachments),
             "tel": f.tel,
             "receipts": [],
             "witnessPolicy": "warn",
@@ -968,6 +995,7 @@ fn credential_ffi_c_abi_end_to_end() {
             "schemaVersion": 1,
             "credential": { "acdc": f.signed.acdc, "signatureB64": b64.encode(&f.signed.signature) },
             "issuerKel": f.issuer_kel,
+            "issuerKelAttachmentsB64": attachments_b64(&f.issuer_kel_attachments),
             "tel": f.tel,
             "receipts": [],
             "witnessPolicy": "warn",

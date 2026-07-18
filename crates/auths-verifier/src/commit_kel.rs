@@ -619,7 +619,7 @@ async fn verify_commit_against_kel_witnessed_at(
 ) -> WitnessedVerdict {
     // 1. Replay + witness-gate the root KEL (validates SAIDs incl. the
     //    self-addressing icp prefix, then checks M-of-N witness agreement).
-    // rt-002-allow: root_kel is authenticated at the ingestion boundary before it reaches here (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store), and this replay additionally enforces the M-of-N witness gate. Residual: the opt-in --remote/--oobi stranger feed, whose signature-carrying transport is tracked (RT-002 follow-up).
+    // rt-002-allow: root_kel is authenticated at the ingestion boundary before it reaches here (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store), and this replay additionally enforces the M-of-N witness gate.
     let replay = match TrustedKel::from_trusted_source(root_kel)
         .replay_with_receipts(None, receipt_lookup)
     {
@@ -713,7 +713,7 @@ pub async fn verify_commit_against_kel_scoped(
     provider: &dyn CryptoProvider,
     now: i64,
 ) -> CommitVerdict {
-    // rt-002-allow: root_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store). Residual: opt-in --remote/--oobi stranger feed — signature-carrying transport tracked (RT-002 follow-up).
+    // rt-002-allow: root_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store).
     let root_state = match TrustedKel::from_trusted_source(root_kel).replay() {
         Ok(state) => state,
         Err(e) => return CommitVerdict::RootKelInvalid(e.to_string()),
@@ -756,7 +756,7 @@ async fn authorize_commit(
 
     // 3. Replay the device KEL (a dip needs the delegator lookup against the root).
     let lookup = KelSealIndex::from_events(root_kel);
-    // rt-002-allow: device_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store); the dip's delegation is additionally bound to the already-replayed root via the root KelSealIndex. Residual: opt-in --remote/--oobi stranger feed — tracked (RT-002 follow-up).
+    // rt-002-allow: device_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store); the dip's delegation is additionally bound to the already-replayed root via the root KelSealIndex.
     let device_state =
         match TrustedKel::from_trusted_source(device_kel).replay_with_lookup(Some(&lookup)) {
             Ok(s) => s,

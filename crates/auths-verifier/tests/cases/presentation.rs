@@ -9,10 +9,11 @@
 
 use auths_crypto::{CurveType, RingCryptoProvider};
 use auths_keri::{
-    Acdc, CesrKey, Event, IcpEvent, IcpEventInit, Iss, IxnEvent, KeriPublicKey, KeriSequence,
-    Prefix, Rev, RotEvent, RotEventInit, Said, Seal, TelAnchorSeal, TelEvent, Threshold, Vcp,
-    VersionString, compute_capability_schema_said, compute_next_commitment, encode_tel_nonce,
-    finalize_icp_event, finalize_ixn_event, finalize_rot_event,
+    Acdc, CesrKey, Event, IcpEvent, IcpEventInit, IndexedSignature, Iss, IxnEvent, KeriPublicKey,
+    KeriSequence, Prefix, Rev, RotEvent, RotEventInit, Said, Seal, TelAnchorSeal, TelEvent,
+    Threshold, Vcp, VersionString, compute_capability_schema_said, compute_next_commitment,
+    encode_tel_nonce, finalize_icp_event, finalize_ixn_event, finalize_rot_event,
+    serialize_attachment, serialize_for_signing,
 };
 use auths_verifier::freshness::FreshnessPolicy;
 use auths_verifier::{
@@ -114,6 +115,23 @@ fn presentation_message(credential_said: &str, audience: &str, nonce: &[u8]) -> 
     message
 }
 
+/// One CESR signature attachment over `event`, signed by `signer`.
+fn attachment_for(signer: &Signer, event: &Event) -> Vec<u8> {
+    let canonical = serialize_for_signing(event).expect("canonical event bytes");
+    serialize_attachment(&[IndexedSignature {
+        index: 0,
+        prior_index: None,
+        sig: signer.sign(&canonical),
+    }])
+    .expect("attachment")
+}
+
+/// Base64 each raw attachment for the JSON contract's `…KelAttachmentsB64` arrays.
+fn attachments_b64(attachments: &[Vec<u8>]) -> Vec<String> {
+    let b64 = base64::engine::general_purpose::STANDARD;
+    attachments.iter().map(|a| b64.encode(a)).collect()
+}
+
 // ── subject KEL (the holder identity that must prove current control) ────────────
 
 /// A subject (holder) identity with its own single-key KEL.
@@ -123,6 +141,8 @@ struct Subject {
     /// The pre-committed next signer (revealed by [`Subject::rotate`]).
     next_signer: Signer,
     kel: Vec<Event>,
+    /// One CESR signature attachment per KEL event (each signed by its controlling key).
+    kel_attachments: Vec<Vec<u8>>,
 }
 
 impl Subject {
@@ -146,11 +166,14 @@ impl Subject {
         }))
         .expect("subject icp");
         let aid = icp.i.clone();
+        let event = Event::Icp(icp);
+        let attachment = attachment_for(&signer, &event);
         Self {
             aid,
             signer,
             next_signer,
-            kel: vec![Event::Icp(icp)],
+            kel: vec![event],
+            kel_attachments: vec![attachment],
         }
     }
 
@@ -176,7 +199,10 @@ impl Subject {
             a: vec![],
         }))
         .expect("subject rot");
-        self.kel.push(Event::Rot(rot));
+        let event = Event::Rot(rot);
+        let attachment = attachment_for(&self.next_signer, &event);
+        self.kel.push(event);
+        self.kel_attachments.push(attachment);
     }
 
     /// Sign a presentation envelope for `credential_said`/`audience`/`binding`.
@@ -206,6 +232,7 @@ impl Subject {
 /// The issuer KEL/TEL fixture credentialing a given subject AID.
 struct Credentialed {
     issuer_kel: Vec<Event>,
+    issuer_kel_attachments: Vec<Vec<u8>>,
     tel: Vec<TelEvent>,
     signed: SignedAcdc,
     credential_said: String,
@@ -288,8 +315,11 @@ fn credential_for(subject_aid: &Prefix, revoke: bool) -> Credentialed {
         tel.push(TelEvent::Rev(rev));
     }
 
+    let issuer_kel_attachments: Vec<Vec<u8>> =
+        kel.iter().map(|e| attachment_for(&issuer, e)).collect();
     Credentialed {
         issuer_kel: kel,
+        issuer_kel_attachments,
         tel,
         signed,
         credential_said,
@@ -845,7 +875,7 @@ async fn sync_and_async_presentation_verdicts_match() {
 fn presentation_request_json(
     envelope: &PresentationEnvelope,
     cred: &Credentialed,
-    subject_kel: &[Event],
+    subject: &Subject,
     audience: &str,
     expected_challenge: Option<&[u8]>,
 ) -> String {
@@ -874,7 +904,9 @@ fn presentation_request_json(
             "signatureB64": b64.encode(&cred.signed.signature),
         },
         "issuerKel": cred.issuer_kel,
-        "subjectKel": subject_kel,
+        "issuerKelAttachmentsB64": attachments_b64(&cred.issuer_kel_attachments),
+        "subjectKel": subject.kel,
+        "subjectKelAttachmentsB64": attachments_b64(&subject.kel_attachments),
         "tel": cred.tel,
         "receipts": [],
         "witnessPolicy": "warn",
@@ -924,7 +956,7 @@ fn presentation_json_contract_matches_sync() {
             (&bearer, "holderNotCurrentKey"),
         ] {
             let request =
-                presentation_request_json(envelope, &cred, &subject.kel, AUDIENCE, Some(&nonce));
+                presentation_request_json(envelope, &cred, &subject, AUDIENCE, Some(&nonce));
             let verdict: serde_json::Value =
                 serde_json::from_str(&verify_presentation_json(&request)).expect("verdict json");
 
@@ -966,7 +998,7 @@ fn emit_presentation_fixture() {
             nonce: nonce.clone(),
         },
     );
-    let request = presentation_request_json(&envelope, &cred, &subject.kel, AUDIENCE, Some(&nonce));
+    let request = presentation_request_json(&envelope, &cred, &subject, AUDIENCE, Some(&nonce));
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/presentation_valid.json"

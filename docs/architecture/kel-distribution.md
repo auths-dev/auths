@@ -20,13 +20,14 @@ mutating an event breaks the self-addressing SAID / hash chain. Continuing a KEL
 pre-committed next key (pre-rotation commitment `n = H(next_key)`), which only the controller holds —
 so KEL replay is authentic even without per-event controller signatures.
 
-## C1 — git-remote resolution (done)
+## C1 — git-remote resolution (REMOVED)
 
-`auths verify <commit> --remote <url>` resolves a signer's device + root KELs from a git remote with no
-local pre-seeding. Implementation: `auths_storage::git::RemoteKelSource` fetches `refs/auths/registry`
-into a throwaway temp repo; `auths_sdk::keri::KelResolverChain` orchestrates **local-first + rollback
-floor** (a remote KEL older than the locally-trusted tip is rejected; a strictly-newer one is accepted;
-ties prefer local). Local-only by default — no network without `--remote`.
+`--remote` resolution was removed together with the registry mirror (auths#374 / auths#262): the
+transport carried **bare, unsigned events** — replay-by-structure over an untrusted feed is exactly
+the RT-002 class — and the mirror that would have populated remotes never worked against real
+(ssh/https) hosts, so the feed had no honest producer. KEL distribution is now **in-band**: the
+committed identity bundle (`.auths/ci-bundle.json`, with per-event CESR signature attachments,
+authenticated via `validate_signed_kel` at ingestion) travels with the clone that carries the code.
 
 ## C2 — OOBI-style static distribution
 

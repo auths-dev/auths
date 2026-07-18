@@ -29,6 +29,8 @@ export function describePresentation(verdict: PresentationVerdict): string {
       return `credential not valid: ${describeCredential(verdict.credential)}`;
     case "malformedRequest":
       return `malformed request: ${verdict.message}`;
+    case "kelUnauthenticated":
+      return `KEL unauthenticated: ${verdict.field} (${verdict.detail})`;
     case "inputTooLarge":
       return `input too large: ${verdict.field} (${verdict.count} > ${verdict.limit})`;
     case "unsupportedSchemaVersion":
@@ -63,6 +65,8 @@ export function describeCredential(verdict: CredentialVerdict): string {
       return "issuer KEL is duplicitous";
     case "malformedRequest":
       return `malformed request: ${verdict.message}`;
+    case "kelUnauthenticated":
+      return `KEL unauthenticated: ${verdict.field} (${verdict.detail})`;
     case "inputTooLarge":
       return `input too large: ${verdict.field}`;
     case "unsupportedSchemaVersion":
