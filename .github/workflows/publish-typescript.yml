@@ -65,7 +65,15 @@ jobs:
             echo "Dry run - skipping publish"
             npm pack
           else
-            npm publish --ignore-scripts --provenance --access public
+            # A re-pushed tag re-fires this workflow; an already-published
+            # version is a stated SKIP, not a failure.
+            NAME=$(node -p "require('./package.json').name")
+            VERSION=$(node -p "require('./package.json').version")
+            if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+              echo "$NAME@$VERSION already on npm — skipping republish"
+            else
+              npm publish --ignore-scripts --provenance --access public
+            fi
           fi
 
   publish-express:
@@ -110,5 +118,13 @@ jobs:
             echo "Dry run - skipping publish"
             npm pack
           else
-            npm publish --ignore-scripts --provenance --access public
+            # A re-pushed tag re-fires this workflow; an already-published
+            # version is a stated SKIP, not a failure.
+            NAME=$(node -p "require('./package.json').name")
+            VERSION=$(node -p "require('./package.json').version")
+            if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+              echo "$NAME@$VERSION already on npm — skipping republish"
+            else
+              npm publish --ignore-scripts --provenance --access public
+            fi
           fi
