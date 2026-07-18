@@ -512,7 +512,9 @@ fn serialize_verdict<V: Serialize>(verdict: V) -> String {
 /// Authenticate one untrusted wire KEL: decode its base64 CESR signature attachments,
 /// pair them per event, and fold per-event signature verification into the replay
 /// (`validate_signed_kel`). This is the RT-002 ingestion boundary for the JSON
-/// contract — after it, the events are safe for the structural replays downstream.
+/// contract — the returned events are the ones downstream replays must use: pairing
+/// rehydrates each delegated event's `-G` source seal from its attachment, and a
+/// dip/drt without its seal cannot re-validate its delegation binding.
 ///
 /// An empty KEL with no attachments passes through (the verify cores report the
 /// precise domain verdict for a missing KEL); any count mismatch, undecodable
@@ -522,9 +524,9 @@ fn authenticate_kel(
     events: &[Event],
     attachments_b64: &[String],
     lookup: Option<&dyn DelegatorKelLookup>,
-) -> Result<(), RequestError> {
+) -> Result<Vec<Event>, RequestError> {
     if events.is_empty() && attachments_b64.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let mut attachment_bytes = Vec::with_capacity(attachments_b64.len());
     for (i, attachment) in attachments_b64.iter().enumerate() {
@@ -542,7 +544,7 @@ fn authenticate_kel(
         field,
         detail: e.to_string(),
     })?;
-    Ok(())
+    Ok(signed.into_iter().map(|se| se.event).collect())
 }
 
 /// Parse, bound-check, and run the presentation verify; `Err` carries a request-layer error.
@@ -563,20 +565,20 @@ fn run_presentation(request_json: &str) -> Result<WirePresentationVerdict, Reque
     // downstream replay. The delegator (a root) authenticates standalone; the
     // subject authenticates against the delegator's seals when it is delegated;
     // the issuer authenticates standalone.
-    authenticate_kel(
+    let delegator_kel = authenticate_kel(
         "delegatorKel",
         &request.delegator_kel,
         &request.delegator_kel_attachments_b64,
         None,
     )?;
-    let delegator_seals = KelSealIndex::from_events(&request.delegator_kel);
-    authenticate_kel(
+    let delegator_seals = KelSealIndex::from_events(&delegator_kel);
+    let subject_kel = authenticate_kel(
         "subjectKel",
         &request.subject_kel,
         &request.subject_kel_attachments_b64,
         Some(&delegator_seals),
     )?;
-    authenticate_kel(
+    let issuer_kel = authenticate_kel(
         "issuerKel",
         &request.issuer_kel,
         &request.issuer_kel_attachments_b64,
@@ -597,12 +599,12 @@ fn run_presentation(request_json: &str) -> Result<WirePresentationVerdict, Reque
     Ok(verify_presentation_sync(
         &envelope,
         &signed,
-        &request.issuer_kel,
+        &issuer_kel,
         &request.tel,
         &request.receipts,
         request.witness_policy.into(),
-        &request.subject_kel,
-        &request.delegator_kel,
+        &subject_kel,
+        &delegator_kel,
         &request.audience,
         expected_challenge.as_deref(),
         request.now,
@@ -625,7 +627,7 @@ fn run_credential(request_json: &str) -> Result<WireCredentialVerdict, RequestEr
     check_bound("receipts", request.receipts.len(), MAX_RECEIPTS)?;
 
     // RT-002: authenticate the issuer KEL at the boundary (standalone root).
-    authenticate_kel(
+    let issuer_kel = authenticate_kel(
         "issuerKel",
         &request.issuer_kel,
         &request.issuer_kel_attachments_b64,
@@ -640,7 +642,7 @@ fn run_credential(request_json: &str) -> Result<WireCredentialVerdict, RequestEr
 
     Ok(verify_credential_sync(
         &signed,
-        &request.issuer_kel,
+        &issuer_kel,
         &request.tel,
         &request.receipts,
         request.witness_policy.into(),

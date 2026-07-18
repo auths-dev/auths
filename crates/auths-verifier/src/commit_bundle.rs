@@ -186,7 +186,13 @@ impl BundleTrust {
                 .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
             validate_signed_kel(&signed, Some(&root_seals))
                 .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
-            device_kels.push((device.did.clone(), device.kel.clone()));
+            // Keep the rehydrated events: pairing restored each delegated
+            // event's -G source seal, which downstream structural replays
+            // re-enforce against the root KEL.
+            device_kels.push((
+                device.did.clone(),
+                signed.into_iter().map(|se| se.event).collect(),
+            ));
         }
 
         Ok(Self {
