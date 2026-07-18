@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_core::trust::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel};
-use auths_id::identity::resolve::{DefaultDidResolver, DidResolver, RegistryDidResolver};
-use auths_storage::git::{GitRegistryBackend, RegistryConfig};
+use auths_core::trust::pinned::{PinnedIdentity, PinnedIdentityStore, TrustLevel}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_id::identity::resolve::{DefaultDidResolver, DidResolver, RegistryDidResolver}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_storage::git::{GitRegistryBackend, RegistryConfig}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_verifier::PublicKeyHex;
 use napi_derive::napi;
 

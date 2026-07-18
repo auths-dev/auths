@@ -7,6 +7,7 @@
     clippy::expect_used
 )]
 mod check_admission_policy;
+mod check_binding_boundary;
 mod check_anchor_discipline;
 mod check_clippy_sync;
 mod check_command_drift;
@@ -33,6 +34,8 @@ struct Cli {
 enum Command {
     /// Generate docs/cloud-ci/telemetry/schema.json and schema.md from AuditEvent
     GenSchema,
+    /// Lint the Node bindings: presentation layer only, no deep crate reaches
+    CheckBindingBoundary,
     /// Regenerate CLI flag tables in docs from `auths --help` output.
     /// Pass `--check` to fail if any table is out of date (CI gate).
     GenDocs {
@@ -95,6 +98,7 @@ fn main() -> anyhow::Result<()> {
     };
     match cli.command {
         Command::GenSchema => gen_schema::run(workspace_root()),
+        Command::CheckBindingBoundary => check_binding_boundary::run(workspace_root().to_path_buf()),
         Command::GenDocs { check } => gen_docs::run(workspace_root(), check),
         Command::GenerateSchemas => schemas::generate(workspace_root()),
         Command::ValidateSchemas => schemas::validate(workspace_root()),

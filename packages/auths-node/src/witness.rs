@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use auths_id::keri::types::Prefix;
-use auths_id::storage::identity::IdentityStorage;
-use auths_id::witness_config::{WitnessConfig, WitnessRef};
-use auths_storage::git::RegistryIdentityStorage;
+use auths_id::keri::types::Prefix; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_id::storage::identity::IdentityStorage; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_id::witness_config::{WitnessConfig, WitnessRef}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_storage::git::RegistryIdentityStorage; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use napi_derive::napi;
 
 use crate::error::format_error;

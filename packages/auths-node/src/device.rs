@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_core::signing::PrefilledPassphraseProvider;
-use auths_core::storage::keychain::get_platform_keychain_with_config;
+use auths_core::signing::PrefilledPassphraseProvider; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_core::storage::keychain::get_platform_keychain_with_config; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_sdk::context::AuthsContext;
 use auths_sdk::device::extend_device;
 use auths_sdk::device::{link_device, revoke_device};
 use auths_sdk::types::{DeviceExtensionConfig, DeviceLinkConfig};
-use auths_storage::git::{
+use auths_storage::git::{ // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
