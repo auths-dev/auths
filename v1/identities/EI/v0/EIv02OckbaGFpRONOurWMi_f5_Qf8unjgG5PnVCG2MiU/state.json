@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "state": {
+    "prefix": "EIv02OckbaGFpRONOurWMi_f5_Qf8unjgG5PnVCG2MiU",
+    "current_keys": [
+      "DPYt_OxIt9CqR_4W3LHZLFm092qERcNr5F7716rbuy2h"
+    ],
+    "next_commitment": [
+      "EPz5DqpWQTuIHeVm92lv5aZ0IUeRuNrt1VNd65HWumph"
+    ],
+    "sequence": 0,
+    "last_event_said": "EIv02OckbaGFpRONOurWMi_f5_Qf8unjgG5PnVCG2MiU",
+    "is_abandoned": false,
+    "threshold": "1",
+    "next_threshold": "1",
+    "backers": [],
+    "backer_threshold": "0",
+    "config_traits": [],
+    "is_non_transferable": false,
+    "delegator": null,
+    "last_establishment_sequence": 0
+  },
+  "validated_against_said": "EIv02OckbaGFpRONOurWMi_f5_Qf8unjgG5PnVCG2MiU"
+}
