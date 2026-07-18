@@ -37,6 +37,10 @@ pub struct Chain {
     agent_alias: String,
     /// Whether the agent's delegation has been revoked this session.
     revoked: bool,
+    /// In-process per-call signing: the first call of each kind runs the full
+    /// subprocess ceremony and is harvested as a template; later calls sign the
+    /// same commit shape in memory (the fleet-throughput path).
+    inproc: crate::inproc_sign::InprocState,
 }
 
 /// The registry the verifier replays both KELs from (org icp + scope seal + agent
@@ -102,46 +106,74 @@ impl Chain {
     /// chain construction inherits them.
     pub fn build(lab: &Path, scope: &[String]) -> anyhow::Result<Self> {
         let auths_bin = locate_auths()?;
+        // A fleet gateway names its own delegation label so N wraps can join ONE
+        // shared root registry (one label per gateway); the default single-wrap
+        // sandbox keeps the historical `agent` label and layout.
+        let agent_alias =
+            std::env::var("AUTHS_MCP_AGENT_LABEL").unwrap_or_else(|_| "agent".to_string());
         let org_repo = lab.join("registry");
-        let agent_repo = lab.join("registry-agent");
-        let work_root = lab.join("work");
+        let agent_repo = if agent_alias == "agent" {
+            lab.join("registry-agent")
+        } else {
+            lab.join(format!("registry-agent-{agent_alias}"))
+        };
+        // Per-delegation work namespace: N fleet gateways share one lab, and each
+        // signs into its own subtree so per-call repos never collide across processes.
+        let work_root = lab.join("work").join(&agent_alias);
         std::fs::create_dir_all(&org_repo)?;
         std::fs::create_dir_all(&work_root)?;
 
-        // 1. The org root identity.
-        let meta = lab.join("org-meta.json");
-        std::fs::write(
-            &meta,
-            br#"{"name":"Parent Root","purpose":"bounded-agent MCP gateway"}"#,
-        )?;
-        must(
-            Command::new(&auths_bin)
-                .args([
-                    "--repo",
-                    &org_repo.to_string_lossy(),
-                    "--json",
-                    "id",
-                    "create",
-                ])
-                .args(["--metadata-file", &meta.to_string_lossy()])
-                .args(["--local-key-alias", "root"]),
-            "id create (org root)",
-        )?;
-        let show = must(
-            Command::new(&auths_bin).args([
+        // 1. The org root identity — reused when the registry already holds one, so
+        //    a fleet of gateways delegates under a single shared root.
+        let existing_root = Command::new(&auths_bin)
+            .args([
                 "--repo",
                 &org_repo.to_string_lossy(),
                 "--json",
                 "id",
                 "show",
-            ]),
-            "id show (org root)",
-        )?;
-        let root_did = first_did(&show.stdout)
-            .ok_or_else(|| anyhow::anyhow!("could not read the org root did:keri from id show"))?;
+            ])
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .and_then(|out| first_did(&out.stdout));
+        let root_did = if let Some(did) = existing_root {
+            did
+        } else {
+            let meta = lab.join("org-meta.json");
+            std::fs::write(
+                &meta,
+                br#"{"name":"Parent Root","purpose":"bounded-agent MCP gateway"}"#,
+            )?;
+            must(
+                Command::new(&auths_bin)
+                    .args([
+                        "--repo",
+                        &org_repo.to_string_lossy(),
+                        "--json",
+                        "id",
+                        "create",
+                    ])
+                    .args(["--metadata-file", &meta.to_string_lossy()])
+                    .args(["--local-key-alias", "root"]),
+                "id create (org root)",
+            )?;
+            let show = must(
+                Command::new(&auths_bin).args([
+                    "--repo",
+                    &org_repo.to_string_lossy(),
+                    "--json",
+                    "id",
+                    "show",
+                ]),
+                "id show (org root)",
+            )?;
+            first_did(&show.stdout).ok_or_else(|| {
+                anyhow::anyhow!("could not read the org root did:keri from id show")
+            })?
+        };
 
         // 2. The delegated scoped agent.
-        let agent_alias = "agent".to_string();
         let mut add = Command::new(&auths_bin);
         add.args([
             "--repo",
@@ -166,6 +198,7 @@ impl Chain {
         //    signer resolves to the agent (tree surgery only — no key moved).
         materialize_agent_machine(&org_repo, &agent_repo, &root_did)?;
 
+        let inproc = crate::inproc_sign::InprocState::new(&agent_alias);
         Ok(Self {
             auths_bin,
             org_repo,
@@ -175,6 +208,7 @@ impl Chain {
             agent_did,
             agent_alias,
             revoked: false,
+            inproc,
         })
     }
 
@@ -214,6 +248,12 @@ impl Chain {
         capability: &str,
         prev_binding: &str,
     ) -> anyhow::Result<(Vec<u8>, String)> {
+        if let Some(signed) = self
+            .inproc
+            .try_sign_call(canonical, capability, prev_binding)
+        {
+            return Ok(signed);
+        }
         let work = self.work_root.join(format!("call-{idx}"));
         std::fs::create_dir_all(&work)?;
         std::fs::write(work.join("call.json"), canonical)?;
@@ -281,6 +321,7 @@ impl Chain {
                 .current_dir(&work),
             "git cat-file commit",
         )?;
+        self.inproc.learn_call(capability, &raw.stdout);
         Ok((raw.stdout, sha))
     }
 
@@ -304,6 +345,15 @@ impl Chain {
         rail_ref: &str,
         cumulative_cents: Cents,
     ) -> anyhow::Result<(Vec<u8>, String)> {
+        if let Some(signed) = self.inproc.try_sign_settlement(
+            call_binding,
+            rail,
+            actual.get().get(),
+            rail_ref,
+            cumulative_cents.get(),
+        ) {
+            return Ok(signed);
+        }
         let work = self.work_root.join(format!("settle-{idx}"));
         std::fs::create_dir_all(&work)?;
         // A minimal payload so the commit has a tree; the cost lives in the SIGNED trailers below.
@@ -374,6 +424,7 @@ impl Chain {
                 .current_dir(&work),
             "git cat-file commit",
         )?;
+        self.inproc.learn_settlement(&raw.stdout);
         Ok((raw.stdout, sha))
     }
 }

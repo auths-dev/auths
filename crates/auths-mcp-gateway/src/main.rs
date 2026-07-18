@@ -31,6 +31,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod chain;
+mod inproc_sign;
 mod proxy;
 mod replay;
 mod spend_log;
