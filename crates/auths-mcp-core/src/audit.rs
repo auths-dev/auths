@@ -252,18 +252,92 @@ pub fn spend_log_path(repo: &Path, delegation: &str) -> PathBuf {
         .join(format!("{}.jsonl", safe_key(delegation)))
 }
 
+/// The delegation's ROTATED spend-log directory: `spend-log/<delegation>/` holding
+/// one period-named file per UTC month. Rotation bounds any single file without
+/// weakening tamper evidence — the `Auths-Prev` chain runs across files, so a
+/// missing middle period still breaks re-derivation.
+///
+/// Args:
+/// * `repo`: the verifier registry root.
+/// * `delegation`: the agent delegation the log belongs to.
+///
+/// Usage:
+/// ```ignore
+/// let dir = spend_log_dir(repo, "did:keri:Eagent…");
+/// ```
+pub fn spend_log_dir(repo: &Path, delegation: &str) -> PathBuf {
+    repo.join("spend-log").join(safe_key(delegation))
+}
+
+/// The period file a record stamped `at` lands in (UTC month, lexicographically
+/// ordered so a sorted directory walk replays in append order).
+///
+/// Args:
+/// * `repo`: the verifier registry root.
+/// * `delegation`: the agent delegation.
+/// * `at`: the record's own timestamp (injected clock).
+///
+/// Usage:
+/// ```ignore
+/// let file = spend_log_period_path(repo, delegation, now);
+/// ```
+pub fn spend_log_period_path(
+    repo: &Path,
+    delegation: &str,
+    at: chrono::DateTime<chrono::Utc>,
+) -> PathBuf {
+    spend_log_dir(repo, delegation).join(format!("{}.jsonl", at.format("%Y-%m")))
+}
+
+/// Resolve where a delegation's log actually lives: the rotated directory when it
+/// exists, else the legacy single file.
+///
+/// Args:
+/// * `repo`: the verifier registry root.
+/// * `delegation`: the agent delegation.
+///
+/// Usage:
+/// ```ignore
+/// let records = read_spend_log(&resolve_spend_log(repo, delegation))?;
+/// ```
+pub fn resolve_spend_log(repo: &Path, delegation: &str) -> PathBuf {
+    let dir = spend_log_dir(repo, delegation);
+    if dir.is_dir() {
+        dir
+    } else {
+        spend_log_path(repo, delegation)
+    }
+}
+
 /// Read every [`SpendLogRecord`] from a delegation's spend log, in order (for the offline
-/// auditor). A blank trailing line is ignored; a non-blank line that fails to parse is
-/// `InvalidData` — a corrupted or edited log fails closed rather than silently dropping a call.
+/// auditor). `path` may be a single JSONL file or a ROTATED directory of period files —
+/// a directory is walked in sorted (chronological) order and its files concatenate into
+/// one record stream, which the `Auths-Prev` chain then proves complete across the
+/// rotation boundary. A blank trailing line is ignored; a non-blank line that fails to
+/// parse is `InvalidData` — a corrupted or edited log fails closed rather than silently
+/// dropping a call.
 pub fn read_spend_log(path: &Path) -> std::io::Result<Vec<SpendLogRecord>> {
-    let raw = std::fs::read_to_string(path)?;
-    raw.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            serde_json::from_str::<SpendLogRecord>(l)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-        })
-        .collect()
+    let files: Vec<PathBuf> = if path.is_dir() {
+        let mut period_files: Vec<PathBuf> = std::fs::read_dir(path)?
+            .filter_map(|entry| entry.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|ext| ext == "jsonl"))
+            .collect();
+        period_files.sort();
+        period_files
+    } else {
+        vec![path.to_path_buf()]
+    };
+    let mut records = Vec::new();
+    for file in files {
+        let raw = std::fs::read_to_string(&file)?;
+        for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+            records.push(
+                serde_json::from_str::<SpendLogRecord>(line)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            );
+        }
+    }
+    Ok(records)
 }
 
 /// A filesystem-safe single component from a delegation id: strip the `did:keri:` scheme and map

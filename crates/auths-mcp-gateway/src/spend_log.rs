@@ -25,14 +25,14 @@
 //! `auths_mcp_core` so the gateway (writer) and the `auths-cli` auditor (reader) share ONE
 //! definition; this module is only the gateway-side append.
 
-use auths_mcp_core::{SpendLogRecord, spend_log_path};
+use auths_mcp_core::{SpendLogRecord, spend_log_period_path};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
 /// Append one record as a single JSONL line. Append-only: prior records are never rewritten.
 pub fn append(repo: &Path, delegation: &str, record: &SpendLogRecord) -> anyhow::Result<()> {
-    let path = spend_log_path(repo, delegation);
+    let path = spend_log_period_path(repo, delegation, record.receipt.at);
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -96,8 +96,8 @@ mod tests {
         append(repo, dlg, &record(100)).unwrap();
         append(repo, dlg, &record(250)).unwrap();
 
-        let path = spend_log_path(repo, dlg);
-        let back = read_spend_log(&path).unwrap();
+        let dir = auths_mcp_core::spend_log_dir(repo, dlg);
+        let back = read_spend_log(&dir).unwrap();
         assert_eq!(
             back.len(),
             2,

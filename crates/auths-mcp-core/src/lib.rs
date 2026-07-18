@@ -46,7 +46,8 @@ pub mod treasury;
 pub use attestation::{AttestationError, Attested, RailAttestation};
 pub use audit::{
     AuditVerdict, ConsistentProof, SPEND_LOG_GENESIS, Settlement, SpendLogRecord, audit_spend_log,
-    call_commit_binding, read_spend_log, spend_log_path,
+    call_commit_binding, read_spend_log, resolve_spend_log, spend_log_dir,
+    spend_log_path, spend_log_period_path,
 };
 pub use budget::{
     BudgetError, CounterKey, CounterRef, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds,

@@ -870,7 +870,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         rem = cap_cents.get() % 100,
     );
 
-    let spend_log = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
+    let spend_log = auths_mcp_core::resolve_spend_log(chain.org_repo(), &chain.agent_did);
     eprintln!(
         "auths-mcp-gateway: live-wire signing ON — agent={} root={}; every brokered call is signed. \
          Re-verify the spend log offline (trusting neither this gateway nor its operator) with:",

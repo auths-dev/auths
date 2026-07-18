@@ -83,6 +83,35 @@ enum Command {
     /// exact log_hash it was re-derived from. Rail legs are env-gated, never faked.
     #[command(subcommand)]
     Channel(ChannelCommand),
+
+    /// One-shot verifier-ready export: flatten the delegation's (rotated) spend log
+    /// into `spend.jsonl`, write `audit.json` naming `registry_git_url`, `agent`,
+    /// and `root`, and leave the registry working files committed — everything a
+    /// stranger needs to run `verify-spend` with no trust in this operator.
+    ExportSpendBundle(ExportSpendBundleArgs),
+}
+
+#[derive(Parser)]
+struct ExportSpendBundleArgs {
+    /// The gateway live dir (holds `registry/` with the spend log + counter).
+    #[arg(long = "live-dir", value_name = "DIR", env = "AUTHS_MCP_LIVE_DIR")]
+    live_dir: std::path::PathBuf,
+
+    /// The agent delegation whose log is exported.
+    #[arg(long = "agent", value_name = "DID")]
+    agent: String,
+
+    /// The delegator/root the grant is anchored to.
+    #[arg(long = "root", value_name = "DID")]
+    root: String,
+
+    /// The URL a verifier fetches the registry from (recorded in audit.json).
+    #[arg(long = "registry-url", value_name = "URL")]
+    registry_url: String,
+
+    /// Where `spend.jsonl` + `audit.json` are written.
+    #[arg(long = "out", value_name = "DIR")]
+    out: std::path::PathBuf,
 }
 
 #[derive(Subcommand)]
@@ -293,6 +322,79 @@ fn main() -> ExitCode {
             runtime.block_on(run_treasury_serve(args))
         }
         Command::Channel(cmd) => run_channel(cmd),
+        Command::ExportSpendBundle(args) => run_export_spend_bundle(args),
+    }
+}
+
+/// Flatten the (possibly rotated) spend log, emit the audit manifest, and commit
+/// the registry working state so a fetched copy re-derives the same counter.
+fn run_export_spend_bundle(args: ExportSpendBundleArgs) -> ExitCode {
+    let registry = args.live_dir.join("registry");
+    let source = auths_mcp_core::resolve_spend_log(&registry, &args.agent);
+    let records = match auths_mcp_core::read_spend_log(&source) {
+        Ok(records) => records,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot read the spend log at `{}`: {e}",
+                source.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let result = (|| -> anyhow::Result<()> {
+        std::fs::create_dir_all(&args.out)?;
+        let mut flat = String::new();
+        for record in &records {
+            flat.push_str(&serde_json::to_string(record)?);
+            flat.push('\n');
+        }
+        std::fs::write(args.out.join("spend.jsonl"), flat)?;
+        let manifest = serde_json::json!({
+            "registry_git_url": args.registry_url,
+            "agent": args.agent,
+            "root": args.root,
+        });
+        std::fs::write(
+            args.out.join("audit.json"),
+            serde_json::to_vec_pretty(&manifest)?,
+        )?;
+        let add = std::process::Command::new("git")
+            .args(["-C", &registry.to_string_lossy(), "add", "-A"])
+            .envs(chain::default_git_identity())
+            .output()?;
+        if !add.status.success() {
+            anyhow::bail!(
+                "git add in the registry failed: {}",
+                String::from_utf8_lossy(&add.stderr)
+            );
+        }
+        // A clean tree is fine — the working files may already be committed.
+        let _ = std::process::Command::new("git")
+            .args([
+                "-C",
+                &registry.to_string_lossy(),
+                "commit",
+                "--quiet",
+                "-m",
+                "spend bundle export",
+            ])
+            .envs(chain::default_git_identity())
+            .output()?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            println!(
+                "export-spend-bundle: {} record(s) → {} (spend.jsonl + audit.json; registry committed)",
+                records.len(),
+                args.out.display(),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: export-spend-bundle: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 

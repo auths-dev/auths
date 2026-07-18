@@ -63,7 +63,7 @@ fn to_auths_capability(cap: &str) -> String {
 /// The identity the gateway commits under when the machine has none: a clean HOME
 /// (no gitconfig, no GIT_* env) must never abort a chain build on git's
 /// auto-detect. Caller-provided env always wins — these apply only when absent.
-fn default_git_identity() -> [(&'static str, &'static str); 4] {
+pub(crate) fn default_git_identity() -> [(&'static str, &'static str); 4] {
     [
         ("GIT_AUTHOR_NAME", "auths-mcp-gateway"),
         ("GIT_AUTHOR_EMAIL", "gateway@auths.local"),
