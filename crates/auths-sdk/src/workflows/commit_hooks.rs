@@ -86,33 +86,20 @@ fi
 exit 0
 "#;
 
-/// The managed `pre-push` hook. Mirrors `refs/auths/registry` to the remote the
-/// code is going to, so a clone of that remote can resolve the signer's KEL.
+/// The managed `pre-push` hook. Exists only to chain: `core.hooksPath`
+/// *replaces* `.git/hooks`, so a managed hook that did not chain would silently
+/// disable every repo-local pre-push (husky, pre-commit, prek) on the machine.
 ///
-/// Three properties are deliberate:
-///
-/// * **Non-fatal.** A registry mirror must never block a code push. Every failure
-///   path exits 0 — no write access to the remote is the common, expected case.
-/// * **Opt-out via `auths.autopush=false`.** The registry is public by
-///   construction (a KEL is public keys and events), but pushing to a remote you
-///   do not own should stay refusable.
-/// * **Chains to the repo's own `pre-push`.** `core.hooksPath` *replaces*
-///   `.git/hooks`, so a managed hook that did not chain would silently disable
-///   every repo-local pre-push (husky, pre-commit, prek) on the machine.
+/// It used to mirror `refs/auths/registry` to the push remote, but that mirror
+/// silently no-oped against real (ssh/https) remotes — the CLI's git layer links
+/// no network transport — so the published ref drifted from the signer's real
+/// KEL. KEL distribution is the committed identity bundle now
+/// (`auths id export-bundle` → `.auths/ci-bundle.json`), which travels with the
+/// code and needs no side-channel push.
 pub const PRE_PUSH_HOOK: &str = r#"#!/bin/sh
 # auths pre-push hook v1 — managed by `auths init`, checked by `auths doctor`.
-# Mirrors refs/auths/registry to the remote being pushed to, so a clone of that
-# remote carries the KEL `auths verify` needs. Fast-forward-only and non-fatal:
-# a registry mirror must never block a code push. Disable with:
-#   git config auths.autopush false
-
-REMOTE_URL="$2"
-
-if [ -n "$REMOTE_URL" ] &&
-    [ "$(git config --get auths.autopush 2>/dev/null)" != "false" ] &&
-    command -v auths >/dev/null 2>&1; then
-    auths registry push "$REMOTE_URL" >/dev/null 2>&1 || true
-fi
+# Chains to the repo's own pre-push hook: core.hooksPath replaces .git/hooks,
+# so without this the managed hooks would disable repo-local ones.
 
 REPO_HOOK="$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-push"
 if [ -x "$REPO_HOOK" ]; then

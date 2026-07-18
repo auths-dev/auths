@@ -20,10 +20,10 @@ use crate::domains::identity::types::RegistrationOutcome;
 // possible failure shape: it looks configured and fails at the network.
 //
 // Nothing needs it. Identity, signing, and verification are entirely local and
-// git-native — a signer's KEL travels to a relying party over the same git remote
-// as the code (see `workflows::commit_hooks::PRE_PUSH_HOOK`). "No central server"
-// is the product's headline claim, and a default that contradicts it is worse than
-// no default.
+// git-native — a signer's KEL travels to a relying party inside the committed
+// identity bundle (`auths id export-bundle` → `.auths/ci-bundle.json`). "No
+// central server" is the product's headline claim, and a default that
+// contradicts it is worse than no default.
 //
 // A registry is now opt-in and explicit: pass `--registry <url>` or set
 // `AUTHS_REGISTRY_URL`. Callers surface `RegistrationError::NoRegistryConfigured`

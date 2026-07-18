@@ -30,8 +30,13 @@
 //! ```
 //! Other `kind`s: `holderNotCurrentKey`, `wrongAudience`, `nonceMismatchOrConsumed`,
 //! `expired`, `subjectKelInvalid`, `credentialNotValid` (nests a credential verdict),
-//! plus the request-layer errors `malformedRequest`, `inputTooLarge`,
-//! `unsupportedSchemaVersion`. Credential verdict `kind`s: `valid`, `saidMismatch`,
+//! plus the request-layer errors `malformedRequest`, `kelUnauthenticated`,
+//! `inputTooLarge`, `unsupportedSchemaVersion`.
+//!
+//! Every KEL slice travels with a parallel `…KelAttachmentsB64` array — one base64
+//! CESR signature attachment per event. The contract authenticates each KEL via
+//! `validate_signed_kel` before any downstream replay (RT-002): unsigned or forged
+//! events refuse the request with `kelUnauthenticated` instead of binding a key. Credential verdict `kind`s: `valid`, `saidMismatch`,
 //! `schemaInvalid`, `issuerSignatureInvalid`, `registryNotEstablished`,
 //! `credentialRevoked`, `expired`, `witnessQuorumNotMet`, `issuerKelDuplicitous`.
 
@@ -41,7 +46,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use auths_keri::witness::StoredReceipt;
-use auths_keri::{Acdc, Event, TelEvent};
+use auths_keri::{
+    Acdc, DelegatorKelLookup, Event, KelSealIndex, TelEvent, pair_kel_attachments,
+    validate_signed_kel,
+};
 
 use crate::commit_kel::VerifierWitnessPolicy;
 use crate::credential::{CredentialVerdict, LifecycleEvent, SignedAcdc, verify_credential_sync};
@@ -113,6 +121,10 @@ enum WirePresentationVerdict {
     MalformedRequest {
         message: String,
     },
+    KelUnauthenticated {
+        field: String,
+        detail: String,
+    },
     InputTooLarge {
         field: String,
         count: usize,
@@ -161,6 +173,10 @@ enum WireCredentialVerdict {
     IssuerKelDuplicitous,
     MalformedRequest {
         message: String,
+    },
+    KelUnauthenticated {
+        field: String,
+        detail: String,
     },
     InputTooLarge {
         field: String,
@@ -277,9 +293,13 @@ struct VerifyPresentationRequest {
     envelope: WireEnvelopeIn,
     credential: WireSignedAcdc,
     issuer_kel: Vec<Event>,
+    issuer_kel_attachments_b64: Vec<String>,
     subject_kel: Vec<Event>,
+    subject_kel_attachments_b64: Vec<String>,
     #[serde(default)]
     delegator_kel: Vec<Event>,
+    #[serde(default)]
+    delegator_kel_attachments_b64: Vec<String>,
     tel: Vec<TelEvent>,
     #[serde(default)]
     receipts: Vec<StoredReceipt>,
@@ -299,6 +319,7 @@ struct VerifyCredentialRequest {
     _schema_version: u32,
     credential: WireSignedAcdc,
     issuer_kel: Vec<Event>,
+    issuer_kel_attachments_b64: Vec<String>,
     tel: Vec<TelEvent>,
     #[serde(default)]
     receipts: Vec<StoredReceipt>,
@@ -368,6 +389,10 @@ impl From<WireWitnessPolicy> for VerifierWitnessPolicy {
 /// A request that failed before the verify core could run — mapped to a tagged error verdict.
 enum RequestError {
     Malformed(String),
+    KelUnauthenticated {
+        field: &'static str,
+        detail: String,
+    },
     TooLarge {
         field: &'static str,
         count: usize,
@@ -381,6 +406,12 @@ impl From<RequestError> for WirePresentationVerdict {
         match error {
             RequestError::Malformed(message) => {
                 WirePresentationVerdict::MalformedRequest { message }
+            }
+            RequestError::KelUnauthenticated { field, detail } => {
+                WirePresentationVerdict::KelUnauthenticated {
+                    field: field.to_string(),
+                    detail,
+                }
             }
             RequestError::TooLarge {
                 field,
@@ -405,6 +436,12 @@ impl From<RequestError> for WireCredentialVerdict {
     fn from(error: RequestError) -> Self {
         match error {
             RequestError::Malformed(message) => WireCredentialVerdict::MalformedRequest { message },
+            RequestError::KelUnauthenticated { field, detail } => {
+                WireCredentialVerdict::KelUnauthenticated {
+                    field: field.to_string(),
+                    detail,
+                }
+            }
             RequestError::TooLarge {
                 field,
                 count,
@@ -469,6 +506,42 @@ fn serialize_verdict<V: Serialize>(verdict: V) -> String {
     .unwrap_or_else(|_| SERIALIZE_FALLBACK.to_string())
 }
 
+/// Authenticate one untrusted wire KEL: decode its base64 CESR signature attachments,
+/// pair them per event, and fold per-event signature verification into the replay
+/// (`validate_signed_kel`). This is the RT-002 ingestion boundary for the JSON
+/// contract — after it, the events are safe for the structural replays downstream.
+///
+/// An empty KEL with no attachments passes through (the verify cores report the
+/// precise domain verdict for a missing KEL); any count mismatch, undecodable
+/// attachment, or signature failure refuses the request as `kelUnauthenticated`.
+fn authenticate_kel(
+    field: &'static str,
+    events: &[Event],
+    attachments_b64: &[String],
+    lookup: Option<&dyn DelegatorKelLookup>,
+) -> Result<(), RequestError> {
+    if events.is_empty() && attachments_b64.is_empty() {
+        return Ok(());
+    }
+    let mut attachment_bytes = Vec::with_capacity(attachments_b64.len());
+    for (i, attachment) in attachments_b64.iter().enumerate() {
+        attachment_bytes.push(BASE64.decode(attachment).map_err(|e| {
+            RequestError::Malformed(format!("{field}Attachments[{i}] is not valid base64: {e}"))
+        })?);
+    }
+    let signed = pair_kel_attachments(events.to_vec(), &attachment_bytes).map_err(|e| {
+        RequestError::KelUnauthenticated {
+            field,
+            detail: e.to_string(),
+        }
+    })?;
+    validate_signed_kel(&signed, lookup).map_err(|e| RequestError::KelUnauthenticated {
+        field,
+        detail: e.to_string(),
+    })?;
+    Ok(())
+}
+
 /// Parse, bound-check, and run the presentation verify; `Err` carries a request-layer error.
 fn run_presentation(request_json: &str) -> Result<WirePresentationVerdict, RequestError> {
     check_request_size(request_json)?;
@@ -482,6 +555,30 @@ fn run_presentation(request_json: &str) -> Result<WirePresentationVerdict, Reque
     check_bound("delegatorKel", request.delegator_kel.len(), MAX_KEL_EVENTS)?;
     check_bound("tel", request.tel.len(), MAX_TEL_EVENTS)?;
     check_bound("receipts", request.receipts.len(), MAX_RECEIPTS)?;
+
+    // RT-002: every KEL crossing this untrusted boundary authenticates before any
+    // downstream replay. The delegator (a root) authenticates standalone; the
+    // subject authenticates against the delegator's seals when it is delegated;
+    // the issuer authenticates standalone.
+    authenticate_kel(
+        "delegatorKel",
+        &request.delegator_kel,
+        &request.delegator_kel_attachments_b64,
+        None,
+    )?;
+    let delegator_seals = KelSealIndex::from_events(&request.delegator_kel);
+    authenticate_kel(
+        "subjectKel",
+        &request.subject_kel,
+        &request.subject_kel_attachments_b64,
+        Some(&delegator_seals),
+    )?;
+    authenticate_kel(
+        "issuerKel",
+        &request.issuer_kel,
+        &request.issuer_kel_attachments_b64,
+        None,
+    )?;
 
     let signature = decode_b64("credential.signatureB64", &request.credential.signature_b64)?;
     let signed = SignedAcdc {
@@ -523,6 +620,14 @@ fn run_credential(request_json: &str) -> Result<WireCredentialVerdict, RequestEr
     check_bound("issuerKel", request.issuer_kel.len(), MAX_KEL_EVENTS)?;
     check_bound("tel", request.tel.len(), MAX_TEL_EVENTS)?;
     check_bound("receipts", request.receipts.len(), MAX_RECEIPTS)?;
+
+    // RT-002: authenticate the issuer KEL at the boundary (standalone root).
+    authenticate_kel(
+        "issuerKel",
+        &request.issuer_kel,
+        &request.issuer_kel_attachments_b64,
+        None,
+    )?;
 
     let signature = decode_b64("credential.signatureB64", &request.credential.signature_b64)?;
     let signed = SignedAcdc {

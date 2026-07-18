@@ -247,6 +247,7 @@ const (
 	KindWitnessQuorumNotMet      VerdictKind = "witnessQuorumNotMet"
 	KindIssuerKelDuplicitous     VerdictKind = "issuerKelDuplicitous"
 	KindMalformedRequest         VerdictKind = "malformedRequest"
+	KindKelUnauthenticated       VerdictKind = "kelUnauthenticated"
 	KindInputTooLarge            VerdictKind = "inputTooLarge"
 	KindUnsupportedSchemaVersion VerdictKind = "unsupportedSchemaVersion"
 )

@@ -119,7 +119,6 @@ fn run() -> Result<()> {
         RootCommand::Credential(cmd) => cmd.execute(&ctx),
         RootCommand::Audit(cmd) => cmd.execute(&ctx),
         RootCommand::Auth(cmd) => cmd.execute(&ctx),
-        RootCommand::Registry(cmd) => cmd.execute(&ctx),
         // Internal
         RootCommand::Emergency(cmd) => cmd.execute(&ctx),
         RootCommand::Agent(cmd) => cmd.execute(&ctx),

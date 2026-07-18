@@ -24,31 +24,29 @@ pub fn load_project_pinned_roots() -> Vec<String> {
     .unwrap_or_default()
 }
 
-/// The current repository's `origin` URL, when there is one.
+/// The committed identity bundle, when the repository carries one.
 ///
-/// Used as the default KEL transport: a repo carries its signer's KEL on the same
-/// remote it carries its code (the managed `pre-push` hook mirrors
-/// `refs/auths/registry` there), but a plain `git clone` fetches only
-/// `refs/heads/*` and `refs/tags/*` — so the ref is on the remote and not in the
-/// clone. Without this, `auths verify` in a fresh clone fails with "KEL not found"
-/// while the KEL sits one fetch away on the remote it was cloned from.
-///
-/// Resolution stays local-first: the chain only reaches for the remote when the
-/// KEL is absent locally, and the local registry remains the trusted floor.
+/// A repo that commits `.auths/ci-bundle.json` (produced by
+/// `auths id export-bundle`) ships its signer's KEL with the code, so a fresh
+/// clone verifies with no flags and no network. The bundle stays evidence-only:
+/// its root must still match an independently pinned root (`.auths/roots` or
+/// self-trust), exactly as with an explicit `--identity-bundle`, which always
+/// wins over discovery.
 ///
 /// Usage:
 /// ```ignore
-/// let fallback = repo_origin_url();
+/// let bundle = cmd.identity_bundle.clone().or_else(discover_project_bundle);
 /// ```
-pub fn repo_origin_url() -> Option<String> {
-    let output = crate::subprocess::git_command(&["remote", "get-url", "origin"])
+pub fn discover_project_bundle() -> Option<std::path::PathBuf> {
+    let output = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"])
         .output()
         .ok()?;
     if !output.status.success() {
         return None;
     }
-    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    (!url.is_empty()).then_some(url)
+    let root = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let bundle = root.join(".auths").join("ci-bundle.json");
+    bundle.is_file().then_some(bundle)
 }
 
 /// The human-readable label for a surfaced freshness verdict (ADR 009).

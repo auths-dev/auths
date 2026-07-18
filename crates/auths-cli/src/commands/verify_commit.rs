@@ -1,6 +1,5 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
-use auths_infra_http::HttpOobiResolver;
 use auths_keri::Event;
 use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
 use auths_sdk::core_config::EnvironmentConfig;
@@ -41,21 +40,6 @@ pub struct VerifyCommitCommand {
     #[arg(long, num_args = 1..)]
     pub witness_keys: Vec<String>,
 
-    /// Override the git remote a signer's KEL is fetched from when it is absent
-    /// locally. Defaults to the repo's own `origin`, which is where the managed
-    /// pre-push hook mirrors it. The local registry stays the trusted floor — a
-    /// remote can only advance the key-state, never roll it back, and nothing is
-    /// fetched when the KEL is already local.
-    #[arg(long)]
-    pub remote: Option<String>,
-
-    /// Fetch signer KELs over HTTP from this OOBI base URL (e.g.
-    /// `https://registry.example`). SSRF-hardened: HTTPS-only, no redirect
-    /// following, private/loopback hosts blocked. Takes precedence over
-    /// `--remote`; the resolved KEL is still prefix-bound + replayed locally.
-    #[arg(long)]
-    pub oobi: Option<String>,
-
     /// Fail verification when the signer's root KEL has not reached witness
     /// quorum (fail-closed). Default: warn and continue (trust-on-first-sight).
     #[arg(long = "require-witnesses")]
@@ -63,7 +47,9 @@ pub struct VerifyCommitCommand {
 
     /// Path to an identity bundle JSON whose root `did:keri:` is pinned as a trusted
     /// root for this verification (CI/stateless commit verification). The bundle is
-    /// freshness-checked; an unreadable or stale bundle fails closed.
+    /// freshness-checked; an unreadable or stale bundle fails closed. When absent,
+    /// a committed `.auths/ci-bundle.json` at the repo root is discovered and used
+    /// the same way — that is how a plain clone verifies with no flags.
     #[arg(long, value_parser)]
     pub identity_bundle: Option<PathBuf>,
 }
@@ -185,7 +171,11 @@ pub async fn handle_verify_commit(
         pinned_roots.push(own_root);
     }
     let mut bundle_kel: Option<BundleKel> = None;
-    if let Some(bundle_path) = &cmd.identity_bundle {
+    let bundle_path = cmd
+        .identity_bundle
+        .clone()
+        .or_else(super::verify_helpers::discover_project_bundle);
+    if let Some(bundle_path) = &bundle_path {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
             Ok((root, kel)) => {
                 // Evidence-only (RT-005): the bundle is *evidence for* a root that
@@ -368,20 +358,18 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
         })
 }
 
-/// Resolve a signer's KEL for verification, honoring the transport flags.
-///
-/// `--oobi` (SSRF-hardened HTTP) takes precedence; otherwise `--remote` (git) or
-/// local-first via the SDK chain. The prefix-binding guard is applied to the HTTP
-/// result here (the SDK chain applies it for local/git internally), so every
-/// transport returns a KEL whose inception SAID matches the requested DID.
+/// Resolve a signer's KEL for verification: committed/explicit bundle first,
+/// then the local registry. There is no network transport — a KEL arrives
+/// either in the clone (the bundle) or in the local trusted store, and the
+/// prefix-binding guard is applied to the bundle path here (the SDK chain
+/// applies it for local resolution internally).
 ///
 /// Args:
 /// * `registry`: The local registry backend (the trusted floor).
-/// * `cmd`: The verify command (carries `--remote` / `--oobi`).
+/// * `bundle_kel`: The authenticated identity-bundle KEL, when one was loaded.
 /// * `did`: The `did:keri:` to resolve.
 async fn resolve_signer_kel(
     registry: &dyn RegistryBackend,
-    cmd: &VerifyCommitCommand,
     bundle_kel: Option<&BundleKel>,
     did: &str,
 ) -> Result<Vec<Event>, String> {
@@ -396,33 +384,9 @@ async fn resolve_signer_kel(
             .map_err(|e| e.to_string())?;
         return Ok(bundle.events.clone());
     }
-    if let Some(oobi_base) = &cmd.oobi {
-        let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
-        let resolver = HttpOobiResolver::new(oobi_base.clone()).map_err(|e| e.to_string())?;
-        let events = resolver
-            .fetch_kel(&prefix)
-            .await
-            .map_err(|e| e.to_string())?;
-        auths_sdk::keri::verify_prefix_binding(&prefix, &events).map_err(|e| e.to_string())?;
-        Ok(events)
-    } else {
-        // Default the transport to the repo's own `origin`. The managed pre-push
-        // hook mirrors refs/auths/registry there, but `git clone` fetches only
-        // refs/heads/* and refs/tags/* — so in a fresh clone the KEL sits on the
-        // remote and not in the working copy. Resolution stays local-first: the
-        // chain only reaches for the remote when the KEL is absent locally, so
-        // this costs nothing in the common case and fires exactly where
-        // verification would otherwise fail.
-        let remote = cmd
-            .remote
-            .clone()
-            .or_else(crate::commands::verify_helpers::repo_origin_url);
-        let chain = match remote {
-            Some(url) => auths_sdk::keri::KelResolverChain::with_remote(registry, url),
-            None => auths_sdk::keri::KelResolverChain::local(registry),
-        };
-        chain.resolve_kel(did).map_err(|e| e.to_string())
-    }
+    auths_sdk::keri::KelResolverChain::local(registry)
+        .resolve_kel(did)
+        .map_err(|e| e.to_string())
 }
 
 /// Verify a single commit against the replayed KEL.
@@ -473,11 +437,10 @@ async fn verify_one_commit(
             }
         };
 
-    // KEL sourcing is an SDK/adapter concern: local-first, with an opt-in git
-    // remote (`--remote`) or an SSRF-hardened HTTP OOBI host (`--oobi`). The
-    // prefix-binding guard is applied regardless of transport. The command stays
-    // presentation-thin.
-    let device_kel = match resolve_signer_kel(registry, cmd, bundle_kel, &device_did).await {
+    // KEL sourcing is an SDK/adapter concern: the committed bundle or the local
+    // registry — never a network fetch. The prefix-binding guard is applied
+    // regardless of source. The command stays presentation-thin.
+    let device_kel = match resolve_signer_kel(registry, bundle_kel, &device_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -500,7 +463,7 @@ async fn verify_one_commit(
         Some(delegator) => format!("did:keri:{delegator}"),
         None => root_did,
     };
-    let root_kel = match resolve_signer_kel(registry, cmd, bundle_kel, &root_did).await {
+    let root_kel = match resolve_signer_kel(registry, bundle_kel, &root_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(

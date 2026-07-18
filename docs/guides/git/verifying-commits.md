@@ -10,7 +10,7 @@ Commit verification is **KEL-native** — there is no key list file to maintain.
 
 1. Reads the SSH signature embedded in the Git commit object
 2. Reads the `Auths-Device` trailer (the signer's `did:keri:` identifier)
-3. Resolves the signer's key state from their key event log (KEL) in the local identity store — or, opt-in, from a git remote (`--remote`) or an OOBI HTTP endpoint (`--oobi`)
+3. Resolves the signer's key state from their key event log (KEL) in the local identity store — or from the committed identity bundle (`.auths/ci-bundle.json`) the clone carries, authenticated event-by-event before use
 4. Verifies the signature cryptographically against the resolved key
 5. Optionally verifies the attestation chain (when `--identity-bundle` is provided)
 6. Optionally enforces witness quorum (`--require-witnesses`, `--witness-signatures`)
@@ -60,7 +60,7 @@ auths verify v1.0.0
 If the signer's KEL is not in your local store (e.g. a teammate's commit), fetch it from the repository's remote:
 
 ```bash
-auths verify HEAD --remote origin
+auths verify HEAD
 ```
 
 ### Output
@@ -314,7 +314,7 @@ auths trust pin --did did:keri:E... --key <signer-public-key-hex>
 Or fetch their KEL from the repository's remote:
 
 ```bash
-auths verify HEAD --remote origin
+auths verify HEAD
 ```
 
 ### "No signature found"
