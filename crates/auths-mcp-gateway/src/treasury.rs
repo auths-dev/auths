@@ -64,8 +64,7 @@ impl TreasuryClient {
     pub fn from_env(default_fleet: &str) -> Option<Self> {
         let url = std::env::var("TREASURY_URL").ok()?;
         let addr = url.strip_prefix("tcp://")?.to_string();
-        let fleet =
-            std::env::var("TREASURY_FLEET").unwrap_or_else(|_| default_fleet.to_string());
+        let fleet = std::env::var("TREASURY_FLEET").unwrap_or_else(|_| default_fleet.to_string());
         Some(TreasuryClient {
             addr,
             fleet,
@@ -199,13 +198,9 @@ pub async fn serve(cfg: ServeConfig) -> anyhow::Result<()> {
                 guard.last_checkpointed_count = guard.ledger.count();
                 (guard.ledger.count(), guard.ledger.settled_cents())
             };
-            if let Err(e) = append_checkpoint(
-                &checkpoint_path,
-                &fleet,
-                snapshot,
-                &seed,
-                &public_key,
-            ) {
+            if let Err(e) =
+                append_checkpoint(&checkpoint_path, &fleet, snapshot, &seed, &public_key)
+            {
                 eprintln!("treasury: checkpoint append failed: {e}");
             }
         }

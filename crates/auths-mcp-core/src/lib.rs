@@ -46,13 +46,15 @@ pub mod treasury;
 pub use attestation::{AttestationError, Attested, RailAttestation};
 pub use audit::{
     AuditResume, AuditVerdict, ConsistentProof, SPEND_LOG_GENESIS, Settlement, SpendLogRecord,
-    audit_spend_log, audit_spend_log_resumed,
-    call_commit_binding, read_spend_log, resolve_spend_log, spend_log_dir,
-    spend_log_path, spend_log_period_path,
+    audit_spend_log, audit_spend_log_resumed, call_commit_binding, read_spend_log,
+    resolve_spend_log, spend_log_dir, spend_log_path, spend_log_period_path,
 };
 pub use budget::{
     BudgetError, CounterKey, CounterRef, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds,
     SettleOutcome, SettledCounter,
+};
+pub use channel::{
+    ChannelRecord, ChannelSettlement, ChannelState, netted_settle_cents, spend_log_hash,
 };
 pub use gate::{Decision, GateError, Meter, PerCallGate, ToolCall, Verdict};
 pub use money::{Actual, AtomicUsdc, Ceiling, Cents, NonZeroCents};
@@ -62,9 +64,6 @@ pub use paymode::{
 };
 pub use rail::{ExtractedCost, RailError, extract as extract_rail_cost, extract_stripe};
 pub use receipt::{Receipt, ReceiptError};
-pub use channel::{
-    ChannelRecord, ChannelSettlement, ChannelState, netted_settle_cents, spend_log_hash,
-};
 pub use session::{Budget, BudgetParseError};
 pub use treasury::{
     FleetLedger, FleetReserveOutcome, SignedTreasuryCheckpoint, TreasuryCheckpoint, TreasuryError,

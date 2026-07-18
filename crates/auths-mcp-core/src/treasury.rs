@@ -44,7 +44,9 @@ pub enum TreasuryError {
     #[error("checkpoint trail is empty")]
     Empty,
     /// The final cumulative did not equal the total the caller re-derived from logs.
-    #[error("cumulative mismatch: checkpoints say {checkpointed} cents, logs re-derive {rederived}")]
+    #[error(
+        "cumulative mismatch: checkpoints say {checkpointed} cents, logs re-derive {rederived}"
+    )]
     CumulativeMismatch { checkpointed: u64, rederived: u64 },
 }
 
@@ -314,14 +316,13 @@ pub fn verify_checkpoint_trail(
             line,
             reason: format!("signature_hex: {reason}"),
         })?;
-        let message =
-            signed
-                .checkpoint
-                .signing_bytes()
-                .map_err(|e| TreasuryError::Malformed {
-                    line,
-                    reason: format!("canonicalize: {e}"),
-                })?;
+        let message = signed
+            .checkpoint
+            .signing_bytes()
+            .map_err(|e| TreasuryError::Malformed {
+                line,
+                reason: format!("canonicalize: {e}"),
+            })?;
         if !verify(&pubkey, &message, &sig) {
             return Err(TreasuryError::BadSignature { line });
         }

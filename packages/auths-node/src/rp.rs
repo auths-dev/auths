@@ -214,10 +214,11 @@ pub async fn authenticate_presentation(
     // KEL replay + signature verification is CPU-bound: run it off the Node event
     // loop so a burst of agent logins cannot stall unrelated requests.
     let request_string = request.to_string();
-    let verdict_json =
-        tokio::task::spawn_blocking(move || auths_verifier::verify_presentation_json(&request_string))
-            .await
-            .map_err(|e| napi::Error::from_reason(format!("verification task failed: {e}")))?;
+    let verdict_json = tokio::task::spawn_blocking(move || {
+        auths_verifier::verify_presentation_json(&request_string)
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(format!("verification task failed: {e}")))?;
     let verdict: serde_json::Value = serde_json::from_str(&verdict_json)
         .unwrap_or_else(|_| serde_json::json!({ "kind": "malformedRequest" }));
     let kind = verdict["kind"].as_str().unwrap_or("malformedRequest");

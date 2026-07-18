@@ -75,9 +75,7 @@ pub(crate) fn default_git_identity() -> [(&'static str, &'static str); 4] {
 fn run(cmd: &mut Command) -> anyhow::Result<std::process::Output> {
     for (key, value) in default_git_identity() {
         if std::env::var_os(key).is_none()
-            && !cmd
-                .get_envs()
-                .any(|(k, _)| k == std::ffi::OsStr::new(key))
+            && !cmd.get_envs().any(|(k, _)| k == std::ffi::OsStr::new(key))
         {
             cmd.env(key, value);
         }

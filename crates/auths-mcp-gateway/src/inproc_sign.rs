@@ -69,9 +69,10 @@ impl CommitTemplate {
         let identity_line = author.rsplitn(3, ' ').nth(2)?.to_string();
         let mut pieces = Vec::new();
         for line in message.lines() {
-            let slot = slots
-                .iter()
-                .find(|k| line.strip_prefix(**k).is_some_and(|rest| rest.starts_with(':')));
+            let slot = slots.iter().find(|k| {
+                line.strip_prefix(**k)
+                    .is_some_and(|rest| rest.starts_with(':'))
+            });
             match slot {
                 Some(key) => {
                     let after = &line[key.len() + 1..];
@@ -204,9 +205,15 @@ impl InprocState {
         let key = self.session_key()?;
         let values = HashMap::from([("Auths-Prev", prev_binding.to_string())]);
         let message = template.render(&values)?;
-        sign_commit_object(key, &template.identity_line, "call.json", canonical, &message)
-            .map_err(|e| eprintln!("auths-mcp-gateway: in-process call sign failed ({e})"))
-            .ok()
+        sign_commit_object(
+            key,
+            &template.identity_line,
+            "call.json",
+            canonical,
+            &message,
+        )
+        .map_err(|e| eprintln!("auths-mcp-gateway: in-process call sign failed ({e})"))
+        .ok()
     }
 
     /// Sign a SETTLEMENT commit in-process; `None` = not ready.

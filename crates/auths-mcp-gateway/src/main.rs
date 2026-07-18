@@ -181,7 +181,11 @@ struct TreasuryServeArgs {
     state_dir: std::path::PathBuf,
 
     /// Hex seed for the P-256 checkpoint-signing key; generated fresh when omitted.
-    #[arg(long = "signing-seed", value_name = "HEX", env = "TREASURY_SIGNING_SEED")]
+    #[arg(
+        long = "signing-seed",
+        value_name = "HEX",
+        env = "TREASURY_SIGNING_SEED"
+    )]
     signing_seed: Option<String>,
 
     /// Seconds between checkpoint signatures (written only when the counter moved).
