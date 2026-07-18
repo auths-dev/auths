@@ -30,11 +30,11 @@ export declare function addWitness(urlStr: string, aid: string, repoPath: string
  *
  * Usage:
  * ```ignore
- * const report = authenticatePresentation(header, evidenceJson, 'market.auths.dev', peek.nonce);
+ * const report = await authenticatePresentation(header, evidenceJson, 'market.auths.dev', peek.nonce);
  * if (report.authorized) { /* report.subject, report.subjectRoot, report.caps *\/ }
  * ```
  */
-export declare function authenticatePresentation(authorizationHeader: string, evidenceJson: string, expectedAudience: string, expectedNonce: string, nowIso?: string | undefined | null): NapiAgentAuthReport
+export declare function authenticatePresentation(authorizationHeader: string, evidenceJson: string, expectedAudience: string, expectedNonce: string, nowIso?: string | undefined | null): Promise<NapiAgentAuthReport>
 
 export declare function compilePolicy(policyJson: string): string
 

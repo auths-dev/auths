@@ -733,6 +733,7 @@ name = "auths-mcp-gateway"
 version = "0.1.5"
 dependencies = [
  "anyhow",
+ "auths-crypto",
  "auths-mcp-core",
  "auths-sdk",
  "chrono",
@@ -740,6 +741,7 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
+ "sha1",
  "tempfile",
  "tokio",
 ]

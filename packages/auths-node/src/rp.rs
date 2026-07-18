@@ -143,11 +143,11 @@ pub fn presentation_nonce(authorization_header: String) -> napi::Result<NapiPres
 ///
 /// Usage:
 /// ```ignore
-/// const report = authenticatePresentation(header, evidenceJson, 'market.auths.dev', peek.nonce);
+/// const report = await authenticatePresentation(header, evidenceJson, 'market.auths.dev', peek.nonce);
 /// if (report.authorized) { /* report.subject, report.subjectRoot, report.caps */ }
 /// ```
 #[napi]
-pub fn authenticate_presentation(
+pub async fn authenticate_presentation(
     authorization_header: String,
     evidence_json: String,
     expected_audience: String,
@@ -211,7 +211,14 @@ pub fn authenticate_presentation(
         "now": now,
     });
 
-    let verdict_json = auths_verifier::verify_presentation_json(&request.to_string());
+    // KEL replay + signature verification is CPU-bound: run it off the Node event
+    // loop so a burst of agent logins cannot stall unrelated requests.
+    let request_string = request.to_string();
+    let verdict_json = tokio::task::spawn_blocking(move || {
+        auths_verifier::verify_presentation_json(&request_string)
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(format!("verification task failed: {e}")))?;
     let verdict: serde_json::Value = serde_json::from_str(&verdict_json)
         .unwrap_or_else(|_| serde_json::json!({ "kind": "malformedRequest" }));
     let kind = verdict["kind"].as_str().unwrap_or("malformedRequest");

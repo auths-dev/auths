@@ -272,6 +272,29 @@ impl PerCallGate {
         .await
     }
 
+    /// [`Self::audit_spend_log`], resuming after an already-verified prefix —
+    /// `records` is the suffix and `resume` the prefix's proven end state.
+    pub async fn audit_spend_log_resumed(
+        &self,
+        records: &[crate::audit::SpendLogRecord],
+        now: i64,
+        counter: &crate::budget::CounterRef,
+        facilitator_pubkey: Option<&[u8]>,
+        resume: &crate::audit::AuditResume,
+    ) -> crate::audit::AuditVerdict {
+        crate::audit::audit_spend_log_resumed(
+            records,
+            &self.agent_kel,
+            &self.delegator_kel,
+            std::slice::from_ref(&self.delegator_did),
+            now,
+            counter,
+            facilitator_pubkey,
+            resume,
+        )
+        .await
+    }
+
     /// Judge one `tools/call`, given the bytes of the agent's signed proof, the
     /// [`Meter`] it carries (non-metered, or metered on a rail with a non-zero ceiling),
     /// and the cross-rail budget it PRE-AUTHORIZES against.

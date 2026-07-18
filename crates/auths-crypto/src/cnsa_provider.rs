@@ -96,6 +96,38 @@ impl CnsaProvider {
         crate::ring_provider::RingCryptoProvider::ed25519_sign(seed, message)
     }
 
+    /// Inherent sync shim for `key_ops::generate`. See [`Self::p256_sign`].
+    pub fn p256_generate() -> Result<(SecureSeed, Vec<u8>), CryptoError> {
+        Err(CryptoError::OperationFailed(
+            "P-256 keygen is rejected under --features cnsa; use P-384".into(),
+        ))
+    }
+
+    /// Inherent sync shim for `key_ops::verify`. See [`Self::p256_sign`].
+    pub fn p256_verify(
+        _pubkey: &[u8],
+        _message: &[u8],
+        _signature: &[u8],
+    ) -> Result<(), CryptoError> {
+        Err(CryptoError::OperationFailed(
+            "P-256 verify is rejected under --features cnsa; use P-384".into(),
+        ))
+    }
+
+    /// Inherent sync Ed25519 verify (Ed25519 stays available under CNSA).
+    pub fn ed25519_verify(
+        pubkey: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> Result<(), CryptoError> {
+        crate::ring_provider::RingCryptoProvider::ed25519_verify(pubkey, message, signature)
+    }
+
+    /// Inherent sync Ed25519 keypair generation (delegates to the ring path).
+    pub fn ed25519_generate() -> Result<(SecureSeed, [u8; 32]), CryptoError> {
+        crate::ring_provider::RingCryptoProvider::ed25519_generate()
+    }
+
     /// Inherent sync Ed25519 public key derivation.
     pub fn ed25519_public_key(seed: &[u8; 32]) -> Result<[u8; 32], CryptoError> {
         crate::ring_provider::RingCryptoProvider::ed25519_public_key(seed)
