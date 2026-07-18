@@ -204,9 +204,13 @@ pub async fn serve(cfg: ServeConfig) -> anyhow::Result<()> {
                 guard.last_checkpointed_count = guard.ledger.count();
                 (guard.ledger.count(), guard.ledger.settled_cents())
             };
-            if let Err(e) =
-                append_checkpoint(&checkpoint_path, &fleet, snapshot, &signing_key, &public_key)
-            {
+            if let Err(e) = append_checkpoint(
+                &checkpoint_path,
+                &fleet,
+                snapshot,
+                &signing_key,
+                &public_key,
+            ) {
                 eprintln!("treasury: checkpoint append failed: {e}");
             }
         }
