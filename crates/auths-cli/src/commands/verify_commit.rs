@@ -689,9 +689,9 @@ pub(crate) async fn commit_trusted_via_bundle(
     if result.valid {
         Ok(())
     } else {
-        Err(result
-            .error
-            .unwrap_or_else(|| "commit did not verify against the bundle-evidenced KELs".to_string()))
+        Err(result.error.unwrap_or_else(|| {
+            "commit did not verify against the bundle-evidenced KELs".to_string()
+        }))
     }
 }
 
