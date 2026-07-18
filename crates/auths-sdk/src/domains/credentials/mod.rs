@@ -37,7 +37,10 @@ pub use freshness::{
 };
 pub use issue::{CredentialIssuance, CredentialSummary, issue, list, revoke};
 pub use present::{ChallengeSession, PresentationChallenge, present_credential};
-pub use present_inputs::{PresentationInputs, load_presentation_inputs};
+pub use present_inputs::{
+    EvidenceCredential, PresentationEvidence, PresentationInputs, load_presentation_evidence,
+    load_presentation_inputs,
+};
 pub use stored::StoredCredential;
 pub use usage_ledger::{UsageDecision, UsageLedger, UsageObservation};
 pub use verify::{

@@ -129,6 +129,25 @@ graph TD
 
 Violations are caught by `cargo deny check bans` and `cargo clippy` (`disallowed-methods`).
 
+## The Report Is the Only API (relying parties)
+
+A relying party — the market, any server authenticating `Auths-Presentation`
+requests, any consumer of a verify entrypoint — **never inspects evidence**.
+Anything an RP needs to act on (subject, the proven root, capabilities, expiry,
+freshness) must be a field on the verdict/report, set by the verifier only after
+it proved the fact. If an RP finds itself parsing a KEL, an attachment, or an
+ACDC out of the evidence it was handed, that is a missing verdict field — fix it
+in `auths-verifier`, never in the consumer. Precedent: `subjectRoot` (the
+delegator a seal-checked replay proved) was added to the Valid presentation
+verdict for exactly this reason.
+
+The companion rule: **RPs re-implement no wire.** Header parsing, base64
+conventions, verify-request assembly, and the verdict→denial doctrine live once,
+behind the SDK's relying-party surface (`packages/auths-node`
+`presentationNonce` / `authenticatePresentation`). An RP keeps only what is
+irreducibly its own: storage (the single-use challenge store, principal
+records) and grant policy (which capabilities admit which action).
+
 ## Port Inventory
 
 Ports are trait interfaces that decouple domain logic from infrastructure. Production adapters live in the appropriate infra crate under `src/adapters/`. Test doubles live in `auths-test-utils/src/fakes/` or `auths-test-utils/src/mocks/`.

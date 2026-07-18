@@ -148,6 +148,11 @@ pub enum PresentationVerdict {
         issuer: IdentityDID,
         /// The subject (holder) AID (`did:keri:`) whose current key signed the presentation.
         subject: CanonicalDid,
+        /// The subject's proven root: for a delegated subject (dip-rooted KEL) the
+        /// delegator AID whose anchoring seal the replay verified; for a root subject,
+        /// the subject itself. Relying parties credit accounts to THIS identity —
+        /// never to a delegator parsed out of unverified input.
+        subject_root: CanonicalDid,
         /// The capabilities the now-bound credential grants (`a.capability`).
         caps: Vec<Capability>,
         /// The optional informational role claim (`a.role`).
@@ -469,6 +474,18 @@ fn verify_holder_signature(
     let Ok(subject) = CanonicalDid::parse(&format!("did:keri:{}", signed.acdc.a.i)) else {
         return PresentationVerdict::SubjectKelInvalid;
     };
+    // The proven root: a dip-rooted subject KEL only replays after its delegator's
+    // anchoring seal checked out (the KelSealIndex lookup above), so the delegator
+    // named by the KEL is verified, not claimed. A root subject is its own root.
+    let subject_root = match subject_kel.iter().find_map(|event| event.delegator()) {
+        Some(delegator) => {
+            let Ok(root) = CanonicalDid::parse(&format!("did:keri:{delegator}")) else {
+                return PresentationVerdict::SubjectKelInvalid;
+            };
+            root
+        }
+        None => subject.clone(),
+    };
 
     let message = PresentationEnvelope::signed_message(
         &envelope.credential_said,
@@ -483,6 +500,7 @@ fn verify_holder_signature(
             return PresentationVerdict::Valid {
                 issuer: grant.issuer,
                 subject,
+                subject_root,
                 caps: grant.caps,
                 role: grant.role,
                 expires_at: grant.expires_at,

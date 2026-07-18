@@ -712,6 +712,8 @@ mod tests {
         PresentationVerdict::Valid {
             issuer: auths_verifier::IdentityDID::parse(CRED_ISSUER).expect("valid test issuer"),
             subject: auths_verifier::CanonicalDid::parse(CRED_SUBJECT).expect("valid test subject"),
+            subject_root: auths_verifier::CanonicalDid::parse(CRED_SUBJECT)
+                .expect("valid test subject"),
             caps: caps
                 .iter()
                 .map(|c| auths_verifier::Capability::parse(c).expect("valid test capability"))

@@ -1615,8 +1615,37 @@ pub fn pair_kel_attachments(
     events
         .into_iter()
         .zip(attachments)
-        .map(|(event, att)| Ok(SignedEvent::new(event, parse_attachment(att.as_ref())?)))
+        .map(|(event, att)| {
+            // A delegated (`dip`/`drt`) event's attachment is `-A <sig> ++ -G
+            // <source seal>`; a plain event's is just `-A <sig>`. The JSON body
+            // of a delegated event carries no source seal (it lives in the
+            // attachment), so restore it here — the bilateral delegation
+            // binding then re-verifies it against the delegator KEL; it is
+            // never trusted from the attachment alone.
+            let (signatures, seals) = parse_delegated_attachment(att.as_ref())?;
+            let event = rehydrate_source_seal(event, seals.into_iter().next());
+            Ok(SignedEvent::new(event, signatures))
+        })
         .collect()
+}
+
+/// Re-attach a delegated event's source seal from its parsed attachment; plain
+/// events and sealless attachments pass through unchanged.
+fn rehydrate_source_seal(event: Event, seal: Option<SourceSeal>) -> Event {
+    let Some(seal) = seal else {
+        return event;
+    };
+    match event {
+        Event::Dip(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Dip(e)
+        }
+        Event::Drt(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Drt(e)
+        }
+        other => other,
+    }
 }
 
 /// Error shape for attachment encode/decode.

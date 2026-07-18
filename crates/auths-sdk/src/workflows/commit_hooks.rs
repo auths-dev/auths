@@ -504,16 +504,22 @@ mod tests {
         .expect("re-running init over our own config must be fine");
     }
 
-    /// A registry mirror must never block a code push.
+    /// The pre-push hook chains and never blocks: no mirror, no network, no
+    /// side effects — its whole job is keeping repo-local hooks alive under
+    /// core.hooksPath.
     #[test]
-    fn pre_push_is_non_fatal_and_opt_outable() {
+    fn pre_push_only_chains_and_exits_clean() {
         assert!(
-            PRE_PUSH_HOOK.contains("|| true"),
-            "registry push failure must not fail the code push"
+            PRE_PUSH_HOOK.contains("hooks/pre-push"),
+            "the managed hook must chain to the repo-local pre-push"
         );
         assert!(
-            PRE_PUSH_HOOK.contains("auths.autopush"),
-            "pushing to a remote you do not own must stay refusable"
+            PRE_PUSH_HOOK.trim_end().ends_with("exit 0"),
+            "a missing repo hook must exit clean, never fail the push"
+        );
+        assert!(
+            !PRE_PUSH_HOOK.contains("registry push"),
+            "the mirror is gone — KEL distribution is the committed bundle, not a pushed ref"
         );
     }
 }

@@ -115,6 +115,7 @@ jobs:
           cargo run -p xtask -- check-admission-policy
           cargo run -p xtask -- check-command-drift
           cargo run -p xtask -- check-verify-path-completeness
+          cargo run -p xtask -- check-binding-boundary
           cargo run -p xtask -- gen-error-docs --check
       - name: Architecture boundary checks
         run: |

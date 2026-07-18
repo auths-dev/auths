@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::signing::PrefilledPassphraseProvider;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::storage::keychain::get_platform_keychain_with_config;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::device::extend_device;
 use auths_sdk::device::{link_device, revoke_device};
 use auths_sdk::types::{DeviceExtensionConfig, DeviceLinkConfig};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };

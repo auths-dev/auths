@@ -69,6 +69,7 @@ fn principal(caps: &[&str]) -> VerifiedPrincipal {
     let verdict = PresentationVerdict::Valid {
         issuer: IdentityDID::parse("did:keri:Eissuer").expect("issuer"),
         subject: CanonicalDid::parse("did:keri:Eagent").expect("subject"),
+        subject_root: CanonicalDid::parse("did:keri:Eagent").expect("subject"),
         caps: caps
             .iter()
             .map(|c| Capability::parse(c).expect("cap"))

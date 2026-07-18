@@ -58,6 +58,8 @@ export type PresentationVerdict =
       kind: "valid";
       issuer: CanonicalDid;
       subject: CanonicalDid;
+      /** The subject's proven root: its delegator for a delegated subject, itself otherwise. */
+      subjectRoot: CanonicalDid;
       caps: readonly Capability[];
       role: string | null;
       expiresAt: string | null;

@@ -30,13 +30,13 @@ export interface AgentIdentity {
 
 /** An agent delegated under an existing identity. */
 export interface DelegatedAgent {
-  /** The delegated agent's DID (typically `did:key:z...`). */
+  /** The agent's `did:keri:` AID — a delegated identifier the parent root anchored. */
   did: string
+  /** The agent's KEL prefix (the delegated inception SAID). */
+  prefix: string
   /** Keychain alias for the agent's signing key. */
   keyAlias: string
-  /** JSON-serialized delegation attestation signed by the parent identity. */
-  attestation: string
-  /** Hex-encoded Ed25519 public key. */
+  /** Hex-encoded public key. */
   publicKey: string
 }
 
@@ -209,13 +209,13 @@ export class IdentityService {
         opts.capabilities,
         this.client.repoPath,
         pp,
-        opts.expiresInDays ?? null,
+        opts.expiresInDays != null ? opts.expiresInDays * 86_400 : null,
         opts.identityDid,
       )
       return {
         did: bundle.agentDid,
+        prefix: bundle.agentPrefix,
         keyAlias: bundle.keyAlias,
-        attestation: bundle.attestationJson,
         publicKey: bundle.publicKeyHex,
       }
     } catch (err) {

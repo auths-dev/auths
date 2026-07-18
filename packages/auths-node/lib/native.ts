@@ -44,9 +44,11 @@ export interface NapiAgentIdentityBundle {
 }
 
 export interface NapiDelegatedAgentBundle {
+  /** The agent's `did:keri:` AID — a delegated identifier the parent root anchored. */
   agentDid: string
+  /** The agent's KEL prefix (the delegated inception SAID). */
+  agentPrefix: string
   keyAlias: string
-  attestationJson: string
   publicKeyHex: string
   repoPath?: string | null
 }
@@ -177,7 +179,7 @@ export interface NativeBindings {
   generateInmemoryKeypair(): NapiInMemoryKeypair
   createIdentity(keyAlias: string, repoPath: string, passphrase?: string | null): NapiIdentityResult
   createAgentIdentity(agentName: string, capabilities: string[], repoPath: string, passphrase?: string | null): NapiAgentIdentityBundle
-  delegateAgent(agentName: string, capabilities: string[], parentRepoPath: string, passphrase?: string | null, expiresInDays?: number | null, identityDid?: string | null): NapiDelegatedAgentBundle
+  delegateAgent(agentName: string, capabilities: string[], parentRepoPath: string, passphrase?: string | null, expiresInSeconds?: number | null, identityDid?: string | null): NapiDelegatedAgentBundle
   rotateIdentityKeys(repoPath: string, identityKeyAlias?: string | null, nextKeyAlias?: string | null, passphrase?: string | null): NapiRotationResult
   getIdentityPublicKey(identityDid: string, repoPath: string, passphrase?: string | null): string
 

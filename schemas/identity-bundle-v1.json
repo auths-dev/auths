@@ -28,6 +28,13 @@
       "default": "p256",
       "type": "string"
     },
+    "device_kels": {
+      "description": "Delegated device KELs anchored under this identity's root. Commits are signed by a DEVICE AID, so a stateless verifier needs the device's KEL, not only the root's. Each entry authenticates exactly like the root KEL (per-event hex CESR attachments), with the root's seal index resolving the delegation. Empty in bundles exported before this field existed — and for identities whose signing DID IS the root.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/BundleDeviceKel"
+      }
+    },
     "identity_did": {
       "description": "The DID of the identity (e.g., `\"did:keri:...\"`)",
       "allOf": [
@@ -206,6 +213,35 @@
           "type": "integer",
           "format": "uint32",
           "minimum": 0.0
+        }
+      }
+    },
+    "BundleDeviceKel": {
+      "description": "One delegated device KEL carried inside an [`IdentityBundle`].",
+      "type": "object",
+      "required": [
+        "did",
+        "kel",
+        "kel_attachments"
+      ],
+      "properties": {
+        "did": {
+          "description": "The device's `did:keri:` AID (the `dip` prefix the root anchored).",
+          "type": "string"
+        },
+        "kel": {
+          "description": "The device KEL events, oldest first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Event"
+          }
+        },
+        "kel_attachments": {
+          "description": "The CESR signature attachment (hex) for each `kel` event, in order.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

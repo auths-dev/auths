@@ -32,9 +32,9 @@
   },
   "scripts": {
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm --no-gh-release",
+    "build": "napi build --platform --release && node scripts/sync-conformance.mjs",
+    "build:debug": "napi build --platform && node scripts/sync-conformance.mjs",
+    "prepublishOnly": "node scripts/sync-conformance.mjs && napi prepublish -t npm --no-gh-release",
     "docs": "typedoc",
     "test": "vitest run",
     "universal": "napi universal -t darwin"
@@ -46,5 +46,11 @@
     "typedoc-plugin-markdown": "^4.10.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "conformance/",
+    "README.md"
+  ]
 }

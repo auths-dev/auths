@@ -21,6 +21,8 @@ auths-core = { path = "../../crates/auths-core", features = ["keychain-file-fall
 auths-id = { path = "../../crates/auths-id" }
 auths-crypto = { path = "../../crates/auths-crypto" }
 auths-verifier = { path = "../../crates/auths-verifier" }
+auths-keri = { path = "../../crates/auths-keri" }
+auths-rp = { path = "../../crates/auths-rp" }
 auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"] }
 auths-policy = { path = "../../crates/auths-policy" }
 auths-pairing-daemon = { path = "../../crates/auths-pairing-daemon" }
@@ -29,6 +31,8 @@ auths-infra-git = { path = "../../crates/auths-infra-git" }
 # Utilities
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
+rand = "0.8"
 tokio = { version = "1", features = ["sync", "net"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "json"] }
 hex = "0.4"

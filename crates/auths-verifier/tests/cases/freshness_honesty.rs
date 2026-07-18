@@ -42,6 +42,7 @@ fn presentation_valid_names_as_of_and_freshness() {
     let verdict = PresentationVerdict::Valid {
         issuer: did("did:keri:Eissuer"),
         subject: subject("did:keri:Eholder"),
+        subject_root: subject("did:keri:Eholder"),
         caps: vec![Capability::parse("acme:read").expect("cap")],
         role: None,
         expires_at: None,

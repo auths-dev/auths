@@ -461,6 +461,7 @@ async fn valid_challenge_presentation_verifies() {
             PresentationVerdict::Valid {
                 issuer,
                 subject: s,
+                subject_root,
                 caps,
                 role,
                 expires_at,
@@ -468,6 +469,10 @@ async fn valid_challenge_presentation_verifies() {
                 ..
             } => {
                 assert_eq!(s.as_str(), format!("did:keri:{}", subject.aid));
+                assert_eq!(
+                    subject_root, s,
+                    "a root subject is its own proven root on the Valid verdict"
+                );
                 assert_eq!(
                     caps.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
                     ["sign"]
@@ -970,6 +975,10 @@ fn presentation_json_contract_matches_sync() {
                     verdict["subject"],
                     format!("did:keri:{}", subject.aid),
                     "valid verdict carries the holder subject DID"
+                );
+                assert_eq!(
+                    verdict["subjectRoot"], verdict["subject"],
+                    "a root subject is its own proven root on the wire"
                 );
                 assert_eq!(verdict["caps"], serde_json::json!(["sign"]));
                 assert_eq!(
