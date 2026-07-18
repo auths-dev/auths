@@ -48,6 +48,12 @@ pub struct TreasuryClient {
     addr: String,
     fleet: String,
     unreachable_reported: AtomicBool,
+    /// A persistent keepalive connection to the coordinator, reused across reserves so the
+    /// hot path never pays a fresh TCP connect + handshake + teardown per metered call. A
+    /// gateway is one agent per process, so its reserves are serial — one connection, held
+    /// behind a `Mutex`, is uncontended. Reset to `None` on any error or timeout so the next
+    /// reserve reconnects cleanly (a dropped round-trip can never desync a later one).
+    conn: Mutex<Option<TcpStream>>,
 }
 
 impl TreasuryClient {
@@ -69,6 +75,7 @@ impl TreasuryClient {
             addr,
             fleet,
             unreachable_reported: AtomicBool::new(false),
+            conn: Mutex::new(None),
         })
     }
 
@@ -95,6 +102,9 @@ impl TreasuryClient {
         match tokio::time::timeout(RESERVE_TIMEOUT, self.exchange(&request)).await {
             Ok(Ok(reply)) => Some(reply),
             Ok(Err(_)) | Err(_) => {
+                // A timeout can drop the round-trip mid-flight, leaving the socket desynced;
+                // reset it so the next reserve reconnects clean rather than reading a stale reply.
+                *self.conn.lock().await = None;
                 if !self.unreachable_reported.swap(true, Ordering::Relaxed) {
                     eprintln!(
                         "auths-mcp-gateway: treasury {} unreachable — enforcing the local \
@@ -107,13 +117,55 @@ impl TreasuryClient {
         }
     }
 
+    /// Exchange one request over the persistent connection, reconnecting once if the held
+    /// connection is stale (the coordinator restarted, an idle timeout closed it). On success
+    /// the connection is kept open for the next reserve; on failure it is dropped so the next
+    /// call reconnects.
     async fn exchange(&self, request: &TreasuryRequest) -> anyhow::Result<TreasuryReply> {
-        let mut stream = TcpStream::connect(&self.addr).await?;
+        let mut guard = self.conn.lock().await;
+        let mut last_err: Option<anyhow::Error> = None;
+        for _attempt in 0..2u8 {
+            if guard.is_none() {
+                match TcpStream::connect(&self.addr).await {
+                    Ok(stream) => {
+                        let _ = stream.set_nodelay(true);
+                        *guard = Some(stream);
+                    }
+                    Err(e) => {
+                        last_err = Some(e.into());
+                        continue;
+                    }
+                }
+            }
+            let Some(stream) = guard.as_mut() else {
+                continue;
+            };
+            match Self::round_trip(stream, request).await {
+                Ok(reply) => return Ok(reply),
+                Err(e) => {
+                    *guard = None;
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("treasury exchange failed with no error")))
+    }
+
+    /// One newline-delimited JSON request→reply over an already-connected stream. The
+    /// coordinator answers exactly one line per request and then waits, so a fresh
+    /// `BufReader` borrow reads precisely that reply and leaves the stream reusable.
+    async fn round_trip(
+        stream: &mut TcpStream,
+        request: &TreasuryRequest,
+    ) -> anyhow::Result<TreasuryReply> {
         let mut line = serde_json::to_string(request)?;
         line.push('\n');
         stream.write_all(line.as_bytes()).await?;
         let mut reply = String::new();
-        BufReader::new(&mut stream).read_line(&mut reply).await?;
+        let read = BufReader::new(&mut *stream).read_line(&mut reply).await?;
+        if read == 0 {
+            bail!("treasury closed the connection before replying");
+        }
         Ok(serde_json::from_str(&reply)?)
     }
 }
@@ -366,4 +418,63 @@ fn append_checkpoint(
         .open(path)?;
     file.write_all(line.as_bytes())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    #[tokio::test]
+    async fn client_reuses_one_connection_across_reserves() {
+        // A fake coordinator that counts accepted connections and grants every reserve. Three
+        // reserves through ONE client must ride ONE connection — the connect-per-call the fix
+        // removes would instead show three accepts.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let accepts = Arc::new(AtomicUsize::new(0));
+        let accepts_srv = Arc::clone(&accepts);
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                accepts_srv.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let (read_half, mut write_half) = stream.into_split();
+                    let mut lines = BufReader::new(read_half).lines();
+                    while let Ok(Some(_req)) = lines.next_line().await {
+                        let reply = serde_json::to_string(&TreasuryReply::Granted {
+                            headroom_cents: Cents::new(100),
+                        })
+                        .unwrap();
+                        if write_half
+                            .write_all(format!("{reply}\n").as_bytes())
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+
+        let client = TreasuryClient {
+            addr,
+            fleet: "test-fleet".to_string(),
+            unreachable_reported: AtomicBool::new(false),
+            conn: Mutex::new(None),
+        };
+        for _ in 0..3 {
+            let reply = client.reserve("did:keri:Eagent", Cents::new(1)).await;
+            assert!(
+                matches!(reply, Some(TreasuryReply::Granted { .. })),
+                "each reserve should be granted, got {reply:?}"
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(
+            accepts.load(Ordering::SeqCst),
+            1,
+            "three reserves must reuse ONE connection, not connect per call"
+        );
+    }
 }
