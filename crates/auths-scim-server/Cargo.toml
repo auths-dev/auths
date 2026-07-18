@@ -20,7 +20,7 @@ path = "src/lib.rs"
 [dependencies]
 # Types-only SCIM crate (User, ListResponse, filter, PATCH, schema, errors).
 # KERI/registry is the source of truth; there is NO authoritative database here.
-auths-scim = { path = "../auths-scim", version = "0.1.6" }
+auths-scim = { path = "../auths-scim", version = "0.1.7" }
 # SDK identity lifecycle: the Joiner provisions REAL delegated members via
 # `add_member` (no fake DIDs, no authoritative DB). This crate is a presentation
 # layer above the SDK, like auths-api.
