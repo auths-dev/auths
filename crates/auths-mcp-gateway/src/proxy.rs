@@ -282,6 +282,9 @@ struct GatewayProxy {
     /// N gateway processes. `None` (unset or unreachable) leaves the local — smaller
     /// — budget as the only cap: fail-closed to the tighter bound, never open.
     treasury: Option<Arc<crate::treasury::TreasuryClient>>,
+    /// Whether to print a human-readable verdict line per call (`AUTHS_MCP_VERBOSE`). Off by
+    /// default so the hot path does no synchronous per-call stderr; metrics carry observability.
+    verbose: bool,
 }
 
 impl GatewayProxy {
@@ -477,6 +480,9 @@ impl ServerHandler for GatewayProxy {
             .sign_call(idx, &canonical, capability.as_str(), &prev_binding)
             .map_err(|e| McpError::internal_error(format!("sign the brokered call: {e}"), None))?;
         crate::metrics_http::record_stage("sign", sign_t.elapsed());
+        // The proof's binding hash is needed for both the settlement's `Auths-Settle-Call` trailer
+        // and the next record's `Auths-Prev` — derive it once here rather than hashing twice.
+        let call_binding = auths_mcp_core::call_commit_binding(&proof_bytes);
 
         // Authenticate + pre-authorize over the SIGNED proof: the gate verifies the proof
         // (scope ⊆ grant, live, unrevoked) AND reserves the ceiling against the durable
@@ -617,14 +623,7 @@ impl ServerHandler for GatewayProxy {
                 let settle_t = std::time::Instant::now();
                 let (bytes, _sha) = self
                     .chain
-                    .sign_settlement(
-                        idx,
-                        &auths_mcp_core::call_commit_binding(&proof_bytes),
-                        rail,
-                        actual,
-                        charge_ref,
-                        cumulative,
-                    )
+                    .sign_settlement(idx, &call_binding, rail, actual, charge_ref, cumulative)
                     .map_err(|e| {
                         McpError::internal_error(format!("sign the settlement: {e}"), None)
                     })?;
@@ -655,7 +654,7 @@ impl ServerHandler for GatewayProxy {
         );
         // This record's binding — what the NEXT call's `Auths-Prev` links to. Computed from the
         // bytes about to be stored, before they move into the record.
-        let new_binding = auths_mcp_core::call_commit_binding(&proof_bytes);
+        let new_binding = call_binding;
         let log_t = std::time::Instant::now();
         if let Err(e) = crate::spend_log::append(
             self.chain.org_repo(),
@@ -691,13 +690,16 @@ impl ServerHandler for GatewayProxy {
         metrics::counter!(crate::metrics_http::CALLS_TOTAL, "verdict" => verdict_metric_label(&verdict))
             .increment(1);
 
-        let rail_tag = cost
-            .rail()
-            .map(|r| format!(" rail={r}"))
-            .unwrap_or_default();
-        let proof_short = &proof_sha[..proof_sha.len().min(12)];
-        match forwarded {
-            Some(result) => {
+        // Human-readable verdict lines are opt-in (`AUTHS_MCP_VERBOSE`): the metrics recorded
+        // above are the hot-path observability, and a synchronous per-call stderr write (plus its
+        // format allocation) is not free at rate.
+        if self.verbose {
+            let rail_tag = cost
+                .rail()
+                .map(|r| format!(" rail={r}"))
+                .unwrap_or_default();
+            let proof_short = &proof_sha[..proof_sha.len().min(12)];
+            if forwarded.is_some() {
                 eprintln!(
                     "auths-mcp-gateway: brokered + SIGNED tools/call `{tool}`{rail_tag} (cap={}) — \
                      forwarded; cross-rail settled total ${}.{:02}; proof={proof_short}",
@@ -705,14 +707,17 @@ impl ServerHandler for GatewayProxy {
                     cumulative.get() / 100,
                     cumulative.get() % 100,
                 );
-                Ok(result)
-            }
-            None => {
+            } else {
                 eprintln!(
                     "auths-mcp-gateway: REFUSED + SIGNED tools/call `{tool}`{rail_tag} ({}) — \
                      downstream NOT touched; proof={proof_short}",
                     verdict.code(),
                 );
+            }
+        }
+        match forwarded {
+            Some(result) => Ok(result),
+            None => {
                 let refusal = match &verdict {
                     // The refusal teaches the fix: a buyer can self-correct from the
                     // error alone, without docs (the example is a runnable tools/call).
@@ -948,6 +953,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         rail: cfg.rail,
         prev_binding: Arc::new(Mutex::new(prev_binding)),
         treasury,
+        verbose: std::env::var("AUTHS_MCP_VERBOSE").is_ok(),
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.
