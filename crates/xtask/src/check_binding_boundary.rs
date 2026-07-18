@@ -42,10 +42,16 @@ pub fn run(workspace_root: PathBuf) -> anyhow::Result<()> {
         scanned += 1;
         let content =
             std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-        for (idx, line) in content.lines().enumerate() {
+        let lines: Vec<&str> = content.lines().collect();
+        for (idx, line) in lines.iter().enumerate() {
             let trimmed = line.trim_start();
             let is_deep = DEEP_PREFIXES.iter().any(|p| trimmed.starts_with(p));
-            if is_deep && !line.contains(ALLOW_MARKER) {
+            // rustfmt may float a trailing annotation to the next line (inside a
+            // brace group) — accept the marker on the line, the one above, or below.
+            let annotated = line.contains(ALLOW_MARKER)
+                || idx.checked_sub(1).is_some_and(|i| lines[i].contains(ALLOW_MARKER))
+                || lines.get(idx + 1).is_some_and(|l| l.contains(ALLOW_MARKER));
+            if is_deep && !annotated {
                 violations.push(format!(
                     "{}:{}: {}",
                     path.strip_prefix(&workspace_root)

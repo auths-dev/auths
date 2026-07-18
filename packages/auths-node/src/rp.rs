@@ -77,7 +77,9 @@ fn denied(code: &str, detail: Option<String>) -> NapiAgentAuthReport {
 /// ```
 #[napi]
 pub fn mint_challenge_nonce() -> String {
-    let bytes: [u8; 32] = rand::random();
+    use rand::RngCore as _;
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
     Nonce::from_bytes(bytes).to_b64url()
 }
 

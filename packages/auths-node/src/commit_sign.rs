@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_core::signing::PrefilledPassphraseProvider; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-use auths_core::storage::keychain::get_platform_keychain_with_config; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_core::signing::PrefilledPassphraseProvider;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_core::storage::keychain::get_platform_keychain_with_config;
 use auths_sdk::workflows::signing::{
     CommitSigningContext, CommitSigningParams, CommitSigningWorkflow,
 };

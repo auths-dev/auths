@@ -2,8 +2,10 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_core::signing::PrefilledPassphraseProvider; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-use auths_core::storage::keychain::{IdentityDID, KeyAlias, get_platform_keychain_with_config}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_core::signing::PrefilledPassphraseProvider;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_core::storage::keychain::{IdentityDID, KeyAlias, get_platform_keychain_with_config};
 use auths_crypto::decode_seed_hex;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::ports::artifact::{ArtifactDigest, ArtifactError, ArtifactMetadata, ArtifactSource};
@@ -11,12 +13,9 @@ use auths_sdk::signing::{
     ArtifactSigningParams, SigningKeyMaterial, sign_artifact as sdk_sign_artifact,
     sign_artifact_raw,
 };
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_storage::git::{
-    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-    GitRegistryBackend,
-    RegistryAttestationStorage,
-    RegistryConfig,
-    RegistryIdentityStorage,
+    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
 use chrono::Utc;

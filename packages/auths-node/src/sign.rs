@@ -1,5 +1,7 @@
-use auths_core::signing::{PrefilledPassphraseProvider, SecureSigner, StorageSigner}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_core::signing::{PrefilledPassphraseProvider, SecureSigner, StorageSigner};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+use auths_core::storage::keychain::{KeyAlias, get_platform_keychain_with_config};
 use auths_verifier::action::ActionEnvelope;
 use auths_verifier::core::MAX_ATTESTATION_JSON_SIZE;
 use auths_verifier::types::IdentityDID;
