@@ -302,14 +302,47 @@ pub enum ReserveOutcome {
     },
 }
 
+/// When the in-memory authoritative SETTLED total is flushed durably to disk.
+///
+/// The live budget holds the settled high-water in memory (read once at open, advanced on
+/// each settle). `FlushPolicy` governs how often that authoritative value is persisted — the
+/// `fs::rename` that `verify-spend` later reads. It is the ONE knob that trades per-call
+/// durable-write cost against the crash-overspend window.
+#[derive(Debug, Clone, Copy)]
+pub enum FlushPolicy {
+    /// Persist on EVERY settle (crash window = 0 — full D8 overspend safety). The default,
+    /// and the only policy that preserves the exact durability the disk-authoritative
+    /// counter gave before: a crashed-and-restored gateway can never re-grant settled spend.
+    EverySettle,
+    /// Group-commit: persist at most once per `every_n` settles (and always on clean
+    /// shutdown via `Drop`). Removes the per-call `rename` from the hot path at the price of
+    /// a BOUNDED crash-overspend window — after an unclean crash the persisted high-water can
+    /// lag the true settled total by up to `every_n` un-flushed settles, which a restarted
+    /// gateway could re-grant. Opt-in only; the operator accepts the window. This is the same
+    /// bounded-window tradeoff the module header documents for the parked checkpoint layer.
+    GroupCommit { every_n: u32 },
+}
+
 /// The cross-rail budget for one agent delegation across one session: the durable
 /// SETTLED counter + the transient RESERVED holds, enforcing ONE cap across all rails
 /// by pre-authorization. This is the D8 engine the gate drives per paid call.
-#[derive(Debug, Clone)]
+///
+/// The settled high-water is held in memory (`cached_settled`, seeded once from disk at
+/// open) and is authoritative for reserve/settle decisions, so the hot path never re-reads
+/// disk to know the total. It is persisted per [`FlushPolicy`]. Not `Clone`: a session owns
+/// exactly one budget (the gateway holds it behind `Arc<Mutex<…>>`), and duplicating the
+/// authoritative in-memory total would let two owners' blind persists race the high-water.
+#[derive(Debug)]
 pub struct CrossRailBudget {
     cap_cents: Cents,
     settled: SettledCounter,
     holds: ReservedHolds,
+    /// The authoritative in-memory settled high-water (seeded from disk at open, advanced on
+    /// settle). Reserve/settle read THIS, not disk — monotonic within the session's lifetime.
+    cached_settled: Cents,
+    flush: FlushPolicy,
+    /// Settles since the last durable flush (drives [`FlushPolicy::GroupCommit`]).
+    unflushed: u32,
 }
 
 impl CrossRailBudget {
@@ -318,9 +351,10 @@ impl CrossRailBudget {
         self.cap_cents
     }
 
-    /// The current durable SETTLED total (summed across all rails).
+    /// The current SETTLED total (summed across all rails) — the authoritative in-memory
+    /// high-water, which reserve/settle also use.
     pub fn settled_cents(&self) -> Result<Cents, BudgetError> {
-        self.settled.settled_cents()
+        Ok(self.cached_settled)
     }
 
     /// `Σ(active holds)` — the transient reserved cents.
@@ -332,7 +366,7 @@ impl CrossRailBudget {
     pub fn available_cents(&self) -> Result<Cents, BudgetError> {
         Ok(available(
             self.cap_cents,
-            self.settled.settled_cents()?,
+            self.cached_settled,
             self.holds.reserved_cents(),
         ))
     }
@@ -349,7 +383,7 @@ impl CrossRailBudget {
     /// Reserved`]. This is the cap-enforcement boundary — refusing here is the
     /// `usage-cap-exceeded` the gate surfaces before the downstream is invoked.
     pub fn reserve(&mut self, ceiling: Ceiling) -> Result<ReserveOutcome, BudgetError> {
-        let settled = self.settled.settled_cents()?;
+        let settled = self.cached_settled;
         let reserved = self.holds.reserved_cents();
         let would_be = settled
             .saturating_add(reserved)
@@ -368,17 +402,51 @@ impl CrossRailBudget {
     }
 
     /// SETTLE a held call's ACTUAL cost: release the hold (returning the slack between
-    /// the reserved ceiling and the actual to `available`), then advance the monotonic
-    /// SETTLED counter by `actual_cents`. Returns the settle outcome (advanced, or a
-    /// refused [`SettleOutcome::RolledBack`] if the new cumulative would fall below the
-    /// recorded high-water). The hold is released REGARDLESS of the monotonicity
-    /// outcome so a rolled-back settle does not leak the reservation.
+    /// the reserved ceiling and the actual to `available`), advance the authoritative
+    /// in-memory SETTLED total by `actual_cents`, and persist per [`FlushPolicy`]. The hold
+    /// is released REGARDLESS of the flush outcome so a persist error does not strand the
+    /// reservation. The in-memory total only ever rises (`actual >= 0`), so a live settle
+    /// always [`SettleOutcome::Advanced`]s; the monotonic rollback guard governs *resume*
+    /// (a fresh open re-reading the persisted high-water), enforced by [`SettledCounter`].
     pub fn settle(&mut self, hold: Hold, actual: Actual) -> Result<SettleOutcome, BudgetError> {
-        // Release the auth-hold first: the slack (ceiling − actual) returns to
-        // available, and a rolled-back settle below does not strand the reservation.
         self.holds.release(hold);
-        let new_cumulative = self.settled.settled_cents()?.saturating_add(actual.cents());
-        self.settled.settle(new_cumulative)
+        let new_cumulative = self.cached_settled.saturating_add(actual.cents());
+        self.cached_settled = new_cumulative;
+        self.maybe_flush()?;
+        Ok(SettleOutcome::Advanced {
+            new_settled_cents: new_cumulative,
+        })
+    }
+
+    /// Persist the authoritative in-memory high-water per the flush policy.
+    fn maybe_flush(&mut self) -> Result<(), BudgetError> {
+        let should_flush = match self.flush {
+            FlushPolicy::EverySettle => true,
+            FlushPolicy::GroupCommit { every_n } => {
+                self.unflushed = self.unflushed.saturating_add(1);
+                self.unflushed >= every_n.max(1)
+            }
+        };
+        if should_flush {
+            self.flush_now()?;
+        }
+        Ok(())
+    }
+
+    /// Blind-persist the authoritative in-memory high-water (a temp-write + `rename`). Safe
+    /// because `cached_settled` is monotonic within the session and this budget is the sole
+    /// writer of its counter file; the on-disk value it publishes is exactly what
+    /// `verify-spend` re-derives.
+    fn flush_now(&mut self) -> Result<(), BudgetError> {
+        self.settled.write_high_water(self.cached_settled)?;
+        self.unflushed = 0;
+        Ok(())
+    }
+
+    /// Force a durable flush of the authoritative in-memory high-water (e.g. at a checkpoint
+    /// boundary). A no-op's cost under [`FlushPolicy::EverySettle`] since nothing is pending.
+    pub fn flush(&mut self) -> Result<(), BudgetError> {
+        self.flush_now()
     }
 
     /// Release a hold WITHOUT settling — the auth-hold expiry path for a call that
@@ -386,6 +454,18 @@ impl CrossRailBudget {
     /// to the monotonic settled total (the rail was never charged).
     pub fn expire(&mut self, hold: Hold) {
         self.holds.release(hold);
+    }
+}
+
+impl Drop for CrossRailBudget {
+    /// Flush any un-flushed group-committed settles on clean shutdown, so a graceful exit
+    /// never loses settled spend. Monotonicity-safe: [`SettledCounter::settle`] re-reads the
+    /// persisted high-water and refuses to lower it, so a drop can only ever advance (never
+    /// roll back) the durable total.
+    fn drop(&mut self) {
+        if self.unflushed > 0 {
+            let _ = self.settled.settle(self.cached_settled);
+        }
     }
 }
 
@@ -436,14 +516,53 @@ impl CounterRef {
         SettledCounter::at(&self.registry, self.key.clone())
     }
 
-    /// Open the cross-rail budget at this location with cap `cap_cents` — the holds start empty and
-    /// the settled total resumes from the persisted high-water.
-    pub fn open_budget(&self, cap_cents: Cents) -> CrossRailBudget {
-        CrossRailBudget {
+    /// Open the cross-rail budget at this location with cap `cap_cents`, persisting on every
+    /// settle ([`FlushPolicy::EverySettle`] — full overspend safety).
+    ///
+    /// The holds start empty and the authoritative in-memory settled total resumes from the
+    /// persisted high-water (read ONCE here, not per call).
+    ///
+    /// Args:
+    /// * `cap_cents`: the cross-rail cap for the session.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let budget = counter_ref.open_budget(Cents::new(500))?;
+    /// ```
+    pub fn open_budget(&self, cap_cents: Cents) -> Result<CrossRailBudget, BudgetError> {
+        self.open_budget_with_policy(cap_cents, FlushPolicy::EverySettle)
+    }
+
+    /// Open the cross-rail budget with an explicit [`FlushPolicy`]. Use
+    /// [`FlushPolicy::GroupCommit`] to remove the per-settle `rename` from the hot path,
+    /// accepting the bounded crash-overspend window it documents.
+    ///
+    /// Args:
+    /// * `cap_cents`: the cross-rail cap for the session.
+    /// * `flush`: when the authoritative in-memory total is persisted durably.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let budget = counter_ref.open_budget_with_policy(
+    ///     Cents::new(500),
+    ///     FlushPolicy::GroupCommit { every_n: 64 },
+    /// )?;
+    /// ```
+    pub fn open_budget_with_policy(
+        &self,
+        cap_cents: Cents,
+        flush: FlushPolicy,
+    ) -> Result<CrossRailBudget, BudgetError> {
+        let settled = self.open_counter();
+        let cached_settled = settled.settled_cents()?;
+        Ok(CrossRailBudget {
             cap_cents,
-            settled: self.open_counter(),
+            settled,
             holds: ReservedHolds::new(),
-        }
+            cached_settled,
+            flush,
+            unflushed: 0,
+        })
     }
 
     /// The on-disk path of the counter record — so a caller (and the gate's locatability check) can
@@ -491,6 +610,7 @@ mod tests {
         CounterRef::for_agent(dir, DLG)
             .unwrap()
             .open_budget(Cents::new(cap))
+            .unwrap()
     }
 
     #[test]
@@ -772,5 +892,113 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert!(CounterRef::for_agent(dir.path(), "../escape").is_err());
         assert!(CounterRef::for_agent(dir.path(), "did:keri:../escape").is_err());
+    }
+
+    #[test]
+    fn every_settle_persists_each_settle_and_resumes() {
+        // The default policy persists the authoritative in-memory total on every settle, so
+        // a fresh open (crash-restore) resumes from the exact last-settled high-water — no
+        // overspend window (identical durability to the disk-authoritative counter).
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut b = budget(dir.path(), 500);
+            let h = match b.reserve(Ceiling::new(Cents::new(300))).unwrap() {
+                ReserveOutcome::Reserved { hold, .. } => hold,
+                o => panic!("got {o:?}"),
+            };
+            b.settle(h, Actual::new(Cents::new(300))).unwrap();
+            // The counter file already holds 300 BEFORE drop (persisted on the settle).
+            let disk = CounterRef::for_agent(dir.path(), DLG)
+                .unwrap()
+                .open_counter()
+                .settled_cents()
+                .unwrap();
+            assert_eq!(disk, Cents::new(300), "EverySettle persists on the settle");
+        }
+        // A fresh open resumes from the persisted high-water.
+        let b2 = budget(dir.path(), 500);
+        assert_eq!(b2.settled_cents().unwrap(), Cents::new(300));
+    }
+
+    #[test]
+    fn group_commit_defers_persist_then_flushes_on_threshold_and_drop() {
+        // GroupCommit persists at most once per N settles; the durable value lags the
+        // in-memory total between flushes, and the remainder is flushed on clean drop.
+        let dir = tempfile::tempdir().unwrap();
+        let counter_on_disk = || {
+            CounterRef::for_agent(dir.path(), DLG)
+                .unwrap()
+                .open_counter()
+                .settled_cents()
+                .unwrap()
+        };
+        {
+            let mut b = CounterRef::for_agent(dir.path(), DLG)
+                .unwrap()
+                .open_budget_with_policy(Cents::new(1000), FlushPolicy::GroupCommit { every_n: 3 })
+                .unwrap();
+            let settle_one = |b: &mut CrossRailBudget| {
+                let h = match b.reserve(Ceiling::new(Cents::new(100))).unwrap() {
+                    ReserveOutcome::Reserved { hold, .. } => hold,
+                    o => panic!("got {o:?}"),
+                };
+                b.settle(h, Actual::new(Cents::new(100))).unwrap();
+            };
+            // Two settles: in-memory total is 200, but disk is still behind the threshold.
+            settle_one(&mut b);
+            settle_one(&mut b);
+            assert_eq!(b.settled_cents().unwrap(), Cents::new(200));
+            assert_eq!(counter_on_disk(), Cents::ZERO, "not yet flushed (2 < 3)");
+            // The third settle hits the threshold and flushes 300 durably.
+            settle_one(&mut b);
+            assert_eq!(counter_on_disk(), Cents::new(300), "flushed at every_n=3");
+            // A fourth settle is un-flushed again; drop must persist the remainder (400).
+            settle_one(&mut b);
+            assert_eq!(
+                counter_on_disk(),
+                Cents::new(300),
+                "still behind before drop"
+            );
+        }
+        assert_eq!(
+            counter_on_disk(),
+            Cents::new(400),
+            "drop flushed the remainder"
+        );
+    }
+
+    #[test]
+    fn group_commit_drop_never_rolls_the_high_water_back() {
+        // A drop can only ADVANCE the durable high-water: if the persisted value is already
+        // ahead of this budget's in-memory total, the monotonic guard refuses the lowering.
+        let dir = tempfile::tempdir().unwrap();
+        // Seed the counter to 900 on disk.
+        CounterRef::for_agent(dir.path(), DLG)
+            .unwrap()
+            .open_counter()
+            .settle(Cents::new(900))
+            .unwrap();
+        {
+            let mut b = CounterRef::for_agent(dir.path(), DLG)
+                .unwrap()
+                .open_budget_with_policy(
+                    Cents::new(2000),
+                    FlushPolicy::GroupCommit { every_n: 100 },
+                )
+                .unwrap();
+            // Resumed at 900; one $1 settle → in-memory 1000, un-flushed.
+            let h = match b.reserve(Ceiling::new(Cents::new(100))).unwrap() {
+                ReserveOutcome::Reserved { hold, .. } => hold,
+                o => panic!("got {o:?}"),
+            };
+            b.settle(h, Actual::new(Cents::new(100))).unwrap();
+        }
+        // Drop advanced 900 → 1000 (never lowered).
+        let disk = CounterRef::for_agent(dir.path(), DLG)
+            .unwrap()
+            .open_counter()
+            .settled_cents()
+            .unwrap();
+        assert_eq!(disk, Cents::new(1000));
     }
 }

@@ -50,8 +50,8 @@ pub use audit::{
     resolve_spend_log, spend_log_dir, spend_log_path, spend_log_period_path,
 };
 pub use budget::{
-    BudgetError, CounterKey, CounterRef, CrossRailBudget, Hold, ReserveOutcome, ReservedHolds,
-    SettleOutcome, SettledCounter,
+    BudgetError, CounterKey, CounterRef, CrossRailBudget, FlushPolicy, Hold, ReserveOutcome,
+    ReservedHolds, SettleOutcome, SettledCounter,
 };
 pub use channel::{
     ChannelRecord, ChannelSettlement, ChannelState, netted_settle_cents, spend_log_hash,

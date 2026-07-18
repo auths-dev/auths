@@ -860,7 +860,9 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
     // repo, no session-key sentinel.
     let counter = auths_mcp_core::CounterRef::for_agent(chain.org_repo(), &chain.agent_did)
         .map_err(|e| anyhow::anyhow!("locate the durable cross-rail counter: {e}"))?;
-    let budget = counter.open_budget(cap_cents);
+    let budget = counter
+        .open_budget(cap_cents)
+        .map_err(|e| anyhow::anyhow!("open the durable cross-rail budget: {e}"))?;
     eprintln!(
         "auths-mcp-gateway: budget enforced from the DURABLE verifier-held cross-rail counter \
          ({record:?}, keyed to the agent delegation, one ${cap}.{rem:02} cap summed across ALL \
