@@ -603,6 +603,98 @@ fn raw_commit_object(sha: &str) -> Result<String> {
 
 /// Map a [`CommitVerdict`] onto a CLI result row: the valid flag, the verified signer,
 /// and a human-readable reason for every failure mode.
+/// Bundle-evidence commit trust for sibling commands — the artifact verifier's
+/// ephemeral commit-anchor leg. Same doctrine as `auths verify <sha>
+/// --identity-bundle`: the repo's pinned roots are the anchor, the bundle is KEL
+/// EVIDENCE only (RT-005), and the verdict tolerates the bundle's offline
+/// freshness grade exactly as the commit command does.
+///
+/// Args:
+/// * `sha`: the full commit SHA the attestation anchors to.
+/// * `bundle_path`: the identity bundle supplied to the artifact verify.
+///
+/// Usage:
+/// ```ignore
+/// commit_trusted_via_bundle(&sha, Path::new(".auths/ci-bundle.json")).await?;
+/// ```
+pub(crate) async fn commit_trusted_via_bundle(
+    sha: &str,
+    bundle_path: &std::path::Path,
+) -> std::result::Result<(), String> {
+    let raw_commit = raw_commit_object(sha).map_err(|e| e.to_string())?;
+    let (trailer_root_did, device_did) =
+        auths_sdk::workflows::commit_trust::commit_signer_trailers(&raw_commit)
+            .ok_or_else(|| "commit carries no Auths-Id/Auths-Device trailers".to_string())?;
+
+    let pinned_roots = super::verify_helpers::load_project_pinned_roots();
+    if pinned_roots.is_empty() {
+        return Err(
+            "no pinned roots (.auths/roots) — a bundle is evidence for a pinned root, \
+             never the source of the pin"
+                .to_string(),
+        );
+    }
+    #[allow(clippy::disallowed_methods)] // presentation boundary: freshness needs the wall clock
+    let now = chrono::Utc::now();
+    let (root, kel, device_kels) = load_bundle_trust(bundle_path, now)?;
+    if !pinned_roots.contains(&root) {
+        return Err(format!(
+            "identity bundle root {root} is not independently trusted: add it to .auths/roots"
+        ));
+    }
+    let mut bundle_kels: Vec<BundleKel> = Vec::new();
+    if !kel.is_empty() {
+        bundle_kels.push(BundleKel {
+            did: root,
+            events: kel,
+        });
+    }
+    bundle_kels.extend(
+        device_kels
+            .into_iter()
+            .map(|(did, events)| BundleKel { did, events }),
+    );
+
+    let auths_home = auths_sdk::paths::auths_home().map_err(|e| e.to_string())?;
+    let registry =
+        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
+    let device_kel = resolve_signer_kel(&registry, &bundle_kels, &device_did)
+        .await
+        .map_err(|e| format!("device KEL for {device_did} could not be resolved: {e}"))?;
+    let root_did = match device_kel.first().and_then(|e| e.delegator()) {
+        Some(delegator) => format!("did:keri:{delegator}"),
+        None => trailer_root_did,
+    };
+    let root_kel = resolve_signer_kel(&registry, &bundle_kels, &root_did)
+        .await
+        .map_err(|e| format!("root KEL for {root_did} could not be resolved: {e}"))?;
+
+    let provider = auths_crypto::RingCryptoProvider;
+    let receipt_lookup = GitWitnessReceiptLookup::new(&auths_home);
+    let witnessed = verify_commit_against_kel_witnessed_scoped(
+        raw_commit.as_bytes(),
+        &device_kel,
+        &root_kel,
+        &pinned_roots,
+        &provider,
+        &receipt_lookup,
+        VerifierWitnessPolicy::Warn,
+        now.timestamp(),
+    )
+    .await;
+    let verdict = witnessed
+        .verdict
+        .with_freshness(&FreshnessPolicy::default(), FreshnessEvidence::Offline);
+    let result = verdict_to_result(sha.to_string(), verdict);
+    if result.valid {
+        Ok(())
+    } else {
+        Err(result.error.unwrap_or_else(|| {
+            "commit did not verify against the bundle-evidenced KELs".to_string()
+        }))
+    }
+}
+
 fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResult {
     let mut result = VerifyCommitResult::failure(commit, String::new());
     // The stable machine code travels in the `status` field regardless of the
