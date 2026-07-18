@@ -7,8 +7,8 @@
     clippy::expect_used
 )]
 mod check_admission_policy;
-mod check_binding_boundary;
 mod check_anchor_discipline;
+mod check_binding_boundary;
 mod check_clippy_sync;
 mod check_command_drift;
 mod check_constant_time;
@@ -98,7 +98,9 @@ fn main() -> anyhow::Result<()> {
     };
     match cli.command {
         Command::GenSchema => gen_schema::run(workspace_root()),
-        Command::CheckBindingBoundary => check_binding_boundary::run(workspace_root().to_path_buf()),
+        Command::CheckBindingBoundary => {
+            check_binding_boundary::run(workspace_root().to_path_buf())
+        }
         Command::GenDocs { check } => gen_docs::run(workspace_root(), check),
         Command::GenerateSchemas => schemas::generate(workspace_root()),
         Command::ValidateSchemas => schemas::validate(workspace_root()),

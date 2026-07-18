@@ -14,7 +14,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, bail};
+use anyhow::{bail, Context};
 
 const BINDINGS_SRC: &str = "packages/auths-node/src";
 const DEEP_PREFIXES: &[&str] = &["use auths_id::", "use auths_core::", "use auths_storage::"];
@@ -48,7 +48,9 @@ pub fn run(workspace_root: PathBuf) -> anyhow::Result<()> {
             if is_deep && !line.contains(ALLOW_MARKER) {
                 violations.push(format!(
                     "{}:{}: {}",
-                    path.strip_prefix(&workspace_root).unwrap_or(&path).display(),
+                    path.strip_prefix(&workspace_root)
+                        .unwrap_or(&path)
+                        .display(),
                     idx + 1,
                     trimmed
                 ));
