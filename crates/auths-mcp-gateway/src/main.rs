@@ -33,6 +33,7 @@ use clap::{Parser, Subcommand};
 mod chain;
 mod channel;
 mod inproc_sign;
+mod metrics_http;
 mod proxy;
 mod replay;
 mod spend_log;

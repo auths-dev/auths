@@ -403,6 +403,16 @@ impl GatewayProxy {
     }
 }
 
+/// Map a per-call [`Verdict`] to a stable Prometheus label value (#7): `granted` = forwarded,
+/// `refused` = the cross-rail cap, `denied` = any other fail-closed verdict.
+fn verdict_metric_label(verdict: &Verdict) -> &'static str {
+    match verdict {
+        Verdict::Allowed => "granted",
+        Verdict::UsageCapExceeded { .. } => "refused",
+        _ => "denied",
+    }
+}
+
 impl ServerHandler for GatewayProxy {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -435,6 +445,7 @@ impl ServerHandler for GatewayProxy {
         request: CallToolRequestParam,
         _ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        let call_start = std::time::Instant::now();
         let tool = request.name.to_string();
 
         // Canonicalize the call the way the offline audit re-derives it, and SIGN it as the
@@ -611,6 +622,7 @@ impl ServerHandler for GatewayProxy {
                         McpError::internal_error(format!("sign the settlement: {e}"), None)
                     })?;
                 settlement_commit = Some(bytes);
+                metrics::counter!(crate::metrics_http::SETTLE_TOTAL).increment(1);
             }
             Some(result)
         } else {
@@ -662,6 +674,12 @@ impl ServerHandler for GatewayProxy {
         }
         // Advance the chain head so the next brokered call links to this record.
         *self.prev_binding.lock().await = new_binding;
+
+        // #7: record the call's latency + verdict (no-ops unless the recorder is installed).
+        metrics::histogram!(crate::metrics_http::CALL_LATENCY)
+            .record(call_start.elapsed().as_secs_f64());
+        metrics::counter!(crate::metrics_http::CALLS_TOTAL, "verdict" => verdict_metric_label(&verdict))
+            .increment(1);
 
         let rail_tag = cost
             .rail()
@@ -781,6 +799,14 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
     // (served:false, charged:false); a budget-less payment-rail wrap is refused here.
     if disclose_payment_mode(&cfg)? {
         return Ok(());
+    }
+
+    // #7 observability: opt-in Prometheus /metrics. Installing the global recorder BEFORE any
+    // metered call makes the `metrics::` macros on the hot path live; with the env unset the
+    // recorder is never installed and those macros stay cheap no-ops (stdio mode unchanged).
+    if let Ok(addr) = std::env::var("AUTHS_MCP_METRICS_ADDR") {
+        let handle = auths_telemetry::init_prometheus();
+        tokio::spawn(crate::metrics_http::serve_metrics(addr, handle));
     }
 
     // A PRESENT budget must parse — a malformed `--budget` is refused fail-closed, never silently

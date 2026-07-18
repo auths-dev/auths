@@ -338,6 +338,7 @@ impl Chain {
             .inproc
             .try_sign_call(canonical, capability, prev_binding)
         {
+            metrics::counter!(crate::metrics_http::SIGN_TOTAL, "path" => "inproc").increment(1);
             return Ok(signed);
         }
         let work = self.work_root.join(format!("call-{idx}"));
@@ -408,6 +409,7 @@ impl Chain {
             "git cat-file commit",
         )?;
         self.inproc.learn_call(capability, &raw.stdout);
+        metrics::counter!(crate::metrics_http::SIGN_TOTAL, "path" => "subprocess").increment(1);
         Ok((raw.stdout, sha))
     }
 
