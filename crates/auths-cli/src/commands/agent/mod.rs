@@ -162,7 +162,37 @@ pub fn ensure_agent_running(quiet: bool) -> Result<bool> {
     Err(anyhow!("Failed to start agent within 2 seconds"))
 }
 
-pub fn handle_agent(cmd: AgentCommand) -> Result<()> {
+/// The name of a per-machine daemon operation, or `None` for a store operation.
+///
+/// Daemon operations (start/stop/status/install-service/uninstall-service) act
+/// on the per-machine agent and cannot be scoped by `--repo`. Store operations
+/// (env/lock/unlock) read repo-scoped paths.
+fn daemon_op_name(cmd: &AgentSubcommand) -> Option<&'static str> {
+    match cmd {
+        AgentSubcommand::Start { .. } => Some("start"),
+        AgentSubcommand::Stop => Some("stop"),
+        AgentSubcommand::Status => Some("status"),
+        AgentSubcommand::InstallService { .. } => Some("install-service"),
+        AgentSubcommand::UninstallService => Some("uninstall-service"),
+        AgentSubcommand::Env { .. } | AgentSubcommand::Lock | AgentSubcommand::Unlock { .. } => {
+            None
+        }
+    }
+}
+
+pub fn handle_agent(cmd: AgentCommand, repo: Option<PathBuf>) -> Result<()> {
+    // Daemon operations are per-machine; `--repo` cannot scope them, so reject
+    // it rather than silently operate on the global agent.
+    if let Some(op) = daemon_op_name(&cmd.command)
+        && repo.is_some()
+    {
+        anyhow::bail!(
+            "`--repo` is not supported for `auths agent {}`; the agent daemon is per-machine \
+             and is selected by AUTHS_HOME, not by repository.",
+            op
+        );
+    }
+
     match cmd.command {
         AgentSubcommand::Start {
             socket,
@@ -171,15 +201,16 @@ pub fn handle_agent(cmd: AgentCommand) -> Result<()> {
         } => start_agent(socket, foreground, &timeout, false),
         AgentSubcommand::Stop => stop_agent(),
         AgentSubcommand::Status => show_status(),
-        AgentSubcommand::Env { shell } => output_env(shell),
-        AgentSubcommand::Lock => lock_agent(),
-        AgentSubcommand::Unlock { agent_key_alias } => unlock_agent(&agent_key_alias),
         AgentSubcommand::InstallService {
             dry_run,
             force,
             manager,
         } => service::install_service(dry_run, force, manager),
         AgentSubcommand::UninstallService => service::uninstall_service(),
+        // Store operations read repo-scoped paths; thread `--repo` through.
+        AgentSubcommand::Env { shell } => output_env(shell, repo),
+        AgentSubcommand::Lock => lock_agent(repo),
+        AgentSubcommand::Unlock { agent_key_alias } => unlock_agent(&agent_key_alias, repo),
     }
 }
 
@@ -217,6 +248,34 @@ fn parse_timeout(s: &str) -> Result<std::time::Duration> {
 
 fn get_auths_dir() -> Result<PathBuf> {
     auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))
+}
+
+/// Resolve the agent's storage directory, honoring a `--repo` override.
+///
+/// `None` preserves the default (`AUTHS_HOME` / `~/.auths`); `Some(path)`
+/// scopes the agent's socket/pid/env files to that registry.
+///
+/// Args:
+/// * `repo`: The optional `--repo` override.
+///
+/// Usage:
+/// ```ignore
+/// let dir = get_auths_dir_for_repo(ctx.repo_path.clone())?;
+/// ```
+fn get_auths_dir_for_repo(repo: Option<PathBuf>) -> Result<PathBuf> {
+    match repo {
+        Some(_) => auths_sdk::storage_layout::resolve_repo_path(repo)
+            .context("Failed to resolve the repository path for the agent store"),
+        None => get_auths_dir(),
+    }
+}
+
+fn get_socket_path_for_repo(repo: Option<PathBuf>) -> Result<PathBuf> {
+    Ok(get_auths_dir_for_repo(repo)?.join(DEFAULT_SOCKET_NAME))
+}
+
+fn get_pid_file_path_for_repo(repo: Option<PathBuf>) -> Result<PathBuf> {
+    Ok(get_auths_dir_for_repo(repo)?.join(PID_FILE_NAME))
 }
 
 /// Get the default socket path.
@@ -321,14 +380,68 @@ fn run_agent_foreground(
         timeout,
     ));
 
+    let authorizer = build_sign_authorizer({
+        use std::io::IsTerminal;
+        std::io::stdin().is_terminal()
+    });
+
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
     let result = rt.block_on(async {
-        auths_sdk::agent_core::start_agent_listener_with_handle(handle.clone()).await
+        auths_sdk::agent_core::start_agent_listener_with_handle(handle.clone(), authorizer).await
     });
 
     cleanup_stale_files(&[pid_path, env_path, socket]);
 
     result.map_err(|e| anyhow!("Agent error: {}", e))
+}
+
+/// Builds the per-request signing authorizer for the agent. An interactive agent gates
+/// each new connecting process behind an approval prompt (so an unlocked agent does not
+/// grant silent signing to every same-user process); a daemonized / non-interactive
+/// agent is permissive, since there is no human present to approve.
+///
+/// Args:
+/// * `interactive`: whether the agent has a terminal to prompt on.
+///
+/// Usage:
+/// ```ignore
+/// let auth = build_sign_authorizer(std::io::stdin().is_terminal());
+/// ```
+#[cfg(unix)]
+fn build_sign_authorizer(
+    interactive: bool,
+) -> std::sync::Arc<dyn auths_sdk::agent_core::SignAuthorizer> {
+    if interactive {
+        std::sync::Arc::new(auths_sdk::agent_core::PerCallerAuthorizer::new(
+            approve_caller,
+        ))
+    } else {
+        std::sync::Arc::new(auths_sdk::agent_core::AllowAllSigning)
+    }
+}
+
+/// Prompts the operator to approve signing for a newly connected caller. Returns true to
+/// approve and pin that caller for the unlock window.
+///
+/// Args:
+/// * `peer`: the connecting process's identity.
+///
+/// Usage:
+/// ```ignore
+/// let approved = approve_caller(&peer);
+/// ```
+#[cfg(unix)]
+fn approve_caller(peer: &auths_sdk::agent_core::PeerIdentity) -> bool {
+    let who = match peer.pid {
+        Some(pid) => format!("process pid {pid} (uid {})", peer.uid),
+        None => format!("a process (uid {})", peer.uid),
+    };
+    eprintln!("\nauths agent: a new caller — {who} — is requesting a signature.");
+    dialoguer::Confirm::new()
+        .with_prompt("Approve signing for this caller?")
+        .default(false)
+        .interact()
+        .unwrap_or(false)
 }
 
 #[cfg(not(unix))]
@@ -465,9 +578,9 @@ fn show_status() -> Result<()> {
     Ok(())
 }
 
-fn output_env(shell: ShellFormat) -> Result<()> {
-    let socket_path = get_default_socket_path()?;
-    let pid_path = get_pid_file_path()?;
+fn output_env(shell: ShellFormat, repo: Option<PathBuf>) -> Result<()> {
+    let socket_path = get_socket_path_for_repo(repo.clone())?;
+    let pid_path = get_pid_file_path_for_repo(repo)?;
 
     let pid = read_pid_file(&pid_path)?;
     let running = pid.map(is_process_running).unwrap_or(false);
@@ -501,8 +614,8 @@ fn output_env(shell: ShellFormat) -> Result<()> {
 }
 
 #[cfg(unix)]
-fn lock_agent() -> Result<()> {
-    let pid_path = get_pid_file_path()?;
+fn lock_agent(repo: Option<PathBuf>) -> Result<()> {
+    let pid_path = get_pid_file_path_for_repo(repo.clone())?;
     let pid = read_pid_file(&pid_path)?;
     let running = pid.map(is_process_running).unwrap_or(false);
 
@@ -510,7 +623,7 @@ fn lock_agent() -> Result<()> {
         return Err(anyhow!("Agent is not running"));
     }
 
-    let socket_path = get_default_socket_path()?;
+    let socket_path = get_socket_path_for_repo(repo)?;
     auths_sdk::agent_core::remove_all_identities(&socket_path)
         .map_err(|e| anyhow!("Failed to lock agent: {}", e))?;
 
@@ -521,15 +634,15 @@ fn lock_agent() -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn lock_agent() -> Result<()> {
+fn lock_agent(_repo: Option<PathBuf>) -> Result<()> {
     Err(anyhow!(
         "Agent lock is not supported on this platform (requires Unix domain sockets)"
     ))
 }
 
 #[cfg(unix)]
-fn unlock_agent(key_alias: &str) -> Result<()> {
-    let pid_path = get_pid_file_path()?;
+fn unlock_agent(key_alias: &str, repo: Option<PathBuf>) -> Result<()> {
+    let pid_path = get_pid_file_path_for_repo(repo.clone())?;
     let pid = read_pid_file(&pid_path)?;
     let running = pid.map(is_process_running).unwrap_or(false);
 
@@ -537,7 +650,7 @@ fn unlock_agent(key_alias: &str) -> Result<()> {
         return Err(anyhow!("Agent is not running"));
     }
 
-    let socket_path = get_default_socket_path()?;
+    let socket_path = get_socket_path_for_repo(repo)?;
 
     let keychain = auths_sdk::keychain::get_platform_keychain()
         .map_err(|e| anyhow!("Failed to get platform keychain: {}", e))?;
@@ -571,15 +684,15 @@ fn unlock_agent(key_alias: &str) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn unlock_agent(_key_alias: &str) -> Result<()> {
+fn unlock_agent(_key_alias: &str, _repo: Option<PathBuf>) -> Result<()> {
     Err(anyhow!(
         "Agent unlock is not supported on this platform (requires Unix domain sockets)"
     ))
 }
 
 impl crate::commands::executable::ExecutableCommand for AgentCommand {
-    fn execute(&self, _ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
-        handle_agent(self.clone())
+    fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
+        handle_agent(self.clone(), ctx.repo_path.clone())
     }
 }
 

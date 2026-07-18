@@ -170,3 +170,21 @@ fn export_single_event_roundtrip() {
     assert_eq!(reimported.len(), 1);
     assert_eq!(reimported[0].get("t").and_then(|v| v.as_str()), Some("rot"));
 }
+
+#[test]
+fn import_rejects_multibyte_version_header_without_panicking() {
+    // Five ASCII bytes after the `KERI10JSON` marker put a two-byte UTF-8 char (`Ь`)
+    // astride the six-byte size-field slice: a byte-length check passes, but a direct
+    // `&str` slice would split the char and panic. Import must fail closed instead.
+    let codec = CesrV1Codec::new();
+    let hostile = "{\"v\":\"KERI10JSON00000\u{42c}\"}".as_bytes();
+    let result = import_cesr_to_events(&codec, hostile);
+    assert!(
+        result.is_err(),
+        "a multibyte version header must be rejected, not panic"
+    );
+
+    // A multibyte char inside the six-byte size field is rejected too.
+    let hostile_mid = "{\"v\":\"KERI10JSON00\u{42c}1b_\"}".as_bytes();
+    assert!(import_cesr_to_events(&codec, hostile_mid).is_err());
+}

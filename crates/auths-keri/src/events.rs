@@ -1189,6 +1189,11 @@ pub fn parse_source_seal_couples(bytes: &[u8]) -> Result<Vec<SourceSeal>, Attach
 fn parse_source_seal_group(s: &str) -> Result<(Vec<SourceSeal>, &str), AttachmentError> {
     use cesride::{Matter, Saider, Seqner};
 
+    // CESR qb64 is ASCII; reject non-ASCII at the boundary so the byte-offset slices
+    // below cannot split a multi-byte char and panic.
+    if !s.is_ascii() {
+        return Err(AttachmentError::Decode("non-ASCII CESR attachment".into()));
+    }
     let rest = s.strip_prefix("-G").ok_or_else(|| {
         AttachmentError::Decode("source-seal group must start with -G counter code".into())
     })?;
@@ -1523,6 +1528,11 @@ pub fn parse_attachment(bytes: &[u8]) -> Result<Vec<IndexedSignature>, Attachmen
 fn parse_sig_group(s: &str) -> Result<(Vec<IndexedSignature>, &str), AttachmentError> {
     use cesride::{Indexer, Siger};
 
+    // CESR qb64 is ASCII; reject non-ASCII at the boundary so the byte-offset slices
+    // below cannot split a multi-byte char and panic.
+    if !s.is_ascii() {
+        return Err(AttachmentError::Decode("non-ASCII CESR attachment".into()));
+    }
     let rest = s.strip_prefix("-A").ok_or_else(|| {
         AttachmentError::Decode("attachment must start with -A counter code".into())
     })?;
@@ -1605,8 +1615,37 @@ pub fn pair_kel_attachments(
     events
         .into_iter()
         .zip(attachments)
-        .map(|(event, att)| Ok(SignedEvent::new(event, parse_attachment(att.as_ref())?)))
+        .map(|(event, att)| {
+            // A delegated (`dip`/`drt`) event's attachment is `-A <sig> ++ -G
+            // <source seal>`; a plain event's is just `-A <sig>`. The JSON body
+            // of a delegated event carries no source seal (it lives in the
+            // attachment), so restore it here — the bilateral delegation
+            // binding then re-verifies it against the delegator KEL; it is
+            // never trusted from the attachment alone.
+            let (signatures, seals) = parse_delegated_attachment(att.as_ref())?;
+            let event = rehydrate_source_seal(event, seals.into_iter().next());
+            Ok(SignedEvent::new(event, signatures))
+        })
         .collect()
+}
+
+/// Re-attach a delegated event's source seal from its parsed attachment; plain
+/// events and sealless attachments pass through unchanged.
+fn rehydrate_source_seal(event: Event, seal: Option<SourceSeal>) -> Event {
+    let Some(seal) = seal else {
+        return event;
+    };
+    match event {
+        Event::Dip(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Dip(e)
+        }
+        Event::Drt(mut e) => {
+            e.source_seal = Some(seal);
+            Event::Drt(e)
+        }
+        other => other,
+    }
 }
 
 /// Error shape for attachment encode/decode.
@@ -1683,6 +1722,57 @@ mod tests {
         assert_eq!(back.len(), 1);
         assert_eq!(back[0].index, 0);
         assert_eq!(back[0].sig, vec![0x42u8; 64]);
+    }
+
+    #[test]
+    fn attachment_parsers_reject_multibyte_without_panicking() {
+        // qb64 is ASCII; a multi-byte UTF-8 char in a -A signature or -G seal group
+        // must fail closed, not panic on a non-char-boundary slice.
+        assert!(parse_attachment("-AAB\u{42c}".as_bytes()).is_err());
+        assert!(parse_delegated_attachment("-AAB\u{42c}".as_bytes()).is_err());
+
+        // -G source-seal group with a multi-byte char straddling the Seqner slice.
+        let mut seal = String::from("-GAB");
+        seal.push_str(&"A".repeat(23));
+        seal.push('\u{42c}');
+        assert!(parse_source_seal_couples(seal.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn cesr_length_tables_match_cesride_encoding() {
+        use cesride::{Diger, Matter, matter};
+        // saider_qb64_len: pin the Blake3-256 SAID code auths emits to cesride's width.
+        let digest = Diger::new(
+            None,
+            Some(matter::Codex::Blake3_256),
+            Some(&[0u8; 32]),
+            None,
+            None,
+            None,
+        )
+        .and_then(|d| d.qb64())
+        .unwrap();
+        assert_eq!(saider_qb64_len(digest.as_bytes()[0]), Some(digest.len()));
+
+        // indexer_sizage: pin the single-index (`A`) and dual-index (`2A`) Ed25519 siger
+        // widths auths emits, by measuring a real encoded siger (after the 4-char counter).
+        for prior_index in [None, Some(1u32)] {
+            let att = serialize_attachment(&[IndexedSignature {
+                index: 0,
+                prior_index,
+                sig: vec![0u8; 64],
+            }])
+            .unwrap();
+            let att = std::str::from_utf8(&att).unwrap();
+            let siger = &att[4..];
+            let code = &siger[..indexer_hard_len(siger.as_bytes()[0])];
+            assert_eq!(
+                indexer_sizage(code).map(|(fs, _)| fs),
+                Some(siger.len()),
+                "indexer_sizage({code:?}) drifted from cesride's {} chars",
+                siger.len()
+            );
+        }
     }
 
     #[test]

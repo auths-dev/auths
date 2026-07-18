@@ -528,7 +528,7 @@ compile_error!(
 /// Selection is compile-time:
 /// - default build → [`crate::ring_provider::RingCryptoProvider`]
 /// - `--features fips` → [`crate::aws_lc_provider::AwsLcProvider`] (AWS-LC-FIPS)
-/// - `--features cnsa` → (fn-128.T4; TODO: returns Ring until CnsaProvider lands)
+/// - `--features cnsa` → [`crate::cnsa_provider::CnsaProvider`] (P-384 / AES-256-GCM / SHA-384; rejects P-256/ChaCha/SHA-256)
 ///
 /// Domain code SHOULD route cryptographic operations through this function
 /// rather than constructing `p256::ecdsa::SigningKey` (or equivalent) directly —

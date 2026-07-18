@@ -1,4 +1,3 @@
-pub mod dialogs;
 pub mod format;
 pub mod ident;
 

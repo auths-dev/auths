@@ -116,6 +116,115 @@ pub fn load_presentation_inputs(
     })
 }
 
+/// The wire-ready evidence a relying party needs beside the `Auths-Presentation`
+/// header: the credential, every KEL slice with per-event CESR signature
+/// attachments (base64), and the TEL. Field names match the verifier's JSON
+/// contract (`VerifyPresentationRequest`), so a relying party splices this
+/// straight into a verify request without re-mapping.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresentationEvidence {
+    /// The credential body + issuer signature, contract-shaped.
+    pub credential: EvidenceCredential,
+    /// The issuer identity's KEL (oldest first).
+    pub issuer_kel: Vec<Event>,
+    /// One base64 CESR signature attachment per issuer event.
+    pub issuer_kel_attachments_b64: Vec<String>,
+    /// The subject (holder) AID's KEL.
+    pub subject_kel: Vec<Event>,
+    /// One base64 CESR signature attachment per subject event.
+    pub subject_kel_attachments_b64: Vec<String>,
+    /// The subject's delegator KEL, or empty for a root subject.
+    pub delegator_kel: Vec<Event>,
+    /// One base64 CESR signature attachment per delegator event.
+    pub delegator_kel_attachments_b64: Vec<String>,
+    /// The credential's TEL (`vcp`/`iss`/optional `rev`).
+    pub tel: Vec<TelEvent>,
+}
+
+/// The contract's `credential` object: ACDC body + base64 issuer signature.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceCredential {
+    /// The ACDC body.
+    pub acdc: auths_keri::Acdc,
+    /// The issuer's detached signature over the ACDC wire bytes, base64.
+    pub signature_b64: String,
+}
+
+/// Load the full wire-ready presentation evidence for `credential_said`.
+///
+/// Same resolution as [`load_presentation_inputs`], plus the per-event signature
+/// attachments each KEL carries in the registry — the parts a relying party's
+/// verifier authenticates before any replay. A KEL event without a stored
+/// attachment fails closed: evidence that cannot be authenticated must not be
+/// exported as if it could.
+///
+/// Args:
+/// * `ctx`: The SDK context (registry + clock + keychain).
+/// * `issuer_alias`: The keychain alias of the credential's issuer.
+/// * `credential_said`: The SAID of the credential to export evidence for.
+///
+/// Usage:
+/// ```ignore
+/// let evidence = load_presentation_evidence(&ctx, &alias, &said)?;
+/// let json = serde_json::to_string(&evidence)?;
+/// ```
+pub fn load_presentation_evidence(
+    ctx: &AuthsContext,
+    issuer_alias: &KeyAlias,
+    credential_said: &str,
+) -> Result<PresentationEvidence, CredentialError> {
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD;
+
+    let inputs = load_presentation_inputs(ctx, issuer_alias, credential_said)?;
+    let issuer_prefix =
+        crate::domains::credentials::issue::resolve_issuer_prefix(ctx, issuer_alias)?;
+    let subject_prefix = Prefix::new_unchecked(inputs.signed.acdc.a.i.to_string());
+    let delegator_prefix = subject_delegator_prefix(&inputs.subject_kel);
+
+    let attachments = |prefix: &Prefix, kel: &[Event]| -> Result<Vec<String>, CredentialError> {
+        kel.iter()
+            .map(|event| {
+                let seq = event.sequence().value();
+                ctx.registry
+                    .get_attachment(prefix, seq)
+                    .map_err(|e| CredentialError::StaleOrUnresolvable {
+                        reason: format!("attachment read failed for {prefix} seq {seq}: {e}"),
+                    })?
+                    .map(|bytes| b64.encode(bytes))
+                    .ok_or_else(|| CredentialError::StaleOrUnresolvable {
+                        reason: format!(
+                            "no signature attachment stored for {prefix} seq {seq} —                              this KEL cannot be exported as authenticatable evidence"
+                        ),
+                    })
+            })
+            .collect()
+    };
+
+    let issuer_kel_attachments_b64 = attachments(&issuer_prefix, &inputs.issuer_kel)?;
+    let subject_kel_attachments_b64 = attachments(&subject_prefix, &inputs.subject_kel)?;
+    let delegator_kel_attachments_b64 = match &delegator_prefix {
+        Some(delegator) => attachments(delegator, &inputs.subject_delegator_kel)?,
+        None => Vec::new(),
+    };
+
+    Ok(PresentationEvidence {
+        credential: EvidenceCredential {
+            acdc: inputs.signed.acdc.clone(),
+            signature_b64: b64.encode(&inputs.signed.signature),
+        },
+        issuer_kel: inputs.issuer_kel,
+        issuer_kel_attachments_b64,
+        subject_kel: inputs.subject_kel,
+        subject_kel_attachments_b64,
+        delegator_kel: inputs.subject_delegator_kel,
+        delegator_kel_attachments_b64,
+        tel: inputs.tel,
+    })
+}
+
 /// The delegator prefix of a delegated subject (from its `dip`/`drt`), or `None` when the
 /// subject is a non-delegated root identity.
 fn subject_delegator_prefix(subject_kel: &[Event]) -> Option<Prefix> {

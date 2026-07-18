@@ -2,7 +2,9 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::signing::PrefilledPassphraseProvider;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, get_platform_keychain_with_config};
 use auths_crypto::decode_seed_hex;
 use auths_sdk::context::AuthsContext;
@@ -11,6 +13,7 @@ use auths_sdk::signing::{
     ArtifactSigningParams, SigningKeyMaterial, sign_artifact as sdk_sign_artifact,
     sign_artifact_raw,
 };
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };

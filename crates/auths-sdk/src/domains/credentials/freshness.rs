@@ -12,7 +12,7 @@
 //! - [`RootRefresh`] — drives the port on an interval and tracks a per-delegator freshness
 //!   watermark. The caller's scheduler ticks [`RootRefresh::refresh_if_due`]; the SDK spawns no
 //!   thread of its own (no hidden runtime, clock injected at every call).
-//! - [`FreshnessPolicy`] / [`enforce_freshness`] — the fail-closed (default) vs fail-open
+//! - [`RevocationFreshnessPolicy`] / [`enforce_freshness`] — the fail-closed (default) vs fail-open
 //!   decision over how stale the local copy is, surfacing the age so the HTTP boundary can log it.
 //!
 //! ## Staleness bound
@@ -69,12 +69,12 @@ pub enum RefreshOutcome {
 
 /// How to treat a presentation whose delegator copy is staler than the poll interval.
 ///
-/// The default is [`FreshnessPolicy::FailClosed`] (high-assurance: a stale or never-pulled copy
-/// cannot honor a presentation, since a `rev` may have landed unseen). [`FreshnessPolicy::FailOpen`]
+/// The default is [`RevocationFreshnessPolicy::FailClosed`] (high-assurance: a stale or never-pulled copy
+/// cannot honor a presentation, since a `rev` may have landed unseen). [`RevocationFreshnessPolicy::FailOpen`]
 /// trades that for availability within an explicit, bounded staleness budget — the boundary MUST
 /// log the surfaced age so the residual risk is observable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum FreshnessPolicy {
+pub enum RevocationFreshnessPolicy {
     /// Reject any presentation whose delegator copy is staler than the interval (default).
     #[default]
     FailClosed,
@@ -119,7 +119,7 @@ impl FreshnessDecision {
 /// Decide whether a delegator copy is fresh enough to honor, given the policy.
 ///
 /// A copy within `staleness_bound` is [`FreshnessDecision::Fresh`]. A staler copy is rejected
-/// under [`FreshnessPolicy::FailClosed`]; under [`FreshnessPolicy::FailOpen`] it is honored up to
+/// under [`RevocationFreshnessPolicy::FailClosed`]; under [`RevocationFreshnessPolicy::FailOpen`] it is honored up to
 /// `max_staleness` (returning the age to log) and rejected beyond it. A delegator never refreshed
 /// locally is [`FreshnessDecision::NeverRefreshed`] (rejected by both policies — there is no copy
 /// whose staleness could be bounded).
@@ -136,7 +136,7 @@ impl FreshnessDecision {
 /// if !decision.is_honored() { return deny(); }
 /// ```
 pub fn enforce_freshness(
-    policy: &FreshnessPolicy,
+    policy: &RevocationFreshnessPolicy,
     last_refreshed: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
     staleness_bound: Duration,
@@ -149,8 +149,8 @@ pub fn enforce_freshness(
         return FreshnessDecision::Fresh { age };
     }
     match policy {
-        FreshnessPolicy::FailClosed => FreshnessDecision::StaleRejected { age },
-        FreshnessPolicy::FailOpen { max_staleness } => {
+        RevocationFreshnessPolicy::FailClosed => FreshnessDecision::StaleRejected { age },
+        RevocationFreshnessPolicy::FailOpen { max_staleness } => {
             if age <= *max_staleness {
                 FreshnessDecision::StaleHonored {
                     age,
@@ -208,7 +208,7 @@ impl<S: DelegatorLogSource> RootRefresh<S> {
     ///
     /// Returns [`RefreshOutcome::Refreshed`] (and advances the watermark to `now`) when a pull
     /// ran, or [`RefreshOutcome::Skipped`] when the copy is still within the interval. A source
-    /// error propagates so the caller can apply the [`FreshnessPolicy`] (fail-closed by default).
+    /// error propagates so the caller can apply the [`RevocationFreshnessPolicy`] (fail-closed by default).
     ///
     /// Args:
     /// * `delegator`: The delegator AID to refresh.
@@ -236,10 +236,40 @@ impl<S: DelegatorLogSource> RootRefresh<S> {
     pub fn freshness(
         &self,
         delegator: &Prefix,
-        policy: &FreshnessPolicy,
+        policy: &RevocationFreshnessPolicy,
         now: DateTime<Utc>,
     ) -> FreshnessDecision {
         enforce_freshness(policy, self.last_refreshed(delegator), now, self.interval)
+    }
+}
+
+/// A per-delegator revocation-freshness source the presentation gate consults before honoring a
+/// credential: it answers how stale the locally-held copy of the delegator's logs is. Object-safe,
+/// so an [`AuthsContext`](crate::context::AuthsContext) can hold an optional `Arc<dyn …>` without a
+/// generic; production pairs a [`RootRefresh`] with a [`RevocationFreshnessPolicy`] via
+/// [`PolicyBoundRefresh`], a test injects a fake.
+pub trait RevocationFreshnessSource: Send + Sync {
+    /// The freshness of the locally-held copy of `delegator`'s logs as of `now`.
+    ///
+    /// Args:
+    /// * `delegator`: the delegator (root) AID whose logs gate the delegated subject.
+    /// * `now`: the current time, injected at the boundary.
+    fn freshness(&self, delegator: &Prefix, now: DateTime<Utc>) -> FreshnessDecision;
+}
+
+/// Pairs a [`RootRefresh`] with the [`RevocationFreshnessPolicy`] it enforces, so it can back an
+/// [`AuthsContext`]'s revocation-freshness gate. The live poll against a remote registry is the
+/// deployment's to schedule (`refresh_if_due`); this only reads the watermark that poll maintains.
+pub struct PolicyBoundRefresh<S: DelegatorLogSource> {
+    /// The refresh driver tracking each delegator's freshness watermark.
+    pub refresh: RootRefresh<S>,
+    /// The fail-closed / fail-open policy applied to a stale copy.
+    pub policy: RevocationFreshnessPolicy,
+}
+
+impl<S: DelegatorLogSource> RevocationFreshnessSource for PolicyBoundRefresh<S> {
+    fn freshness(&self, delegator: &Prefix, now: DateTime<Utc>) -> FreshnessDecision {
+        self.refresh.freshness(delegator, &self.policy, now)
     }
 }
 
@@ -342,8 +372,8 @@ mod tests {
 
     #[test]
     fn fail_closed_is_the_default_and_rejects_stale_and_absent() {
-        let policy = FreshnessPolicy::default();
-        assert_eq!(policy, FreshnessPolicy::FailClosed);
+        let policy = RevocationFreshnessPolicy::default();
+        assert_eq!(policy, RevocationFreshnessPolicy::FailClosed);
         let bound = Duration::seconds(30);
 
         let fresh = enforce_freshness(&policy, Some(t0()), t0() + Duration::seconds(5), bound);
@@ -361,7 +391,7 @@ mod tests {
 
     #[test]
     fn fail_open_honors_within_budget_and_rejects_beyond() {
-        let policy = FreshnessPolicy::FailOpen {
+        let policy = RevocationFreshnessPolicy::FailOpen {
             max_staleness: Duration::seconds(300),
         };
         let bound = Duration::seconds(30);
@@ -383,7 +413,8 @@ mod tests {
         let err = refresh.refresh_if_due(&delegator(), t0()).unwrap_err();
         assert!(matches!(err, RefreshError::Unreachable(_)));
         // A failed pull does not advance the watermark, so freshness stays fail-closed.
-        let decision = refresh.freshness(&delegator(), &FreshnessPolicy::FailClosed, t0());
+        let decision =
+            refresh.freshness(&delegator(), &RevocationFreshnessPolicy::FailClosed, t0());
         assert_eq!(decision, FreshnessDecision::NeverRefreshed);
     }
 }

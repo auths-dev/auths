@@ -1,5 +1,4 @@
 use anyhow::Result;
-use auths_sdk::registration::DEFAULT_REGISTRY_URL;
 use std::path::PathBuf;
 
 use crate::commands::artifact::publish::handle_publish;
@@ -33,8 +32,8 @@ pub struct PublishCommand {
     pub package: Option<String>,
 
     /// Registry URL to publish to.
-    #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-    pub registry: String,
+    #[arg(long, env = "AUTHS_REGISTRY_URL")]
+    pub registry: Option<String>,
 }
 
 impl ExecutableCommand for PublishCommand {
@@ -58,11 +57,14 @@ impl ExecutableCommand for PublishCommand {
                         )?,
                         None,
                         None,
-                        crate::commands::git_helpers::resolve_head_silent(),
+                        // Auto-signing a file for publish does not bind the ambient git HEAD: it is
+                        // unrelated to the file. Bind one with `auths artifact sign --commit <sha>`.
+                        None,
                         ctx.repo_path.clone(),
                         ctx.passphrase_provider.clone(),
                         &ctx.env_config,
                         &None,
+                        false,
                         false,
                     )?;
                 }
@@ -71,6 +73,7 @@ impl ExecutableCommand for PublishCommand {
             (None, None) => anyhow::bail!("Provide an artifact file or --signature path"),
         };
 
-        handle_publish(&sig_path, self.package.as_deref(), &self.registry)
+        let registry = crate::commands::verify_helpers::require_registry(self.registry.clone())?;
+        handle_publish(&sig_path, self.package.as_deref(), &registry)
     }
 }

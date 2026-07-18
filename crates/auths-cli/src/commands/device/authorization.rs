@@ -381,8 +381,19 @@ pub fn handle_device(
 
 fn display_link_result(
     result: &auths_sdk::result::DeviceLinkResult,
-    _device_did: &str,
+    device_did: &str,
 ) -> Result<()> {
+    if is_json_mode() {
+        return JsonResponse::success(
+            "device link",
+            &serde_json::json!({
+                "device": device_did,
+                "attestation_id": result.attestation_id,
+            }),
+        )
+        .print()
+        .map_err(anyhow::Error::from);
+    }
     println!(
         "\n✅ Device authorized. (Attestation: {})",
         result.attestation_id

@@ -97,12 +97,12 @@ fn extract_body_length(bytes: &[u8]) -> Result<usize, KeriTranslationError> {
         ))?;
 
     let hex_start = pos + marker.len();
-    if hex_start + 6 > header.len() {
-        return Err(KeriTranslationError::DecodingFailed(
-            "version string truncated".into(),
-        ));
-    }
-    let hex_str = &header[hex_start..hex_start + 6];
+    let hex_str =
+        header
+            .get(hex_start..hex_start + 6)
+            .ok_or(KeriTranslationError::DecodingFailed(
+                "version string truncated or not char-aligned".into(),
+            ))?;
     usize::from_str_radix(hex_str, 16).map_err(|e| {
         KeriTranslationError::DecodingFailed(format!("invalid hex size in version string: {e}"))
     })

@@ -25,7 +25,7 @@ set -u
 PROG="${RECURVE_BIN:-recurve}"
 PARALLEL="${PARALLEL:-2}"
 CAP="${CAP:-12}"
-TREE="${TREE_DIR:-../auths}"
+TREE="${TREE_DIR:-.}"
 : "${AGENT_CMD:?set AGENT_CMD to your agent invocation (reads prompt on stdin)}"
 RUN_ID="parallel-$$"
 
@@ -46,7 +46,15 @@ landed_total=0
 for round in $(seq 1 "$CAP"); do
   LANES_JSON="$($PROG next --json --lanes "$PARALLEL")"
   N="$(py 'import json,sys; print(len(json.loads(sys.argv[1])["lanes"]))' "$LANES_JSON")"
-  if [ "$N" -eq 0 ]; then echo "no work left. Halting."; break; fi
+  if [ "$N" -eq 0 ]; then
+    DRAFTS="$($PROG next --json | py 'import json,sys; print(sum(x["pending"] for x in json.load(sys.stdin).get("drafts", [])))')"
+    if [ "${DRAFTS:-0}" -gt 0 ]; then
+      echo "no open gaps, but $DRAFTS draft(s) pend — arm the next wave with the serial loop (workflows/burndown.sh arms automatically) or author probes + \`$PROG baseline <suite>\`. Halting."
+    else
+      echo "no work left. Halting."
+    fi
+    break
+  fi
   BASE="$(git -C "$TREE" rev-parse HEAD)"
   WTROOT="$(mktemp -d)"
   echo "round $round/$CAP: $N lane(s) from base ${BASE:0:10}"

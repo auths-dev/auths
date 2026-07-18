@@ -1,15 +1,18 @@
 use auths_rp::{Denied, VerifiedPrincipal};
 use auths_verifier::{
-    CanonicalDid, Capability, CredentialVerdict, IdentityDID, PresentationVerdict,
+    CanonicalDid, Capability, CredentialVerdict, Freshness, IdentityDID, PresentationVerdict,
 };
 
 fn valid_verdict(subject: &str, caps: &[&str]) -> PresentationVerdict {
     PresentationVerdict::Valid {
         issuer: IdentityDID::parse("did:keri:Eissuer").unwrap(),
         subject: CanonicalDid::parse(subject).unwrap(),
+        subject_root: CanonicalDid::parse(subject).unwrap(),
         caps: caps.iter().map(|c| Capability::parse(c).unwrap()).collect(),
         role: None,
         expires_at: None,
+        freshness: Freshness::Unknown,
+        as_of: 0,
     }
 }
 

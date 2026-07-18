@@ -79,6 +79,15 @@ impl FakeGitConfigProvider {
 }
 
 impl GitConfigProvider for FakeGitConfigProvider {
+    fn get(&self, key: &str) -> Result<Option<String>, GitConfigError> {
+        Ok(self
+            .configs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(key)
+            .cloned())
+    }
+
     fn set(&self, key: &str, value: &str) -> Result<(), GitConfigError> {
         if let Some(msg) = self
             .fail_on_set

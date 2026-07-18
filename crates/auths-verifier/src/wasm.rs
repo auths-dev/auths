@@ -435,24 +435,27 @@ pub async fn wasm_validate_kel_json(
 ///
 /// Args:
 /// * `kel_json`: JSON array of KEL events.
+/// * `attachments_json`: JSON array of hex CESR signature attachments, one per event —
+///   the KEL authenticates via `validate_signed_kel` before the link check (RT-002).
 /// * `attestation_json`: JSON attestation linking identity to device.
 /// * `device_did`: Expected device DID string (e.g. `"did:key:z6Mk..."`).
 ///
 /// Usage:
 /// ```ignore
-/// let result = verifyDeviceLink(kelJson, attestationJson, "did:key:z6Mk...").await;
+/// let result = verifyDeviceLink(kelJson, attachmentsJson, attestationJson, "did:key:z6Mk...").await;
 /// // result: {"valid": true, "key_state": {...}, "seal_sequence": 2}
 /// // or:     {"valid": false, "error": "..."}
 /// ```
 #[wasm_bindgen(js_name = verifyDeviceLink)]
 pub async fn wasm_verify_device_link(
     kel_json: &str,
+    attachments_json: &str,
     attestation_json: &str,
     device_did: &str,
 ) -> Result<String, JsValue> {
     console_log!("WASM: Verifying device link for {}", device_did);
 
-    if kel_json.len() > MAX_JSON_BATCH_SIZE {
+    if kel_json.len() > MAX_JSON_BATCH_SIZE || attachments_json.len() > MAX_JSON_BATCH_SIZE {
         return Err(JsValue::from_str(&format!(
             "KEL JSON too large: {} bytes, max {}",
             kel_json.len(),
@@ -469,6 +472,23 @@ pub async fn wasm_verify_device_link(
 
     let events = auths_keri::parse_kel_json(kel_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse KEL JSON: {}", e)))?;
+    let attachments: Vec<String> = serde_json::from_str(attachments_json)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse attachments JSON: {}", e)))?;
+    let attachment_bytes: Vec<Vec<u8>> = attachments
+        .iter()
+        .map(|att_hex| {
+            hex::decode(att_hex)
+                .map_err(|e| JsValue::from_str(&format!("Invalid attachment hex: {}", e)))
+        })
+        .collect::<Result<_, JsValue>>()?;
+
+    // RT-002 ingestion boundary: the untrusted KEL authenticates (per-event
+    // signatures folded into the replay) before the structural link check runs.
+    let signed = auths_keri::pair_kel_attachments(events, &attachment_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Invalid CESR attachment: {}", e)))?;
+    auths_keri::validate_signed_kel(&signed, None)
+        .map_err(|e| JsValue::from_str(&format!("KEL authentication failed: {}", e)))?;
+    let events: Vec<auths_keri::Event> = signed.into_iter().map(|se| se.event).collect();
 
     let attestation: Attestation = serde_json::from_str(attestation_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse attestation JSON: {}", e)))?;

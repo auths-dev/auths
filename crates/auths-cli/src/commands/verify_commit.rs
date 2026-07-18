@@ -1,6 +1,5 @@
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
-use auths_infra_http::HttpOobiResolver;
 use auths_keri::Event;
 use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
 use auths_sdk::core_config::EnvironmentConfig;
@@ -41,20 +40,6 @@ pub struct VerifyCommitCommand {
     #[arg(long, num_args = 1..)]
     pub witness_keys: Vec<String>,
 
-    /// Fetch a signer's KEL from this git remote when it is absent locally
-    /// (opt-in). The local registry stays the trusted floor — a remote can only
-    /// advance the key-state, never roll it back. Without this flag, resolution
-    /// is local-only (no network).
-    #[arg(long)]
-    pub remote: Option<String>,
-
-    /// Fetch signer KELs over HTTP from this OOBI base URL (e.g.
-    /// `https://registry.example`). SSRF-hardened: HTTPS-only, no redirect
-    /// following, private/loopback hosts blocked. Takes precedence over
-    /// `--remote`; the resolved KEL is still prefix-bound + replayed locally.
-    #[arg(long)]
-    pub oobi: Option<String>,
-
     /// Fail verification when the signer's root KEL has not reached witness
     /// quorum (fail-closed). Default: warn and continue (trust-on-first-sight).
     #[arg(long = "require-witnesses")]
@@ -62,7 +47,9 @@ pub struct VerifyCommitCommand {
 
     /// Path to an identity bundle JSON whose root `did:keri:` is pinned as a trusted
     /// root for this verification (CI/stateless commit verification). The bundle is
-    /// freshness-checked; an unreadable or stale bundle fails closed.
+    /// freshness-checked; an unreadable or stale bundle fails closed. When absent,
+    /// a committed `.auths/ci-bundle.json` at the repo root is discovered and used
+    /// the same way — that is how a plain clone verifies with no flags.
     #[arg(long, value_parser)]
     pub identity_bundle: Option<PathBuf>,
 }
@@ -183,10 +170,14 @@ pub async fn handle_verify_commit(
     {
         pinned_roots.push(own_root);
     }
-    let mut bundle_kel: Option<BundleKel> = None;
-    if let Some(bundle_path) = &cmd.identity_bundle {
+    let mut bundle_kels: Vec<BundleKel> = Vec::new();
+    let bundle_path = cmd
+        .identity_bundle
+        .clone()
+        .or_else(super::verify_helpers::discover_project_bundle);
+    if let Some(bundle_path) = &bundle_path {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
-            Ok((root, kel, freshness_age)) => {
+            Ok((root, kel, device_kels)) => {
                 // Evidence-only (RT-005): the bundle is *evidence for* a root that
                 // must be pinned independently (`.auths/roots` or self-trust). It
                 // never becomes its own trust anchor — otherwise the anchor and the
@@ -207,12 +198,18 @@ pub async fn handle_verify_commit(
                     );
                 }
                 if !kel.is_empty() {
-                    bundle_kel = Some(BundleKel {
+                    bundle_kels.push(BundleKel {
                         did: root,
                         events: kel,
-                        freshness_age,
                     });
                 }
+                // Device KELs were seal-checked against the root by the parse;
+                // each resolves its own delegated signer DID statelessly.
+                bundle_kels.extend(
+                    device_kels
+                        .into_iter()
+                        .map(|(did, events)| BundleKel { did, events }),
+                );
             }
             Err(e) => return handle_error(&cmd, 2, &e),
         }
@@ -236,7 +233,7 @@ pub async fn handle_verify_commit(
                 &receipt_lookup,
                 &sdk_ctx,
                 &cmd,
-                bundle_kel.as_ref(),
+                &bundle_kels,
                 commit_ref,
             )
             .await,
@@ -255,9 +252,6 @@ struct BundleKel {
     /// The bundle's KEL events, oldest first — already signature-authenticated by
     /// [`load_bundle_trust`] (RT-002).
     events: Vec<Event>,
-    /// The bundle's age at load time; the verdict's freshness is graded against it so the
-    /// verifier's policy caps trust, not the bundle's self-declared TTL.
-    freshness_age: std::time::Duration,
 }
 
 /// Load an identity bundle from `path` and return the trusted root `did:keri:` it pins
@@ -269,16 +263,22 @@ struct BundleKel {
 fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
-) -> std::result::Result<(String, Vec<Event>, std::time::Duration), String> {
+) -> std::result::Result<
+    (
+        String,
+        Vec<Event>,
+        Vec<auths_verifier::AuthenticatedDeviceKel>,
+    ),
+    String,
+> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("could not read identity bundle {path:?}: {e}"))?;
     let bundle: IdentityBundle = serde_json::from_str(&content)
         .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
     let trust = BundleTrust::parse(&bundle, now)
         .map_err(|e| format!("identity bundle {path:?} is not a usable trust anchor: {e}"))?;
-    let age = (now - bundle.bundle_timestamp).to_std().unwrap_or_default();
-    let (root, kel) = trust.into_parts();
-    Ok((root, kel, age))
+    let (root, kel, device_kels) = trust.into_parts();
+    Ok((root, kel, device_kels))
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -372,50 +372,34 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
         })
 }
 
-/// Resolve a signer's KEL for verification, honoring the transport flags.
-///
-/// `--oobi` (SSRF-hardened HTTP) takes precedence; otherwise `--remote` (git) or
-/// local-first via the SDK chain. The prefix-binding guard is applied to the HTTP
-/// result here (the SDK chain applies it for local/git internally), so every
-/// transport returns a KEL whose inception SAID matches the requested DID.
+/// Resolve a signer's KEL for verification: committed/explicit bundle first,
+/// then the local registry. There is no network transport — a KEL arrives
+/// either in the clone (the bundle) or in the local trusted store, and the
+/// prefix-binding guard is applied to the bundle path here (the SDK chain
+/// applies it for local resolution internally).
 ///
 /// Args:
 /// * `registry`: The local registry backend (the trusted floor).
-/// * `cmd`: The verify command (carries `--remote` / `--oobi`).
+/// * `bundle_kels`: The authenticated identity-bundle KELs (root + devices), when loaded.
 /// * `did`: The `did:keri:` to resolve.
 async fn resolve_signer_kel(
     registry: &dyn RegistryBackend,
-    cmd: &VerifyCommitCommand,
-    bundle_kel: Option<&BundleKel>,
+    bundle_kels: &[BundleKel],
     did: &str,
 ) -> Result<Vec<Event>, String> {
-    // Stateless first: a bundle that carries the signer's KEL satisfies
-    // resolution without any identity store (CI runners). Prefix binding is
-    // still enforced, so a tampered bundle cannot smuggle a foreign KEL.
-    if let Some(bundle) = bundle_kel
-        && bundle.did == did
-    {
+    // Stateless first: a bundle that carries the signer's KEL (the root's or a
+    // delegated device's) satisfies resolution without any identity store (CI
+    // runners). Prefix binding is still enforced, so a tampered bundle cannot
+    // smuggle a foreign KEL.
+    if let Some(bundle) = bundle_kels.iter().find(|b| b.did == did) {
         let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
         auths_sdk::keri::verify_prefix_binding(&prefix, &bundle.events)
             .map_err(|e| e.to_string())?;
         return Ok(bundle.events.clone());
     }
-    if let Some(oobi_base) = &cmd.oobi {
-        let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
-        let resolver = HttpOobiResolver::new(oobi_base.clone()).map_err(|e| e.to_string())?;
-        let events = resolver
-            .fetch_kel(&prefix)
-            .await
-            .map_err(|e| e.to_string())?;
-        auths_sdk::keri::verify_prefix_binding(&prefix, &events).map_err(|e| e.to_string())?;
-        Ok(events)
-    } else {
-        let chain = match &cmd.remote {
-            Some(url) => auths_sdk::keri::KelResolverChain::with_remote(registry, url.clone()),
-            None => auths_sdk::keri::KelResolverChain::local(registry),
-        };
-        chain.resolve_kel(did).map_err(|e| e.to_string())
-    }
+    auths_sdk::keri::KelResolverChain::local(registry)
+        .resolve_kel(did)
+        .map_err(|e| e.to_string())
 }
 
 /// Verify a single commit against the replayed KEL.
@@ -432,7 +416,7 @@ async fn verify_one_commit(
     receipt_lookup: &dyn WitnessReceiptLookup,
     sdk_ctx: &auths_sdk::context::AuthsContext,
     cmd: &VerifyCommitCommand,
-    bundle_kel: Option<&BundleKel>,
+    bundle_kels: &[BundleKel],
     commit_ref: &str,
 ) -> VerifyCommitResult {
     let sha = match resolve_commit_sha(commit_ref) {
@@ -466,11 +450,10 @@ async fn verify_one_commit(
             }
         };
 
-    // KEL sourcing is an SDK/adapter concern: local-first, with an opt-in git
-    // remote (`--remote`) or an SSRF-hardened HTTP OOBI host (`--oobi`). The
-    // prefix-binding guard is applied regardless of transport. The command stays
-    // presentation-thin.
-    let device_kel = match resolve_signer_kel(registry, cmd, bundle_kel, &device_did).await {
+    // KEL sourcing is an SDK/adapter concern: the committed bundle or the local
+    // registry — never a network fetch. The prefix-binding guard is applied
+    // regardless of source. The command stays presentation-thin.
+    let device_kel = match resolve_signer_kel(registry, bundle_kels, &device_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -493,7 +476,7 @@ async fn verify_one_commit(
         Some(delegator) => format!("did:keri:{delegator}"),
         None => root_did,
     };
-    let root_kel = match resolve_signer_kel(registry, cmd, bundle_kel, &root_did).await {
+    let root_kel = match resolve_signer_kel(registry, bundle_kels, &root_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -527,15 +510,16 @@ async fn verify_one_commit(
         now,
     )
     .await;
-    // When the signer was resolved from an identity bundle, grade the verdict's freshness
-    // from the bundle's age against the verifier's policy (ADR 009): the policy caps trust,
-    // not the bundle's own TTL. A direct verify carries no such signal and stays Unknown.
-    let verdict = match bundle_kel {
-        Some(bk) => witnessed.verdict.with_freshness(
-            &FreshnessPolicy::default(),
-            FreshnessEvidence::SourceAge(bk.freshness_age),
-        ),
-        None => witnessed.verdict,
+    // A bundle's timestamp and TTL are producer-set, unsigned fields; an offline verifier holds
+    // no source it can trust to confirm freshness from them. Absent a verifier-supplied fresher
+    // tip, the strongest honest grade is Unknown — the policy decides whether to tolerate it
+    // (ADR 009 D5). A direct verify carries no such signal and likewise stays Unknown.
+    let verdict = if bundle_kels.is_empty() {
+        witnessed.verdict
+    } else {
+        witnessed
+            .verdict
+            .with_freshness(&FreshnessPolicy::default(), FreshnessEvidence::Offline)
     };
     let mut result = verdict_to_result(sha.clone(), verdict);
     match witnessed.witness {
@@ -642,18 +626,17 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
             result.signer = Some(signer_did);
             result.error = if trusted {
                 None
+            } else if duplicitous_root {
+                Some(format!(
+                    "Root {root_did} shows KEL duplicity (a fork) — not trusted. \
+                     Resolve with `auths device remove`."
+                ))
             } else {
                 Some(format!(
                     "commit verified but its freshness is {freshness:?}; the supplied slice is \
                      older than the verifier's trust window"
                 ))
             };
-            if duplicitous_root {
-                result.warnings.push(format!(
-                    "Root {root_did} shows KEL duplicity (a fork) — trusting the first event \
-                     seen. Resolve with `auths device remove`."
-                ));
-            }
         }
         CommitVerdict::Unsigned => {
             result.error = Some("No signature found".to_string());
@@ -1098,8 +1081,9 @@ mod tests {
     }
 
     #[test]
-    fn verify_output_flags_fork() {
-        // A Valid verdict on a duplicitous root must surface a non-fatal fork warning.
+    fn verify_output_fails_closed_on_fork() {
+        // A Valid verdict on a duplicitous root must FAIL CLOSED (not trusted) and explain why —
+        // the relying party cannot tell which branch is real.
         let result = verdict_to_result(
             "sha".into(),
             CommitVerdict::Valid {
@@ -1110,14 +1094,16 @@ mod tests {
                 freshness: auths_verifier::freshness::Freshness::Unknown,
             },
         );
-        assert!(result.valid);
+        assert!(!result.valid, "a duplicitous root must fail closed");
         assert!(
             result
-                .warnings
-                .iter()
-                .any(|w| w.contains("fork") || w.contains("duplicity")),
-            "expected a fork/duplicity warning, got {:?}",
-            result.warnings
+                .error
+                .as_deref()
+                .unwrap_or_default()
+                .to_lowercase()
+                .contains("duplicity"),
+            "expected a duplicity error, got {:?}",
+            result.error
         );
     }
 

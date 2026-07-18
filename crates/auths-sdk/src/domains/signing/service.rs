@@ -278,6 +278,14 @@ pub enum ArtifactSigningError {
     /// The provided commit SHA has an invalid format.
     #[error("invalid commit SHA: {0} (expected 40 or 64 hex characters)")]
     InvalidCommitSha(String),
+
+    /// The signing device's delegated identity has been revoked by the root.
+    #[error("device revoked: {0}")]
+    DeviceRevoked(String),
+
+    /// The signing key is no longer the current key in the identity's KEL (rotated out).
+    #[error("signing key rotated out of the KEL: {0}")]
+    KeyRotatedOut(String),
 }
 
 impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
@@ -290,6 +298,8 @@ impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
             Self::AttestationFailed(_) => "AUTHS-E5854",
             Self::ResignFailed(_) => "AUTHS-E5855",
             Self::InvalidCommitSha(_) => "AUTHS-E5856",
+            Self::DeviceRevoked(_) => "AUTHS-E5857",
+            Self::KeyRotatedOut(_) => "AUTHS-E5858",
         }
     }
 
@@ -309,6 +319,12 @@ impl auths_core::error::AuthsErrorInfo for ArtifactSigningError {
             }
             Self::InvalidCommitSha(_) => {
                 Some("Provide a full SHA-1 (40 hex chars) or SHA-256 (64 hex chars) commit hash")
+            }
+            Self::DeviceRevoked(_) => {
+                Some("This device has been removed; pair a new device or sign from an active one")
+            }
+            Self::KeyRotatedOut(_) => {
+                Some("This key was rotated out; sign with the identity's current key")
             }
         }
     }
@@ -360,6 +376,10 @@ struct ResolvedKey {
     curve: auths_crypto::CurveType,
     /// True if this key is backed by hardware (Secure Enclave, HSM).
     is_hardware: bool,
+    /// The identity (KERI AID) the stored key belongs to, when known. Present for a
+    /// software key loaded by alias; `None` for direct seeds and hardware backends,
+    /// which carry no resolvable registry identity here.
+    identity_did: Option<IdentityDID>,
 }
 
 fn resolve_optional_key(
@@ -388,10 +408,11 @@ fn resolve_optional_key(
                     public_key_bytes: pubkey,
                     curve,
                     is_hardware: true,
+                    identity_did: None,
                 }));
             }
 
-            let (_, _role, encrypted) = keychain
+            let (device_did, _role, encrypted) = keychain
                 .load_key(alias)
                 .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
             let passphrase = passphrase_provider
@@ -412,6 +433,7 @@ fn resolve_optional_key(
                 public_key_bytes: pubkey.to_vec(),
                 curve,
                 is_hardware: false,
+                identity_did: Some(device_did),
             }))
         }
         Some(SigningKeyMaterial::Direct(seed)) => {
@@ -424,6 +446,7 @@ fn resolve_optional_key(
                 public_key_bytes: pubkey,
                 curve: auths_crypto::CurveType::Ed25519,
                 is_hardware: false,
+                identity_did: None,
             }))
         }
     }
@@ -448,6 +471,127 @@ fn resolve_required_key(
             "expected key material but got None".into(),
         ))
     })?
+}
+
+/// Resolve the root identity's own signing key — the issuer of an artifact attestation when
+/// no explicit `--key` is given. Picks the first non-rotation (`--next-`) alias stored under
+/// the root's AID and loads it. A delegated device's key is deliberately NOT used here: the
+/// device signs the device slot, the root signs the issuer slot.
+///
+/// Args:
+/// * `controller_did`: the root identity whose signing key issues the attestation.
+/// * `keychain`: key storage holding the root's key under its AID.
+/// * `passphrase_provider`: passphrase source for decrypting the key.
+///
+/// Usage:
+/// ```ignore
+/// let issuer = resolve_root_issuer_key(&managed.controller_did, keychain, provider)?;
+/// ```
+fn resolve_root_issuer_key(
+    controller_did: &IdentityDID,
+    keychain: &(dyn KeyStorage + Send + Sync),
+    passphrase_provider: &dyn PassphraseProvider,
+) -> Result<ResolvedKey, ArtifactSigningError> {
+    let alias = keychain
+        .list_aliases_for_identity(controller_did)
+        .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?
+        .into_iter()
+        .find(|a| !a.as_str().contains("--next-"))
+        .ok_or_else(|| {
+            ArtifactSigningError::KeyResolutionFailed(format!(
+                "no signing key found for root identity {}",
+                controller_did.as_str()
+            ))
+        })?;
+    resolve_required_key(
+        &SigningKeyMaterial::Alias(alias),
+        "__artifact_issuer__",
+        keychain,
+        passphrase_provider,
+        "Enter passphrase for identity key:",
+    )
+}
+
+/// Refuses to sign with a device whose delegated identity has been revoked by the
+/// root, or whose key has been rotated out of its identity's KEL.
+///
+/// The check is registry-backed: it reads the root KEL for a revocation marker on the
+/// device, and the device KEL for its current key. It applies only to keys resolved by
+/// alias (which carry a stored KERI AID); direct seeds and hardware keys carry no AID
+/// here and are not checked.
+///
+/// Args:
+/// * `ctx`: The signing context, providing the registry.
+/// * `controller_did`: The root identity that may have revoked the device.
+/// * `device_did`: The signing key's stored KERI identity (AID).
+/// * `device_pk_bytes`: The raw public key bytes being signed with.
+///
+/// Usage:
+/// ```ignore
+/// enforce_signer_authority(ctx, &managed.controller_did, device_did, &pubkey)?;
+/// ```
+fn enforce_signer_authority(
+    ctx: &AuthsContext,
+    controller_did: &IdentityDID,
+    device_did: &IdentityDID,
+    device_pk_bytes: &[u8],
+) -> Result<(), ArtifactSigningError> {
+    use std::ops::ControlFlow;
+
+    let device_prefix = auths_id::keri::parse_did_keri(device_did.as_str())
+        .map_err(|e| ArtifactSigningError::KeyResolutionFailed(e.to_string()))?;
+    let root_prefix = auths_id::keri::parse_did_keri(controller_did.as_str())
+        .map_err(|e| ArtifactSigningError::AttestationFailed(e.to_string()))?;
+
+    // Revoked? The root anchors a Seal::Digest of the device prefix on its own KEL.
+    // Fail closed: if the root KEL cannot be read, we cannot prove the device is live.
+    let mut revoked = false;
+    ctx.registry
+        .visit_events(&root_prefix, 0, &mut |event| {
+            let hit = event.anchors().iter().any(|seal| {
+                matches!(seal, auths_id::keri::Seal::Digest { d } if d.as_str() == device_prefix.as_str())
+            });
+            if hit {
+                revoked = true;
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .map_err(|e| {
+            ArtifactSigningError::KeyResolutionFailed(format!(
+                "cannot read root KEL to check revocation: {e}"
+            ))
+        })?;
+    if revoked {
+        return Err(ArtifactSigningError::DeviceRevoked(
+            device_did.as_str().to_string(),
+        ));
+    }
+
+    // Rotated out? The signing key must be the current key in the device's KEL.
+    // Fail closed: if the KEL state cannot be read, we cannot prove the key is current.
+    let state = ctx.registry.get_key_state(&device_prefix).map_err(|e| {
+        ArtifactSigningError::KeyResolutionFailed(format!(
+            "cannot read KEL state for {} to verify the signing key is current: {e}",
+            device_did.as_str()
+        ))
+    })?;
+    let is_current = state.current_keys.iter().any(|k| match k.parse() {
+        // Public keys, decoded from CESR (curve-tag-aware) to raw bytes; a plain
+        // comparison is correct — no secret is involved.
+        Ok(pk) => {
+            let key_bytes: &[u8] = pk.as_bytes();
+            key_bytes == device_pk_bytes
+        }
+        Err(_) => false,
+    });
+    if !is_current {
+        return Err(ArtifactSigningError::KeyRotatedOut(
+            device_did.as_str().to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// Validate and normalize a commit SHA (40-char SHA-1 or 64-char SHA-256).
@@ -490,6 +634,11 @@ pub fn validate_commit_sha(sha: &str) -> Result<String, ArtifactSigningError> {
 /// };
 /// let result = sign_artifact(params, &ctx)?;
 /// ```
+// A straight-line dual-signature pipeline: resolve the issuer (root) + device keys,
+// build and sign the attestation, then anchor it on the root KEL. The steps are
+// sequential with shared locals; splitting the flow would scatter it across helpers
+// without making any one part clearer.
+#[allow(clippy::too_many_lines)]
 pub fn sign_artifact(
     params: ArtifactSigningParams,
     ctx: &AuthsContext,
@@ -502,13 +651,26 @@ pub fn sign_artifact(
     let keychain = ctx.key_storage.as_ref();
     let passphrase_provider = ctx.passphrase_provider.as_ref();
 
-    let identity_resolved = resolve_optional_key(
-        params.identity_key.as_ref(),
-        "__artifact_identity__",
-        keychain,
-        passphrase_provider,
-        "Enter passphrase for identity key:",
-    )?;
+    // The attestation is issued by the ROOT identity (the dual-signature model: issuer +
+    // device). Resolve the issuer's key — an explicit `--key`, otherwise the root's own
+    // signing key, NOT the delegated device (device #0 signs only the device slot). A
+    // delegated device is not the root's key, so it cannot produce a valid issuer signature
+    // or a root-KEL anchor.
+    let issuer_did = CanonicalDid::from(managed.controller_did.clone());
+    let identity_resolved = match params.identity_key.as_ref() {
+        Some(explicit) => resolve_optional_key(
+            Some(explicit),
+            "__artifact_identity__",
+            keychain,
+            passphrase_provider,
+            "Enter passphrase for identity key:",
+        )?,
+        None => Some(resolve_root_issuer_key(
+            &managed.controller_did,
+            keychain,
+            passphrase_provider,
+        )?),
+    };
 
     let device_resolved = resolve_required_key(
         &params.device_key,
@@ -517,6 +679,15 @@ pub fn sign_artifact(
         passphrase_provider,
         "Enter passphrase for device key:",
     )?;
+
+    if let Some(ref device_did) = device_resolved.identity_did {
+        enforce_signer_authority(
+            ctx,
+            &managed.controller_did,
+            device_did,
+            &device_resolved.public_key_bytes,
+        )?;
+    }
 
     let mut seeds: HashMap<String, (SecureSeed, auths_crypto::CurveType)> = HashMap::new();
     let identity_alias: Option<KeyAlias> = identity_resolved.map(|r| {
@@ -535,7 +706,17 @@ pub fn sign_artifact(
     }
     let device_pk_bytes = device_resolved.public_key_bytes;
 
-    let device_did = CanonicalDid::from_public_key_did_key(&device_pk_bytes, device_resolved.curve);
+    // Prefer the device key's stored delegated `did:keri` AID (device #0's own identifier)
+    // over a raw `did:key` derived from the pubkey, so the device is reported by ONE
+    // canonical `did:keri` everywhere (attestation subject == whoami's device_did). Falls
+    // back to `did:key` for keys with no stored KERI identity (ephemeral/raw signers).
+    let device_did = device_resolved
+        .identity_did
+        .clone()
+        .map(CanonicalDid::from)
+        .unwrap_or_else(|| {
+            CanonicalDid::from_public_key_did_key(&device_pk_bytes, device_resolved.curve)
+        });
 
     let artifact_meta = params
         .artifact
@@ -566,7 +747,10 @@ pub fn sign_artifact(
         device_is_hardware,
         now,
         &rid,
-        &managed.controller_did,
+        // Dual-signature: the root identity is the issuer (its key co-signs) and the
+        // delegated device #0 is the subject/device signer. The issuer is the verifiable
+        // trust anchor a bundle/pinned-root verifier resolves.
+        &issuer_did,
         &device_did,
         &device_pk_bytes,
         device_curve,
@@ -577,6 +761,9 @@ pub fn sign_artifact(
         validated_commit_sha,
     )?;
 
+    // Anchor the attestation digest on the root KEL under the issuer's (root's) key. The
+    // issuer key controls the root KEL, so the anchoring ixn is a valid root event that
+    // stateless (identity-bundle) verification accepts.
     if let Some(ref alias) = identity_alias {
         anchor_artifact_attestation(ctx, &managed.controller_did, alias, &attestation_json, now)?;
     }
@@ -626,7 +813,7 @@ fn create_and_sign_attestation(
     device_is_hardware: bool,
     now: DateTime<Utc>,
     rid: &ResourceId,
-    controller_did: &IdentityDID,
+    issuer: &CanonicalDid,
     subject: &CanonicalDid,
     device_pk_bytes: &[u8],
     device_curve: auths_crypto::CurveType,
@@ -645,7 +832,7 @@ fn create_and_sign_attestation(
     };
     let noop_provider = auths_core::PrefilledPassphraseProvider::new("");
 
-    let issuer_canonical = CanonicalDid::from(controller_did.clone());
+    let issuer_canonical = issuer.clone();
     let mut attestation = create_signed_attestation(
         now,
         auths_id::attestation::create::AttestationInput {

@@ -276,3 +276,32 @@ def ipex_admit(sender: str, recipient: str, *, dt: str = ACDC_DT) -> dict:
         date=dt,
     )
     return json.loads(admit.raw.decode())
+
+
+# ── Surfaces 7 & 8: delegated inception + delegator-side revocation ixn ───────
+def dip(delegator_pre: str, key_qb64: str, *, next_said: str | None = None) -> dict:
+    """keripy delegated inception (`dip`) for `key_qb64` under `delegator_pre`.
+
+    Mirrors auths `keri-emit dip`: `eventing.incept(keys=[key], delpre=delegator,
+    ndigs=[next] or None, code=Blake3_256)`. The delegated AID (`d == i`) and every
+    field are keripy's own — a byte match proves auths's delegated AID is exactly
+    what a keripy verifier would compute for the same inputs.
+    """
+    srdr = eventing.incept(
+        keys=[key_qb64],
+        delpre=delegator_pre,
+        ndigs=[next_said] if next_said else None,
+        code=MtrDex.Blake3_256,
+    )
+    return json.loads(srdr.raw.decode())
+
+
+def ixn_digest_seal(pre: str, sn: int, prev: str, seal_digest: str) -> dict:
+    """keripy interaction (`ixn`) anchoring one digest seal `{"d": seal_digest}`.
+
+    Mirrors auths `keri-emit ixn --seal-digest` — auths's delegator-side revocation
+    marker (a single-author root ixn anchoring the revoked device's prefix as a
+    digest seal): `eventing.interact(pre, dig=prev, sn=sn, data=[{"d": seal_digest}])`.
+    """
+    srdr = eventing.interact(pre=pre, dig=prev, sn=sn, data=[{"d": seal_digest}])
+    return json.loads(srdr.raw.decode())

@@ -12,6 +12,8 @@ pub mod commit_trust;
 /// Compliance-as-a-query: evidence packs, DSSE org-signing, offline verification.
 pub mod compliance;
 pub mod diagnostics;
+/// Predicate-agnostic DSSE signing/verification for arbitrary in-toto Statements.
+pub mod dsse;
 pub mod federation;
 pub mod git_integration;
 pub mod log_submit;

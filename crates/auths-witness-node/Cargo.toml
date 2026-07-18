@@ -3,7 +3,6 @@ name = "auths-witness-node"
 description = "Operator orchestration for running a hardened witness node: embedded standup manifest, key custody policy, and the node's health surface — composes the platform witness/KERI/verifier crates, reimplements no protocol"
 version.workspace = true
 edition = "2024"
-publish = false
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

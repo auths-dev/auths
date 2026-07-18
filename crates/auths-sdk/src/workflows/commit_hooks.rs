@@ -35,11 +35,23 @@ pub const HOOKS_DIR: &str = "githooks";
 
 /// The managed `prepare-commit-msg` hook. Version-stamped so `auths doctor` can
 /// detect a stale install; bump the version when editing.
+///
+/// The pin block is a **repair path only** — `auths init` owns pinning and staging
+/// via `roots::pin_root_in_repo`. It exists for repos entered after init ran
+/// elsewhere. Two constraints shape it, both learned the hard way:
+///
+/// 1. It keys off **tracked-ness, not existence**. The previous version skipped
+///    when `.auths/roots` merely existed — which `auths init` had just created —
+///    so the pin was never staged and never travelled.
+/// 2. A `git add` here lands in the **next** commit, not this one: git has already
+///    snapshotted the index by the time `prepare-commit-msg` runs. The message says
+///    so rather than claiming otherwise.
 pub const PREPARE_COMMIT_MSG_HOOK: &str = r#"#!/bin/sh
-# auths prepare-commit-msg hook v1 — managed by `auths init`, checked by
+# auths prepare-commit-msg hook v2 — managed by `auths init`, checked by
 # `auths doctor`. Injects the Auths-Id / Auths-Device trailers so `auths verify`
-# can replay the signer's KEL, and seeds the repo's committed .auths/roots trust
-# pin on first use. Chains to the repo's own hook when one exists.
+# can replay the signer's KEL, and repairs a missing/untracked .auths/roots trust
+# pin (the committed trust declaration teammates and CI inherit).
+# Chains to the repo's own hook when one exists.
 
 MSG_FILE="$1"
 AUTHS_HOME="${AUTHS_REPO:-$HOME/.auths}"
@@ -47,11 +59,17 @@ TRAILERS="$AUTHS_HOME/commit-trailers"
 
 if [ -f "$TRAILERS" ]; then
     TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"
-    if [ -n "$TOPLEVEL" ] && [ -f "$AUTHS_HOME/root-pin" ] && [ ! -e "$TOPLEVEL/.auths/roots" ]; then
-        mkdir -p "$TOPLEVEL/.auths" &&
-            cp "$AUTHS_HOME/root-pin" "$TOPLEVEL/.auths/roots" &&
-            git add -- "$TOPLEVEL/.auths/roots" >/dev/null 2>&1 &&
-            echo "auths: pinned your identity root in .auths/roots (committed with this commit)" >&2
+    if [ -n "$TOPLEVEL" ] && [ -f "$AUTHS_HOME/root-pin" ]; then
+        PIN="$TOPLEVEL/.auths/roots"
+        [ -e "$PIN" ] || {
+            mkdir -p "$TOPLEVEL/.auths" && cp "$AUTHS_HOME/root-pin" "$PIN"
+        }
+        # Stage only when git isn't tracking it yet. This lands in the NEXT commit:
+        # git snapshotted the index before this hook ran.
+        if [ -e "$PIN" ] && ! git ls-files --error-unmatch -- "$PIN" >/dev/null 2>&1; then
+            git add -- "$PIN" >/dev/null 2>&1 &&
+                echo "auths: staged .auths/roots — your trust pin lands in your next commit" >&2
+        fi
     fi
     while IFS= read -r trailer; do
         case "$trailer" in
@@ -62,6 +80,28 @@ if [ -f "$TRAILERS" ]; then
 fi
 
 REPO_HOOK="$(git rev-parse --git-dir 2>/dev/null)/hooks/prepare-commit-msg"
+if [ -x "$REPO_HOOK" ]; then
+    exec "$REPO_HOOK" "$@"
+fi
+exit 0
+"#;
+
+/// The managed `pre-push` hook. Exists only to chain: `core.hooksPath`
+/// *replaces* `.git/hooks`, so a managed hook that did not chain would silently
+/// disable every repo-local pre-push (husky, pre-commit, prek) on the machine.
+///
+/// It used to mirror `refs/auths/registry` to the push remote, but that mirror
+/// silently no-oped against real (ssh/https) remotes — the CLI's git layer links
+/// no network transport — so the published ref drifted from the signer's real
+/// KEL. KEL distribution is the committed identity bundle now
+/// (`auths id export-bundle` → `.auths/ci-bundle.json`), which travels with the
+/// code and needs no side-channel push.
+pub const PRE_PUSH_HOOK: &str = r#"#!/bin/sh
+# auths pre-push hook v1 — managed by `auths init`, checked by `auths doctor`.
+# Chains to the repo's own pre-push hook: core.hooksPath replaces .git/hooks,
+# so without this the managed hooks would disable repo-local ones.
+
+REPO_HOOK="$(git rev-parse --git-dir 2>/dev/null)/hooks/pre-push"
 if [ -x "$REPO_HOOK" ]; then
     exec "$REPO_HOOK" "$@"
 fi
@@ -88,6 +128,17 @@ pub enum CommitHookError {
     /// The local signing identity could not be resolved for a trailer refresh.
     #[error("could not resolve the local signer: {0}")]
     Signer(String),
+
+    /// `core.hooksPath` already points somewhere else — a hook manager owns it.
+    #[error(
+        "core.hooksPath is already set to {existing} (a hook manager like husky, pre-commit or prek owns it). Auths will not overwrite it: core.hooksPath replaces .git/hooks entirely, so doing so would silently disable every hook it installed. Copy the auths prepare-commit-msg and pre-push hooks from {wanted} into {existing}, or re-run with --git-scope skip and wire them yourself."
+    )]
+    HooksPathOccupied {
+        /// The path already configured.
+        existing: String,
+        /// The managed hooks directory auths wanted to point at.
+        wanted: String,
+    },
 }
 
 fn write_file(path: &Path, content: &str) -> Result<(), CommitHookError> {
@@ -103,6 +154,22 @@ fn write_file(path: &Path, content: &str) -> Result<(), CommitHookError> {
     })
 }
 
+/// Write a hook script and mark it executable (no-op on non-unix).
+fn write_executable(path: &Path, content: &str) -> Result<(), CommitHookError> {
+    write_file(path, content)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).map_err(
+            |source| CommitHookError::Write {
+                path: path.to_path_buf(),
+                source,
+            },
+        )?;
+    }
+    Ok(())
+}
+
 /// Path of the managed hook file under `auths_home`.
 ///
 /// Args:
@@ -116,7 +183,24 @@ pub fn hook_path(auths_home: &Path) -> PathBuf {
     auths_home.join(HOOKS_DIR).join("prepare-commit-msg")
 }
 
-/// Whether the managed hook file exists with the current script content.
+/// Path of the managed `pre-push` hook file under `auths_home`.
+///
+/// Args:
+/// * `auths_home`: The auths data directory (`~/.auths` or a CI registry path).
+///
+/// Usage:
+/// ```ignore
+/// let hook = pre_push_hook_path(&auths_home);
+/// ```
+pub fn pre_push_hook_path(auths_home: &Path) -> PathBuf {
+    auths_home.join(HOOKS_DIR).join("pre-push")
+}
+
+/// Whether both managed hook files exist with the current script content.
+///
+/// Covers `prepare-commit-msg` *and* `pre-push`: a stale or missing pre-push
+/// means the signer's KEL never reaches the remote, which `auths doctor` should
+/// surface as an actionable "re-run auths init" rather than a silent gap.
 ///
 /// Args:
 /// * `auths_home`: The auths data directory.
@@ -126,9 +210,13 @@ pub fn hook_path(auths_home: &Path) -> PathBuf {
 /// if !hook_is_current(&auths_home) { /* doctor: re-run auths init */ }
 /// ```
 pub fn hook_is_current(auths_home: &Path) -> bool {
-    std::fs::read_to_string(hook_path(auths_home))
-        .map(|content| content == PREPARE_COMMIT_MSG_HOOK)
-        .unwrap_or(false)
+    let matches = |path: PathBuf, expected: &str| {
+        std::fs::read_to_string(path)
+            .map(|content| content == expected)
+            .unwrap_or(false)
+    };
+    matches(hook_path(auths_home), PREPARE_COMMIT_MSG_HOOK)
+        && matches(pre_push_hook_path(auths_home), PRE_PUSH_HOOK)
 }
 
 /// Install the `prepare-commit-msg` hook under `<auths_home>/githooks` and write
@@ -152,18 +240,8 @@ pub fn install_commit_hooks(
     root_did: &str,
     device_did: &str,
 ) -> Result<PathBuf, CommitHookError> {
-    let hook = hook_path(auths_home);
-    write_file(&hook, PREPARE_COMMIT_MSG_HOOK)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).map_err(
-            |source| CommitHookError::Write {
-                path: hook.clone(),
-                source,
-            },
-        )?;
-    }
+    write_executable(&hook_path(auths_home), PREPARE_COMMIT_MSG_HOOK)?;
+    write_executable(&pre_push_hook_path(auths_home), PRE_PUSH_HOOK)?;
     write_file(
         &auths_home.join(TRAILERS_FILE),
         &format!("Auths-Id: {root_did}\nAuths-Device: {device_did}\n"),
@@ -241,6 +319,21 @@ pub fn enable_commit_trailers(
     let hooks_dir_str = hooks_dir
         .to_str()
         .ok_or_else(|| CommitHookError::NonUtf8Path(hooks_dir.clone()))?;
+
+    // Never clobber a core.hooksPath we did not write. `core.hooksPath` *replaces*
+    // .git/hooks, so pointing it at ours would silently disable every hook a
+    // manager (husky, pre-commit, prek) had installed — a class of breakage the
+    // user would experience as "my pre-commit checks stopped running" with nothing
+    // to connect it to `auths init`. Refuse, and let the caller explain.
+    if let Some(existing) = git_config.get("core.hooksPath")?
+        && existing != hooks_dir_str
+    {
+        return Err(CommitHookError::HooksPathOccupied {
+            existing,
+            wanted: hooks_dir_str.to_string(),
+        });
+    }
+
     git_config.set("core.hooksPath", hooks_dir_str)?;
     Ok(())
 }
@@ -277,16 +370,156 @@ mod tests {
         assert!(hook_is_current(home));
     }
 
+    /// The hook must key the pin repair off *tracked-ness*, not existence. The v1
+    /// hook skipped whenever `.auths/roots` existed — which `auths init` had just
+    /// created — so the pin was never staged and third-party verification was
+    /// impossible. Guard the fix so it cannot silently regress.
+    #[test]
+    fn hook_repairs_pin_on_tracked_ness_not_existence() {
+        assert!(
+            PREPARE_COMMIT_MSG_HOOK.contains("ls-files --error-unmatch"),
+            "pin repair must test tracked-ness, not mere existence"
+        );
+        assert!(
+            !PREPARE_COMMIT_MSG_HOOK.contains("[ ! -e \"$TOPLEVEL/.auths/roots\" ]"),
+            "the v1 existence guard defeated the mechanism it guarded"
+        );
+    }
+
+    /// `git add` inside prepare-commit-msg lands in the NEXT commit — git has
+    /// already snapshotted the index. The hook must not claim otherwise.
+    #[test]
+    fn hook_does_not_claim_the_pin_lands_in_this_commit() {
+        assert!(
+            !PREPARE_COMMIT_MSG_HOOK.contains("committed with this commit"),
+            "false: a git add here lands in the next commit, not this one"
+        );
+        assert!(
+            PREPARE_COMMIT_MSG_HOOK.contains("next commit"),
+            "the hook must tell the truth about when the pin lands"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn hook_is_executable() {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::TempDir::new().expect("temp dir");
         install_commit_hooks(tmp.path(), "did:keri:Eroot", "did:keri:Edevice").expect("install");
-        let mode = std::fs::metadata(hook_path(tmp.path()))
-            .expect("metadata")
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o111, 0o111, "hook must be executable");
+        for path in [hook_path(tmp.path()), pre_push_hook_path(tmp.path())] {
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o111, 0o111, "{} must be executable", path.display());
+        }
+    }
+
+    #[test]
+    fn install_writes_the_pre_push_hook() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        install_commit_hooks(tmp.path(), "did:keri:Eroot", "did:keri:Edevice").expect("install");
+        let hook = std::fs::read_to_string(pre_push_hook_path(tmp.path())).expect("pre-push");
+        assert_eq!(hook, PRE_PUSH_HOOK);
+        assert!(hook_is_current(tmp.path()));
+    }
+
+    #[test]
+    fn stale_pre_push_is_detected_by_hook_is_current() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        install_commit_hooks(tmp.path(), "did:keri:Eroot", "did:keri:Edevice").expect("install");
+        std::fs::write(pre_push_hook_path(tmp.path()), "#!/bin/sh\n# old\n").expect("overwrite");
+        assert!(
+            !hook_is_current(tmp.path()),
+            "a stale pre-push means the KEL never reaches the remote; doctor must see it"
+        );
+    }
+
+    /// `core.hooksPath` *replaces* `.git/hooks`, so a managed hook that does not
+    /// chain silently disables every repo-local hook on the machine (husky,
+    /// pre-commit, prek). Both managed hooks must exec the repo's own.
+    #[test]
+    fn managed_hooks_chain_to_the_repos_own_hook() {
+        for (name, hook) in [
+            ("prepare-commit-msg", PREPARE_COMMIT_MSG_HOOK),
+            ("pre-push", PRE_PUSH_HOOK),
+        ] {
+            assert!(
+                hook.contains(&format!("hooks/{name}")) && hook.contains("exec \"$REPO_HOOK\""),
+                "{name} must chain to the repo's own hook"
+            );
+        }
+    }
+
+    /// `core.hooksPath` *replaces* `.git/hooks`, so pointing it at ours when a hook
+    /// manager already owns it silently disables every hook that manager installed.
+    /// The user experiences that as "my pre-commit checks stopped running", with
+    /// nothing connecting it to `auths init`. Refuse, and say what to do instead.
+    #[test]
+    fn enable_refuses_to_clobber_a_hook_managers_hooks_path() {
+        use crate::testing::fakes::FakeGitConfigProvider;
+
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let git_config = FakeGitConfigProvider::new();
+        git_config
+            .set("core.hooksPath", "/repo/.husky")
+            .expect("pre-existing hook manager");
+
+        let err = enable_commit_trailers(
+            tmp.path(),
+            "did:keri:Eroot",
+            "did:keri:Edevice",
+            &git_config,
+        )
+        .expect_err("must refuse to clobber");
+
+        assert!(matches!(err, CommitHookError::HooksPathOccupied { .. }));
+        assert_eq!(
+            GitConfigProvider::get(&git_config, "core.hooksPath").expect("get"),
+            Some("/repo/.husky".to_string()),
+            "the hook manager's path must survive untouched"
+        );
+        // The message has to be actionable, not just a refusal.
+        let msg = err.to_string();
+        assert!(msg.contains("/repo/.husky") && msg.contains("--git-scope skip"));
+    }
+
+    #[test]
+    fn enable_is_idempotent_when_hooks_path_is_already_ours() {
+        use crate::testing::fakes::FakeGitConfigProvider;
+
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let ours = tmp.path().join(HOOKS_DIR);
+        let git_config = FakeGitConfigProvider::new();
+        git_config
+            .set("core.hooksPath", &ours.to_string_lossy())
+            .expect("ours already");
+
+        enable_commit_trailers(
+            tmp.path(),
+            "did:keri:Eroot",
+            "did:keri:Edevice",
+            &git_config,
+        )
+        .expect("re-running init over our own config must be fine");
+    }
+
+    /// The pre-push hook chains and never blocks: no mirror, no network, no
+    /// side effects — its whole job is keeping repo-local hooks alive under
+    /// core.hooksPath.
+    #[test]
+    fn pre_push_only_chains_and_exits_clean() {
+        assert!(
+            PRE_PUSH_HOOK.contains("hooks/pre-push"),
+            "the managed hook must chain to the repo-local pre-push"
+        );
+        assert!(
+            PRE_PUSH_HOOK.trim_end().ends_with("exit 0"),
+            "a missing repo hook must exit clean, never fail the push"
+        );
+        assert!(
+            !PRE_PUSH_HOOK.contains("registry push"),
+            "the mirror is gone — KEL distribution is the committed bundle, not a pushed ref"
+        );
     }
 }

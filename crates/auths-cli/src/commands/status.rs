@@ -7,6 +7,7 @@ use auths_sdk::keychain::KeyStorage;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::storage_layout::layout;
+use auths_sdk::workflows::status::StatusWorkflow;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use serde::Serialize;
@@ -135,7 +136,24 @@ pub fn handle_status(
     let agent = get_agent_status();
     let devices = load_devices_summary(&repo_path, env_config);
 
-    let next_steps = compute_next_steps(&identity, &agent, &devices);
+    // Next steps come from the one SDK-owned rule set (which includes the recovery
+    // single-point-of-failure signpost); the CLI maps each device to its readiness and renders.
+    let device_readinesses: Vec<_> = devices
+        .devices_detail
+        .iter()
+        .map(|d| StatusWorkflow::compute_readiness(d.expires_at, d.revoked_at, now))
+        .collect();
+    let next_steps = StatusWorkflow::next_steps_from_readiness(
+        identity.is_some(),
+        &device_readinesses,
+        agent.running,
+    )
+    .into_iter()
+    .map(|s| NextStep {
+        summary: s.summary,
+        command: s.command,
+    })
+    .collect();
 
     let report = StatusReport {
         identity,
@@ -547,62 +565,37 @@ fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf> {
 }
 
 /// Compute suggested next steps based on current state.
-fn compute_next_steps(
-    identity: &Option<IdentityStatus>,
-    agent: &AgentStatusInfo,
-    devices: &DevicesSummary,
-) -> Vec<NextStep> {
-    let mut steps = Vec::new();
-
-    // No identity
-    if identity.is_none() {
-        steps.push(NextStep {
-            summary: "Initialize your identity".to_string(),
-            command: "auths init".to_string(),
-        });
-        return steps;
-    }
-
-    // The current machine counts as a device — only suggest pairing as an
-    // *addition*, never contradict the init success message with "none".
-    if devices.linked == 0 {
-        let summary = if devices.this_device.is_some() {
-            "Add another device"
-        } else {
-            "Link your first device"
-        };
-        steps.push(NextStep {
-            summary: summary.to_string(),
-            command: "auths pair".to_string(),
-        });
-    }
-
-    // Agent not running
-    if !agent.running {
-        steps.push(NextStep {
-            summary: "Start the agent service".to_string(),
-            command: "auths agent start".to_string(),
-        });
-    }
-
-    // Devices expiring soon
-    if !devices.expiring_soon.is_empty() {
-        steps.push(NextStep {
-            summary: "Renew devices expiring soon".to_string(),
-            command: "auths device extend".to_string(),
-        });
-    }
-
-    steps
-}
-
 /// Check if a process with the given PID is running.
 #[cfg(unix)]
 fn is_process_running(pid: u32) -> bool {
     signal::kill(Pid::from_raw(pid as i32), None).is_ok()
 }
 
-#[cfg(not(unix))]
+/// Windows: a PID is running if we can open it and `GetExitCodeProcess`
+/// reports `STILL_ACTIVE` (259). `OpenProcess` failing (no such PID, or access
+/// denied) is treated as not-running, matching the Unix `kill(pid, 0)` check.
+#[cfg(windows)]
+fn is_process_running(pid: u32) -> bool {
+    use windows::Win32::Foundation::{CloseHandle, FALSE};
+    use windows::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    const STILL_ACTIVE: u32 = 259;
+    // SAFETY: standard Win32 open/query/close of a process handle; the handle is
+    // always closed, and all pointers point to live stack locals.
+    unsafe {
+        let handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) {
+            Ok(h) => h,
+            Err(_) => return false,
+        };
+        let mut code: u32 = 0;
+        let running = GetExitCodeProcess(handle, &mut code).is_ok() && code == STILL_ACTIVE;
+        let _ = CloseHandle(handle);
+        running
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn is_process_running(_pid: u32) -> bool {
     false
 }

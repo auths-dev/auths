@@ -192,21 +192,25 @@ impl CesrCodec for CesrV1Codec {
     }
 
     fn decode_qualified(&self, qualified: &str) -> Result<DecodedPrimitive, KeriTranslationError> {
-        if let Ok(verfer) = Verfer::new(None, None, None, Some(qualified), None) {
+        // Take the exact primitive width before the cesride decoder runs, so a
+        // truncated or non-ASCII input cannot slice out of bounds / off a char
+        // boundary and panic.
+        let primitive = crate::cesr_encode::take_matter_qb64(qualified)
+            .map_err(|e| KeriTranslationError::DecodingFailed(e.to_string()))?;
+        if let Ok(verfer) = Verfer::new(None, None, None, Some(primitive), None) {
             return Ok(DecodedPrimitive {
                 raw: verfer.raw(),
                 code: verfer.code(),
             });
         }
-        if let Ok(diger) = Diger::new(None, None, None, None, Some(qualified), None) {
+        if let Ok(diger) = Diger::new(None, None, None, None, Some(primitive), None) {
             return Ok(DecodedPrimitive {
                 raw: diger.raw(),
                 code: diger.code(),
             });
         }
         Err(KeriTranslationError::DecodingFailed(format!(
-            "unrecognized CESR primitive: {}...",
-            &qualified[..qualified.len().min(8)]
+            "unrecognized CESR primitive: {primitive}"
         )))
     }
 }
@@ -215,6 +219,19 @@ impl CesrCodec for CesrV1Codec {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_qualified_rejects_malformed_without_panicking() {
+        let codec = CesrV1Codec::new();
+        // A variable-length code that overruns the input must fail closed, not
+        // panic on an out-of-bounds slice inside the decoder.
+        assert!(codec.decode_qualified("6AAA1IAA").is_err());
+        // An unrecognized primitive whose byte boundaries straddle a multi-byte char
+        // must be rejected, not panic on the error-message slice.
+        assert!(codec.decode_qualified("DABCDE\u{42c}").is_err());
+        // A bare unknown code is rejected.
+        assert!(codec.decode_qualified("zzz").is_err());
+    }
 
     /// Pins our cesride encoding against known **keripy 1.3.4** reference values
     /// for the 32-byte Ed25519 key `bytes(0..32)`. If cesride matches keripy here,

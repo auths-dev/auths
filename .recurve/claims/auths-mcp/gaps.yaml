@@ -610,3 +610,37 @@
   unlocks: An operator can default to REAL money safely — real is the default, the cap is a
     mandatory seatbelt that cannot be skipped, and the mode is never silent (PRD §11). Test mode
     is a single, deliberate opt-in.
+
+- id: AGENT-AUDIT-1
+  title: A party who did not operate the agent can re-derive its spend offline and
+    catch a tampered proof — verify-spend, the north-star surface
+  class: missing-surface
+  status: closed
+  severity: headline
+  reads: gateway
+  covers:
+  - offline-audit
+  evidence:
+  - 'BUILT: auths-mcp-gateway verify-spend re-verifies every signed per-call proof through
+    the same verifier the live gate uses, re-derives the spend, and exits non-zero on any
+    non-consistent verdict — needing only the issuer''s registry (to resolve the agent +
+    delegator KELs) and the persisted spend log.'
+  - 'GAP it closed: eleven probes gated the gateway''s live path (agent-mcp-1..8, agent-pay-1..3);
+    NONE exercised verify-spend — the one surface that proves the "receipts anyone can verify,
+    without trusting you" half of the pitch.'
+  observed: 'GREEN 2026-07-17: driving one replay persists the signed spend log into the sandbox
+    registry and emits the standalone audit command; running verify-spend over it re-derived
+    "consistent — 1 call(s), $0.00 re-derived from signed costs" (exit 0) with no trust in the
+    operator. Trap RED: flipping one byte of the signed call_commit in the log — a proof tampered
+    AFTER signing — is caught "tampered-proof … failed verification" (exit 1); a verifier that
+    accepted it would be trusting the operator, which is the property this forbids. RED-capable
+    confirmed: against a binary lacking the surface the probe reports the missing spend log and
+    exits 1 (RED), never coerces to BROKEN.'
+  smallest_fix: 'Add a probe (probes/agent-audit-1.sh) that drives one replay, reads the emitted
+    audit-cmd, runs verify-spend over the persisted log (acceptance: honest log → consistent, exit 0),
+    and re-runs it over a copy with one signed call_commit byte flipped (adversary: → tampered-proof,
+    exit non-zero). GREEN requires BOTH halves — an audit that accepts the tampered log is trusting
+    the operator, not re-verifying the signatures.'
+  probe: probes/agent-audit-1.sh
+  unlocks: The counterparty-verification claim is behaviorally gated — a receipt nobody can
+    independently check is a log, and this is the surface that makes it not one.

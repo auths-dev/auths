@@ -24,6 +24,15 @@ pub enum Freshness {
     Stale,
 }
 
+impl Default for Freshness {
+    /// Offline-unknown is the safe default: absent any fresher-source evidence, a verdict's
+    /// freshness cannot be confirmed, so it is named [`Freshness::Unknown`] — never silently
+    /// treated as fresh. This is what `#[serde(default)]` resolves a missing field to.
+    fn default() -> Self {
+        Freshness::Unknown
+    }
+}
+
 /// What the verifier knows about a source fresher than the supplied slice (ADR 009 D3–D5).
 /// The verifier reads no clock and no network — this is an INPUT supplied at the boundary
 /// (a bundle timestamp, a witness head, a transparency-log tip), the one model both the

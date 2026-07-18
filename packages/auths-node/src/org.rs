@@ -1,17 +1,27 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::ports::id::SystemUuidProvider;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::signing::{DidResolver, PrefilledPassphraseProvider, StorageSigner};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::attestation::create::create_signed_attestation;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::identity::initialize::initialize_registry_identity;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::identity::resolve::RegistryDidResolver;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::keri::types::Prefix;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::storage::git_refs::AttestationMetadata;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::storage::registry::RegistryBackend;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::workflows::org::{add_member, list_members, revoke_member};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };

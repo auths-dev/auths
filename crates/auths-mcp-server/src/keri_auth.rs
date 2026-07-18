@@ -223,12 +223,15 @@ mod tests {
         let verdict = PresentationVerdict::Valid {
             issuer: IdentityDID::parse("did:keri:Eissuer").expect("valid test issuer"),
             subject: CanonicalDid::parse("did:keri:Eagent").expect("valid test subject"),
+            subject_root: CanonicalDid::parse("did:keri:Eagent").expect("valid test subject"),
             caps: caps
                 .iter()
                 .map(|c| Capability::parse(c).expect("valid test capability"))
                 .collect(),
             role: None,
             expires_at: None,
+            freshness: auths_verifier::Freshness::Unknown,
+            as_of: 0,
         };
         VerifiedPrincipal::from_verdict(verdict).expect("valid verdict -> principal")
     }

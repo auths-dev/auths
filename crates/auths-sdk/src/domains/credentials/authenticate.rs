@@ -22,6 +22,7 @@ use auths_id::keri::types::Prefix;
 use auths_id::policy::context_from_credential;
 
 use crate::context::AuthsContext;
+use crate::domains::credentials::FreshnessDecision;
 use crate::domains::credentials::error::CredentialError;
 use crate::domains::credentials::present_inputs::load_presentation_inputs;
 use crate::domains::org::error::OrgError;
@@ -56,6 +57,10 @@ pub enum PresentationAuthError {
     /// as a denial; the principal is not authorized when policy cannot be confirmed).
     #[error("org policy could not be evaluated: {0}")]
     Policy(OrgError),
+    /// The locally-held copy of the issuer's logs is too stale to trust its revocation status —
+    /// fail closed, since a `rev` may have landed unseen.
+    #[error("revocation freshness: issuer log copy too stale to honor ({0:?})")]
+    RevocationStale(FreshnessDecision),
 }
 
 impl PresentationAuthError {
@@ -66,7 +71,9 @@ impl PresentationAuthError {
             PresentationAuthError::Wire(_) | PresentationAuthError::NonceLength => 400,
             PresentationAuthError::Denied(denied) => denied.http_status(),
             PresentationAuthError::PolicyDenied { .. } | PresentationAuthError::Policy(_) => 403,
-            PresentationAuthError::Challenge(_) | PresentationAuthError::Resolve(_) => 401,
+            PresentationAuthError::Challenge(_)
+            | PresentationAuthError::Resolve(_)
+            | PresentationAuthError::RevocationStale(_) => 401,
         }
     }
 }
@@ -123,9 +130,35 @@ pub async fn authenticate_presentation(
         config_audience.as_str(),
         Some(expected.as_bytes()),
         now,
+        // The presentation path now consumes freshness: the verdict is graded and the gate is
+        // `is_trusted`. The independent fresher-issuer-tip source that makes a behind-slice fail
+        // closed is resolved by the revocation-freshness refresh layer; until that is threaded
+        // here, no fresher tip is supplied, so an offline-resolved slice grades Unknown and the
+        // default policy tolerates it.
+        &auths_verifier::freshness::FreshnessPolicy::default(),
+        None,
         &RingCryptoProvider,
     )
     .await;
+
+    // Revocation freshness: when the relying party has configured a staleness source, refuse to
+    // honor a presentation whose issuer's locally-held logs are too stale to trust their revocation
+    // status (a `rev` may have landed unseen). Fail closed; skipped when no source is configured.
+    if let (Some(source), PresentationVerdict::Valid { issuer, .. }) =
+        (&ctx.revocation_freshness, &verdict)
+    {
+        let delegator = Prefix::new_unchecked(
+            issuer
+                .as_str()
+                .strip_prefix("did:keri:")
+                .unwrap_or(issuer.as_str())
+                .to_string(),
+        );
+        let decision = source.freshness(&delegator, now);
+        if !decision.is_honored() {
+            return Err(PresentationAuthError::RevocationStale(decision));
+        }
+    }
 
     enforce_issuer_policy(ctx, &verdict, now)?;
 

@@ -8,7 +8,6 @@ pub mod register;
 pub use agent::{AgentCommand, handle_agent};
 pub use identity::{IdCommand, IdSubcommand, LayoutPreset, handle_id};
 pub use migrate::{MigrateCommand, handle_migrate};
-pub use register::DEFAULT_REGISTRY_URL;
 
 use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;

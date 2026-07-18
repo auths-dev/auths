@@ -51,6 +51,13 @@ jobs:
         working-directory: packages/auths-verifier-ts
         run: npm test
 
+      # Trusted publishing (OIDC): npm authenticates via this workflow's OIDC
+      # identity against the trusted publisher configured on npmjs.com — no
+      # long-lived NPM_TOKEN to expire, rotate, or under-scope (which is what
+      # 404'd the 0.1.4 publish). Requires npm >= 11.5.1; setup-node ships older.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish
         working-directory: packages/auths-verifier-ts
         run: |
@@ -60,8 +67,6 @@ jobs:
           else
             npm publish --ignore-scripts --provenance --access public
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-express:
     name: Build + publish @auths-dev/express
@@ -94,6 +99,10 @@ jobs:
         working-directory: packages/auths-express
         run: pnpm test
 
+      # Trusted publishing (OIDC) — see the verifier job above. No NPM_TOKEN.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish
         working-directory: packages/auths-express
         run: |
@@ -103,5 +112,3 @@ jobs:
           else
             npm publish --ignore-scripts --provenance --access public
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

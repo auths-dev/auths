@@ -12,13 +12,22 @@ use auths_verifier::IdentityDID;
 use crate::domains::identity::error::RegistrationError;
 use crate::domains::identity::types::RegistrationOutcome;
 
-/// Default registry URL used when no explicit registry endpoint is configured.
-///
-/// Registration is opt-in (`--register`); auths is offline-first and never
-/// contacts this host unless the user explicitly asks for registration.
-/// Override per-invocation with `--registry <url>` or globally with the
-/// `AUTHS_REGISTRY_URL` environment variable.
-pub const DEFAULT_REGISTRY_URL: &str = "https://registry.auths.dev";
+// There is deliberately no default registry URL.
+//
+// There used to be one — `https://registry.auths.dev` — and it returned HTTP 404
+// (Vercel: DEPLOYMENT_NOT_FOUND). Every registry-touching command therefore shipped
+// with a default pointing at a host that does not exist, which is the worst
+// possible failure shape: it looks configured and fails at the network.
+//
+// Nothing needs it. Identity, signing, and verification are entirely local and
+// git-native — a signer's KEL travels to a relying party inside the committed
+// identity bundle (`auths id export-bundle` → `.auths/ci-bundle.json`). "No
+// central server" is the product's headline claim, and a default that
+// contradicts it is worse than no default.
+//
+// A registry is now opt-in and explicit: pass `--registry <url>` or set
+// `AUTHS_REGISTRY_URL`. Callers surface `RegistrationError::NoRegistryConfigured`
+// when a registry-dependent verb is invoked without one.
 
 #[derive(Serialize)]
 struct RegistryOnboardingPayload {

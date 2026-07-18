@@ -9,6 +9,7 @@ use auths_verifier::PublicKeyHex;
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use serde::Serialize;
+use std::path::PathBuf;
 
 /// Manage trusted identity roots.
 #[derive(Parser, Debug, Clone)]
@@ -132,20 +133,39 @@ struct PinDetails {
     kel_sequence: Option<u128>,
 }
 
+/// Resolve the pinned-identity store for the active registry, honoring `--repo`.
+///
+/// Args:
+/// * `repo`: The optional `--repo` override; `None` selects the default `~/.auths` registry.
+///
+/// Usage:
+/// ```ignore
+/// let store = pinned_store(ctx.repo_path.clone())?;
+/// ```
+fn pinned_store(repo: Option<PathBuf>) -> Result<PinnedIdentityStore> {
+    let registry = auths_sdk::storage_layout::resolve_repo_path(repo)
+        .context("Failed to resolve the repository path for the trust store")?;
+    let default = PinnedIdentityStore::default_path();
+    let file_name = default
+        .file_name()
+        .ok_or_else(|| anyhow!("pin store path has no file name"))?;
+    Ok(PinnedIdentityStore::new(registry.join(file_name)))
+}
+
 /// Handle trust subcommands.
 #[allow(clippy::disallowed_methods)]
-pub fn handle_trust(cmd: TrustCommand) -> Result<()> {
+pub fn handle_trust(cmd: TrustCommand, repo: Option<PathBuf>) -> Result<()> {
+    let store = pinned_store(repo)?;
     let now = Utc::now();
     match cmd.command {
-        TrustSubcommand::List(list_cmd) => handle_list(list_cmd),
-        TrustSubcommand::Pin(pin_cmd) => handle_pin(pin_cmd, now),
-        TrustSubcommand::Remove(remove_cmd) => handle_remove(remove_cmd),
-        TrustSubcommand::Show(show_cmd) => handle_show(show_cmd),
+        TrustSubcommand::List(list_cmd) => handle_list(list_cmd, &store),
+        TrustSubcommand::Pin(pin_cmd) => handle_pin(pin_cmd, &store, now),
+        TrustSubcommand::Remove(remove_cmd) => handle_remove(remove_cmd, &store),
+        TrustSubcommand::Show(show_cmd) => handle_show(show_cmd, &store),
     }
 }
 
-fn handle_list(_cmd: TrustListCommand) -> Result<()> {
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
+fn handle_list(_cmd: TrustListCommand, store: &PinnedIdentityStore) -> Result<()> {
     let pins = store.list()?;
 
     if is_json_mode() {
@@ -187,15 +207,69 @@ fn handle_list(_cmd: TrustListCommand) -> Result<()> {
     Ok(())
 }
 
+/// Resolve the current signing key for `did` from the local registry.
+///
+/// Returns `Ok(Some(..))` when the DID's KEL is locally held and replays to a
+/// current key, `Ok(None)` when no KEL for the DID exists locally (the
+/// air-gapped case), and `Err(..)` for any other resolution failure (malformed
+/// DID, corrupt KEL, backend fault) — those are not treated as "absent".
+fn resolve_local_current_key(did: &str) -> Result<Option<(PublicKeyHex, auths_crypto::CurveType)>> {
+    let auths_home = auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))?;
+    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
+    );
+    match auths_sdk::keri::resolve_current_public_key(&registry, did) {
+        Ok((pk, curve)) => {
+            #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
+            let hex_key = PublicKeyHex::new_unchecked(hex::encode(pk));
+            Ok(Some((hex_key, curve)))
+        }
+        Err(err) if is_kel_not_found(&err) => Ok(None),
+        Err(e) => Err(anyhow!(e)).with_context(|| {
+            format!("Could not resolve the current key for {did} from the local registry")
+        }),
+    }
+}
+
+/// Whether a current-key resolution failure means "no local KEL for this DID"
+/// as opposed to a real fault (malformed DID, corrupt KEL, backend error).
+///
+/// The not-found case carries `KelResolveError::NotFound`, which renders as
+/// `"KEL not found for <id>"` from both the local-registry collector and the
+/// resolver chain. The rendered message is matched here because the inner error
+/// type is not re-exported on the CLI's dependency path; every other failure
+/// renders differently and is treated as a real fault, so the explicit `--key`
+/// air-gap allowance is taken only for a genuine absence.
+fn is_kel_not_found(err: &auths_sdk::keri::CurrentKeyError) -> bool {
+    err.to_string().contains("KEL not found for")
+}
+
 /// Resolve the key material for a pin: explicit `--key` hex, a `--bundle`
 /// file, or the identity's locally-replayed KEL — in that order. Humans never
 /// have to produce raw hex on the happy path.
+///
+/// An explicit `--key` is cross-checked against the DID's current key in the
+/// local key history (KEL) when that history is available: pinning a key the
+/// identity does not control is refused. The explicit key is honored without a
+/// cross-check only when no local KEL for the DID exists, which is the
+/// air-gapped ceremony case.
 fn resolve_pin_key(cmd: &TrustPinCommand) -> Result<(PublicKeyHex, auths_crypto::CurveType)> {
     if let Some(ref key_hex) = cmd.key {
         let public_key_hex = PublicKeyHex::parse(key_hex).context("Invalid public key hex")?;
         let curve = auths_crypto::did_key_decode(&cmd.did)
             .map(|d| d.curve())
             .unwrap_or_default();
+        if let Some((kel_key, kel_curve)) = resolve_local_current_key(&cmd.did)? {
+            if kel_key != public_key_hex {
+                anyhow::bail!(
+                    "the supplied --key does not match the current key in {}'s key history \
+                     (KEL); refusing to pin a key the identity does not control. Omit --key to \
+                     pin the KEL-resolved key, or use --bundle.",
+                    cmd.did
+                );
+            }
+            return Ok((kel_key, kel_curve));
+        }
         return Ok((public_key_hex, curve));
     }
     if let Some(ref bundle_path) = cmd.bundle {
@@ -212,26 +286,18 @@ fn resolve_pin_key(cmd: &TrustPinCommand) -> Result<(PublicKeyHex, auths_crypto:
         }
         return Ok((bundle.public_key_hex.clone(), bundle.curve));
     }
-    let auths_home = auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))?;
-    let registry = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
-        auths_sdk::storage::RegistryConfig::single_tenant(&auths_home),
-    );
-    let (pk, curve) = auths_sdk::keri::resolve_current_public_key(&registry, &cmd.did)
-        .with_context(|| {
-            format!(
-                "Could not resolve {} from the local registry. Provide --bundle <file> \
-                 (ask the identity owner for `auths id export-bundle`) or --key <hex>.",
-                cmd.did
-            )
-        })?;
-    #[allow(clippy::disallowed_methods)] // INVARIANT: hex::encode always produces valid hex
-    Ok((PublicKeyHex::new_unchecked(hex::encode(pk)), curve))
+    let (key, curve) = resolve_local_current_key(&cmd.did)?.ok_or_else(|| {
+        anyhow!(
+            "Could not resolve {} from the local registry. Provide --bundle <file> \
+             (ask the identity owner for `auths id export-bundle`) or --key <hex>.",
+            cmd.did
+        )
+    })?;
+    Ok((key, curve))
 }
 
-fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
+fn handle_pin(cmd: TrustPinCommand, store: &PinnedIdentityStore, now: DateTime<Utc>) -> Result<()> {
     let (public_key_hex, curve) = resolve_pin_key(&cmd)?;
-
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
 
     // Check if already pinned
     if let Some(existing) = store.lookup(&cmd.did)? {
@@ -276,9 +342,7 @@ fn handle_pin(cmd: TrustPinCommand, now: DateTime<Utc>) -> Result<()> {
     Ok(())
 }
 
-fn handle_remove(cmd: TrustRemoveCommand) -> Result<()> {
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
-
+fn handle_remove(cmd: TrustRemoveCommand, store: &PinnedIdentityStore) -> Result<()> {
     // Check if exists
     if store.lookup(&cmd.did)?.is_none() {
         anyhow::bail!(
@@ -310,9 +374,7 @@ fn handle_remove(cmd: TrustRemoveCommand) -> Result<()> {
     Ok(())
 }
 
-fn handle_show(cmd: TrustShowCommand) -> Result<()> {
-    let store = PinnedIdentityStore::new(PinnedIdentityStore::default_path());
-
+fn handle_show(cmd: TrustShowCommand, store: &PinnedIdentityStore) -> Result<()> {
     let pin = store.lookup(&cmd.did)?.ok_or_else(|| {
         anyhow!(
             "Identity {} is not pinned. Pin it first with: auths trust pin {}",
@@ -360,7 +422,7 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
 impl ExecutableCommand for TrustCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
-        handle_trust(self.clone())
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        handle_trust(self.clone(), ctx.repo_path.clone())
     }
 }

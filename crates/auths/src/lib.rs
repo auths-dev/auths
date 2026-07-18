@@ -19,5 +19,18 @@
 //! | [`auths-sdk`](https://crates.io/crates/auths-sdk) | High-level application services |
 //! | [`auths-cli`](https://crates.io/crates/auths-cli) | Command-line interface |
 //!
-//! Re-exports will be added in a future version once all crates are
-//! published under their canonical hyphenated names.
+//! ## Re-exports
+//!
+//! A library consumer can depend on this one crate instead of the individual
+//! hyphenated crates:
+//!
+//! - [`sdk`] — high-level application services (`auths_sdk`): identity,
+//!   signing, verification, device/agent workflows.
+//! - [`verifier`] — standalone chain/signature verification (`auths_verifier`),
+//!   the minimal-dependency surface used by FFI/WASM consumers.
+
+/// High-level application services — re-export of [`auths_sdk`].
+pub use auths_sdk as sdk;
+
+/// Standalone verification — re-export of [`auths_verifier`].
+pub use auths_verifier as verifier;

@@ -154,9 +154,12 @@ pub struct NapiAgentIdentityBundle {
 #[napi(object)]
 #[derive(Clone)]
 pub struct NapiDelegatedAgentBundle {
+    /// The agent's `did:keri:` AID — a real delegated identifier whose KEL the
+    /// parent root anchored, not an attestation-linked `did:key`.
     pub agent_did: String,
+    /// The agent's KEL prefix (the `dip` SAID).
+    pub agent_prefix: String,
     pub key_alias: String,
-    pub attestation_json: String,
     pub public_key_hex: String,
     pub repo_path: Option<String>,
 }

@@ -252,18 +252,92 @@ pub fn spend_log_path(repo: &Path, delegation: &str) -> PathBuf {
         .join(format!("{}.jsonl", safe_key(delegation)))
 }
 
+/// The delegation's ROTATED spend-log directory: `spend-log/<delegation>/` holding
+/// one period-named file per UTC month. Rotation bounds any single file without
+/// weakening tamper evidence — the `Auths-Prev` chain runs across files, so a
+/// missing middle period still breaks re-derivation.
+///
+/// Args:
+/// * `repo`: the verifier registry root.
+/// * `delegation`: the agent delegation the log belongs to.
+///
+/// Usage:
+/// ```ignore
+/// let dir = spend_log_dir(repo, "did:keri:Eagent…");
+/// ```
+pub fn spend_log_dir(repo: &Path, delegation: &str) -> PathBuf {
+    repo.join("spend-log").join(safe_key(delegation))
+}
+
+/// The period file a record stamped `at` lands in (UTC month, lexicographically
+/// ordered so a sorted directory walk replays in append order).
+///
+/// Args:
+/// * `repo`: the verifier registry root.
+/// * `delegation`: the agent delegation.
+/// * `at`: the record's own timestamp (injected clock).
+///
+/// Usage:
+/// ```ignore
+/// let file = spend_log_period_path(repo, delegation, now);
+/// ```
+pub fn spend_log_period_path(
+    repo: &Path,
+    delegation: &str,
+    at: chrono::DateTime<chrono::Utc>,
+) -> PathBuf {
+    spend_log_dir(repo, delegation).join(format!("{}.jsonl", at.format("%Y-%m")))
+}
+
+/// Resolve where a delegation's log actually lives: the rotated directory when it
+/// exists, else the legacy single file.
+///
+/// Args:
+/// * `repo`: the verifier registry root.
+/// * `delegation`: the agent delegation.
+///
+/// Usage:
+/// ```ignore
+/// let records = read_spend_log(&resolve_spend_log(repo, delegation))?;
+/// ```
+pub fn resolve_spend_log(repo: &Path, delegation: &str) -> PathBuf {
+    let dir = spend_log_dir(repo, delegation);
+    if dir.is_dir() {
+        dir
+    } else {
+        spend_log_path(repo, delegation)
+    }
+}
+
 /// Read every [`SpendLogRecord`] from a delegation's spend log, in order (for the offline
-/// auditor). A blank trailing line is ignored; a non-blank line that fails to parse is
-/// `InvalidData` — a corrupted or edited log fails closed rather than silently dropping a call.
+/// auditor). `path` may be a single JSONL file or a ROTATED directory of period files —
+/// a directory is walked in sorted (chronological) order and its files concatenate into
+/// one record stream, which the `Auths-Prev` chain then proves complete across the
+/// rotation boundary. A blank trailing line is ignored; a non-blank line that fails to
+/// parse is `InvalidData` — a corrupted or edited log fails closed rather than silently
+/// dropping a call.
 pub fn read_spend_log(path: &Path) -> std::io::Result<Vec<SpendLogRecord>> {
-    let raw = std::fs::read_to_string(path)?;
-    raw.lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            serde_json::from_str::<SpendLogRecord>(l)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-        })
-        .collect()
+    let files: Vec<PathBuf> = if path.is_dir() {
+        let mut period_files: Vec<PathBuf> = std::fs::read_dir(path)?
+            .filter_map(|entry| entry.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|ext| ext == "jsonl"))
+            .collect();
+        period_files.sort();
+        period_files
+    } else {
+        vec![path.to_path_buf()]
+    };
+    let mut records = Vec::new();
+    for file in files {
+        let raw = std::fs::read_to_string(&file)?;
+        for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+            records.push(
+                serde_json::from_str::<SpendLogRecord>(line)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            );
+        }
+    }
+    Ok(records)
 }
 
 /// A filesystem-safe single component from a delegation id: strip the `did:keri:` scheme and map
@@ -309,11 +383,69 @@ pub async fn audit_spend_log(
     counter: &CounterRef,
     facilitator_pubkey: Option<&[u8]>,
 ) -> AuditVerdict {
+    audit_spend_log_resumed(
+        records,
+        agent_kel,
+        delegator_kel,
+        pinned_roots,
+        now,
+        counter,
+        facilitator_pubkey,
+        &AuditResume::genesis(),
+    )
+    .await
+}
+
+/// Where a resumed audit picks up: the state a PRIOR full verification of the log's
+/// prefix established. Sound because the `Auths-Prev` chain forces the suffix's
+/// first record to link to `prior_binding`, and every suffix signature is still
+/// re-verified — only work already proven by the caller's own earlier audit is
+/// skipped, never trust in the operator.
+#[derive(Debug, Clone)]
+pub struct AuditResume {
+    /// Records already verified (the suffix's index offset in the full log).
+    pub prior_records: usize,
+    /// The verified prefix's final commit binding (`Auths-Prev` for the next record).
+    pub prior_binding: String,
+    /// The settled total the verified prefix re-derived.
+    pub prior_settled_cents: Cents,
+}
+
+impl AuditResume {
+    /// A from-the-top audit: genesis binding, zero prior spend.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let verdict = audit_spend_log_resumed(records, …, &AuditResume::genesis()).await;
+    /// ```
+    pub fn genesis() -> AuditResume {
+        AuditResume {
+            prior_records: 0,
+            prior_binding: SPEND_LOG_GENESIS.to_string(),
+            prior_settled_cents: Cents::ZERO,
+        }
+    }
+}
+
+/// [`audit_spend_log`], resuming after an already-verified prefix: `records` is the
+/// SUFFIX, and `resume` carries the prefix's proven end state. The final verdict
+/// reports whole-log totals (prefix + suffix).
+#[allow(clippy::too_many_arguments)]
+pub async fn audit_spend_log_resumed(
+    records: &[SpendLogRecord],
+    agent_kel: &[Event],
+    delegator_kel: &[Event],
+    pinned_roots: &[String],
+    now: i64,
+    counter: &CounterRef,
+    facilitator_pubkey: Option<&[u8]>,
+    resume: &AuditResume,
+) -> AuditVerdict {
     let provider = auths_crypto::default_provider();
-    let mut settled = Cents::ZERO;
-    // The binding each record's `Auths-Prev` must match — the prior record's commit hash, or the
-    // genesis sentinel for the first record.
-    let mut expected_prev = SPEND_LOG_GENESIS.to_string();
+    let mut settled = resume.prior_settled_cents;
+    // The binding each record's `Auths-Prev` must match — the prior record's commit hash, the
+    // resumed prefix's final binding, or the genesis sentinel for a from-the-top audit.
+    let mut expected_prev = resume.prior_binding.clone();
     for (i, rec) in records.iter().enumerate() {
         // Re-verify the SIGNED proof bytes — the gate's own authenticity check, re-run offline.
         let commit_verdict = auths_verifier::verify_commit_against_kel_scoped(
@@ -336,8 +468,9 @@ pub async fn audit_spend_log(
                 };
             }
             crate::gate::Verdict::Revoked => return AuditVerdict::Revoked { at: i },
-            // Allowed / OutsideAgentScope / AgentExpired are AUTHENTIC proofs — a legit refusal is
-            // not a tamper; only forgery and revocation are audit failures of the proof itself.
+            // Allowed / OutsideAgentScope / AgentExpired / Stale are AUTHENTIC proofs — a legit
+            // refusal (including a stale-freshness one) is not a tamper; only forgery and
+            // revocation are audit failures of the proof itself.
             _ => {}
         }
         // Continuity: each record's SIGNED `Auths-Prev` links to the prior record's commit (the
@@ -492,15 +625,15 @@ pub async fn audit_spend_log(
         }
     }
     // The operator's claimed cross-rail total is the last record's cumulative — an UNTRUSTED hint we
-    // compare against the cost we re-derived from the rail responses.
-    let claimed = records
-        .last()
-        .map(|r| r.receipt.cumulative_cents)
-        .unwrap_or(Cents::ZERO);
-    if settled != claimed {
+    // compare against the cost we re-derived from the rail responses. An EMPTY resumed suffix has
+    // no new claim to compare (the prefix's claim was checked when it was verified); the durable
+    // counter below still cross-checks the carried total.
+    if let Some(last) = records.last()
+        && settled != last.receipt.cumulative_cents
+    {
         return AuditVerdict::BudgetMismatch {
             recomputed_cents: settled,
-            claimed_cents: claimed,
+            claimed_cents: last.receipt.cumulative_cents,
         };
     }
     // Cross-check the re-derived total against the DURABLE verifier-held counter the wire advanced —
@@ -524,7 +657,10 @@ pub async fn audit_spend_log(
             claimed_cents: durable.get(),
         };
     }
-    AuditVerdict::Consistent(ConsistentProof::new(records.len(), settled))
+    AuditVerdict::Consistent(ConsistentProof::new(
+        resume.prior_records + records.len(),
+        settled,
+    ))
 }
 
 /// The first record in a spend log has no predecessor; its signed `Auths-Prev` trailer carries this

@@ -210,3 +210,34 @@ pub fn verify_action_envelope(
         }),
     }
 }
+
+/// Verify a raw signature over a message: `(message, signature_hex, public_key_hex)`.
+///
+/// The dual of `sign_bytes` / `sign_as_agent` — it checks the exact bytes a raw
+/// signer produced, with no envelope. The curve is read from the public key.
+/// Returns True iff the signature is valid.
+///
+/// Args:
+/// * `message`: The signed bytes.
+/// * `signature_hex`: The signature, hex-encoded.
+/// * `public_key_hex`: The signer's public key, hex-encoded.
+///
+/// Usage:
+/// ```ignore
+/// assert!(verify_bytes(b"hash", sig_hex, pubkey_hex)?);
+/// ```
+#[pyfunction]
+pub fn verify_bytes(message: &[u8], signature_hex: &str, public_key_hex: &str) -> PyResult<bool> {
+    let (pk_bytes, curve) = validate_pk_hex(public_key_hex)?;
+    let sig_bytes = hex::decode(signature_hex)
+        .map_err(|e| PyValueError::new_err(format!("Invalid signature hex: {e}")))?;
+    let result = match curve {
+        CurveType::Ed25519 => {
+            auths_crypto::RingCryptoProvider::ed25519_verify(&pk_bytes, message, &sig_bytes)
+        }
+        CurveType::P256 => {
+            auths_crypto::RingCryptoProvider::p256_verify(&pk_bytes, message, &sig_bytes)
+        }
+    };
+    Ok(result.is_ok())
+}

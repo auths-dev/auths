@@ -119,6 +119,19 @@ impl KeriPublicKey {
             return Err(KeriDecodeError::EmptyInput);
         }
 
+        // cesride's qb64 decoder derives a primitive's length from its derivation
+        // code and slices the input by that length, so a non-ASCII, truncated, or
+        // unknown code makes it slice off a char boundary or past the end and panic.
+        // Validate the input is exactly one well-formed CESR primitive (with no
+        // trailing bytes) before the decoder runs; the curve is then selected by the
+        // in-band code below, never by raw byte length.
+        let primitive = crate::cesr_encode::take_matter_qb64(encoded)?;
+        if primitive.len() != encoded.len() {
+            return Err(KeriDecodeError::DecodeError(
+                "trailing bytes after verkey primitive".into(),
+            ));
+        }
+
         let (bytes, code) = crate::cesr_encode::decode_verkey(encoded)?;
 
         use cesride::matter::Codex;
@@ -359,6 +372,19 @@ mod tests {
         assert!(!non_transferable.is_transferable());
         assert_eq!(transferable.cesr_prefix(), "1AAJ");
         assert_eq!(non_transferable.cesr_prefix(), "1AAI");
+    }
+
+    #[test]
+    fn parse_rejects_malformed_qb64_without_panicking() {
+        // A derivation code whose declared primitive size exceeds the actual
+        // input length must fail closed with a typed error, never an
+        // out-of-bounds slice panic inside the CESR decoder.
+        for malformed in ["6AAA1IAA", "1AAJ", "D", "1AAI"] {
+            assert!(
+                KeriPublicKey::parse(malformed).is_err(),
+                "malformed CESR verkey {malformed:?} must be rejected, not panic"
+            );
+        }
     }
 
     #[test]

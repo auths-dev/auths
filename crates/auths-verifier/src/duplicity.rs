@@ -113,6 +113,43 @@ pub fn detect_duplicity(events: &[KelEventRef<'_>]) -> DuplicityReport {
     DuplicityReport::Clean
 }
 
+/// Seal-bounding: `true` when `candidate` builds *past* a disputed position — its
+/// sequence is beyond the divergence and its predecessor is one of the conflicting
+/// heads. A seal-bounded producer or verifier refuses such an extension, so an
+/// equivocator gains nothing durable from a fork it created, even before global
+/// detection converges. A `Clean` report seals nothing. Ported from the `timeline_proof`
+/// harness (`vdti::seal_rejects_extension`).
+///
+/// Args:
+/// * `report`: The divergence that froze the position.
+/// * `candidate_seq`: The sequence number of the event being appended.
+/// * `candidate_prev_said`: The SAID the candidate links back to (its `p` field).
+///
+/// Usage:
+/// ```
+/// use auths_verifier::duplicity::{KelEventRef, detect_duplicity, seal_rejects_extension};
+///
+/// let events = vec![
+///     KelEventRef { prefix: "did:keri:EShared", seq: 2, said: "ErotA" },
+///     KelEventRef { prefix: "did:keri:EShared", seq: 2, said: "ErotB" },
+/// ];
+/// let report = detect_duplicity(&events);
+/// assert!(seal_rejects_extension(&report, 3, "ErotA"));      // builds past the fork → refused
+/// assert!(!seal_rejects_extension(&report, 3, "Eunrelated")); // unrelated predecessor → allowed
+/// ```
+pub fn seal_rejects_extension(
+    report: &DuplicityReport,
+    candidate_seq: u64,
+    candidate_prev_said: &str,
+) -> bool {
+    match report {
+        DuplicityReport::Diverging {
+            seq, event_saids, ..
+        } => candidate_seq > *seq && event_saids.iter().any(|s| s == candidate_prev_said),
+        DuplicityReport::Clean => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,6 +231,34 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_rotation_is_detected_or_prevented() {
+        // The documented kt=1 accepted risk: with a single-signer shared KEL, two
+        // controllers can each author a rotation at the same sequence, forking the KEL.
+        // Authoring does not prevent it, so it must be surfaced — detect_duplicity flags
+        // the two competing heads rather than silently accepting both as valid.
+        let events = vec![
+            ev("did:keri:EShared", 0, "Eicp"),
+            ev("did:keri:EShared", 1, "Erot1"),
+            ev("did:keri:EShared", 2, "ErotControllerA"),
+            ev("did:keri:EShared", 2, "ErotControllerB"),
+        ];
+        match detect_duplicity(&events) {
+            DuplicityReport::Diverging {
+                shared_kel_prefix,
+                seq,
+                event_saids,
+            } => {
+                assert_eq!(shared_kel_prefix.as_str(), "did:keri:EShared");
+                assert_eq!(seq, 2, "divergence is at the concurrent rotation");
+                assert_eq!(event_saids.len(), 2);
+            }
+            DuplicityReport::Clean => {
+                panic!("concurrent rotations at the same sequence must be flagged, not accepted")
+            }
+        }
+    }
+
+    #[test]
     fn diverging_report_is_diverging() {
         let report = DuplicityReport::Diverging {
             #[allow(clippy::disallowed_methods)]
@@ -203,5 +268,38 @@ mod tests {
         };
         assert!(report.is_diverging());
         assert!(!DuplicityReport::Clean.is_diverging());
+    }
+
+    fn diverging_at_seq2() -> DuplicityReport {
+        DuplicityReport::Diverging {
+            #[allow(clippy::disallowed_methods)]
+            shared_kel_prefix: IdentityDID::new_unchecked("did:keri:EShared".to_string()),
+            seq: 2,
+            event_saids: vec!["ErotA".into(), "ErotB".into()],
+        }
+    }
+
+    #[test]
+    fn seal_rejects_extension_built_on_a_disputed_head() {
+        // An equivocator forks at seq 2, then tries to advance one branch at seq 3.
+        // Seal-bounding refuses it — building past a disputed position gains nothing durable.
+        let report = diverging_at_seq2();
+        assert!(seal_rejects_extension(&report, 3, "ErotA"));
+        assert!(seal_rejects_extension(&report, 3, "ErotB"));
+    }
+
+    #[test]
+    fn seal_allows_extension_not_descending_from_the_dispute() {
+        let report = diverging_at_seq2();
+        // Builds on some other (undisputed) predecessor → this rule does not seal it.
+        assert!(!seal_rejects_extension(&report, 3, "EunrelatedHead"));
+        // At or below the disputed sequence is not "past" the dispute.
+        assert!(!seal_rejects_extension(&report, 2, "ErotA"));
+        assert!(!seal_rejects_extension(&report, 1, "ErotA"));
+    }
+
+    #[test]
+    fn seal_rejects_nothing_when_clean() {
+        assert!(!seal_rejects_extension(&DuplicityReport::Clean, 3, "ErotA"));
     }
 }

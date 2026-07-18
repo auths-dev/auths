@@ -467,6 +467,52 @@ mod tests {
     }
 
     #[test]
+    fn keychain_file_has_no_plaintext_secret() {
+        use crate::crypto::signer::encrypt_keypair;
+        use base64::{Engine, engine::general_purpose::STANDARD as B64};
+        use ring::signature::Ed25519KeyPair;
+
+        fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+            !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
+        }
+
+        let (storage, temp) = create_test_storage();
+        let alias = KeyAlias::new("secret").unwrap();
+        let identity_did = IdentityDID::parse("did:keri:test123").unwrap();
+
+        // A real keypair whose raw seed bytes we learn, then persist (encrypted).
+        let rng = ring::rand::SystemRandom::new();
+        let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let pkcs8_bytes = pkcs8.as_ref().to_vec();
+        let seed = pkcs8_bytes[16..48].to_vec(); // ring Ed25519 v2 seed offset
+
+        let encrypted = encrypt_keypair(&pkcs8_bytes, "Test-passphrase1!").unwrap();
+        storage
+            .store_key(&alias, &identity_did, KeyRole::Primary, &encrypted)
+            .unwrap();
+
+        let raw = std::fs::read(temp.path().join("keys.enc")).unwrap();
+        assert!(!contains(&raw, &seed), "raw seed found in keystore file");
+        assert!(
+            !contains(&raw, &pkcs8_bytes),
+            "raw private key found in keystore file"
+        );
+
+        // Genuinely encrypted, not merely encoded: the seed must not survive
+        // base64-decoding the ciphertext field.
+        let parsed: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+        let ciphertext = B64.decode(parsed["ciphertext"].as_str().unwrap()).unwrap();
+        assert!(
+            !contains(&ciphertext, &seed),
+            "raw seed recoverable from the base64-decoded ciphertext (encoded, not encrypted)"
+        );
+        assert!(
+            !contains(&ciphertext, &pkcs8_bytes),
+            "raw private key recoverable from the base64-decoded ciphertext"
+        );
+    }
+
+    #[test]
     fn load_rejects_tampered_identity_did() {
         let (storage, _temp) = create_test_storage();
         let alias = KeyAlias::new("tampered").unwrap();

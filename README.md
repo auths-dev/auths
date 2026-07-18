@@ -9,9 +9,55 @@
 <!-- <auths-verify repo="https://github.com/auths-dev/auths" mode="badge" size="md"></auths-verify> -->
 <!-- <script type="module" src="https://unpkg.com/@auths-dev/verify@0.3.0/dist/auths-verify.mjs"></script> -->
 
-Cryptographic identity and signing for software supply chains.
+Cryptographic identity and signing for budgeted agents, developer identity, and software supply chains.
 
 No central authority. No CA. No server. Just Git and cryptography.
+
+# MCP
+
+Bounded agents for MCP: wrap any MCP server so every `tools/call` an agent makes is
+signed, metered against a hard budget, and receipted. A call outside the granted
+scope, past the cap, or after expiry is refused **before** the downstream server is
+ever invoked — and anyone can re-derive the spend from the signed log offline,
+without trusting you or us.
+
+See more here: https://docs.auths.dev/docs/mcp
+
+Wrap a server (test mode — nothing at risk):
+
+```bash
+npx -y @auths-dev/mcp wrap --scope paid.call --budget '$5' --ttl 30m \
+  --rail x402 --test-mode -- <your MCP server command>
+```
+
+Or drop it into your MCP client's `mcp.json` — the agent connects to the gateway
+exactly as it would to the raw server:
+
+```json
+"my-paid-tool": {
+  "command": "npx",
+  "args": [
+    "-y", "@auths-dev/mcp", "wrap",
+    "--scope", "paid.call",
+    "--budget", "$5",
+    "--ttl", "30m",
+    "--rail", "x402",
+    "--test-mode",
+    "--", "<your MCP server command>"
+  ]
+}
+```
+
+Audit the spend afterwards — every figure re-derives from the signed log, with no
+trust in the operator that produced it:
+
+```bash
+npx -y @auths-dev/mcp verify-spend --log spend.jsonl \
+  --registry ./registry --agent <agent did> --root <root did>
+# verify-spend: consistent — 12 call(s), $0.36 re-derived from signed costs
+```
+
+# Identity & Signing
 
 ## Quick Start
 
@@ -92,12 +138,19 @@ Want the whole loop in one shot? `auths demo` signs and verifies a sample artifa
 
 Auths stores your identity and device attestations in a Git repository (`~/.auths` by default). Each device link is a cryptographically signed attestation stored as a Git ref.
 
-- **Identity**: A `did:keri` derived from your Ed25519 key
+- **Identity**: A `did:keri` derived from your P-256 key (Ed25519 is also supported; P-256 is the default because it is what the iOS Secure Enclave can hold)
 - **Devices**: `did:key` identifiers linked via signed attestations
 - **Keys**: Stored in your OS keychain (macOS Keychain, or encrypted file fallback)
 - **Attestations**: Stored in Git refs under `refs/auths/`
+- **Trust**: Your repo commits `.auths/roots` — the trusted root a clone anchors to — and your KEL travels to that repo's remote alongside your code, so `git clone && auths verify HEAD` works with no setup
 
 No central server. No blockchain. Just Git and cryptography.
+
+### What "verify" actually checks
+
+Auths signs commits with a standard SSH signature (`ecdsa-sha2-nistp256`), so `auths verify` replays the signer's key history — their KEL — and checks the signature against the key that was valid **at signing time**, then confirms that key chains back to a root the repository pins.
+
+Sigstore and GitHub can verify offline too. The difference is narrower than "offline vs online" and worth stating precisely: their offline path checks a signature against a **trust-root snapshot** you refreshed at some point, so a key rotation or revocation you have not downloaded is one you cannot see. A KEL carries its own rotation history, so key state verifies without refreshing a trust root. That matters most for **long-lived device keys**, which is Auths's model.
 
 ---
 

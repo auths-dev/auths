@@ -34,6 +34,9 @@ auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"
 auths-policy = { path = "../../crates/auths-policy" }
 auths-pairing-daemon = { path = "../../crates/auths-pairing-daemon" }
 auths-infra-git = { path = "../../crates/auths-infra-git" }
+git2 = { version = "0.21.0", default-features = false, features = ["vendored-libgit2"] }
+tempfile = "3"
+
 shellexpand = "3"
 url = "2"
 sha2 = "0.10"

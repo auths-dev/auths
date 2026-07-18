@@ -1,6 +1,6 @@
 {
   "name": "@auths-dev/sdk",
-  "version": "0.1.3",
+  "version": "0.1.6",
   "description": "Node.js bindings for the Auths decentralized identity SDK",
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.27.0",
@@ -32,9 +32,9 @@
   },
   "scripts": {
     "artifacts": "napi artifacts",
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm --no-gh-release",
+    "build": "napi build --platform --release && node scripts/sync-conformance.mjs",
+    "build:debug": "napi build --platform && node scripts/sync-conformance.mjs",
+    "prepublishOnly": "node scripts/sync-conformance.mjs && napi prepublish -t npm --no-gh-release",
     "docs": "typedoc",
     "test": "vitest run",
     "universal": "napi universal -t darwin"
@@ -46,5 +46,11 @@
     "typedoc-plugin-markdown": "^4.10.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "conformance/",
+    "README.md"
+  ]
 }

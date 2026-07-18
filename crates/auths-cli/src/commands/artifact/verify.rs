@@ -8,6 +8,7 @@ use auths_verifier::core::Attestation;
 use auths_verifier::evidence_pack::{
     TransparencyInclusion, parse_log_key_hex, verify_artifact_log_inclusion,
 };
+use auths_verifier::freshness::FreshnessPolicy;
 use auths_verifier::oidc_policy::{OidcPolicyJoin, OidcSubjectPolicy};
 use auths_verifier::witness::{WitnessQuorum, WitnessVerifyConfig};
 use auths_verifier::{
@@ -749,7 +750,7 @@ fn resolve_identity_key(
 
         // The identity_did is now PROVEN equal to the authenticated KEL's
         // inception (RT-005), so it is safe to return as the certified signer.
-        let (root_did, _kel) = trust.into_parts();
+        let (root_did, _kel, _device_kels) = trust.into_parts();
         Ok((pk, CanonicalDid::new_unchecked(root_did)))
     } else {
         // Resolve public key from the issuer DID
@@ -849,19 +850,36 @@ fn output_error(file: &str, exit_code: i32, message: &str) -> Result<()> {
     std::process::exit(exit_code);
 }
 
+use crate::commands::verify_helpers::freshness_label;
+
+/// The one-line human summary for a verified artifact.
+///
+/// Always names the verdict's freshness when a chain report is present, so an offline verify
+/// renders "verified (freshness unknown)" rather than a bare success that reads as real-time
+/// fresh. Pure (no I/O) so the surfacing is unit-testable without running the command.
+///
+/// Args:
+/// * `result`: the assembled artifact-verify result.
+fn verified_summary(result: &VerifyArtifactResult) -> String {
+    let mut line = String::from("Artifact verified");
+    if let Some(ref issuer) = result.issuer {
+        line.push_str(&format!(": signed by {issuer}"));
+    }
+    if let Some(freshness) = result.chain_report.as_ref().map(|r| r.freshness()) {
+        line.push_str(&format!(" (freshness {})", freshness_label(freshness)));
+    }
+    if let Some(ref q) = result.witness_quorum {
+        line.push_str(&format!(" (witnesses: {}/{})", q.verified, q.required));
+    }
+    line
+}
+
 /// Output the verification result.
 fn output_result(exit_code: i32, result: VerifyArtifactResult) -> Result<()> {
     if is_json_mode() {
         println!("{}", serde_json::to_string(&result)?);
     } else if result.valid {
-        print!("Artifact verified");
-        if let Some(ref issuer) = result.issuer {
-            print!(": signed by {}", issuer);
-        }
-        if let Some(ref q) = result.witness_quorum {
-            print!(" (witnesses: {}/{})", q.verified, q.required);
-        }
-        println!();
+        println!("{}", verified_summary(&result));
     } else {
         eprint!("Verification failed");
         if let Some(ref error) = result.error {
@@ -945,7 +963,7 @@ async fn verify_commit_in_process(sha: &str) -> bool {
     )
     .await
     {
-        Ok(verdict) if verdict.is_valid() => true,
+        Ok(verdict) if verdict.is_trusted(&FreshnessPolicy::default()) => true,
         Ok(verdict) => {
             if !is_json_mode() {
                 eprintln!("Commit {short} is not authorized by a pinned trusted root: {verdict:?}");
@@ -1108,6 +1126,8 @@ mod tests {
     use super::expected_signer_mismatch;
     use super::raw_commit_bytes;
     use super::unrooted_signer_rejected;
+    use super::{VerifyArtifactResult, verified_summary};
+    use auths_verifier::Freshness;
     use std::process::Command;
 
     #[test]
@@ -1125,6 +1145,43 @@ mod tests {
         );
         // When the policy is off, the verdict is not narrowed.
         assert!(unrooted_signer_rejected("did:key:z6MkExample", false).is_none());
+    }
+
+    /// A `VerifyArtifactResult` carrying only the fields the summary reads.
+    fn verified_result(report: Option<auths_verifier::VerificationReport>) -> VerifyArtifactResult {
+        VerifyArtifactResult {
+            file: "x.tar".into(),
+            valid: true,
+            digest_match: Some(true),
+            chain_valid: Some(true),
+            chain_report: report,
+            witness_quorum: None,
+            issuer: Some("did:keri:Esigner".into()),
+            commit_sha: None,
+            commit_verified: None,
+            oidc_join: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn verified_summary_names_offline_freshness_never_bare() {
+        // An offline chain verify carries Unknown freshness; the human summary must say so,
+        // never render a bare "verified" that reads as real-time fresh.
+        let report = auths_verifier::VerificationReport::valid(vec![]);
+        let line = verified_summary(&verified_result(Some(report)));
+        assert!(
+            line.contains("freshness unknown"),
+            "offline verify must surface freshness, got: {line}"
+        );
+    }
+
+    #[test]
+    fn verified_summary_names_a_fresh_verdict_when_carried() {
+        let report =
+            auths_verifier::VerificationReport::valid(vec![]).with_freshness(Freshness::Fresh);
+        let line = verified_summary(&verified_result(Some(report)));
+        assert!(line.contains("freshness fresh"), "got: {line}");
     }
 
     /// Regression: the bytes the verifier checks the SSH signature over must

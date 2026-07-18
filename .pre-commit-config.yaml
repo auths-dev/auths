@@ -1,3 +1,8 @@
+# Exclude the .recurve/ working area from every hook (commit and push stages).
+# It is a local scratch/notes area (shell, markdown, JSON dumps), not workspace
+# source, so file hooks (whitespace, EOF, yaml/toml) must not touch it.
+exclude: '^\.recurve/'
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

@@ -33,8 +33,13 @@ interface WasmModule {
   verifyAttestationJson(attestationJson: string, issuerPkHex: string): Promise<void>;
   verifyAttestationWithResult(attestationJson: string, issuerPkHex: string): Promise<string>;
   verifyChainJson(attestationsJsonArray: string, rootPkHex: string): Promise<string>;
-  validateKelJson(kelJson: string): Promise<string>;
-  verifyDeviceLink(kelJson: string, attestationJson: string, deviceDid: string): Promise<string>;
+  validateKelJson(kelJson: string, attachmentsJson: string): Promise<string>;
+  verifyDeviceLink(
+    kelJson: string,
+    attachmentsJson: string,
+    attestationJson: string,
+    deviceDid: string
+  ): Promise<string>;
 }
 
 import type { VerificationResult, VerificationReport, KeriKeyState, DeviceLinkResult } from './types';
@@ -213,22 +218,32 @@ export function isVerificationValid(report: VerificationReport): boolean {
 /**
  * Verify a KERI Key Event Log and return the resulting key state.
  *
+ * The KEL is authenticated, not merely parsed: each event's CESR signature
+ * attachment is checked against the key state it advances, so an unsigned or
+ * tampered KEL is refused rather than trusted. Pass the attachments alongside
+ * the events — they travel together in a bundle's `kel` / `kel_attachments`.
+ *
  * @param kelJson - JSON array of KEL events (inception, rotation, interaction)
+ * @param attachmentsJson - JSON array of hex-encoded CESR signature attachments,
+ *   one per KEL event, that authenticate the log
  * @returns KeriKeyState with the current public key and sequence number
- * @throws Error if KEL parsing or verification fails
+ * @throws Error if KEL parsing, attachment parsing, or verification fails
  *
  * @example
  * ```typescript
- * const keyState = await verifyKel(kelEventsJson);
+ * const keyState = await verifyKel(kelEventsJson, kelAttachmentsJson);
  * console.log('Current key:', keyState.current_key_encoded);
  * console.log('Sequence:', keyState.sequence);
  * ```
  */
-export async function verifyKel(kelJson: string): Promise<KeriKeyState> {
+export async function verifyKel(
+  kelJson: string,
+  attachmentsJson: string
+): Promise<KeriKeyState> {
   const wasm = ensureInitialized();
 
   try {
-    const resultJson = await wasm.validateKelJson(kelJson);
+    const resultJson = await wasm.validateKelJson(kelJson, attachmentsJson);
     return JSON.parse(resultJson) as KeriKeyState;
   } catch (error) {
     throw new Error(
@@ -244,13 +259,15 @@ export async function verifyKel(kelJson: string): Promise<KeriKeyState> {
  * and seal anchoring. Returns a result object — never throws for verification failures.
  *
  * @param kelJson - JSON array of KEL events for the identity
+ * @param attachmentsJson - JSON array of the KEL's signature attachments (one CESR
+ *   attachment string per event) — the KEL is authenticated before it is replayed
  * @param attestationJson - JSON attestation linking the identity to the device
  * @param deviceDid - Expected device DID string (e.g. "did:key:z6Mk...")
  * @returns DeviceLinkResult with valid flag, optional key state, and seal info
  *
  * @example
  * ```typescript
- * const result = await verifyDeviceLink(kelJson, attestationJson, 'did:key:z6Mk...');
+ * const result = await verifyDeviceLink(kelJson, attachmentsJson, attestationJson, 'did:key:z6Mk...');
  * if (result.valid) {
  *   console.log('Device verified! Identity key:', result.key_state?.current_key_encoded);
  *   if (result.seal_sequence !== undefined) {
@@ -263,13 +280,19 @@ export async function verifyKel(kelJson: string): Promise<KeriKeyState> {
  */
 export async function verifyDeviceLink(
   kelJson: string,
+  attachmentsJson: string,
   attestationJson: string,
   deviceDid: string
 ): Promise<DeviceLinkResult> {
   const wasm = ensureInitialized();
 
   try {
-    const resultJson = await wasm.verifyDeviceLink(kelJson, attestationJson, deviceDid);
+    const resultJson = await wasm.verifyDeviceLink(
+      kelJson,
+      attachmentsJson,
+      attestationJson,
+      deviceDid
+    );
     return JSON.parse(resultJson) as DeviceLinkResult;
   } catch (error) {
     return {

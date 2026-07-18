@@ -24,6 +24,7 @@ pub(crate) fn gather_developer_config(
     interactive: bool,
     out: &Output,
     cmd: &InitCommand,
+    registry_path: &Path,
 ) -> Result<(
     Box<dyn KeyStorage + Send + Sync>,
     CreateDeveloperIdentityConfig,
@@ -34,17 +35,18 @@ pub(crate) fn gather_developer_config(
     out.print_success("Prerequisites OK");
     out.newline();
 
-    let registry_path = get_auths_repo_path()?;
     let alias = prompt_for_alias(interactive, cmd)?;
-    let conflict_policy = prompt_for_conflict_policy(interactive, cmd, &registry_path, out)?;
-    let git_scope = prompt_for_git_scope(interactive)?;
+    let conflict_policy = prompt_for_conflict_policy(interactive, cmd, registry_path, out)?;
+    let git_scope = prompt_for_git_scope(interactive, cmd.git_scope)?;
 
     let mut builder = CreateDeveloperIdentityConfig::builder(KeyAlias::new_unchecked(&alias))
         .with_conflict_policy(conflict_policy)
         .with_git_signing_scope(git_scope);
 
     if cmd.register {
-        builder = builder.with_registration(&cmd.registry);
+        // --register is opt-in and there is no default registry, so it must name one.
+        let registry = crate::commands::verify_helpers::require_registry(cmd.registry.clone())?;
+        builder = builder.with_registration(&registry);
     }
 
     Ok((keychain, builder.build()))
@@ -80,8 +82,8 @@ pub(crate) fn gather_ci_config(
     let (passphrase, passphrase_source) = match std::env::var("AUTHS_PASSPHRASE") {
         Ok(p) => (p, "the AUTHS_PASSPHRASE environment variable"),
         Err(_) => (
-            auths_sdk::types::DEFAULT_CI_PASSPHRASE.to_string(),
-            "the built-in CI default passphrase",
+            auths_sdk::types::generate_ci_passphrase(),
+            "a generated per-identity ephemeral passphrase",
         ),
     };
     preflight_passphrase(&passphrase, passphrase_source)?;
@@ -151,7 +153,7 @@ pub(crate) fn gather_agent_config(
 
 pub(crate) fn submit_registration(
     repo_path: &Path,
-    registry_url: &str,
+    registry_url: Option<&str>,
     proof_url: Option<String>,
     skip: bool,
     out: &Output,
@@ -160,6 +162,12 @@ pub(crate) fn submit_registration(
         out.print_info("Registration skipped (pass --register to publish to the registry)");
         return None;
     }
+    // There is no default registry, and `gather` already refuses --register
+    // without one — so reaching here without a URL is unreachable, not fatal.
+    let Some(registry_url) = registry_url else {
+        out.print_warn("Registration skipped: no registry configured (--registry <url>)");
+        return None;
+    };
 
     out.print_info("Publishing identity to Auths Registry...");
     let rt = match tokio::runtime::Runtime::new() {

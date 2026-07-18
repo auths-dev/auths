@@ -111,6 +111,81 @@ pub fn add_pinned_root(
     store.write(&roots_path(auths_dir), &format!("{}\n", roots.join("\n")))
 }
 
+/// What [`pin_root_in_repo`] did, so the caller can report it accurately.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RootPinOutcome {
+    /// The root was newly pinned and the pin file staged.
+    PinnedAndStaged,
+    /// The root was already pinned but the pin file was untracked; it is now staged.
+    Staged,
+    /// The root was already pinned and the pin file already tracked. Nothing to do.
+    AlreadyTracked,
+}
+
+/// Failure pinning a trusted root into a repository.
+#[derive(Debug, thiserror::Error)]
+pub enum PinRootError {
+    /// The pin file could not be read or written.
+    #[error(transparent)]
+    Store(#[from] ConfigStoreError),
+    /// The pin file could not be staged into the index.
+    #[error(transparent)]
+    Index(#[from] crate::ports::git::IndexError),
+}
+
+/// Pin `did` as a trusted root in `<repo_root>/.auths/roots` **and stage it**, so
+/// the declaration travels with the repository.
+///
+/// The pin is the only trust anchor the delegation model permits: an `Auths-Id`
+/// trailer may *select* among pinned roots, never *establish* one. A pin that is
+/// written but never staged therefore never reaches a cloner, and every
+/// third-party verification path dead-ends on it.
+///
+/// Staging (rather than committing) is deliberate: `auths init` must not author a
+/// commit on the user's behalf. The pin rides along with their next commit, which
+/// is the one they are about to make anyway.
+///
+/// Idempotent: staging an unchanged tracked file is a no-op.
+///
+/// Args:
+/// * `store`: File-access port for the pin file.
+/// * `index`: Repository index port used to stage the pin file.
+/// * `repo_root`: The repository's top level (the directory containing `.auths/`).
+/// * `did`: The root `did:keri:` to pin.
+///
+/// Usage:
+/// ```ignore
+/// match pin_root_in_repo(&store, &index, &repo_root, &root_did)? {
+///     RootPinOutcome::AlreadyTracked => {}
+///     _ => println!("pinned — clones can now verify your commits"),
+/// }
+/// ```
+pub fn pin_root_in_repo(
+    store: &dyn ConfigStore,
+    index: &dyn crate::ports::git::RepoIndex,
+    repo_root: &Path,
+    did: &str,
+) -> Result<RootPinOutcome, PinRootError> {
+    let auths_dir = repo_root.join(".auths");
+    let pin_file = roots_path(&auths_dir);
+
+    let already_pinned = is_pinned_root(store, &auths_dir, did)?;
+    if already_pinned && index.is_tracked(&pin_file) {
+        return Ok(RootPinOutcome::AlreadyTracked);
+    }
+
+    if !already_pinned {
+        add_pinned_root(store, &auths_dir, did)?;
+    }
+    index.stage(&pin_file)?;
+
+    Ok(if already_pinned {
+        RootPinOutcome::Staged
+    } else {
+        RootPinOutcome::PinnedAndStaged
+    })
+}
+
 /// Failure loading the typed pinned-root set: a line that is not a well-formed
 /// `did:keri:` identity DID is rejected (fail-closed) rather than silently skipped.
 #[derive(Debug, thiserror::Error)]
@@ -278,5 +353,116 @@ mod tests {
         // A second distinct root.
         add_pinned_root(&store, dir, "did:keri:Esecond").expect("add second");
         assert_eq!(load_pinned_roots(&store, dir).expect("load").len(), 2);
+    }
+
+    /// Records what was staged, and lets a test declare what git already tracks.
+    struct FakeIndex {
+        staged: std::sync::Mutex<Vec<PathBuf>>,
+        tracked: Vec<PathBuf>,
+    }
+
+    impl FakeIndex {
+        fn new() -> Self {
+            Self {
+                staged: std::sync::Mutex::new(Vec::new()),
+                tracked: Vec::new(),
+            }
+        }
+
+        fn with_tracked(tracked: Vec<PathBuf>) -> Self {
+            Self {
+                staged: std::sync::Mutex::new(Vec::new()),
+                tracked,
+            }
+        }
+
+        fn staged(&self) -> Vec<PathBuf> {
+            self.staged.lock().expect("staged lock").clone()
+        }
+    }
+
+    impl crate::ports::git::RepoIndex for FakeIndex {
+        fn stage(&self, path: &Path) -> Result<(), crate::ports::git::IndexError> {
+            self.staged
+                .lock()
+                .expect("staged lock")
+                .push(path.to_path_buf());
+            Ok(())
+        }
+
+        fn is_tracked(&self, path: &Path) -> bool {
+            self.tracked.iter().any(|p| p == path)
+        }
+    }
+
+    #[test]
+    fn pin_root_in_repo_writes_and_stages_the_pin() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let repo = tmp.path();
+        let index = FakeIndex::new();
+
+        let outcome = pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
+
+        assert_eq!(outcome, RootPinOutcome::PinnedAndStaged);
+        assert!(is_pinned_root(&FsStore, &repo.join(".auths"), "did:keri:Eroot").expect("pinned"));
+        assert_eq!(
+            index.staged(),
+            vec![repo.join(".auths").join("roots")],
+            "the pin must be staged, or it never reaches a cloner"
+        );
+    }
+
+    /// The regression that made third-party verification impossible: `auths init`
+    /// wrote `.auths/roots` but never staged it, and the file's mere existence then
+    /// made the hook's `[ ! -e ]` guard false forever — so nothing ever staged it
+    /// and the pin never travelled. Pinning must stage an already-written pin.
+    #[test]
+    fn pin_root_in_repo_stages_a_previously_written_but_untracked_pin() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let repo = tmp.path();
+        let auths_dir = repo.join(".auths");
+
+        // Simulate the old init: pin written, never staged.
+        add_pinned_root(&FsStore, &auths_dir, "did:keri:Eroot").expect("pre-write");
+        let index = FakeIndex::new(); // tracks nothing
+
+        let outcome = pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
+
+        assert_eq!(outcome, RootPinOutcome::Staged);
+        assert_eq!(
+            index.staged(),
+            vec![auths_dir.join("roots")],
+            "an already-written but untracked pin must still be staged"
+        );
+    }
+
+    #[test]
+    fn pin_root_in_repo_is_a_noop_when_already_pinned_and_tracked() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let repo = tmp.path();
+        let auths_dir = repo.join(".auths");
+        add_pinned_root(&FsStore, &auths_dir, "did:keri:Eroot").expect("pre-write");
+        let index = FakeIndex::with_tracked(vec![auths_dir.join("roots")]);
+
+        let outcome = pin_root_in_repo(&FsStore, &index, repo, "did:keri:Eroot").expect("pin");
+
+        assert_eq!(outcome, RootPinOutcome::AlreadyTracked);
+        assert!(
+            index.staged().is_empty(),
+            "nothing to do; must not touch the index"
+        );
+    }
+
+    #[test]
+    fn pin_root_in_repo_appends_a_second_root_without_dropping_the_first() {
+        let tmp = tempfile::TempDir::new().expect("temp dir");
+        let repo = tmp.path();
+        let index = FakeIndex::new();
+
+        pin_root_in_repo(&FsStore, &index, repo, "did:keri:Efirst").expect("first");
+        pin_root_in_repo(&FsStore, &index, repo, "did:keri:Esecond").expect("second");
+
+        let roots = load_pinned_roots(&FsStore, &repo.join(".auths")).expect("load");
+        assert_eq!(roots, vec!["did:keri:Efirst", "did:keri:Esecond"]);
     }
 }

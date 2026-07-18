@@ -65,3 +65,38 @@ fn test_golden_path_init_sign_verify() {
         result["error"]
     );
 }
+
+/// Golden path for file/artifact signing: init → `sign <file>` → `verify <file>`.
+///
+/// Without an explicit `--key`, a file attestation must still carry an issuer
+/// signature so it is attributable to the identity. Regression: it previously signed
+/// device-only, and verification failed with "missing issuer signature".
+#[test]
+fn test_golden_path_artifact_sign_verify() {
+    let env = TestEnv::new();
+    env.init_identity();
+
+    std::fs::write(env.repo_path.join("artifact.bin"), b"payload bytes").unwrap();
+
+    let sign = env
+        .cmd("auths")
+        .args(["sign", "artifact.bin"])
+        .output()
+        .unwrap();
+    assert!(
+        sign.status.success(),
+        "auths sign artifact.bin failed: {}",
+        String::from_utf8_lossy(&sign.stderr)
+    );
+
+    let verify = env
+        .cmd("auths")
+        .args(["verify", "artifact.bin"])
+        .output()
+        .unwrap();
+    assert!(
+        verify.status.success(),
+        "auths verify artifact.bin failed: {}",
+        String::from_utf8_lossy(&verify.stderr)
+    );
+}

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auths at scale</title>
+<style>
+:root {
+  --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --baseline:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --s1:#2a78d6; --s2:#1baf7a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --ring:rgba(255,255,255,.10);
+    --s1:#3987e5; --s2:#199e70;
+  }
+}
+* { box-sizing:border-box; margin:0; }
+body { background:var(--page); color:var(--ink);
+  font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased; padding:56px 24px 80px; }
+main { max-width:920px; margin:0 auto; }
+h1 { font-size:34px; font-weight:700; letter-spacing:-.02em; }
+.tagline { color:var(--ink2); margin-top:6px; max-width:620px; }
+h2 { font-size:22px; font-weight:650; letter-spacing:-.01em; margin-bottom:4px; }
+h3 { font-size:13px; font-weight:600; color:var(--muted); text-transform:uppercase;
+  letter-spacing:.06em; margin:22px 0 10px; }
+section { background:var(--surface); border:1px solid var(--ring); border-radius:16px;
+  padding:28px; margin-top:28px; }
+.sub { color:var(--ink2); font-size:14px; max-width:640px; }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:16px; margin-top:28px; }
+.tile { background:var(--surface); border:1px solid var(--ring); border-radius:16px;
+  padding:22px; }
+.tile-v { font-size:32px; font-weight:700; letter-spacing:-.02em; }
+.tile-t { margin-top:4px; font-weight:600; }
+.tile-s { color:var(--muted); font-size:13px; margin-top:2px; }
+.legend { display:flex; gap:18px; color:var(--ink2); font-size:13px; margin-bottom:14px; }
+.legend span { display:inline-flex; align-items:center; gap:7px; }
+.chip { width:10px; height:10px; border-radius:3px; display:inline-block; }
+.chip.s1,.bar.s1 { background:var(--s1); }
+.chip.s2,.bar.s2 { background:var(--s2); }
+.chart { display:flex; flex-direction:column; gap:6px; }
+.tier-label { color:var(--ink2); font-size:13px; font-weight:600; margin:12px 0 2px; }
+.tier-label:first-child { margin-top:0; }
+.bar-row { display:grid; grid-template-columns:110px 1fr 130px; align-items:center;
+  gap:12px; padding:2px 0; border-radius:6px; }
+.series-name { color:var(--ink2); font-size:13px; display:inline-flex;
+  align-items:center; gap:7px; }
+.track { position:relative; height:14px; border-left:2px solid var(--baseline); }
+.bar { position:absolute; left:0; top:1px; height:12px; width:0;
+  border-radius:0 4px 4px 0; transition:width .6s cubic-bezier(.2,.7,.2,1); }
+.val { font-size:13px; color:var(--ink); font-variant-numeric:tabular-nums; }
+.proj { color:var(--muted); font-size:11px; font-style:italic; }
+.explain { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:24px; margin-top:18px; }
+.explain h4 { font-size:14px; font-weight:650; display:flex; align-items:center;
+  gap:8px; margin-bottom:6px; }
+.explain p { color:var(--ink2); font-size:14px; }
+.muted { color:var(--muted); font-weight:500; }
+.tablewrap { overflow-x:auto; margin-top:18px; }
+table { border-collapse:collapse; width:100%; font-size:13.5px; white-space:nowrap; }
+th { text-align:left; color:var(--muted); font-weight:600; font-size:12px;
+  padding:8px 14px 8px 0; border-bottom:1px solid var(--grid); }
+td { padding:8px 14px 8px 0; border-bottom:1px solid var(--grid);
+  font-variant-numeric:tabular-nums; }
+tr:last-child td { border-bottom:none; }
+.note { color:var(--muted); font-size:12.5px; margin-top:32px; line-height:1.7; }
+.note b { color:var(--ink2); }
+#tip { position:fixed; pointer-events:none; background:var(--ink); color:var(--page);
+  padding:10px 12px; border-radius:10px; font-size:12.5px; line-height:1.5;
+  white-space:pre-line; opacity:0; transition:opacity .12s; max-width:300px;
+  z-index:10; font-variant-numeric:tabular-nums; }
+</style></head><body><main>
+<h1>Auths at scale</h1>
+<p class="tagline">Onboarding cost on the shared org log: today&rsquo;s per-identity
+anchoring vs batch anchoring (one anchor event per batch). Same cryptography, same
+verification &mdash; every run passes the full verification, signing, and revocation
+checks on both implementations.</p>
+<div class="tiles"><div class="tile"><div class="tile-v">65×</div><div class="tile-t">faster onboarding with batch anchoring</div><div class="tile-s">measured head-to-head at 1,000 identities</div></div><div class="tile"><div class="tile-v">3.6 min</div><div class="tile-t">to onboard 10,000 agents</div><div class="tile-s">batch anchoring, all verification checks passing</div></div><div class="tile"><div class="tile-v">302 vs 30,001</div><div class="tile-t">org-log events at 10,000 identities</div><div class="tile-s">batch vs per-identity — every verifier replays this log</div></div></div>
+
+<section>
+<h2>What&rsquo;s being compared</h2>
+<p class="sub">Every identity an organization creates &mdash; an employee, a device,
+an AI agent &mdash; is vouched for by an entry in the organization&rsquo;s shared,
+tamper-evident log. Anyone verifying an identity replays that log. The two
+implementations differ only in how those entries are written.</p>
+<div class="explain">
+  <div>
+    <h4><i class="chip s1"></i>Per-identity anchoring <span class="muted">&middot; today</span></h4>
+    <p>Each new identity gets its own log entries &mdash; three of them &mdash; and each
+    is saved to disk separately. Think of a notary who writes, stamps, and files a
+    fresh page for every single hire. It&rsquo;s simple, but the book grows three pages
+    per identity, and adding each new page gets slower as the book gets thicker.</p>
+  </div>
+  <div>
+    <h4><i class="chip s2"></i>Batch anchoring <span class="muted">&middot; proposed</span></h4>
+    <p>New identities are gathered into a group, and the notary stamps <em>one</em>
+    page listing the whole cohort, filed once. The book stays short no matter how
+    many identities join &mdash; so writing stays fast and reading stays fast. Each
+    individual is still verified exactly as before, against that one shared page.</p>
+  </div>
+</div>
+<p class="sub" style="margin-top:14px">Same cryptography, same verification, same
+revocation &mdash; only the bookkeeping differs. Every run below passes identical
+verification checks on both implementations.</p>
+</section>
+<section><h2>Agent fleets</h2><p class="sub">CI runners, deploy bots, autonomous agents — delegated identities under one org root. Batch size 100.</p><h3>Time to onboard</h3><div class="legend"><span><i class="chip s1"></i>Per-identity anchoring (main)</span><span><i class="chip s2"></i>Batch anchoring (bulk)</span></div><div class="chart"><div class="tier-label">Small · 100 identities</div><div class="bar-row" data-tip="Per-identity anchoring · 100 identities&#10;time 8.3 s · 12/s&#10;org KEL 307 events · — commits&#10;storage 25 MB · replay 58 ms"><span class="series-name"><i class="chip s1"></i>Per-identity</span><span class="track"><i class="bar s1" data-w="0.35"></i></span><span class="val">8.3 s</span></div><div class="bar-row" data-tip="Batch anchoring · 100 identities&#10;time 630 ms · 159/s&#10;org KEL 8 events · 9 commits&#10;storage 4 MB · replay 2 ms"><span class="series-name"><i class="chip s2"></i>Batch</span><span class="track"><i class="bar s2" data-w="0.35"></i></span><span class="val">630 ms</span></div><div class="tier-label">Medium · 1,000 identities</div><div class="bar-row" data-tip="Per-identity anchoring · 1,000 identities&#10;time 7.7 min · 2.16/s&#10;org KEL 3,052 events · 4,053 commits&#10;storage 473 MB · replay 3.5 s"><span class="series-name"><i class="chip s1"></i>Per-identity</span><span class="track"><i class="bar s1" data-w="1.07"></i></span><span class="val">7.7 min</span></div><div class="bar-row" data-tip="Batch anchoring · 1,000 identities&#10;time 7.1 s · 141/s&#10;org KEL 62 events · 63 commits&#10;storage 43 MB · replay 4 ms"><span class="series-name"><i class="chip s2"></i>Batch</span><span class="track"><i class="bar s2" data-w="0.35"></i></span><span class="val">7.1 s</span></div><div class="tier-label">Large · 10,000 identities</div><div class="bar-row" data-tip="Per-identity anchoring · 10,000 identities&#10;time 12.1 h · 0.23/s&#10;org KEL 30,001 events · 40,500 commits&#10;storage 8.8 GB · replay 34.3 s"><span class="series-name"><i class="chip s1"></i>Per-identity</span><span class="track"><i class="bar s1" style="opacity:.45" data-w="100.00"></i></span><span class="val">12.1 h <span class="proj">projected</span></span></div><div class="bar-row" data-tip="Batch anchoring · 10,000 identities&#10;time 3.6 min · 46/s&#10;org KEL 302 events · 303 commits&#10;storage 454 MB · replay 49 ms"><span class="series-name"><i class="chip s2"></i>Batch</span><span class="track"><i class="bar s2" data-w="0.50"></i></span><span class="val">3.6 min</span></div></div><div class="tablewrap"><table><tr><th>Tier</th><th>Anchoring</th><th>Time</th><th>Rate</th><th>Org-KEL events</th><th>Commits</th><th>Storage</th><th>Cold replay</th><th>Revoke one (p50)</th></tr><tr><td>Small · 100</td><td>Per-identity</td><td>8.3 s</td><td>12/s</td><td>307</td><td>—</td><td>25 MB</td><td>58 ms</td><td>99 ms</td></tr><tr><td>Small · 100</td><td>Batch</td><td>630 ms</td><td>159/s</td><td>8</td><td>9</td><td>4 MB</td><td>2 ms</td><td>18 ms</td></tr><tr><td>Medium · 1,000</td><td>Per-identity</td><td>7.7 min</td><td>2.16/s</td><td>3,052</td><td>4,053</td><td>473 MB</td><td>3.5 s</td><td>4.0 s</td></tr><tr><td>Medium · 1,000</td><td>Batch</td><td>7.1 s</td><td>141/s</td><td>62</td><td>63</td><td>43 MB</td><td>4 ms</td><td>113 ms</td></tr><tr><td>Large · 10,000</td><td>Per-identity <span class="proj">proj.</span></td><td>12.1 h</td><td>0.23/s</td><td>30,001</td><td>40,500</td><td>8.8 GB</td><td>34.3 s</td><td>—</td></tr><tr><td>Large · 10,000</td><td>Batch</td><td>3.6 min</td><td>46/s</td><td>302</td><td>303</td><td>454 MB</td><td>49 ms</td><td>2.2 s</td></tr></table></div></section><section><h2>Employee onboarding</h2><p class="sub">Org-side membership cost per employee (each person's own identity is created on their device, in parallel — it never touches the org writer). Cohort batches of 25.</p><h3>Time to onboard</h3><div class="legend"><span><i class="chip s1"></i>Per-identity anchoring (main)</span><span><i class="chip s2"></i>Batch anchoring (bulk)</span></div><div class="chart"><div class="tier-label">Small company · 50 identities</div><div class="bar-row" data-tip="Per-identity anchoring · 50 identities&#10;time 3.4 s · 15/s&#10;org KEL 154 events · 205 commits&#10;storage 12 MB · replay 20 ms"><span class="series-name"><i class="chip s1"></i>Per-identity</span><span class="track"><i class="bar s1" data-w="0.35"></i></span><span class="val">3.4 s</span></div><div class="bar-row" data-tip="Batch anchoring · 50 identities&#10;time 371 ms · 135/s&#10;org KEL 6 events · 7 commits&#10;storage 2 MB · replay 2 ms"><span class="series-name"><i class="chip s2"></i>Batch</span><span class="track"><i class="bar s2" data-w="0.35"></i></span><span class="val">371 ms</span></div><div class="tier-label">Medium company · 500 identities</div><div class="bar-row" data-tip="Per-identity anchoring · 500 identities&#10;time 1.8 min · 4.62/s&#10;org KEL 1,527 events · 2,028 commits&#10;storage 174 MB · replay 927 ms"><span class="series-name"><i class="chip s1"></i>Per-identity</span><span class="track"><i class="bar s1" data-w="0.99"></i></span><span class="val">1.8 min</span></div><div class="bar-row" data-tip="Batch anchoring · 500 identities&#10;time 5.5 s · 90/s&#10;org KEL 47 events · 48 commits&#10;storage 23 MB · replay 3 ms"><span class="series-name"><i class="chip s2"></i>Batch</span><span class="track"><i class="bar s2" data-w="0.35"></i></span><span class="val">5.5 s</span></div><div class="tier-label">Large company · 5,000 identities</div><div class="bar-row" data-tip="Per-identity anchoring · 5,000 identities&#10;time 3.0 h · 0.46/s&#10;org KEL 15,001 events · 20,250 commits&#10;storage 3.6 GB · replay 17.2 s"><span class="series-name"><i class="chip s1"></i>Per-identity</span><span class="track"><i class="bar s1" style="opacity:.45" data-w="100.00"></i></span><span class="val">3.0 h <span class="proj">projected</span></span></div><div class="bar-row" data-tip="Batch anchoring · 5,000 identities&#10;time 6.9 min · 12/s&#10;org KEL 402 events · 403 commits&#10;storage 264 MB · replay 59 ms"><span class="series-name"><i class="chip s2"></i>Batch</span><span class="track"><i class="bar s2" data-w="3.80"></i></span><span class="val">6.9 min</span></div></div><div class="tablewrap"><table><tr><th>Tier</th><th>Anchoring</th><th>Time</th><th>Rate</th><th>Org-KEL events</th><th>Commits</th><th>Storage</th><th>Cold replay</th><th>Revoke one (p50)</th></tr><tr><td>Small company · 50</td><td>Per-identity</td><td>3.4 s</td><td>15/s</td><td>154</td><td>205</td><td>12 MB</td><td>20 ms</td><td>58 ms</td></tr><tr><td>Small company · 50</td><td>Batch</td><td>371 ms</td><td>135/s</td><td>6</td><td>7</td><td>2 MB</td><td>2 ms</td><td>56 ms</td></tr><tr><td>Medium company · 500</td><td>Per-identity</td><td>1.8 min</td><td>4.62/s</td><td>1,527</td><td>2,028</td><td>174 MB</td><td>927 ms</td><td>1.1 s</td></tr><tr><td>Medium company · 500</td><td>Batch</td><td>5.5 s</td><td>90/s</td><td>47</td><td>48</td><td>23 MB</td><td>3 ms</td><td>206 ms</td></tr><tr><td>Large company · 5,000</td><td>Per-identity <span class="proj">proj.</span></td><td>3.0 h</td><td>0.46/s</td><td>15,001</td><td>20,250</td><td>3.6 GB</td><td>17.2 s</td><td>—</td></tr><tr><td>Large company · 5,000</td><td>Batch</td><td>6.9 min</td><td>12/s</td><td>402</td><td>403</td><td>264 MB</td><td>59 ms</td><td>3.6 s</td></tr></table></div></section>
+<p class="note">
+<b>Method.</b> tests/scale harness, release build, Apple M1 Max &middot; 64 GB.
+Per-identity anchoring measured at 50&ndash;1,000 identities; large-tier
+per-identity cells are projections from the fitted per-append cost
+(41&#8201;ms + 0.86&#8201;ms per identity already in the log; storage by power-law fit) because a direct run
+is 12.1 h of wall clock &mdash; which is the finding.
+Batch anchoring measured directly at every tier, including 10,000.
+Binaries: main @ d5d42c1c, bulk branch @ 0610292f.
+Key-derivation cost excluded identically on both sides (test parameters).
+Employee tiers count org-side membership work only. Raw data: runs/*.json &middot; 2026-07-04.
+</p>
+</main>
+<div id="tip"></div>
+<script>
+const tip = document.getElementById('tip');
+document.querySelectorAll('.bar-row').forEach(r => {
+  r.addEventListener('mousemove', e => {
+    tip.textContent = r.dataset.tip;
+    tip.style.opacity = 1;
+    const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+    if (y + h > innerHeight - 8) y = e.clientY - h - pad;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  });
+  r.addEventListener('mouseleave', () => tip.style.opacity = 0);
+});
+requestAnimationFrame(() => requestAnimationFrame(() =>
+  document.querySelectorAll('.bar').forEach(b => b.style.width = b.dataset.w + '%')));
+</script>
+</body></html>

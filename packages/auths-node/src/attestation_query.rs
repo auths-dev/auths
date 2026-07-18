@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::attestation::group::AttestationGroup;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::storage::attestation::AttestationSource;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_storage::git::{GitRegistryBackend, RegistryAttestationStorage, RegistryConfig};
 use auths_verifier::core::Attestation;
 use auths_verifier::types::CanonicalDid;

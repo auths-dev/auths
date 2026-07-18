@@ -185,6 +185,59 @@ pub fn public_key(seed: &TypedSeed) -> Result<Vec<u8>, CryptoError> {
     }
 }
 
+/// Verify a signature under the named curve — the sync twin of [`sign`], for
+/// callers outside async provider contexts. Same dispatcher shape: one `match`,
+/// each arm a cfg-swappable provider inherent method.
+///
+/// Args:
+/// * `curve`: the signature's curve, carried explicitly (never inferred from length).
+/// * `public_key`: 32 raw bytes (Ed25519) or SEC1 bytes (P-256).
+/// * `message`: the signed bytes.
+/// * `signature`: the raw signature.
+///
+/// Usage:
+/// ```ignore
+/// verify(CurveType::P256, &pubkey, msg, &sig)?;
+/// ```
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub fn verify(
+    curve: CurveType,
+    public_key: &[u8],
+    message: &[u8],
+    signature: &[u8],
+) -> Result<(), CryptoError> {
+    match curve {
+        CurveType::Ed25519 => SyncProvider::ed25519_verify(public_key, message, signature),
+        CurveType::P256 => SyncProvider::p256_verify(public_key, message, signature),
+    }
+}
+
+/// Generate a fresh keypair on the named curve.
+///
+/// Returns the curve-tagged seed plus the public key ([`public_key`]'s
+/// encoding). Same dispatcher shape as [`sign`].
+///
+/// Args:
+/// * `curve`: the curve to generate on.
+///
+/// Usage:
+/// ```ignore
+/// let (seed, public_key) = generate(CurveType::P256)?;
+/// ```
+#[cfg(all(feature = "native", not(target_arch = "wasm32")))]
+pub fn generate(curve: CurveType) -> Result<(TypedSeed, Vec<u8>), CryptoError> {
+    match curve {
+        CurveType::Ed25519 => {
+            let (seed, public_key) = SyncProvider::ed25519_generate()?;
+            Ok((TypedSeed::Ed25519(*seed.as_bytes()), public_key.to_vec()))
+        }
+        CurveType::P256 => {
+            let (seed, public_key) = SyncProvider::p256_generate()?;
+            Ok((TypedSeed::P256(*seed.as_bytes()), public_key))
+        }
+    }
+}
+
 /// Parsed signing key with curve carried explicitly — the authoritative owner
 /// of a private-key + curve pair across sign / verify / PKCS8 export / CESR
 /// encoding flows.

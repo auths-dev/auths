@@ -1,5 +1,6 @@
 //! Verification types: reports, statuses, and device DIDs.
 
+use crate::freshness::Freshness;
 use crate::witness::WitnessQuorum;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -27,24 +28,44 @@ pub struct VerificationReport {
     pub anchored: Option<auths_keri::AnchorStatus>,
     /// Structured duplicity warning from the shared-KEL detector.
     ///
-    /// Fail-open: `Valid` with a `Some(Diverging { … })` warning still
-    /// means the attestation signature verified. The warning surfaces
-    /// so CLI / iOS / CI can render a banner and point the user at
-    /// `auths device remove` to resolve.
+    /// Fail-closed: a `Some(Diverging { … })` warning makes [`VerificationReport::is_valid`]
+    /// return `false` even though `status` still records that the attestation *signature*
+    /// verified — a forked KEL is not trustworthy. The structured warning also lets
+    /// CLI / iOS / CI render a banner and point the user at `auths device remove` to resolve.
     ///
     /// `None` indicates no divergence was observed (or no shared-KEL
     /// replay was performed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duplicity_warning: Option<crate::duplicity::DuplicityReport>,
+    /// How fresh this verdict is under the verifier's freshness model (ADR 009). The chain
+    /// verifier reads no clock and no network, so an offline verify (no fresher source supplied)
+    /// names [`Freshness::Unknown`] — the report is never a bare `Valid` that reads as real-time
+    /// fresh. A caller that has a fresher source upgrades it via [`VerificationReport::with_freshness`].
+    /// `#[serde(default)]` resolves a missing field to `Unknown` so pre-field JSON still loads.
+    #[serde(default)]
+    pub freshness: Freshness,
+    /// The KEL position this verdict was verified as-of (ADR 009, the `{as_of, freshness}` pair):
+    /// the issuer-KEL tip `(seq)` the chain was checked against, when the caller supplies one.
+    /// The pure chain verifier reads no KEL tip, so it leaves this `None` ("position unknown") —
+    /// honest, never fabricated; a caller holding the slice position stamps it via
+    /// [`VerificationReport::with_as_of`]. `#[serde(default)]` keeps pre-field JSON loadable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub as_of: Option<u128>,
 }
 
 impl VerificationReport {
-    /// Returns true only when the verification status is Valid.
+    /// Returns true only when the signature status is `Valid` **and** no duplicity warning is
+    /// present. Fail-closed: a valid signature on a KEL that has forked (`Some(Diverging)`) is not
+    /// trustworthy, so the trust decision refuses even though `status` records the signature as valid.
     pub fn is_valid(&self) -> bool {
-        matches!(self.status, VerificationStatus::Valid)
+        matches!(self.status, VerificationStatus::Valid) && self.duplicity_warning.is_none()
     }
 
     /// Creates a new valid VerificationReport with the given chain.
+    ///
+    /// Freshness defaults to [`Freshness::Unknown`]: the chain verifier consults no fresher
+    /// source, so an offline verify is honestly unconfirmable, never silently fresh. A caller
+    /// holding a fresher source upgrades it with [`VerificationReport::with_freshness`].
     pub fn valid(chain: Vec<ChainLink>) -> Self {
         Self {
             status: VerificationStatus::Valid,
@@ -53,10 +74,15 @@ impl VerificationReport {
             witness_quorum: None,
             anchored: None,
             duplicity_warning: None,
+            freshness: Freshness::Unknown,
+            as_of: None,
         }
     }
 
     /// Creates a new VerificationReport with the given status and chain.
+    ///
+    /// Freshness defaults to [`Freshness::Unknown`] (offline, unconfirmable) — see
+    /// [`VerificationReport::valid`].
     pub fn with_status(status: VerificationStatus, chain: Vec<ChainLink>) -> Self {
         Self {
             status,
@@ -65,14 +91,53 @@ impl VerificationReport {
             witness_quorum: None,
             anchored: None,
             duplicity_warning: None,
+            freshness: Freshness::Unknown,
+            as_of: None,
         }
     }
 
-    /// Attach a duplicity warning to this report. Does not change `status` —
-    /// fail-open policy: a diverging shared KEL is an orthogonal signal to
-    /// per-attestation signature validity.
+    /// Attach a duplicity warning to this report. Leaves `status` (the *signature* verdict)
+    /// unchanged, but makes [`VerificationReport::is_valid`] fail closed — a diverging shared
+    /// KEL is not trustworthy even when the per-attestation signature verified.
     pub fn with_duplicity_warning(mut self, warning: crate::duplicity::DuplicityReport) -> Self {
         self.duplicity_warning = Some(warning);
+        self
+    }
+
+    /// The freshness this report names (ADR 009). An offline verify is [`Freshness::Unknown`];
+    /// a report built with a fresher source carries its classified grade.
+    pub fn freshness(&self) -> Freshness {
+        self.freshness
+    }
+
+    /// Re-stamp this report's freshness from a fresher-source classification.
+    ///
+    /// The chain verifier itself reads no clock/network, so it always emits `Unknown`. A caller
+    /// that holds a fresher source (a witness head, a transparency-log tip) classifies it through
+    /// [`crate::freshness::FreshnessPolicy`] and stamps the grade here, so the surfaced verdict
+    /// stays honest about what was confirmed.
+    ///
+    /// Args:
+    /// * `freshness`: the classified freshness of this otherwise-valid report.
+    pub fn with_freshness(mut self, freshness: Freshness) -> Self {
+        self.freshness = freshness;
+        self
+    }
+
+    /// The KEL position this report was verified as-of (ADR 009), or `None` when the pure chain
+    /// verifier was given no slice position to report.
+    pub fn as_of(&self) -> Option<u128> {
+        self.as_of
+    }
+
+    /// Stamp the issuer-KEL slice position this report was verified as-of. Pairs with
+    /// [`VerificationReport::with_freshness`]: a caller holding the verified slice records both
+    /// *how current* (`as_of`) and *how fresh* (`freshness`) the otherwise-valid report is.
+    ///
+    /// Args:
+    /// * `as_of`: the issuer-KEL tip `(seq)` the chain was verified against.
+    pub fn with_as_of(mut self, as_of: u128) -> Self {
+        self.as_of = Some(as_of);
         self
     }
 }
@@ -815,6 +880,8 @@ mod tests {
             }),
             anchored: None,
             duplicity_warning: None,
+            freshness: Freshness::Unknown,
+            as_of: None,
         };
 
         let json = serde_json::to_string(&report).unwrap();
@@ -822,6 +889,16 @@ mod tests {
         assert_eq!(report, parsed);
         assert!(parsed.witness_quorum.is_some());
         assert_eq!(parsed.witness_quorum.unwrap().verified, 2);
+    }
+
+    #[test]
+    fn pre_freshness_report_json_loads_as_unknown() {
+        // A report JSON written before the freshness field existed must still deserialize,
+        // defaulting freshness to the honest `Unknown` (never a fabricated `Fresh`).
+        let json = r#"{"status":{"type":"Valid"},"chain":[],"warnings":[]}"#;
+        let report: VerificationReport = serde_json::from_str(json).unwrap();
+        assert!(report.is_valid());
+        assert_eq!(report.freshness(), Freshness::Unknown);
     }
 
     #[test]

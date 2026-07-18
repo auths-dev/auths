@@ -68,6 +68,13 @@ pub(crate) struct StandardOidcClaims {
 
 /// Validates standard OIDC claims (issuer, audience, expiry).
 ///
+/// Accepted risk — the OIDC `nonce` is deliberately NOT validated here. This verifier checks a
+/// token whose freshness is bounded by `exp` and whose binding to the caller is enforced upstream
+/// by KEL-anchoring (the token never stands alone as a session). `nonce` defends replay into an
+/// INTERACTIVE login callback where the verifier itself minted the nonce — that is not the defense
+/// on this path. Before placing this verifier behind such an interactive callback, add a nonce
+/// check bound to a verifier-minted, single-use value.
+///
 /// Args:
 /// * `claims`: The deserialized OIDC claims.
 /// * `expected_issuer`: The expected issuer URL.

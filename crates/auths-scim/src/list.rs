@@ -4,6 +4,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::constants::SCHEMA_LIST_RESPONSE;
 
+/// Maximum number of resources a single SCIM list page may return. RFC 7644 §3.4.2.4 lets a
+/// server impose its own maximum on the client's `count`; this bounds the page so a client
+/// cannot force the whole tenant to be materialized into one response.
+pub const MAX_LIST_COUNT: u64 = 200;
+
+/// Resolve the effective page size from a client's requested `count`, bounded by
+/// [`MAX_LIST_COUNT`]. An absent `count` defaults to the maximum; a larger request is clamped
+/// down to it. The result is a `usize` ready to pass to `Iterator::take`.
+///
+/// Args:
+/// * `requested`: the client's `count` query parameter, if any.
+///
+/// Usage:
+/// ```
+/// use auths_scim::list::clamp_list_count;
+/// assert_eq!(clamp_list_count(Some(10_000)), 200);
+/// assert_eq!(clamp_list_count(Some(50)), 50);
+/// ```
+pub fn clamp_list_count(requested: Option<u64>) -> usize {
+    requested.unwrap_or(MAX_LIST_COUNT).min(MAX_LIST_COUNT) as usize
+}
+
 /// SCIM 2.0 ListResponse container (RFC 7644 Section 3.4.2).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -54,5 +76,20 @@ mod tests {
         let response: ScimListResponse<String> = ScimListResponse::new(vec![], 0, 1);
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"Resources\""));
+    }
+
+    #[test]
+    fn count_is_bounded_by_the_server_maximum() {
+        // An unbounded or oversized `count` is clamped to the server maximum so a single list
+        // request cannot materialize the whole tenant.
+        assert_eq!(clamp_list_count(Some(u64::MAX)), MAX_LIST_COUNT as usize);
+        assert_eq!(clamp_list_count(Some(10_000)), MAX_LIST_COUNT as usize);
+        assert_eq!(clamp_list_count(None), MAX_LIST_COUNT as usize);
+    }
+
+    #[test]
+    fn count_below_the_maximum_is_honored() {
+        assert_eq!(clamp_list_count(Some(50)), 50);
+        assert_eq!(clamp_list_count(Some(0)), 0);
     }
 }

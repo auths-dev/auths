@@ -175,6 +175,7 @@ fn run_checks() -> Vec<Check> {
 
     // Domain checks are all Critical
     checks.push(check_keychain_accessible());
+    checks.push(check_identity_home());
     checks.push(check_auths_repo());
     checks.push(check_identity_valid(now));
 
@@ -201,16 +202,20 @@ fn check_commit_hook_installed() -> Check {
         }
         Ok(home) => {
             let hook_current = auths_sdk::workflows::commit_hooks::hook_is_current(&home);
-            let hooks_path_set =
-                crate::subprocess::git_command(&["config", "--global", "core.hooksPath"])
-                    .output()
-                    .ok()
-                    .filter(|o| o.status.success())
-                    .map(|o| {
-                        String::from_utf8_lossy(&o.stdout).trim()
-                            == home.join("githooks").to_string_lossy()
-                    })
-                    .unwrap_or(false);
+            // Resolve the *effective* core.hooksPath rather than the global one:
+            // `auths init` scopes signing config to the repo by default (a scripted
+            // init must not rewrite ~/.gitconfig), so a working local setup would
+            // otherwise be reported as broken. This is also the value git itself
+            // will use, which is the thing worth checking.
+            let hooks_path_set = crate::subprocess::git_command(&["config", "core.hooksPath"])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| {
+                    String::from_utf8_lossy(&o.stdout).trim()
+                        == home.join("githooks").to_string_lossy()
+                })
+                .unwrap_or(false);
             match (hook_current, hooks_path_set) {
                 (true, true) => (true, "prepare-commit-msg hook installed".to_string()),
                 (false, _) => (false, "hook file missing or stale".to_string()),
@@ -432,6 +437,37 @@ fn check_keychain_accessible() -> Check {
     }
 }
 
+/// Advisory: report which identity home directory is in effect and why.
+///
+/// Resolution is `AUTHS_HOME` (env override, when set and non-empty) then the
+/// `~/.auths` default. Surfacing the winner and its source turns "why can't it
+/// find my identity" into a one-glance answer instead of a guessing game.
+fn check_identity_home() -> Check {
+    let env_home = std::env::var("AUTHS_HOME").ok().filter(|s| !s.is_empty());
+    let (passed, detail, suggestion) = match auths_sdk::paths::auths_home() {
+        Ok(path) => {
+            let source = if env_home.is_some() {
+                "from AUTHS_HOME"
+            } else {
+                "default ~/.auths"
+            };
+            (true, format!("{} ({source})", path.display()), None)
+        }
+        Err(e) => (
+            false,
+            format!("cannot resolve: {e}"),
+            Some("Set AUTHS_HOME, or ensure a home directory is available".to_string()),
+        ),
+    };
+    Check {
+        name: "Identity home".to_string(),
+        passed,
+        detail,
+        suggestion,
+        category: CheckCategory::Advisory,
+    }
+}
+
 fn check_auths_repo() -> Check {
     let (passed, detail, suggestion) = match auths_sdk::paths::auths_home() {
         Ok(path) => {
@@ -580,23 +616,34 @@ fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
     ExpiryStatus::Ok
 }
 
+/// Report on the configured registry, if there is one.
+///
+/// There is no default registry, so with none configured this passes with
+/// "not configured" rather than failing: a registry is optional, and auths is
+/// fully functional — identity, signing, verification — without one. Previously
+/// this probed a baked-in default that returned 404, so every `auths doctor` run
+/// reported a failing check for a service the user neither had nor needed.
 fn check_registry_connectivity() -> Check {
-    use auths_sdk::registration::DEFAULT_REGISTRY_URL;
+    let Ok(base) = std::env::var("AUTHS_REGISTRY_URL") else {
+        return Check {
+            name: "Registry connectivity".to_string(),
+            passed: true,
+            detail: "not configured (optional — signing and verification need no registry)"
+                .to_string(),
+            suggestion: None,
+            category: CheckCategory::Advisory,
+        };
+    };
 
-    let url = format!("{DEFAULT_REGISTRY_URL}/health");
+    let url = format!("{base}/health");
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build();
 
     let (passed, detail) = match client {
         Ok(client) => match client.get(&url).send() {
-            Ok(resp) if resp.status().is_success() => {
-                (true, format!("{DEFAULT_REGISTRY_URL} (reachable)"))
-            }
-            Ok(resp) => (
-                false,
-                format!("{DEFAULT_REGISTRY_URL} (HTTP {})", resp.status()),
-            ),
+            Ok(resp) if resp.status().is_success() => (true, format!("{base} (reachable)")),
+            Ok(resp) => (false, format!("{base} (HTTP {})", resp.status())),
             Err(e) => (false, format!("unreachable: {e}")),
         },
         Err(e) => (false, format!("HTTP client error: {e}")),

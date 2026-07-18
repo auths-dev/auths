@@ -1,14 +1,18 @@
 # E2E Test Gap Report
 
-## CLI Commands Missing --json Support
+## CLI Commands `--json` Support — RESOLVED
 
-| Command | Current Output | Impact |
-|---------|---------------|--------|
-| `auths init` | Text only | Cannot validate init result programmatically |
-| `auths status` | Text only (--json may not be implemented) | Must parse human-readable output |
-| `auths device list` | Text only | Cannot extract device DIDs programmatically |
-| `auths device link` | Text only | Cannot confirm attestation details |
-| `auths device verify` | Text only | Cannot validate attestation structure |
+`init`, `status`, and the `device` subcommands honor the global `--json` flag and
+emit a documented schema (see `docs/cli-json-output.md`). Human progress goes to
+stderr so stdout is parseable JSON on its own.
+
+| Command | Status |
+|---------|--------|
+| `auths init` | ✅ enveloped result; `--json` forces non-interactive |
+| `auths status` | ✅ `StatusReport` object |
+| `auths device list` | ✅ enveloped `{identity, devices[]}` |
+| `auths device link` | ✅ enveloped `{device, attestation_id}` |
+| `auths device verify` | ✅ verification-result object; nonzero exit on failure |
 
 ## Exit Code Inconsistencies
 

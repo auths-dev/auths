@@ -94,24 +94,16 @@ fn test_init_happy_path() {
         "AUTHS_HOME should be initialized as git repo"
     );
 
-    // Init sets git config --global, which writes to our temp .gitconfig
-    // (redirected via GIT_CONFIG_GLOBAL env var in the subprocess)
+    // Init configures git signing globally by default — matching the interactive
+    // prompt's own default, and the command's job ("configure Git"). Writes land in
+    // our temp .gitconfig via GIT_CONFIG_GLOBAL.
     let gitconfig = std::fs::read_to_string(env.home.path().join(".gitconfig")).unwrap();
-    assert!(
-        gitconfig.contains("ssh"),
-        "gitconfig should contain ssh signing format, got: {}",
-        gitconfig
-    );
-    assert!(
-        gitconfig.contains("auths-sign"),
-        "gitconfig should reference auths-sign program, got: {}",
-        gitconfig
-    );
-    assert!(
-        gitconfig.contains("signingkey"),
-        "gitconfig should contain signing key, got: {}",
-        gitconfig
-    );
+    for expected in ["ssh", "auths-sign", "signingkey"] {
+        assert!(
+            gitconfig.contains(expected),
+            "gitconfig should contain {expected}, got: {gitconfig}"
+        );
+    }
 
     // KEL-native trust: init pins the local identity as a trusted root in
     // <repo>/.auths/roots (no allowed_signers allowlist is written anymore).
@@ -130,12 +122,84 @@ fn test_init_happy_path() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("auths:"),
-        "output should contain the identity in product form (auths:<prefix>), got: {}",
-        stderr
+        "output should contain the identity in product form (auths:<prefix>), got: {stderr}"
     );
     assert!(
         !stderr.contains("did:keri:"),
-        "first-run human output must not surface the did:keri method, got: {}",
-        stderr
+        "first-run human output must not surface the did:keri method, got: {stderr}"
+    );
+}
+
+/// The scope is choosable non-interactively. It previously was not: init
+/// hard-returned Global with no override, so a scripted, CI or agent run had no
+/// way to keep its hands off the user's ~/.gitconfig.
+#[test]
+fn test_init_git_scope_local_leaves_global_config_alone() {
+    let env = TestEnv::new();
+
+    let before = std::fs::read_to_string(env.home.path().join(".gitconfig")).unwrap();
+    let output = env
+        .cmd("auths")
+        .args([
+            "init",
+            "--profile",
+            "developer",
+            "--non-interactive",
+            "--git-scope",
+            "local",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "init --git-scope local failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let after = std::fs::read_to_string(env.home.path().join(".gitconfig")).unwrap();
+    assert_eq!(
+        before, after,
+        "--git-scope local must not touch ~/.gitconfig"
+    );
+
+    let local = std::fs::read_to_string(env.repo_path.join(".git").join("config")).unwrap();
+    for expected in ["ssh", "auths-sign", "signingkey"] {
+        assert!(
+            local.contains(expected),
+            "repo-local git config should contain {expected}, got: {local}"
+        );
+    }
+}
+
+/// `--git-scope skip` touches no git configuration at all.
+#[test]
+fn test_init_git_scope_skip_touches_no_git_config() {
+    let env = TestEnv::new();
+
+    let before = std::fs::read_to_string(env.home.path().join(".gitconfig")).unwrap();
+    let output = env
+        .cmd("auths")
+        .args([
+            "init",
+            "--profile",
+            "developer",
+            "--non-interactive",
+            "--git-scope",
+            "skip",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "init --git-scope skip failed");
+
+    let after = std::fs::read_to_string(env.home.path().join(".gitconfig")).unwrap();
+    assert_eq!(
+        before, after,
+        "--git-scope skip must not touch ~/.gitconfig"
+    );
+
+    // The identity still exists — only the git wiring was skipped.
+    assert!(
+        env.repo_path.join(".auths").join("roots").exists(),
+        "--git-scope skip must still pin the trusted root"
     );
 }

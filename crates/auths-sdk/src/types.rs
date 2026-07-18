@@ -1,7 +1,7 @@
 //! Re-exports of domain configuration types for backwards compatibility.
 
 // Re-export all identity config types
-pub use crate::domains::ci::types::{CiEnvironment, CiIdentityConfig, DEFAULT_CI_PASSPHRASE};
+pub use crate::domains::ci::types::{CiEnvironment, CiIdentityConfig, generate_ci_passphrase};
 pub use crate::domains::identity::types::{
     CreateAgentIdentityConfig, CreateAgentIdentityConfigBuilder, CreateDeveloperIdentityConfig,
     CreateDeveloperIdentityConfigBuilder, IdentityConfig, IdentityConflictPolicy,

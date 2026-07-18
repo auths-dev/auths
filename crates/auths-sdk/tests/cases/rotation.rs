@@ -16,7 +16,11 @@ use auths_sdk::domains::identity::types::InitializeResult;
 use auths_sdk::domains::identity::types::{
     CreateDeveloperIdentityConfig, IdentityConfig, IdentityRotationConfig,
 };
+use auths_sdk::domains::signing::service::{
+    ArtifactSigningError, ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
+};
 use auths_sdk::domains::signing::types::GitSigningScope;
+use auths_sdk::testing::fakes::FakeArtifactSource;
 use auths_sdk::workflows::rotation::{
     RotationKeyMaterial, apply_rotation, compute_rotation_event, rotate_identity,
 };
@@ -336,5 +340,65 @@ fn apply_rotation_returns_partial_rotation_on_keychain_failure() {
         matches!(result, Err(RotationError::PartialRotation(_))),
         "Expected PartialRotation when keychain write fails after KEL append, got: {:?}",
         result.unwrap_err()
+    );
+}
+
+#[test]
+fn rotated_out_key_cannot_sign() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (root_alias, keychain) = setup_test_identity(tmp.path());
+    let provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"));
+    let ctx =
+        build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
+
+    // Capture the current key bytes BEFORE rotation; rotation mutates the keystore.
+    let (root_did, role, old_enc) = keychain.load_key(&root_alias).expect("load current key");
+
+    let try_sign = |device_alias: &KeyAlias| -> Result<(), ArtifactSigningError> {
+        let params = ArtifactSigningParams {
+            artifact: Arc::new(FakeArtifactSource::from_data("release.bin", b"payload")),
+            identity_key: None,
+            device_key: SigningKeyMaterial::Alias(device_alias.clone()),
+            expires_in: None,
+            note: None,
+            commit_sha: None,
+        };
+        sign_artifact(params, &ctx).map(|_| ())
+    };
+
+    // The current key signs before rotation.
+    assert!(
+        try_sign(&root_alias).is_ok(),
+        "the current key should sign before rotation"
+    );
+
+    // Rotate the identity key: the KEL head is now a different key.
+    let config = IdentityRotationConfig {
+        repo_path: tmp.path().to_path_buf(),
+        identity_key_alias: Some(root_alias.clone()),
+        next_key_alias: None,
+    };
+    rotate_identity(config, &ctx, &SystemClock).expect("rotate identity");
+
+    // Store the captured pre-rotation key under a stale alias AFTER rotation (so it is
+    // not cleared by the rotation), pointing at the same identity AID. It is now a
+    // rotated-out key.
+    let stale_alias = KeyAlias::new_unchecked("stale-prev");
+    keychain
+        .store_key(&stale_alias, &root_did, role, &old_enc)
+        .expect("store the rotated-out key");
+
+    // The current alias still signs (its key is the new KEL head).
+    assert!(
+        try_sign(&root_alias).is_ok(),
+        "the rotated (current) key should still sign"
+    );
+
+    // Signing with the rotated-out key is refused.
+    let denied = try_sign(&stale_alias);
+    assert!(
+        matches!(denied, Err(ArtifactSigningError::KeyRotatedOut(_))),
+        "expected KeyRotatedOut, got {denied:?}"
     );
 }

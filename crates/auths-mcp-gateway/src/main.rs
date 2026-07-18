@@ -31,10 +31,13 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod chain;
+mod channel;
+mod inproc_sign;
 mod proxy;
 mod replay;
 mod spend_log;
 mod transcript;
+mod treasury;
 
 #[derive(Parser)]
 #[command(
@@ -64,6 +67,130 @@ enum Command {
     /// trust in the operator that produced the log. Exits non-zero on any non-`consistent`
     /// verdict. Needs the issuer's registry to resolve the agent + delegator KELs.
     VerifySpend(VerifySpendArgs),
+
+    /// The fleet treasury coordinator: ONE spending cap across N gateway processes.
+    ///
+    /// Gateways point `TREASURY_URL=tcp://host:port` at it; each metered call
+    /// reserves fleet capacity here BEFORE the local budget, so the tighter cap
+    /// always governs. Signs periodic `{fleet, count, cumulative}` checkpoints
+    /// that `verify-spend --treasury-checkpoints` cross-checks offline.
+    #[command(subcommand)]
+    Treasury(TreasuryCommand),
+
+    /// Payment channels: open a metered capacity reservation, stream rail-free
+    /// per-call spend against it (the signed spend log IS the channel state), and
+    /// close with ONE netted rail action plus a settlement record citing the
+    /// exact log_hash it was re-derived from. Rail legs are env-gated, never faked.
+    #[command(subcommand)]
+    Channel(ChannelCommand),
+
+    /// One-shot verifier-ready export: flatten the delegation's (rotated) spend log
+    /// into `spend.jsonl`, write `audit.json` naming `registry_git_url`, `agent`,
+    /// and `root`, and leave the registry working files committed — everything a
+    /// stranger needs to run `verify-spend` with no trust in this operator.
+    ExportSpendBundle(ExportSpendBundleArgs),
+}
+
+#[derive(Parser)]
+struct ExportSpendBundleArgs {
+    /// The gateway live dir (holds `registry/` with the spend log + counter).
+    #[arg(long = "live-dir", value_name = "DIR", env = "AUTHS_MCP_LIVE_DIR")]
+    live_dir: std::path::PathBuf,
+
+    /// The agent delegation whose log is exported.
+    #[arg(long = "agent", value_name = "DID")]
+    agent: String,
+
+    /// The delegator/root the grant is anchored to.
+    #[arg(long = "root", value_name = "DID")]
+    root: String,
+
+    /// The URL a verifier fetches the registry from (recorded in audit.json).
+    #[arg(long = "registry-url", value_name = "URL")]
+    registry_url: String,
+
+    /// Where `spend.jsonl` + `audit.json` are written.
+    #[arg(long = "out", value_name = "DIR")]
+    out: std::path::PathBuf,
+}
+
+#[derive(Subcommand)]
+enum ChannelCommand {
+    /// Record a funded (or stated-unfunded) capacity reservation.
+    Open(ChannelOpenArgs),
+    /// Re-derive the streamed total from the signed log and emit the netted settlement.
+    Close(ChannelCloseArgs),
+}
+
+#[derive(Parser)]
+struct ChannelOpenArgs {
+    /// The seller identity the channel streams to.
+    #[arg(long = "seller", value_name = "DID")]
+    seller: String,
+
+    /// The reserved channel capacity, e.g. `--capacity '$50'`.
+    #[arg(long = "capacity", value_name = "BUDGET")]
+    capacity: String,
+
+    /// The settling rail: `x402` or `stripe`.
+    #[arg(long = "rail", value_name = "RAIL")]
+    rail: String,
+
+    /// The gateway live dir the channel record persists under.
+    #[arg(long = "live-dir", value_name = "DIR", env = "AUTHS_MCP_LIVE_DIR")]
+    live_dir: std::path::PathBuf,
+}
+
+#[derive(Parser)]
+struct ChannelCloseArgs {
+    /// The channel id to close (from `channel open`).
+    #[arg(long = "channel", value_name = "ID")]
+    channel: String,
+
+    /// The spend log whose agent-signed cumulative is the closing state.
+    #[arg(long = "log", value_name = "FILE")]
+    log: std::path::PathBuf,
+
+    /// The gateway live dir holding the channel record.
+    #[arg(long = "live-dir", value_name = "DIR", env = "AUTHS_MCP_LIVE_DIR")]
+    live_dir: std::path::PathBuf,
+}
+
+#[derive(Subcommand)]
+enum TreasuryCommand {
+    /// Serve the fleet counter until killed.
+    Serve(TreasuryServeArgs),
+}
+
+#[derive(Parser)]
+struct TreasuryServeArgs {
+    /// `host:port` to listen on, e.g. `127.0.0.1:7801`.
+    #[arg(long = "listen", value_name = "ADDR")]
+    listen: String,
+
+    /// The fleet identifier — by convention the delegator root `did:keri:…`.
+    #[arg(long = "fleet", value_name = "ID")]
+    fleet: String,
+
+    /// The fleet-wide cap, e.g. `--cap '$5'`.
+    #[arg(long = "cap", value_name = "BUDGET")]
+    cap: String,
+
+    /// Where the durable ledger and the signed checkpoint trail persist.
+    #[arg(long = "state-dir", value_name = "DIR")]
+    state_dir: std::path::PathBuf,
+
+    /// Hex seed for the P-256 checkpoint-signing key; generated fresh when omitted.
+    #[arg(
+        long = "signing-seed",
+        value_name = "HEX",
+        env = "TREASURY_SIGNING_SEED"
+    )]
+    signing_seed: Option<String>,
+
+    /// Seconds between checkpoint signatures (written only when the counter moved).
+    #[arg(long = "checkpoint-secs", value_name = "SECS", default_value = "5")]
+    checkpoint_secs: u64,
 }
 
 #[derive(Parser)]
@@ -165,6 +292,34 @@ struct VerifySpendArgs {
     /// The delegator/root `did:keri:…` the grant is anchored to (the pinned trust root).
     #[arg(long = "root", value_name = "DID")]
     root: String,
+
+    /// A treasury checkpoint trail (`checkpoints.jsonl`) to cross-check: every
+    /// signature must verify, the trail must be monotonic, and with
+    /// `--expect-cumulative` the final total must equal the re-derived sum.
+    #[arg(long = "treasury-checkpoints", value_name = "FILE")]
+    treasury_checkpoints: Option<std::path::PathBuf>,
+
+    /// Pin the coordinator's checkpoint-signing public key (compressed P-256, hex).
+    #[arg(long = "treasury-pubkey", value_name = "HEX")]
+    treasury_pubkey: Option<String>,
+
+    /// Assert the final checkpointed cumulative equals this many cents (the caller's
+    /// re-derived fleet-wide sum across every delegation log).
+    #[arg(long = "expect-cumulative", value_name = "CENTS")]
+    expect_cumulative: Option<u64>,
+
+    /// Resume after an already-verified prefix of this many RECORDS (from a prior
+    /// run's `checkpoint:` line). Requires `--resume-binding` and `--resume-cents`.
+    #[arg(long = "resume-index", value_name = "N", requires_all = ["resume_binding", "resume_cents"])]
+    resume_index: Option<usize>,
+
+    /// The verified prefix's final commit binding (`checkpoint:` line `binding=`).
+    #[arg(long = "resume-binding", value_name = "HASH")]
+    resume_binding: Option<String>,
+
+    /// The verified prefix's re-derived settled cents (`checkpoint:` line `settled_cents=`).
+    #[arg(long = "resume-cents", value_name = "CENTS")]
+    resume_cents: Option<u64>,
 }
 
 fn main() -> ExitCode {
@@ -180,6 +335,126 @@ fn main() -> ExitCode {
         Command::Wrap(args) => runtime.block_on(run_wrap(args)),
         Command::Replay(args) => runtime.block_on(run_replay(args)),
         Command::VerifySpend(args) => runtime.block_on(run_verify_spend(args)),
+        Command::Treasury(TreasuryCommand::Serve(args)) => {
+            runtime.block_on(run_treasury_serve(args))
+        }
+        Command::Channel(cmd) => run_channel(cmd),
+        Command::ExportSpendBundle(args) => run_export_spend_bundle(args),
+    }
+}
+
+/// Flatten the (possibly rotated) spend log, emit the audit manifest, and commit
+/// the registry working state so a fetched copy re-derives the same counter.
+fn run_export_spend_bundle(args: ExportSpendBundleArgs) -> ExitCode {
+    let registry = args.live_dir.join("registry");
+    let source = auths_mcp_core::resolve_spend_log(&registry, &args.agent);
+    let records = match auths_mcp_core::read_spend_log(&source) {
+        Ok(records) => records,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot read the spend log at `{}`: {e}",
+                source.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let result = (|| -> anyhow::Result<()> {
+        std::fs::create_dir_all(&args.out)?;
+        let mut flat = String::new();
+        for record in &records {
+            flat.push_str(&serde_json::to_string(record)?);
+            flat.push('\n');
+        }
+        std::fs::write(args.out.join("spend.jsonl"), flat)?;
+        let manifest = serde_json::json!({
+            "registry_git_url": args.registry_url,
+            "agent": args.agent,
+            "root": args.root,
+        });
+        std::fs::write(
+            args.out.join("audit.json"),
+            serde_json::to_vec_pretty(&manifest)?,
+        )?;
+        let add = std::process::Command::new("git")
+            .args(["-C", &registry.to_string_lossy(), "add", "-A"])
+            .envs(chain::default_git_identity())
+            .output()?;
+        if !add.status.success() {
+            anyhow::bail!(
+                "git add in the registry failed: {}",
+                String::from_utf8_lossy(&add.stderr)
+            );
+        }
+        // A clean tree is fine — the working files may already be committed.
+        let _ = std::process::Command::new("git")
+            .args([
+                "-C",
+                &registry.to_string_lossy(),
+                "commit",
+                "--quiet",
+                "-m",
+                "spend bundle export",
+            ])
+            .envs(chain::default_git_identity())
+            .output()?;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            println!(
+                "export-spend-bundle: {} record(s) → {} (spend.jsonl + audit.json; registry committed)",
+                records.len(),
+                args.out.display(),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: export-spend-bundle: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The channel CLI: pure record I/O — no async, no rail touch.
+fn run_channel(cmd: ChannelCommand) -> ExitCode {
+    let result = match cmd {
+        ChannelCommand::Open(args) => {
+            channel::open(&args.seller, &args.capacity, &args.rail, &args.live_dir)
+        }
+        ChannelCommand::Close(args) => channel::close(&args.channel, &args.log, &args.live_dir),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: channel: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The fleet treasury coordinator process: parse the cap, then serve until killed.
+async fn run_treasury_serve(args: TreasuryServeArgs) -> ExitCode {
+    let cap_cents = match auths_mcp_core::Budget::parse(&args.cap) {
+        Ok(budget) => budget.cap_cents(),
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: invalid --cap `{}`: {e}", args.cap);
+            return ExitCode::FAILURE;
+        }
+    };
+    let cfg = treasury::ServeConfig {
+        listen: args.listen,
+        fleet: args.fleet,
+        cap_cents,
+        state_dir: args.state_dir,
+        signing_seed_hex: args.signing_seed,
+        checkpoint_secs: args.checkpoint_secs,
+    };
+    match treasury::serve(cfg).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: treasury serve exited: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -276,13 +551,104 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
     };
     // The facilitator key that would verify a captured rail attestation is supplied out-of-band once
     // the wire captures one (a follow-on); without it the offline audit still re-derives the spend.
-    let verdict = gate
-        .audit_spend_log(&records, chrono::Utc::now().timestamp(), &counter, None)
-        .await;
+    let now_ts = chrono::Utc::now().timestamp();
+    let verdict = match args.resume_index {
+        Some(index) => {
+            if index > records.len() {
+                eprintln!(
+                    "auths-mcp-gateway: --resume-index {index} exceeds the log ({} records)",
+                    records.len()
+                );
+                return ExitCode::FAILURE;
+            }
+            #[allow(clippy::expect_used)] // INVARIANT: clap requires_all guarantees both flags
+            let resume = auths_mcp_core::AuditResume {
+                prior_records: index,
+                prior_binding: args.resume_binding.clone().expect("required by clap"),
+                prior_settled_cents: auths_mcp_core::Cents::new(
+                    args.resume_cents.expect("required by clap"),
+                ),
+            };
+            gate.audit_spend_log_resumed(&records[index..], now_ts, &counter, None, &resume)
+                .await
+        }
+        None => gate.audit_spend_log(&records, now_ts, &counter, None).await,
+    };
     println!("verify-spend: {} — {verdict}", verdict.code());
-    if verdict.is_consistent() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
+    if !verdict.is_consistent() {
+        return ExitCode::FAILURE;
     }
+    // The resumable end state a checkpointing caller stores for its next run.
+    if let Some(last) = records.last() {
+        println!(
+            "checkpoint: records={} settled_cents={} binding={}",
+            records.len(),
+            match &verdict {
+                auths_mcp_core::AuditVerdict::Consistent(proof) => proof.settled_cents().get(),
+                _ => 0,
+            },
+            auths_mcp_core::call_commit_binding(&last.call_commit),
+        );
+    }
+    if let Some(path) = &args.treasury_checkpoints
+        && !cross_check_treasury(
+            path,
+            args.treasury_pubkey.as_deref(),
+            args.expect_cumulative,
+        )
+    {
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+/// Cross-check a treasury checkpoint trail: signatures, monotonicity, and (when
+/// asserted) the final cumulative against the caller's re-derived fleet total.
+fn cross_check_treasury(
+    path: &std::path::Path,
+    expect_pubkey: Option<&str>,
+    expect_cumulative: Option<u64>,
+) -> bool {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot read treasury checkpoints `{}`: {e}",
+                path.display()
+            );
+            return false;
+        }
+    };
+    let lines: Vec<String> = raw.lines().map(str::to_string).collect();
+    // The coordinator signs on the project-default curve; absent an explicit
+    // curve field on the trail, P-256 is the wire default (see the curve-tagging
+    // rules) — dispatched through the typed API, never by key length.
+    let last = match auths_mcp_core::verify_checkpoint_trail(&lines, expect_pubkey, |pk, m, s| {
+        auths_crypto::typed_verify(auths_crypto::CurveType::P256, pk, m, s).is_ok()
+    }) {
+        Ok(last) => last,
+        Err(e) => {
+            println!("treasury-checkpoints: invalid — {e}");
+            return false;
+        }
+    };
+    if let Some(expected) = expect_cumulative
+        && last.cumulative_cents.get() != expected
+    {
+        println!(
+            "treasury-checkpoints: invalid — {}",
+            auths_mcp_core::TreasuryError::CumulativeMismatch {
+                checkpointed: last.cumulative_cents.get(),
+                rederived: expected,
+            }
+        );
+        return false;
+    }
+    println!(
+        "treasury-checkpoints: valid — fleet {} at count {}, cumulative {} cents",
+        last.fleet,
+        last.count,
+        last.cumulative_cents.get()
+    );
+    true
 }

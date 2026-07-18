@@ -53,10 +53,78 @@ pub(crate) fn encode_verkey(raw: &[u8], code: &str) -> Result<String, KeriDecode
 ///
 /// Args:
 /// * `qb64`: The CESR-qualified verkey string (e.g. `"DAAB…"`, `"1AAJ…"`).
+///
+/// PRECONDITION: `qb64` must already be a validated, exact-length CESR primitive —
+/// every caller (`KeriPublicKey::parse`, `curve_of_aid`) runs [`take_matter_qb64`]
+/// first. cesride's decoder slices the input by a code-derived length, so handing it
+/// an unvalidated (truncated/non-ASCII) string would slice out of bounds and panic;
+/// the guard makes that unreachable. Do not call this with unvalidated input.
 pub(crate) fn decode_verkey(qb64: &str) -> Result<(Vec<u8>, String), KeriDecodeError> {
-    let verfer = Verfer::new(None, None, None, Some(qb64), None)
-        .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))?;
-    Ok((verfer.raw(), verfer.code()))
+    Verfer::new(None, None, None, Some(qb64), None)
+        .map(|v| (v.raw(), v.code()))
+        .map_err(|e| KeriDecodeError::DecodeError(e.to_string()))
+}
+
+/// CESR Matter hard-code character length, keyed by the code's first character
+/// (mirrors cesride's `matter::hardage`, whose tables are `pub(crate)`). Returns
+/// `None` for a counter (`-`), op (`_`), or otherwise non-Matter start byte.
+fn matter_hard_len(first: u8) -> Option<usize> {
+    Some(match first {
+        b'A'..=b'Z' | b'a'..=b'z' => 1,
+        b'0' | b'4' | b'5' | b'6' => 2,
+        b'1' | b'2' | b'3' | b'7' | b'8' | b'9' => 4,
+        _ => return None,
+    })
+}
+
+/// Full qb64 character length for the CESR Matter codes auths parses (mirrors
+/// cesride's `matter` sizage for these codes). Returns `None` for any other code,
+/// so an unrecognized primitive fails closed rather than being handed to the
+/// length-slicing decoder.
+fn matter_full_len(code: &str) -> Option<usize> {
+    Some(match code {
+        "D" | "B" | "E" => 44,
+        "0B" | "0I" => 88,
+        "1AAI" | "1AAJ" => 48,
+        _ => return None,
+    })
+}
+
+/// Take the leading CESR Matter primitive off `s`, returning its exact qb64
+/// substring without consuming the remainder.
+///
+/// cesride's qb64 decoder reads the derivation code, computes the primitive's full
+/// size, and slices the input to it — so a truncated input slices out of bounds and
+/// a non-ASCII input slices off a char boundary, both panicking. This validates the
+/// code is known and the input holds the full primitive (and is ASCII through it)
+/// *before* the decoder runs, so the panic is unreachable and a malformed primitive
+/// fails closed with a typed error.
+///
+/// Args:
+/// * `s`: A qb64 string positioned at the start of a Matter primitive (a verkey,
+///   signature, or digest); trailing bytes after the primitive are left for the
+///   caller to consume.
+pub(crate) fn take_matter_qb64(s: &str) -> Result<&str, KeriDecodeError> {
+    let bytes = s.as_bytes();
+    let first = *bytes.first().ok_or(KeriDecodeError::EmptyInput)?;
+    let hs = matter_hard_len(first).ok_or_else(|| {
+        KeriDecodeError::DecodeError(format!("not a CESR primitive: {:?}", first as char))
+    })?;
+    if bytes.len() < hs || !bytes[..hs].is_ascii() {
+        return Err(KeriDecodeError::DecodeError(
+            "truncated or non-ASCII CESR hard code".into(),
+        ));
+    }
+    let code = &s[..hs];
+    let fs =
+        matter_full_len(code).ok_or_else(|| KeriDecodeError::UnsupportedKeyType(code.into()))?;
+    if bytes.len() < fs || !bytes[..fs].is_ascii() {
+        return Err(KeriDecodeError::DecodeError(format!(
+            "{code} primitive needs {fs} ASCII chars, have {}",
+            bytes.len()
+        )));
+    }
+    Ok(&s[..fs])
 }
 
 /// CESR-encode a 32-byte Blake3-256 digest as a qb64 SAID/commitment (`E…`).
@@ -108,5 +176,57 @@ mod tests {
 
         let commitment = encode_blake3_digest(blake3::hash(qb64.as_bytes()).as_bytes()).unwrap();
         assert_eq!(commitment, "EF_M_u7ASVHXfI8QzdWLq3V9ocSKqxkbujXGbi9QMtP9");
+    }
+
+    #[test]
+    fn matter_full_len_matches_cesride_encoding() {
+        use cesride::{Cigar, Matter};
+        // The full-size table mirrors cesride's matter sizage for the codes auths
+        // parses. Pin each entry to what cesride actually emits, so a cesride bump
+        // that shifts a primitive's size fails here loudly instead of drifting the
+        // length-guard against the decoder.
+        let cases: [(&str, String); 7] = [
+            (
+                "D",
+                encode_verkey(&[0u8; 32], matter::Codex::Ed25519).unwrap(),
+            ),
+            (
+                "B",
+                encode_verkey(&[0u8; 32], matter::Codex::Ed25519N).unwrap(),
+            ),
+            (
+                "1AAJ",
+                encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1).unwrap(),
+            ),
+            (
+                "1AAI",
+                encode_verkey(&[0u8; 33], matter::Codex::ECDSA_256r1N).unwrap(),
+            ),
+            ("E", encode_blake3_digest(&[0u8; 32]).unwrap()),
+            (
+                "0B",
+                Cigar::new_with_raw(&[0u8; 64], None, Some(matter::Codex::Ed25519_Sig))
+                    .and_then(|c| c.qb64())
+                    .unwrap(),
+            ),
+            (
+                "0I",
+                Cigar::new_with_raw(&[0u8; 64], None, Some(matter::Codex::ECDSA_256r1_Sig))
+                    .and_then(|c| c.qb64())
+                    .unwrap(),
+            ),
+        ];
+        for (code, encoded) in cases {
+            assert!(
+                encoded.starts_with(code),
+                "{code} primitive must encode under its own code, got {encoded:?}"
+            );
+            assert_eq!(
+                matter_full_len(code),
+                Some(encoded.len()),
+                "matter_full_len({code:?}) drifted from cesride's {} chars",
+                encoded.len()
+            );
+        }
     }
 }

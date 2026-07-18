@@ -12,7 +12,7 @@
 
 use std::collections::HashSet;
 
-use auths_verifier::{CanonicalDid, Capability, PresentationVerdict};
+use auths_verifier::{CanonicalDid, Capability, Freshness, PresentationVerdict};
 
 /// A principal obtainable ONLY from a successful presentation verdict.
 ///
@@ -24,6 +24,7 @@ use auths_verifier::{CanonicalDid, Capability, PresentationVerdict};
 pub struct VerifiedPrincipal {
     subject: CanonicalDid,
     capabilities: HashSet<Capability>,
+    freshness: Freshness,
 }
 
 impl VerifiedPrincipal {
@@ -42,9 +43,15 @@ impl VerifiedPrincipal {
             // The verifier already parsed `subject`/`caps` into their typed forms (fn-153.2),
             // so the verdict carries validated values — move them through with no re-parse and
             // no silent capability drop. A malformed cap now fails the verdict in the verifier.
-            PresentationVerdict::Valid { subject, caps, .. } => Ok(Self {
+            PresentationVerdict::Valid {
+                subject,
+                caps,
+                freshness,
+                ..
+            } => Ok(Self {
                 subject,
                 capabilities: caps.into_iter().collect(),
+                freshness,
             }),
             PresentationVerdict::WrongAudience => Err(Denied::WrongAudience),
             PresentationVerdict::NonceMismatchOrConsumed => Err(Denied::Replayed),
@@ -63,6 +70,16 @@ impl VerifiedPrincipal {
     /// The capabilities the presentation granted.
     pub fn capabilities(&self) -> &HashSet<Capability> {
         &self.capabilities
+    }
+
+    /// The freshness of the honored verdict that produced this principal (ADR 009).
+    ///
+    /// The presentation cleared the relying party's freshness policy to become a principal, but
+    /// the *grade* is surfaced here so a caller can tell a [`Freshness::Fresh`] principal from a
+    /// (policy-tolerated) [`Freshness::Unknown`] one and, e.g., demand re-presentation for a
+    /// high-stakes action. It is never a bare honored verdict.
+    pub fn freshness(&self) -> Freshness {
+        self.freshness
     }
 
     /// Authorize a required capability, yielding a [`Grant`] proof (never a bool).
@@ -160,13 +177,41 @@ mod tests {
         PresentationVerdict::Valid {
             issuer: IdentityDID::parse("did:keri:Eissuer").expect("valid test issuer"),
             subject: CanonicalDid::parse(subject).expect("valid test subject"),
+            subject_root: CanonicalDid::parse(subject).expect("valid test subject"),
             caps: caps
                 .iter()
                 .map(|c| Capability::parse(c).expect("valid test capability"))
                 .collect(),
             role: None,
             expires_at: None,
+            freshness: Freshness::Unknown,
+            as_of: 0,
         }
+    }
+
+    #[test]
+    fn principal_surfaces_the_verdict_freshness() {
+        let fresh = PresentationVerdict::Valid {
+            issuer: IdentityDID::parse("did:keri:Eissuer").expect("issuer"),
+            subject: CanonicalDid::parse("did:keri:Eagent").expect("subject"),
+            subject_root: CanonicalDid::parse("did:keri:Eagent").expect("subject"),
+            caps: vec![],
+            role: None,
+            expires_at: None,
+            freshness: Freshness::Fresh,
+            as_of: 0,
+        };
+        assert_eq!(
+            VerifiedPrincipal::from_verdict(fresh).unwrap().freshness(),
+            Freshness::Fresh
+        );
+        assert_eq!(
+            VerifiedPrincipal::from_verdict(valid_verdict("did:keri:Eagent", &[]))
+                .unwrap()
+                .freshness(),
+            Freshness::Unknown,
+            "an offline-resolved honored verdict surfaces Unknown, distinguishable from Fresh"
+        );
     }
 
     #[test]

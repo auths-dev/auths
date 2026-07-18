@@ -17,17 +17,20 @@ use auths_sdk::domains::identity::local::resolve_local_signer;
 use crate::cases::helpers::{build_test_context, setup_signed_artifact_context};
 
 #[test]
-fn resolve_local_signer_on_root_machine_signs_as_controller() {
+fn resolve_local_signer_on_root_machine_signs_as_delegated_device() {
     let (_tmp, _alias, ctx) = setup_signed_artifact_context();
 
     let signer = resolve_local_signer(&ctx).expect("a root machine resolves its signer");
 
+    // A fresh developer identity delegates device #0; the root machine signs as that
+    // device (its own delegated AID), distinct from the root it chains to.
     assert!(signer.signer_did.starts_with("did:keri:"));
-    assert_eq!(
+    assert!(signer.root_did.starts_with("did:keri:"));
+    assert_ne!(
         signer.signer_did, signer.root_did,
-        "the root machine signs directly: signer == root"
+        "the root machine signs as delegated device #0, not directly as the root"
     );
-    assert!(!signer.is_delegated());
+    assert!(signer.is_delegated());
 }
 
 #[test]

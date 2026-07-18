@@ -28,6 +28,14 @@ on:
 permissions:
   contents: read
 
+# Never let two publish runs race the same tag (a second tag push, a re-run):
+# concurrent `cargo publish` of the same version collides on crates.io with a
+# 400 "already uploaded". Serialize instead of cancelling — a mid-publish run
+# must finish, and the queued one is a safe idempotent no-op.
+concurrency:
+  group: publish-crates-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest

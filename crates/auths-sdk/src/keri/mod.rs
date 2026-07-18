@@ -8,6 +8,7 @@ pub mod copy;
 pub mod resolver;
 
 pub use auths_id::keri::cache;
+pub use auths_id::keri::delegation;
 pub use auths_id::keri::parse_did_keri;
 pub use auths_id::keri::shared_kel::{
     ControllerDescriptor, SharedKelChange, SharedKelError, apply_shared_kel_change,

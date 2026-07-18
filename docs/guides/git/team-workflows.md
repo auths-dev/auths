@@ -13,7 +13,7 @@ When you verify a commit, `auths verify` reads the signer's `did:keri:` identifi
 If teammates' KELs are available on the repository's git remote, resolve them on demand:
 
 ```bash
-auths verify origin/main..HEAD --remote origin
+auths verify origin/main..HEAD
 ```
 
 This is opt-in (resolution is local-only by default). A remote can only advance a signer's key state, never roll it back — your local store stays the trusted floor.

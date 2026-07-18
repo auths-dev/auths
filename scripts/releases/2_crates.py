@@ -19,7 +19,7 @@ Requires:
     - network access to crates.io
     - git tag v{version} must exist (run github.py --push first)
 
-Publish order: see PUBLISH_BATCHES below (topological from cargo metadata).
+Publish order: derived at run time from `cargo metadata` (compute_publish_batches).
 """
 
 import json
@@ -33,26 +33,139 @@ from pathlib import Path
 CARGO_TOML = Path(__file__).resolve().parents[2] / "Cargo.toml"
 CRATES_IO_API = "https://crates.io/api/v1/crates"
 
-# Topological order computed from `cargo metadata` (a crate may only appear
-# after every internal dependency it has). Regenerate when crate deps change:
-# each batch contains crates whose internal deps are all in earlier batches.
-# Deliberately excluded: auths-radicle (deprecated), auths-api (server bin),
-# auths-test-utils (test helper, only a dev-dependency of published crates).
-PUBLISH_BATCHES: list[list[str]] = [
-    ["auths", "auths-crypto", "auths-telemetry", "auths-utils"],
-    ["auths-keri", "auths-oidc-port"],
-    ["auths-jwt", "auths-pairing-protocol", "auths-verifier"],
-    ["auths-index", "auths-policy", "auths-rp", "auths-scim", "auths-transparency"],
-    ["auths-core"],
-    ["auths-infra-http", "auths-infra-rekor", "auths-pairing-daemon"],
-    ["auths-id"],
-    ["auths-storage"],
-    ["auths-sdk"],
-    ["auths-infra-git", "auths-mcp-server", "auths-scim-server"],
-    ["auths-cli"],
-]
+# Publish order is NO LONGER hand-maintained. It is derived at run time from
+# `cargo metadata` (see compute_publish_batches), so a crate can never be
+# published before an internal dependency it needs — the exact bug that broke
+# the 0.1.4 release, where a stale hand-written list put `auths` (which depends
+# on auths-sdk) in the FIRST batch and auths-sdk eight batches later. A list
+# that has to be kept in sync by hand will drift; a derived one cannot.
+#
+# The only human decision left is which publishable members to KEEP OFF
+# crates.io — recorded explicitly below so an omission is always a decision,
+# never an accident. Everything else that is publishable (publish != false and
+# not excluded) is published, in dependency order.
+EXCLUDED_FROM_PUBLISH: dict[str, str] = {
+    # auths-api is published because auths-mcp-server (a published crate) now
+    # normal-depends on it — the release must be dependency-closed. Likewise
+    # auths-witness / auths-witness-node had `publish = false` lifted because
+    # auths-cli's `witness-node` feature pulls them in. The rule enforced by
+    # validate_batches(): nothing published may depend on something unpublished.
+    "auths-test-utils": "internal test scaffolding; a dev-dependency only, never a published dependency",
+    "murmur-core": "belongs to the Murmur messenger — a separate product with its own release",
+    "murmur-relay": "belongs to the Murmur messenger — a separate product with its own release",
+}
 
 SLEEP_BETWEEN_BATCHES = 60
+
+
+def _cargo_metadata() -> dict:
+    """`cargo metadata --no-deps` for the root workspace (members only)."""
+    result = subprocess.run(
+        ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+        capture_output=True,
+        text=True,
+        cwd=CARGO_TOML.parent,
+    )
+    if result.returncode != 0:
+        print("ERROR: `cargo metadata` failed:", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        sys.exit(1)
+    return json.loads(result.stdout)
+
+
+def workspace_members(meta: dict) -> set[str]:
+    """Every workspace member crate name, per cargo (the build's own view)."""
+    return {p["name"] for p in meta["packages"]}
+
+
+def publishable_members(meta: dict) -> set[str]:
+    """Members cargo would let us publish: `publish` is null or a non-empty
+    allow-list. `publish = false` serialises to `[]` and is excluded."""
+    return {p["name"] for p in meta["packages"] if p.get("publish") != []}
+
+
+def _internal_release_deps(meta: dict) -> dict[str, set[str]]:
+    """crate -> the internal deps that gate its publish (normal + build only).
+
+    Dev-dependencies are deliberately ignored: `cargo publish` strips them, so
+    they neither need to be on crates.io first nor should they create ordering
+    edges (they are also the usual source of dependency cycles in a workspace).
+    """
+    members = workspace_members(meta)
+    graph: dict[str, set[str]] = {}
+    for p in meta["packages"]:
+        deps = {
+            d["name"]
+            for d in p.get("dependencies", [])
+            # kind is null for a normal dep, "build" for build, "dev" for dev.
+            if d.get("kind") in (None, "build") and d["name"] in members
+        }
+        deps.discard(p["name"])
+        graph[p["name"]] = deps
+    return graph
+
+
+def compute_publish_batches(meta: dict) -> list[list[str]]:
+    """Topological batches over the crates we actually publish.
+
+    Nodes are the publishable, non-excluded members; edges are their normal/build
+    internal deps. Each batch is the set of crates whose deps are all already
+    published, so batch N only depends on batches < N — order can't be wrong.
+    Crates within a batch are sorted for a stable, reviewable plan.
+    """
+    nodes = publishable_members(meta) - set(EXCLUDED_FROM_PUBLISH)
+    graph = _internal_release_deps(meta)
+    # Restrict edges to the node set — a dep on an excluded/unpublished crate is
+    # caught by validate_batches(), not silently used as an ordering edge here.
+    remaining = {n: {d for d in graph.get(n, set()) if d in nodes} for n in nodes}
+
+    batches: list[list[str]] = []
+    published: set[str] = set()
+    while remaining:
+        ready = sorted(n for n, deps in remaining.items() if deps <= published)
+        if not ready:
+            cycle = ", ".join(sorted(remaining))
+            print(
+                f"ERROR: dependency cycle among publishable crates: {cycle}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        batches.append(ready)
+        published.update(ready)
+        for n in ready:
+            del remaining[n]
+    return batches
+
+
+def validate_batches(meta: dict) -> list[str]:
+    """Correctness checks on the derived plan. Ordering is guaranteed by the
+    topological sort; what's left to catch is a bad EXCLUDED set — a stale entry,
+    or an exclusion that would make a *published* crate un-publishable because it
+    normal-depends on something we refuse to publish."""
+    errors: list[str] = []
+    members = workspace_members(meta)
+    publishable = publishable_members(meta)
+    graph = _internal_release_deps(meta)
+
+    for crate in sorted(set(EXCLUDED_FROM_PUBLISH) - members):
+        errors.append(f"{crate} is excluded but is not a workspace member")
+
+    to_publish = publishable - set(EXCLUDED_FROM_PUBLISH)
+    for crate in sorted(to_publish):
+        for dep in sorted(graph.get(crate, set())):
+            if dep in to_publish:
+                continue
+            why = (
+                "excluded from publish" if dep in EXCLUDED_FROM_PUBLISH
+                else "publish = false" if dep not in publishable
+                else "not a workspace member"
+            )
+            errors.append(
+                f"{crate} is published but normal-depends on {dep} ({why}) — "
+                f"cargo publish -p {crate} will fail because {dep} won't be on crates.io"
+            )
+
+    return errors
 
 
 def get_workspace_version() -> str:
@@ -126,7 +239,13 @@ def publish_crate(crate_name: str) -> bool:
         cwd=CARGO_TOML.parent,
     )
     if result.returncode != 0:
-        if "already exists" in result.stderr:
+        # An already-published version is success, not failure — this is what
+        # makes re-running after a partial (or racing) run safe. cargo's local
+        # check words it "already exists"; the crates.io registry rejects a
+        # duplicate upload with 400 "already uploaded" (hit when another run — e.g.
+        # a second tag push publishing concurrently — got there first). Treat both.
+        stderr_lower = result.stderr.lower()
+        if "already exists" in stderr_lower or "already uploaded" in stderr_lower:
             print(f"  {crate_name} already published — skipping.", flush=True)
             return True
         print(f"  ERROR: cargo publish -p {crate_name} failed (exit {result.returncode})", file=sys.stderr)
@@ -137,11 +256,36 @@ def publish_crate(crate_name: str) -> bool:
 
 
 def main() -> None:
+    # The plan is derived from `cargo metadata` every run, so ordering is always
+    # correct; validate_batches() only has to catch a bad EXCLUDED set.
+    meta = _cargo_metadata()
+    errors = validate_batches(meta)
+    batches = compute_publish_batches(meta)
+    if "--validate" in sys.argv:
+        if errors:
+            print("Release-plan validation FAILED:", file=sys.stderr)
+            for e in errors:
+                print(f"  - {e}", file=sys.stderr)
+            sys.exit(1)
+        print(
+            f"Release plan OK: {sum(len(b) for b in batches)} crates in "
+            f"{len(batches)} dependency-ordered batches, "
+            f"{len(EXCLUDED_FROM_PUBLISH)} excluded."
+        )
+        for i, batch in enumerate(batches, 1):
+            print(f"  Batch {i}: {', '.join(batch)}")
+        return
+    if errors:
+        print("ERROR: release plan is invalid:", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        sys.exit(1)
+
     publish = "--publish" in sys.argv
 
     version = get_workspace_version()
     tag = f"v{version}"
-    all_crates = [crate for batch in PUBLISH_BATCHES for crate in batch]
+    all_crates = [crate for batch in batches for crate in batch]
 
     print(f"Workspace version: {version}")
     print(f"Crates to publish: {len(all_crates)}")
@@ -181,7 +325,7 @@ def main() -> None:
 
     # Show publish plan
     print(f"\nPublish plan ({SLEEP_BETWEEN_BATCHES}s sleep between batches):")
-    for i, batch in enumerate(PUBLISH_BATCHES, 1):
+    for i, batch in enumerate(batches, 1):
         print(f"  Batch {i}: {', '.join(batch)}")
 
     if not publish:
@@ -191,8 +335,8 @@ def main() -> None:
 
     # Publish
     failed: list[str] = []
-    for i, batch in enumerate(PUBLISH_BATCHES, 1):
-        print(f"\n--- Batch {i}/{len(PUBLISH_BATCHES)} ---", flush=True)
+    for i, batch in enumerate(batches, 1):
+        print(f"\n--- Batch {i}/{len(batches)} ---", flush=True)
         for crate_name in batch:
             if not publish_crate(crate_name):
                 failed.append(crate_name)
@@ -200,7 +344,7 @@ def main() -> None:
                 print(f"Already published crates are fine — cargo publish is idempotent for the same version.", file=sys.stderr)
                 sys.exit(1)
 
-        if i < len(PUBLISH_BATCHES):
+        if i < len(batches):
             print(f"  Waiting {SLEEP_BETWEEN_BATCHES}s for crates.io index to update...", flush=True)
             time.sleep(SLEEP_BETWEEN_BATCHES)
 

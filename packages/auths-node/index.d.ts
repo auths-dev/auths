@@ -11,6 +11,31 @@ export declare function addOrgMember(orgDid: string, memberLabel: string, role: 
 
 export declare function addWitness(urlStr: string, aid: string, repoPath: string, label?: string | undefined | null): NapiWitnessResult
 
+/**
+ * Authenticate a presentation request end-to-end.
+ *
+ * The caller has already consumed the single-use nonce (via
+ * [`presentation_nonce`] + its own store); this performs everything else:
+ * audience binding, nonce equality, the evidence-carrying verify request
+ * (every supplied KEL is signature-authenticated before replay), and the
+ * verdict→denial mapping. Capability policy is deliberately NOT here — the
+ * report carries `caps` and the relying party decides what they admit.
+ *
+ * Args:
+ * * `authorization_header`: The full `Authorization` header value.
+ * * `evidence_json`: The evidence bundle from `credential present --with-evidence`.
+ * * `expected_audience`: The relying party's own audience identifier.
+ * * `expected_nonce`: The base64url nonce the caller just consumed.
+ * * `now_iso`: Verification time (RFC 3339); defaults to the current time.
+ *
+ * Usage:
+ * ```ignore
+ * const report = await authenticatePresentation(header, evidenceJson, 'market.auths.dev', peek.nonce);
+ * if (report.authorized) { /* report.subject, report.subjectRoot, report.caps *\/ }
+ * ```
+ */
+export declare function authenticatePresentation(authorizationHeader: string, evidenceJson: string, expectedAudience: string, expectedNonce: string, nowIso?: string | undefined | null): Promise<NapiAgentAuthReport>
+
 export declare function compilePolicy(policyJson: string): string
 
 export declare function createAgentIdentity(agentName: string, capabilities: Array<string>, repoPath: string, passphrase?: string | undefined | null): NapiAgentIdentityBundle
@@ -63,6 +88,8 @@ export declare const enum CredentialStatus {
   IssuerKelDuplicitous = 'IssuerKelDuplicitous',
   /** The request JSON could not be parsed; see `message`. */
   MalformedRequest = 'MalformedRequest',
+  /** A supplied KEL failed signature authentication (forged or missing attachments). */
+  KelUnauthenticated = 'KelUnauthenticated',
   /** A request slice exceeded its bound; see `field`. */
   InputTooLarge = 'InputTooLarge',
   /** The request schema version is not understood by this build. */
@@ -113,10 +140,45 @@ export declare function listPinnedIdentities(repoPath: string): string
 
 export declare function listWitnesses(repoPath: string): string
 
+/**
+ * Mint a single-use challenge nonce (32 random bytes, base64url) for the
+ * relying party to store and hand to an agent. Format and length are the
+ * auths-rp contract — a relying party never invents its own nonce shape.
+ *
+ * Args: (none)
+ *
+ * Usage:
+ * ```ignore
+ * const nonce = mintChallengeNonce(); // store with a TTL, consume exactly once
+ * ```
+ */
+export declare function mintChallengeNonce(): string
+
 export interface NapiActionEnvelope {
   envelopeJson: string
   signatureHex: string
   signerDid: string
+}
+
+/** The outcome of authenticating a presentation request. */
+export interface NapiAgentAuthReport {
+  /** True only when the presentation verified end-to-end. */
+  authorized: boolean
+  /**
+   * `"ok"` when authorized; otherwise the kebab-case denial code
+   * (e.g. `"presentation-kel-unauthenticated"`, `"wrong-audience"`).
+   */
+  code: string
+  /** The proven subject AID — present when authorized. */
+  subject?: string
+  /** The subject's proven root (its delegator when delegated) — present when authorized. */
+  subjectRoot?: string
+  /** The credential's issuer AID — present when authorized. */
+  issuer?: string
+  /** The capabilities the verified credential grants — present when authorized. */
+  caps?: Array<string>
+  /** Failure detail for diagnostics — present on some denials. */
+  detail?: string
 }
 
 export interface NapiAgentIdentityBundle {
@@ -166,9 +228,14 @@ export interface NapiCommitSignResult {
 }
 
 export interface NapiDelegatedAgentBundle {
+  /**
+   * The agent's `did:keri:` AID — a real delegated identifier whose KEL the
+   * parent root anchored, not an attestation-linked `did:key`.
+   */
   agentDid: string
+  /** The agent's KEL prefix (the `dip` SAID). */
+  agentPrefix: string
   keyAlias: string
-  attestationJson: string
   publicKeyHex: string
   repoPath?: string
 }
@@ -242,6 +309,19 @@ export interface NapiPolicyDecision {
   message: string
 }
 
+/**
+ * The parse-only view of an incoming presentation header: what the relying
+ * party needs to consume its challenge, before anything is trusted.
+ */
+export interface NapiPresentationPeek {
+  /** The base64url challenge nonce the subject signed over. */
+  nonce: string
+  /** The audience the presentation claims to bind to (verified later). */
+  audience: string
+  /** The SAID of the credential being presented (verified later). */
+  credentialSaid: string
+}
+
 export interface NapiRotationResult {
   controllerDid: string
   newKeyFingerprint: string
@@ -278,6 +358,24 @@ export interface NapiWitnessResult {
 
 export declare function pinIdentity(did: string, repoPath: string, label?: string | undefined | null, trustLevel?: string | undefined | null): NapiPinnedIdentity
 
+/**
+ * Parse-only peek at an `Authorization: Auths-Presentation` header.
+ *
+ * Nothing here is trusted — it exists so the relying party can consume the
+ * single-use nonce from its store before verification runs. Only the
+ * interactive challenge binding is accepted.
+ *
+ * Args:
+ * * `authorization_header`: The full `Authorization` header value.
+ *
+ * Usage:
+ * ```ignore
+ * const peek = presentationNonce(header);
+ * const consumed = await store.consume(peek.nonce);
+ * ```
+ */
+export declare function presentationNonce(authorizationHeader: string): NapiPresentationPeek
+
 /** A typed presentation verdict report (holder-binding outcome). */
 export interface PresentationReport {
   /** The discriminated status. */
@@ -286,6 +384,8 @@ export interface PresentationReport {
   issuer?: string
   /** Subject (holder) AID whose current key signed — present on `Valid`. */
   subject?: string
+  /** The subject's proven root (its delegator when delegated, itself otherwise) — present on `Valid`. */
+  subjectRoot?: string
   /** Granted capabilities — present on `Valid`. Never silently dropped (fn-153.2). */
   caps?: Array<string>
   /** Optional informational role claim — present on `Valid`. */
@@ -318,6 +418,8 @@ export declare const enum PresentationStatus {
   CredentialNotValid = 'CredentialNotValid',
   /** The request JSON could not be parsed; see `message`. */
   MalformedRequest = 'MalformedRequest',
+  /** A supplied KEL failed signature authentication (forged or missing attachments). */
+  KelUnauthenticated = 'KelUnauthenticated',
   /** A request slice exceeded its bound; see `field`. */
   InputTooLarge = 'InputTooLarge',
   /** The request schema version is not understood by this build. */

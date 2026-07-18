@@ -16,3 +16,5 @@ categories = ["authentication", "cryptography"]
 workspace = true
 
 [dependencies]
+auths-sdk.workspace = true
+auths-verifier = { workspace = true, features = ["native"] }

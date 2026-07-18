@@ -271,6 +271,7 @@ pub fn context_from_credential(
         caps,
         role,
         expires_at,
+        ..
     } = presentation
     else {
         return Err(PolicyBridgeError::NoHolderProof);
@@ -711,12 +712,16 @@ mod tests {
         PresentationVerdict::Valid {
             issuer: auths_verifier::IdentityDID::parse(CRED_ISSUER).expect("valid test issuer"),
             subject: auths_verifier::CanonicalDid::parse(CRED_SUBJECT).expect("valid test subject"),
+            subject_root: auths_verifier::CanonicalDid::parse(CRED_SUBJECT)
+                .expect("valid test subject"),
             caps: caps
                 .iter()
                 .map(|c| auths_verifier::Capability::parse(c).expect("valid test capability"))
                 .collect(),
             role: role.map(str::to_string),
             expires_at,
+            freshness: auths_verifier::Freshness::Unknown,
+            as_of: 0,
         }
     }
 

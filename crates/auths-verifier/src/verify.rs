@@ -212,7 +212,7 @@ pub async fn verify_device_link(
     now: DateTime<Utc>,
     provider: &dyn CryptoProvider,
 ) -> DeviceLinkVerification {
-    // rt-002-allow: `events` is the device-link KEL supplied by the caller from the local trusted registry / an authenticated bundle, and the attestation signature is bound to the resulting key-state. Residual: the untrusted WASM verifyDeviceLink boundary — its authenticated counterpart is validateKelJson (which now routes through validate_signed_kel); a signature-carrying verifyDeviceLink input is the tracked RT-002 follow-up.
+    // rt-002-allow: `events` is the device-link KEL authenticated before it reaches here — local trusted registry, authenticated bundle, or the WASM verifyDeviceLink boundary (which pairs wire attachments and runs validate_signed_kel first). The attestation signature is additionally bound to the resulting key-state.
     let key_state = match auths_keri::TrustedKel::from_trusted_source(events).replay() {
         Ok(ks) => ks,
         Err(e) => return DeviceLinkVerification::failure(format!("KEL verification failed: {e}")),
@@ -650,6 +650,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn verify_chain_valid_report_is_offline_unknown_not_bare() {
+        // A chain verified offline (no fresher source supplied) is honest about it: the report
+        // names its freshness as `Unknown`, never a bare `Valid` that reads as real-time fresh.
+        // This is what the CLI verify callers consume to render "valid (freshness unknown)".
+        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
+        let root_did = ed25519_did(&root_pk);
+        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
+        let device_did = ed25519_did(&device_pk);
+
+        let att = create_signed_attestation(
+            &root_kp,
+            &device_kp,
+            &root_did,
+            &device_did,
+            None,
+            Some(fixed_now() + Duration::days(365)),
+        );
+
+        let report = test_verifier()
+            .verify_chain(&[att], &ed(&root_pk))
+            .await
+            .unwrap();
+        assert!(report.is_valid());
+        assert_eq!(
+            report.freshness(),
+            crate::freshness::Freshness::Unknown,
+            "an offline chain verify must surface Unknown freshness, never a bare Valid"
+        );
+    }
+
+    #[tokio::test]
     async fn verify_chain_revoked_attestation_returns_revoked() {
         let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
         let root_did = ed25519_did(&root_pk);
@@ -972,6 +1003,66 @@ mod tests {
 
         let result = test_verifier().verify_with_keys(&att, &ed(&root_pk)).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn verify_chain_revoked_and_expired_attestation_is_rejected() {
+        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
+        let root_did = ed25519_did(&root_pk);
+        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
+        let device_did = ed25519_did(&device_pk);
+
+        // Both revoked AND expired: the two negative signals must not cancel — the result
+        // is a terminal rejection, never Valid.
+        let att = create_signed_attestation(
+            &root_kp,
+            &device_kp,
+            &root_did,
+            &device_did,
+            Some(fixed_now()),
+            Some(fixed_now() - Duration::days(1)),
+        );
+
+        let result = test_verifier()
+            .verify_chain(&[att], &ed(&root_pk))
+            .await
+            .unwrap();
+        assert!(!result.is_valid(), "revoked+expired must not be valid");
+        assert!(
+            matches!(
+                result.status,
+                VerificationStatus::Revoked { .. } | VerificationStatus::Expired { .. }
+            ),
+            "expected a terminal revoked/expired status, got {:?}",
+            result.status
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_with_keys_rejects_a_correct_signature_under_the_wrong_key() {
+        let (root_kp, root_pk) = create_test_keypair(&[1u8; 32]);
+        let root_did = ed25519_did(&root_pk);
+        let (device_kp, device_pk) = create_test_keypair(&[2u8; 32]);
+        let device_did = ed25519_did(&device_pk);
+
+        // Validly signed by root_kp, but verified against a DIFFERENT key. A perfectly
+        // valid signature under the wrong key is still a forgery from the verifier's view —
+        // distinct from a tampered signature (this one verifies, just not under this key).
+        let att = create_signed_attestation(
+            &root_kp,
+            &device_kp,
+            &root_did,
+            &device_did,
+            None,
+            Some(fixed_now() + Duration::days(365)),
+        );
+        let (_other_kp, other_pk) = create_test_keypair(&[9u8; 32]);
+
+        let result = test_verifier().verify_with_keys(&att, &ed(&other_pk)).await;
+        assert!(
+            result.is_err(),
+            "a signature that does not verify under the supplied issuer key must be rejected"
+        );
     }
 
     /// Helper to wrap an attestation as verified (for tests where we created it ourselves).

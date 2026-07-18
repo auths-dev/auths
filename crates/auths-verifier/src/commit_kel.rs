@@ -171,6 +171,15 @@ impl CommitVerdict {
         }
     }
 
+    /// The KEL position a `Valid` verdict was verified as-of (the `{as_of, freshness}` pair,
+    /// ADR 009), or `None` when the verdict is not `Valid`.
+    pub fn as_of(&self) -> Option<u128> {
+        match self {
+            CommitVerdict::Valid { as_of, .. } => Some(*as_of),
+            _ => None,
+        }
+    }
+
     /// Re-classify a `Valid` verdict's freshness against a policy and the evidence of a
     /// fresher source (a bundle age, or a fresher signer-KEL tip). The positional verifier
     /// emits `Unknown`; the relying party upgrades it here once it has a freshness oracle.
@@ -198,13 +207,23 @@ impl CommitVerdict {
         }
     }
 
-    /// Whether this verdict is trusted under a freshness policy: it is `Valid` AND its
-    /// freshness clears the policy. A bare `Valid` is never trusted without freshness — the
-    /// relying party's policy (not the signer) decides the tolerance (ADR 009).
+    /// Whether this verdict is trusted under a freshness policy: it is `Valid`, its root KEL is
+    /// **not duplicitous** (a fork fails closed — the relying party cannot tell which branch is
+    /// real), AND its freshness clears the policy. A bare `Valid` is never trusted without
+    /// freshness — the relying party's policy (not the signer) decides the tolerance (ADR 009).
     ///
     /// Args:
     /// * `policy`: the relying party's freshness policy.
     pub fn is_trusted(&self, policy: &FreshnessPolicy) -> bool {
+        if matches!(
+            self,
+            CommitVerdict::Valid {
+                duplicitous_root: true,
+                ..
+            }
+        ) {
+            return false;
+        }
         self.is_valid() && policy.trusts(self.freshness())
     }
 
@@ -600,7 +619,7 @@ async fn verify_commit_against_kel_witnessed_at(
 ) -> WitnessedVerdict {
     // 1. Replay + witness-gate the root KEL (validates SAIDs incl. the
     //    self-addressing icp prefix, then checks M-of-N witness agreement).
-    // rt-002-allow: root_kel is authenticated at the ingestion boundary before it reaches here (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store), and this replay additionally enforces the M-of-N witness gate. Residual: the opt-in --remote/--oobi stranger feed, whose signature-carrying transport is tracked (RT-002 follow-up).
+    // rt-002-allow: root_kel is authenticated at the ingestion boundary before it reaches here (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store), and this replay additionally enforces the M-of-N witness gate.
     let replay = match TrustedKel::from_trusted_source(root_kel)
         .replay_with_receipts(None, receipt_lookup)
     {
@@ -694,7 +713,7 @@ pub async fn verify_commit_against_kel_scoped(
     provider: &dyn CryptoProvider,
     now: i64,
 ) -> CommitVerdict {
-    // rt-002-allow: root_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store). Residual: opt-in --remote/--oobi stranger feed — signature-carrying transport tracked (RT-002 follow-up).
+    // rt-002-allow: root_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store).
     let root_state = match TrustedKel::from_trusted_source(root_kel).replay() {
         Ok(state) => state,
         Err(e) => return CommitVerdict::RootKelInvalid(e.to_string()),
@@ -737,7 +756,7 @@ async fn authorize_commit(
 
     // 3. Replay the device KEL (a dip needs the delegator lookup against the root).
     let lookup = KelSealIndex::from_events(root_kel);
-    // rt-002-allow: device_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store); the dip's delegation is additionally bound to the already-replayed root via the root KelSealIndex. Residual: opt-in --remote/--oobi stranger feed — tracked (RT-002 follow-up).
+    // rt-002-allow: device_kel is authenticated at the ingestion boundary (CI --identity-bundle → validate_signed_kel in load_bundle_trust; local registry = trusted self-owned store); the dip's delegation is additionally bound to the already-replayed root via the root KelSealIndex.
     let device_state =
         match TrustedKel::from_trusted_source(device_kel).replay_with_lookup(Some(&lookup)) {
             Ok(s) => s,
@@ -898,6 +917,12 @@ fn reject_unauthorized_delegate(
         }
         // Capability attenuation is time-independent: a delegate may never exceed the
         // delegator-anchored scope, so it is enforced whether or not a time is given.
+        //
+        // Accepted risk: an empty delegator-anchored capability list means UNCONSTRAINED, not
+        // "deny all" — with nothing to attenuate against, every claimed capability passes. This is
+        // by design: the scope is advisory authorization, and a delegator that anchors a capless
+        // scope is choosing not to constrain the delegate. A capless grant is therefore as
+        // powerful as the delegator; constrain a delegate by anchoring a non-empty capability set.
         if !scope.capabilities.is_empty() {
             for claimed in parse_scope_claim(commit_bytes) {
                 if !scope.capabilities.iter().any(|c| c.as_str() == claimed) {

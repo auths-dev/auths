@@ -13,6 +13,30 @@ use super::file::FileArtifact;
 use super::{dsse_pae, merge_transparency, submit_to_log};
 use crate::factories::storage::build_auths_context;
 
+/// Refuse to write over an existing file unless the caller opts in.
+///
+/// The signature output path is taken verbatim from the user (or auto-derived next to the
+/// artifact), so an unguarded write would silently replace whatever already lives there.
+///
+/// Args:
+/// * `path`: the path the signature would be written to.
+/// * `force`: when true, an existing file is allowed to be overwritten.
+///
+/// Usage:
+/// ```ignore
+/// ensure_writable(&output_path, force)?;
+/// std::fs::write(&output_path, &final_json)?;
+/// ```
+pub(super) fn ensure_writable(path: &Path, force: bool) -> Result<()> {
+    if !force && path.exists() {
+        anyhow::bail!(
+            "refusing to overwrite existing file {:?}; pass --force to overwrite",
+            path
+        );
+    }
+    Ok(())
+}
+
 /// Execute the `artifact sign` command.
 #[allow(clippy::too_many_arguments)]
 pub fn handle_sign(
@@ -28,6 +52,7 @@ pub fn handle_sign(
     env_config: &EnvironmentConfig,
     log: &Option<String>,
     allow_unlogged: bool,
+    force: bool,
 ) -> Result<()> {
     let repo_path = auths_sdk::storage_layout::resolve_repo_path(repo_opt)?;
 
@@ -35,7 +60,10 @@ pub fn handle_sign(
 
     let params = ArtifactSigningParams {
         artifact: Arc::new(FileArtifact::new(file)),
-        identity_key: key.map(|a| SigningKeyMaterial::Alias(KeyAlias::new_unchecked(a))),
+        // The issuer is the root identity. Pass an explicit `--key` through; otherwise leave it
+        // to the SDK, which resolves the ROOT's own key for the issuer signature (NOT the
+        // delegated device — device #0 signs only the device slot below).
+        identity_key: key.map(|k| SigningKeyMaterial::Alias(KeyAlias::new_unchecked(k))),
         device_key: SigningKeyMaterial::Alias(KeyAlias::new_unchecked(device_key)),
         expires_in,
         note,
@@ -87,6 +115,8 @@ pub fn handle_sign(
         p
     });
 
+    ensure_writable(&output_path, force)?;
+
     std::fs::write(&output_path, &final_json)
         .with_context(|| format!("Failed to write signature to {:?}", output_path))?;
 
@@ -120,5 +150,39 @@ fn print_authorization_scope(attestation_json: &str) {
         if let Some(text) = value.get(field).and_then(|v| v.as_str()) {
             println!("  {label}: {text}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ensure_writable;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn refuses_existing_file_without_force() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sig.auths.json");
+        fs::write(&path, b"existing").unwrap();
+
+        let err = ensure_writable(&path, false).unwrap_err();
+        assert!(err.to_string().contains("refusing to overwrite"));
+    }
+
+    #[test]
+    fn allows_existing_file_with_force() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("sig.auths.json");
+        fs::write(&path, b"existing").unwrap();
+
+        assert!(ensure_writable(&path, true).is_ok());
+    }
+
+    #[test]
+    fn allows_new_path_without_force() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("new.auths.json");
+
+        assert!(ensure_writable(&path, false).is_ok());
     }
 }

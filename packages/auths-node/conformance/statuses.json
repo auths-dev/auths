@@ -1,0 +1,32 @@
+{
+  "presentationStatuses": [
+    "Valid",
+    "HolderNotCurrentKey",
+    "WrongAudience",
+    "NonceMismatchOrConsumed",
+    "Expired",
+    "SubjectKelInvalid",
+    "CredentialNotValid",
+    "MalformedRequest",
+    "KelUnauthenticated",
+    "InputTooLarge",
+    "UnsupportedSchemaVersion",
+    "Unknown"
+  ],
+  "credentialStatuses": [
+    "Valid",
+    "SaidMismatch",
+    "SchemaInvalid",
+    "IssuerSignatureInvalid",
+    "RegistryNotEstablished",
+    "CredentialRevoked",
+    "Expired",
+    "WitnessQuorumNotMet",
+    "IssuerKelDuplicitous",
+    "MalformedRequest",
+    "KelUnauthenticated",
+    "InputTooLarge",
+    "UnsupportedSchemaVersion",
+    "Unknown"
+  ]
+}

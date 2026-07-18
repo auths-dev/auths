@@ -130,19 +130,6 @@ pub struct UnifiedVerifyCommand {
     #[arg(long, value_name = "PATH")]
     pub signature: Option<PathBuf>,
 
-    /// Fetch a signer's KEL from this git remote when it is absent locally
-    /// (opt-in). The local registry stays the trusted floor — a remote can only
-    /// advance the key-state, never roll it back. Without it, resolution is
-    /// local-only (no network).
-    #[arg(long)]
-    pub remote: Option<String>,
-
-    /// Fetch signer KELs over HTTP from this OOBI base URL (SSRF-hardened:
-    /// HTTPS-only, no redirects, private/loopback hosts blocked). Takes
-    /// precedence over `--remote`.
-    #[arg(long)]
-    pub oobi: Option<String>,
-
     /// Fail verification when the signer's root KEL has not reached witness
     /// quorum (fail-closed). Default: warn and continue.
     #[arg(long = "require-witnesses")]
@@ -166,8 +153,6 @@ pub async fn handle_verify_unified(
                 witness_receipts: cmd.witness_receipts,
                 witness_threshold: cmd.witness_threshold,
                 witness_keys: cmd.witness_keys,
-                remote: cmd.remote,
-                oobi: cmd.oobi,
                 require_witnesses: cmd.require_witnesses,
                 // Honor --identity-bundle for commit/git-ref targets (previously dropped
                 // here, silently verifying against the wrong/default trust root).

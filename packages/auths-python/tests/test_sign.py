@@ -72,12 +72,10 @@ class TestSignAndVerifyRoundtrip:
         except ImportError:
             pytest.skip("cryptography package not installed")
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason="auths#258: raw-seed sign_action/verify_action_envelope payload "
-        "mismatch (pre-existing on 0.1.2; keychain-backed envelope paths verify)",
-    )
     def test_sign_and_verify_roundtrip(self):
+        # Raw-seed sign_action -> verify_action_envelope round-trips. The
+        # crate-level regression guard is
+        # auths-verifier action::tests::raw_seed_action_sign_verify_roundtrip.
         pub_hex = self._get_public_key_hex()
         envelope_json = sign_action(
             TEST_SEED_HEX, "tool_call",

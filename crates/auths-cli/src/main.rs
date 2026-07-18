@@ -104,8 +104,10 @@ fn run() -> Result<()> {
         RootCommand::Id(cmd) => cmd.execute(&ctx),
         RootCommand::Device(cmd) => cmd.execute(&ctx),
         RootCommand::Key(cmd) => cmd.execute(&ctx),
+        RootCommand::Kel(cmd) => cmd.execute(&ctx),
         RootCommand::KeyState(cmd) => cmd.execute(&ctx),
         RootCommand::DidWebs(cmd) => cmd.execute(&ctx),
+        RootCommand::KeriEmit(cmd) => cmd.execute(&ctx),
         RootCommand::TlsCert(cmd) => cmd.execute(&ctx),
         RootCommand::Oobi(cmd) => cmd.execute(&ctx),
         RootCommand::Ipex(cmd) => cmd.execute(&ctx),
@@ -117,7 +119,6 @@ fn run() -> Result<()> {
         RootCommand::Credential(cmd) => cmd.execute(&ctx),
         RootCommand::Audit(cmd) => cmd.execute(&ctx),
         RootCommand::Auth(cmd) => cmd.execute(&ctx),
-        RootCommand::Registry(cmd) => cmd.execute(&ctx),
         // Internal
         RootCommand::Emergency(cmd) => cmd.execute(&ctx),
         RootCommand::Agent(cmd) => cmd.execute(&ctx),

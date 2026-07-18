@@ -15,7 +15,6 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::domains::identity::service::initialize;
 use auths_sdk::domains::identity::types::IdentityConfig;
 use auths_sdk::domains::identity::types::InitializeResult;
@@ -24,6 +23,7 @@ use auths_sdk::keychain::KeyStorage;
 use auths_sdk::ports::git_config::GitConfigProvider;
 use auths_sdk::signing::PrefilledPassphraseProvider;
 use auths_sdk::signing::StorageSigner;
+use auths_sdk::workflows::roots::RootPinOutcome;
 
 use crate::adapters::git_config::SystemGitConfigProvider;
 use crate::config::CliConfig;
@@ -38,7 +38,7 @@ use gather::{
     submit_registration,
 };
 use guided::GuidedSetup;
-use helpers::{get_auths_repo_path, offer_shell_completions};
+use helpers::{git_remote_is_github, offer_shell_completions};
 use prompts::{prompt_platform_verification, prompt_profile};
 
 const DEFAULT_KEY_ALIAS: &str = "main";
@@ -52,6 +52,31 @@ pub enum InitProfile {
     Ci,
     /// Restricted signing identity for AI agents
     Agent,
+}
+
+/// Where `auths init` writes git signing configuration.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum GitScopeArg {
+    /// This repository only (`git config --local`).
+    Local,
+    /// Every repository on this machine (`git config --global`).
+    Global,
+    /// Do not touch git configuration at all.
+    Skip,
+}
+
+impl GitScopeArg {
+    /// Resolve to the SDK scope, reading the working directory for `Local`.
+    pub(crate) fn resolve(self) -> Result<GitSigningScope> {
+        Ok(match self {
+            Self::Local => GitSigningScope::Local {
+                repo_path: std::env::current_dir()
+                    .map_err(|e| anyhow!("Failed to determine current working directory: {e}"))?,
+            },
+            Self::Global => GitSigningScope::Global,
+            Self::Skip => GitSigningScope::Skip,
+        })
+    }
 }
 
 impl std::fmt::Display for InitProfile {
@@ -115,17 +140,44 @@ pub struct InitCommand {
     #[clap(long)]
     pub force: bool,
 
+    /// Confirm replacing an existing root identity when running non-interactively. Required with
+    /// `--force` over an existing identity when there is no TTY to confirm at.
+    #[clap(long)]
+    pub confirm_replace: bool,
+
     /// Preview agent configuration without creating files or identities
     #[clap(long)]
     pub dry_run: bool,
 
-    /// Registry URL for identity registration
-    #[clap(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-    pub registry: String,
+    /// Registry URL for identity registration. No default: auths needs no
+    /// registry, and registration is opt-in via `--register`.
+    #[clap(long, env = "AUTHS_REGISTRY_URL")]
+    pub registry: Option<String>,
 
     /// Register identity with the Auths Registry after creation
     #[clap(long)]
     pub register: bool,
+
+    /// Link your GitHub account and upload your SSH signing key, so your commits
+    /// show as Verified on github.com.
+    ///
+    /// Defaults to on when this repo has a GitHub remote and there is a TTY to
+    /// confirm at. Unrelated to `--register`, which publishes to the Auths
+    /// Registry.
+    #[clap(long)]
+    pub github: bool,
+
+    /// Skip linking GitHub, even when this repo has a GitHub remote.
+    #[clap(long = "no-github", conflicts_with = "github")]
+    pub no_github: bool,
+
+    /// Where to write git signing config: local (this repo), global (every repo
+    /// on this machine), or skip.
+    ///
+    /// Interactive runs ask. Non-interactive runs default to `local` — a scripted
+    /// or CI init should not silently rewrite your `~/.gitconfig`.
+    #[clap(long, value_enum)]
+    pub git_scope: Option<GitScopeArg>,
 
     /// Scaffold a GitHub Actions workflow using the auths attest-action
     #[clap(long)]
@@ -134,9 +186,9 @@ pub struct InitCommand {
     /// Number of device slots for a multi-key KEL (default 1).
     ///
     /// Values > 1 require `--signing-threshold` and `--rotation-threshold`.
-    /// Multi-device init today runs a single-device inception and points the
-    /// operator at `auths id expand` for the device-expansion rotation; the
-    /// full atomic multi-device inception path is wired through later.
+    /// Multi-device init today runs a single-device inception; add further
+    /// devices with `auths device pair` (each is a delegated identity under
+    /// the root). The full atomic multi-device inception path is wired later.
     #[clap(long, default_value_t = 1)]
     pub device_count: u8,
 
@@ -209,6 +261,14 @@ pub fn parse_threshold_cli(
 }
 
 fn resolve_interactive(cmd: &InitCommand) -> Result<bool> {
+    // `--json` is a machine-readable contract: never prompt, so a parser on the
+    // other end gets a single JSON object on stdout and nothing blocks on input.
+    if crate::ux::format::is_json_mode() {
+        if cmd.interactive {
+            return Err(anyhow!("--interactive cannot be combined with --json"));
+        }
+        return Ok(false);
+    }
     if cmd.interactive {
         if !std::io::stdin().is_terminal() {
             return Err(anyhow!(
@@ -259,8 +319,8 @@ pub fn handle_init(
         let _nt = parse_threshold_cli(nt_str, device_count)?;
         return Err(anyhow!(
             "multi-device init (--device-count > 1) is not yet wired through the developer setup flow. \
-             Run `auths init` for a single-device identity, then `auths id expand --add-device <CURVE>` \
-             (repeatable) with the desired thresholds to convert into a multi-device KEL."
+             Run `auths init` for a single-device identity, then add devices with `auths device pair` \
+             (each device is a delegated identity under your root)."
         ));
     }
     if cmd.signing_threshold.is_some() && device_count == 1 {
@@ -306,8 +366,8 @@ fn run_developer_setup(
 
     // GATHER
     guide.section("Prerequisites & Configuration");
-    let (keychain, mut config) = gather_developer_config(interactive, out, cmd)?;
-    let registry_path = get_auths_repo_path()?;
+    let registry_path = auths_sdk::paths::resolve_registry_path(ctx.repo_path.clone())?;
+    let (keychain, mut config) = gather_developer_config(interactive, out, cmd, &registry_path)?;
     ensure_registry_dir(&registry_path)?;
 
     let sign_binary_path = which::which("auths-sign").ok();
@@ -346,12 +406,33 @@ fn run_developer_setup(
     ));
     out.print_success(&format!(
         "This device authorized: {}",
-        result.device_did.as_str()
+        crate::ux::product_id(result.device_did.as_str())
     ));
 
     // PLATFORM VERIFICATION
+    //
+    // Linking GitHub is what uploads the SSH signing key, and that is the only
+    // thing that makes a user's commits render as "Verified" to everyone else.
+    // It was previously gated behind `--register` — a flag whose documented job is
+    // publishing to the Auths Registry, an unrelated (and dead) host. So the
+    // default first run left commits Unverified on github.com while the code to
+    // fix that sat one boolean away.
+    //
+    // Research puts a number on the cost: 73.73% of commit-signature verification
+    // failures in the wild are `unknown_key` — developers sign and never register
+    // the key ("a usability problem, not a cryptographic one", arXiv:2604.14014).
+    // Auths mints the key, signs with it, and can upload it; withholding that by
+    // default forfeits the product's clearest advantage over gitsign, whose certs
+    // GitHub structurally cannot verify.
+    let link_github = if cmd.no_github {
+        false
+    } else if cmd.github {
+        true
+    } else {
+        interactive && git_remote_is_github()
+    };
     guide.section("Platform Verification");
-    let proof_url = if interactive && cmd.register {
+    let proof_url = if link_github {
         out.print_info("Link your GitHub account");
         out.newline();
         match prompt_platform_verification(
@@ -410,22 +491,32 @@ fn run_developer_setup(
 
     // Pin the local identity as a trusted root for KEL-native verification (Epic B):
     // the committed `<repo>/.auths/roots` is the root of trust — no allowed_signers file.
-    // The hook seeds the same pin into every repo on first signed commit; this covers
-    // the repo the user is standing in right now.
+    // Staging is the load-bearing half: a pin that is written but never staged never
+    // reaches a cloner, so every third-party verification path dead-ends on it. We do
+    // not author a commit on the user's behalf — the pin rides their next one.
     if let Ok(output) = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"]).output()
         && output.status.success()
     {
         let root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
         let root_did = result.identity_did.to_string();
-        match auths_sdk::workflows::roots::add_pinned_root(
+        let index = crate::adapters::git_index::SystemRepoIndex::at(root.clone());
+        match auths_sdk::workflows::roots::pin_root_in_repo(
             &crate::adapters::config_store::FileConfigStore,
-            &root.join(".auths"),
+            &index,
+            &root,
             &root_did,
         ) {
-            Ok(()) => out.println(&format!(
-                "  Pinned trusted root: {}",
+            Ok(RootPinOutcome::AlreadyTracked) => out.println(&format!(
+                "  Trusted root already pinned: {}",
                 crate::ux::product_id(&root_did)
             )),
+            Ok(_) => {
+                out.println(&format!(
+                    "  Pinned trusted root: {}",
+                    crate::ux::product_id(&root_did)
+                ));
+                out.println("  Staged .auths/roots — your next commit lets clones verify you");
+            }
             Err(e) => out.println(&format!("  Note: could not pin trusted root ({e})")),
         }
     }
@@ -433,8 +524,8 @@ fn run_developer_setup(
     // REGISTRATION & DISPLAY
     guide.section("Registration & Summary");
     let registered = submit_registration(
-        &get_auths_repo_path()?,
-        &cmd.registry,
+        &registry_path,
+        cmd.registry.as_deref(),
         proof_url,
         !cmd.register, // skip unless --register is explicitly passed
         out,
@@ -640,9 +731,13 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,
@@ -654,7 +749,9 @@ mod tests {
         assert_eq!(cmd.key_alias, "main");
         assert!(!cmd.force);
         assert!(!cmd.dry_run);
-        assert_eq!(cmd.registry, "https://registry.auths.dev");
+        // No default: auths needs no registry, and the one that used to be baked
+        // in returned 404. Registration is opt-in and must name its registry.
+        assert_eq!(cmd.registry, None);
         assert!(!cmd.register);
         assert!(!cmd.github_action);
     }
@@ -667,9 +764,13 @@ mod tests {
             profile: Some(InitProfile::Ci),
             key_alias: "ci-key".to_string(),
             force: true,
+            confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,
@@ -702,9 +803,13 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,
@@ -721,9 +826,13 @@ mod tests {
             profile: None,
             key_alias: DEFAULT_KEY_ALIAS.to_string(),
             force: false,
+            confirm_replace: false,
             dry_run: false,
-            registry: DEFAULT_REGISTRY_URL.to_string(),
+            registry: None,
             register: false,
+            github: false,
+            no_github: false,
+            git_scope: None,
             github_action: false,
             device_count: 1,
             signing_threshold: None,

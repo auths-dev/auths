@@ -48,7 +48,8 @@ fn test_doctor_detects_missing_gpg_format() {
     let env = TestEnv::new();
     env.init_identity();
 
-    // Remove gpg.format from global config
+    // Remove gpg.format from the scope `auths init` wrote it to (global by
+    // default). The doctor reads the *effective* value, so this is what it sees.
     let unset = env
         .git_cmd()
         .args(["config", "--global", "--unset", "gpg.format"])

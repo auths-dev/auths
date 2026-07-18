@@ -10,8 +10,16 @@ use auths_core::ports::pairing::PairingRelayClient;
 
 use crate::default_http_client;
 use crate::error::{map_reqwest_error, map_status_error};
+use crate::ssrf::{SsrfBlocked, guard_registry_url};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Translate a refused registry URL into a `NetworkError` for the network port.
+fn map_ssrf_error(err: SsrfBlocked) -> NetworkError {
+    NetworkError::InvalidResponse {
+        detail: err.to_string(),
+    }
+}
 
 /// HTTP-backed implementation of [`PairingRelayClient`].
 ///
@@ -50,12 +58,14 @@ impl PairingRelayClient for HttpPairingRelayClient {
         registry_url: &str,
         request: &CreateSessionRequest,
     ) -> impl Future<Output = Result<CreateSessionResponse, NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!("{}/v1/pairing/sessions", registry_url.trim_end_matches('/'));
         let endpoint = registry_url.to_string();
         // Serialize JSON at call time so the future owns the request bytes.
         let req = self.client.post(&url).json(request);
 
         async move {
+            guard?;
             let resp = req
                 .send()
                 .await
@@ -76,6 +86,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         registry_url: &str,
         session_id: &str,
     ) -> impl Future<Output = Result<GetSessionResponse, NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!(
             "{}/v1/pairing/sessions/{}",
             registry_url.trim_end_matches('/'),
@@ -85,6 +96,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         let req = self.client.get(&url);
 
         async move {
+            guard?;
             let resp = req
                 .send()
                 .await
@@ -105,15 +117,33 @@ impl PairingRelayClient for HttpPairingRelayClient {
         registry_url: &str,
         code: &str,
     ) -> impl Future<Output = Result<GetSessionResponse, NetworkError>> + Send {
-        let url = format!(
-            "{}/v1/pairing/sessions/by-code/{}",
-            registry_url.trim_end_matches('/'),
-            code
-        );
+        use auths_pairing_protocol::lookup_auth::{LOOKUP_PATH, build_lookup_authorization};
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
+        let url = format!("{}{}", registry_url.trim_end_matches('/'), LOOKUP_PATH);
         let endpoint = registry_url.to_string();
-        let req = self.client.get(&url);
+
+        // Prove knowledge of the short code without sending it in the clear: HMAC
+        // a canonical GET with a key derived from the code. The timestamp and a
+        // fresh random nonce bind the request against replay.
+        #[allow(clippy::disallowed_methods)]
+        // wire boundary: no clock is injected into the relay client
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut nonce = [0u8; 16];
+        {
+            use rand::RngCore;
+            let mut rng = rand::rngs::OsRng;
+            rng.fill_bytes(&mut nonce);
+        }
+        let req = self.client.get(&url).header(
+            "Authorization",
+            build_lookup_authorization(code, ts, &nonce),
+        );
 
         async move {
+            guard?;
             let resp = req
                 .send()
                 .await
@@ -135,6 +165,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         session_id: &str,
         response: &SubmitResponseRequest,
     ) -> impl Future<Output = Result<(), NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!(
             "{}/v1/pairing/sessions/{}/response",
             registry_url.trim_end_matches('/'),
@@ -144,6 +175,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         let req = self.client.post(&url).json(response);
 
         async move {
+            guard?;
             let resp = req
                 .send()
                 .await
@@ -161,6 +193,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         session_id: &str,
         request: &SubmitConfirmationRequest,
     ) -> impl Future<Output = Result<(), NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!(
             "{}/v1/pairing/sessions/{}/confirm",
             registry_url.trim_end_matches('/'),
@@ -170,6 +203,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         let req = self.client.post(&url).json(request);
 
         async move {
+            guard?;
             let resp = req
                 .send()
                 .await
@@ -186,6 +220,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         registry_url: &str,
         session_id: &str,
     ) -> impl Future<Output = Result<GetConfirmationResponse, NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!(
             "{}/v1/pairing/sessions/{}/confirmation",
             registry_url.trim_end_matches('/'),
@@ -195,6 +230,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         let req = self.client.get(&url);
 
         async move {
+            guard?;
             let resp = req
                 .send()
                 .await
@@ -216,6 +252,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         session_id: &str,
         timeout: Duration,
     ) -> impl Future<Output = Result<Option<GetConfirmationResponse>, NetworkError>> + Send {
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         let url = format!(
             "{}/v1/pairing/sessions/{}/confirmation",
             registry_url.trim_end_matches('/'),
@@ -225,6 +262,7 @@ impl PairingRelayClient for HttpPairingRelayClient {
         let client = self.client.clone();
 
         async move {
+            guard?;
             let deadline = tokio::time::Instant::now() + timeout;
             loop {
                 let resp = client
@@ -271,10 +309,12 @@ impl PairingRelayClient for HttpPairingRelayClient {
             session_id
         );
         let endpoint = registry_url.to_string();
+        let guard = guard_registry_url(registry_url).map_err(map_ssrf_error);
         // Clone the client so the future owns it without borrowing &self.
         let client = self.client.clone();
 
         async move {
+            guard?;
             let deadline = tokio::time::Instant::now() + timeout;
 
             if let Ok((ws_stream, _)) = tokio_tungstenite::connect_async(&ws_url).await {

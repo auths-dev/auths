@@ -129,6 +129,25 @@ graph TD
 
 Violations are caught by `cargo deny check bans` and `cargo clippy` (`disallowed-methods`).
 
+## The Report Is the Only API (relying parties)
+
+A relying party — the market, any server authenticating `Auths-Presentation`
+requests, any consumer of a verify entrypoint — **never inspects evidence**.
+Anything an RP needs to act on (subject, the proven root, capabilities, expiry,
+freshness) must be a field on the verdict/report, set by the verifier only after
+it proved the fact. If an RP finds itself parsing a KEL, an attachment, or an
+ACDC out of the evidence it was handed, that is a missing verdict field — fix it
+in `auths-verifier`, never in the consumer. Precedent: `subjectRoot` (the
+delegator a seal-checked replay proved) was added to the Valid presentation
+verdict for exactly this reason.
+
+The companion rule: **RPs re-implement no wire.** Header parsing, base64
+conventions, verify-request assembly, and the verdict→denial doctrine live once,
+behind the SDK's relying-party surface (`packages/auths-node`
+`presentationNonce` / `authenticatePresentation`). An RP keeps only what is
+irreducibly its own: storage (the single-use challenge store, principal
+records) and grant policy (which capabilities admit which action).
+
 ## Port Inventory
 
 Ports are trait interfaces that decouple domain logic from infrastructure. Production adapters live in the appropriate infra crate under `src/adapters/`. Test doubles live in `auths-test-utils/src/fakes/` or `auths-test-utils/src/mocks/`.
@@ -164,16 +183,6 @@ Ports are trait interfaces that decouple domain logic from infrastructure. Produ
 | `CryptoDiagnosticProvider` | `diagnostics.rs` | `auths-sdk` | `PosixDiagnosticAdapter` | `FakeCryptoDiagnosticProvider` |
 | `ArtifactSource` | `artifact.rs` | `auths-cli` | `StdinArtifactSource` | inline fakes |
 
-### auths-registry-server ports (`crates/auths-registry-server/src/ports/`)
-
-| Trait | File | Adapter Crate | Production Adapter | Test Double |
-|---|---|---|---|---|
-| `HttpAdapter` | `http.rs` | `auths-infra-http` | `ReqwestHttpAdapter` | `MockHttpAdapter` (mockall) |
-| `PairingStore` | `pairing_store.rs` | `auths-registry-server` | `PostgresPairingStore` | `InMemoryPairingStore` |
-| `SubscriptionStore` | `subscription_store.rs` | `auths-registry-server` | `PostgresSubscriptionStore` | — |
-| `TenantMetadataStore` | `tenant_metadata_store.rs` | `auths-registry-server` | `PostgresTenantMetadataStore` | — |
-| `TenantResolver` | `tenant_resolver.rs` | `auths-registry-server` | `FilesystemTenantResolver` | `SingleTenantResolver` |
-
 ## Bounded Context Guide
 
 ### auths-core
@@ -200,12 +209,12 @@ Ports are trait interfaces that decouple domain logic from infrastructure. Produ
 **Responsibility:** User-facing terminal commands, interactive prompts, JSON output mode.
 **Must NOT:** contain business logic. All domain operations are delegated to auths-sdk workflows.
 
-### auths-registry-server
-**Responsibility:** HTTP API for KERI identity registration, KEL management, platform claims, multi-tenant routing.
+### auths-api
+**Responsibility:** Thin HTTP presentation layer over the SDK — currently a minimal skeleton (health check + agent-passport control-plane handlers); domain routes are (re)mounted over SDK workflows as an HTTP surface is needed. Single-org self-host, no multi-tenant control plane.
 **Must NOT:** contain domain logic beyond input validation and error translation to HTTP status codes.
 
-### auths-auth-server
-**Responsibility:** "Login with Auths" challenge-response authentication. Issues challenges, verifies signatures by resolving identity keys.
+### auths-rp
+**Responsibility:** Relying-party wire boundary — turns an `Authorization: Auths-Presentation` header into a parsed `PresentationEnvelope` for verification (authenticate a request by proof-of-control of a delegated credential, not a bearer key).
 **Must NOT:** store private keys or implement key derivation logic.
 
 ### auths-infra-http
@@ -215,10 +224,6 @@ Ports are trait interfaces that decouple domain logic from infrastructure. Produ
 ### auths-infra-git
 **Responsibility:** Production git2-backed implementations of the storage ports defined in auths-core (`GitEventLogWriter`, `GitEventLogReader`, `GitBlobReader`, `GitBlobWriter`, `GitRefReader`, `GitRefWriter`) and git introspection ports from auths-sdk (`SystemGitLogProvider`, `SystemGitConfigProvider`).
 **Must NOT:** contain business logic or be referenced by core/domain crates.
-
-### auths-cache
-**Responsibility:** Redis-backed tiered identity resolver with write-through archival to Git.
-**Must NOT:** be referenced by core or domain crates.
 
 ### auths-index
 **Responsibility:** SQLite-backed O(1) attestation index for fast lookups by device DID.

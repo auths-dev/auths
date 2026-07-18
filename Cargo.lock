@@ -148,9 +148,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "arc-swap"
@@ -315,11 +315,15 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auths"
-version = "0.1.3"
+version = "0.1.6"
+dependencies = [
+ "auths-sdk",
+ "auths-verifier",
+]
 
 [[package]]
 name = "auths-api"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-core",
@@ -333,7 +337,7 @@ dependencies = [
  "axum",
  "base64",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "reqwest",
  "ring",
  "serde",
@@ -350,42 +354,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "auths-auth-server"
-version = "0.1.3"
-dependencies = [
- "argon2",
- "async-trait",
- "auths-core",
- "auths-crypto",
- "auths-id",
- "auths-storage",
- "auths-telemetry",
- "auths-verifier",
- "axum",
- "base64",
- "bs58",
- "chrono",
- "futures",
- "git2 0.20.4",
- "hex",
- "http-body-util",
- "json-canon",
- "reqwest",
- "ring",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "auths-checkpoint-cosigner"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-transparency",
@@ -407,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "auths-cli"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -443,7 +413,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "gethostname",
- "git2 0.21.0",
+ "git2",
  "glob",
  "hex",
  "indicatif",
@@ -469,12 +439,13 @@ dependencies = [
  "toml",
  "url",
  "which",
+ "windows 0.58.0",
  "zeroize",
 ]
 
 [[package]]
 name = "auths-core"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -536,7 +507,7 @@ dependencies = [
 
 [[package]]
 name = "auths-crypto"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -568,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "auths-id"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -588,7 +559,7 @@ dependencies = [
  "der 0.8.0",
  "dirs",
  "futures",
- "git2 0.21.0",
+ "git2",
  "hex",
  "json-canon",
  "jsonschema",
@@ -615,13 +586,13 @@ dependencies = [
 
 [[package]]
 name = "auths-index"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-keri",
  "auths-verifier",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "log",
  "serde",
  "serde_json",
@@ -632,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-git"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-core",
  "auths-keri",
@@ -640,7 +611,7 @@ dependencies = [
  "auths-test-utils",
  "auths-verifier",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "log",
  "serde",
  "serde_json",
@@ -650,13 +621,14 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-http"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-core",
  "auths-crypto",
  "auths-keri",
  "auths-oidc-port",
+ "auths-pairing-protocol",
  "auths-verifier",
  "axum",
  "chrono",
@@ -679,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-rekor"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -704,7 +676,7 @@ dependencies = [
 
 [[package]]
 name = "auths-jwt"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-keri",
  "serde",
@@ -713,7 +685,7 @@ dependencies = [
 
 [[package]]
 name = "auths-keri"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -740,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "auths-mcp-core"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-crypto",
  "auths-id",
@@ -758,9 +730,10 @@ dependencies = [
 
 [[package]]
 name = "auths-mcp-gateway"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
+ "auths-crypto",
  "auths-mcp-core",
  "auths-sdk",
  "chrono",
@@ -768,13 +741,14 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
+ "sha1",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
 name = "auths-mcp-server"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-api",
@@ -803,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "auths-monitor"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-transparency",
@@ -823,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "auths-oidc-port"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -836,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-daemon"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-core",
  "auths-keri",
@@ -868,7 +842,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-protocol"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-crypto",
  "auths-keri",
@@ -877,6 +851,7 @@ dependencies = [
  "chrono",
  "hex",
  "hkdf",
+ "hmac",
  "ml-kem",
  "p256 0.13.2",
  "rand 0.8.6",
@@ -894,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "auths-policy"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-verifier",
  "blake3",
@@ -905,13 +880,13 @@ dependencies = [
 
 [[package]]
 name = "auths-rp"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-rp",
  "auths-verifier",
  "base64",
  "chrono",
- "git2 0.21.0",
+ "git2",
  "parking_lot",
  "ring",
  "serde",
@@ -922,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "auths-scim"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-verifier",
  "chrono",
@@ -934,7 +909,7 @@ dependencies = [
 
 [[package]]
 name = "auths-scim-server"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-core",
@@ -959,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "auths-sdk"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -980,7 +955,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "flate2",
- "git2 0.21.0",
+ "git2",
  "hex",
  "html-escape",
  "json-canon",
@@ -1006,7 +981,7 @@ dependencies = [
 
 [[package]]
 name = "auths-storage"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -1019,7 +994,7 @@ dependencies = [
  "chrono",
  "criterion 0.8.2",
  "fs2",
- "git2 0.21.0",
+ "git2",
  "log",
  "ring",
  "serde",
@@ -1033,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "auths-telemetry"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "chrono",
  "metrics",
@@ -1055,14 +1030,14 @@ name = "auths-test-utils"
 version = "0.1.0"
 dependencies = [
  "auths-crypto",
- "git2 0.21.0",
+ "git2",
  "ring",
  "tempfile",
 ]
 
 [[package]]
 name = "auths-transparency"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -1089,7 +1064,7 @@ dependencies = [
 
 [[package]]
 name = "auths-utils"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "dirs",
  "thiserror 2.0.18",
@@ -1097,11 +1072,12 @@ dependencies = [
 
 [[package]]
 name = "auths-verifier"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "async-trait",
  "auths-crypto",
  "auths-keri",
+ "auths-verifier",
  "base64",
  "bs58",
  "chrono",
@@ -1130,7 +1106,7 @@ dependencies = [
 
 [[package]]
 name = "auths-witness"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-core",
@@ -1148,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "auths-witness-node"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "auths-keri",
@@ -1814,7 +1790,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2486,9 +2462,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -2504,9 +2480,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-utils"
-version = "0.8.21"
+version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
 name = "crunchy"
@@ -3445,21 +3421,6 @@ dependencies = [
 
 [[package]]
 name = "git2"
-version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b88256088d75a56f8ecfa070513a775dd9107f6530ef14919dac831af9cfe2b"
-dependencies = [
- "bitflags",
- "libc",
- "libgit2-sys",
- "log",
- "openssl-probe 0.1.6",
- "openssl-sys",
- "url",
-]
-
-[[package]]
-name = "git2"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddddbf932745a6be37109b6112d3ee09696106f848449069d3a57bba937ab82e"
@@ -3701,12 +3662,6 @@ dependencies = [
  "http-body 1.0.1",
  "pin-project-lite",
 ]
-
-[[package]]
-name = "http-range-header"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9171a2ea8a68358193d15dd5d70c1c10a2afc3e7e4c5bc92bc9f025cebd7359c"
 
 [[package]]
 name = "httparse"
@@ -4352,9 +4307,7 @@ checksum = "005d6ae6eac1912906073e069f7db60b1fa98e052a68227824afe3e3a1c59ca2"
 dependencies = [
  "cc",
  "libc",
- "libssh2-sys",
  "libz-sys",
- "openssl-sys",
  "pkg-config",
 ]
 
@@ -4384,20 +4337,6 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.7.4",
-]
-
-[[package]]
-name = "libssh2-sys"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "220e4f05ad4a218192533b300327f5150e809b54c4ec83b5a1d91833601811b9"
-dependencies = [
- "cc",
- "libc",
- "libz-sys",
- "openssl-sys",
- "pkg-config",
- "vcpkg",
 ]
 
 [[package]]
@@ -4598,16 +4537,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
-name = "mime_guess"
-version = "2.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
-dependencies = [
- "mime",
- "unicase",
-]
-
-[[package]]
 name = "minicov"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4708,7 +4637,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-core"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "auths-crypto",
  "chacha20poly1305",
@@ -4726,7 +4655,7 @@ dependencies = [
 
 [[package]]
 name = "murmur-relay"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "axum",
  "murmur-core",
@@ -4954,27 +4883,9 @@ dependencies = [
 
 [[package]]
 name = "openssl-probe"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d05e27ee213611ffe7d6348b942e8f942b37114c00cc03cec254295a4a17852e"
-
-[[package]]
-name = "openssl-probe"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.117"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47e7e6bb2c38cd930d25a23b40fa52e068c10e85f3e03a7f5ba5aaca5713695"
-dependencies = [
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "option-ext"
@@ -5481,7 +5392,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn",
@@ -5545,9 +5456,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.14"
+version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
+checksum = "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -6121,7 +6032,7 @@ version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "612460d5f7bea540c490b2b6395d8e34a953e52b491accd6c86c8164c5932a63"
 dependencies = [
- "openssl-probe 0.2.1",
+ "openssl-probe",
  "rustls-pki-types",
  "schannel",
  "security-framework 3.7.0",
@@ -7391,20 +7302,13 @@ checksum = "d4e6559d53cc268e5031cd8429d05415bc4cb4aefc4aa5d6cc35fbf5b924a1f8"
 dependencies = [
  "bitflags",
  "bytes",
- "futures-core",
  "futures-util",
  "http 1.4.0",
  "http-body 1.0.1",
  "http-body-util",
- "http-range-header",
- "httpdate",
  "iri-string",
- "mime",
- "mime_guess",
- "percent-encoding",
  "pin-project-lite",
  "tokio",
- "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",
@@ -7586,12 +7490,6 @@ name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
-
-[[package]]
-name = "unicase"
-version = "2.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "unicode-bidi"

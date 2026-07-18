@@ -386,6 +386,141 @@ pub fn author_root_anchor_ixn(
     Ok(ixn)
 }
 
+/// One agent to incept in a bulk delegation batch (issue #255 bulk onboarding).
+pub struct BulkAgentSpec {
+    /// Keychain alias to store the new agent key under.
+    pub device_alias: KeyAlias,
+    /// Curve for the new agent key.
+    pub device_curve: CurveType,
+}
+
+/// Result of [`incept_delegated_agents_bulk`]: the devices plus the one anchoring `ixn`.
+pub struct BulkDelegation {
+    /// The delegated identifiers, in spec order.
+    pub devices: Vec<DelegatedDevice>,
+    /// The single root `ixn` anchoring every dip in the batch.
+    pub anchor_ixn: IxnEvent,
+}
+
+/// Incept a batch of agents as delegated identifiers with ONE root anchoring `ixn`
+/// and ONE atomic commit — the bulk-onboarding write path (issue #255 / PRD KL-9).
+///
+/// The per-agent path spreads three anchors over three root events (the dip
+/// `Seal::KeyEvent`, the `agent:{prefix}` role marker, the attestation digest) and
+/// three commits; here the same three seals per agent ride in one shared `ixn`, and
+/// every dip's `-G` source seal points at that one anchoring event — the same
+/// whole-set-at-one-KEL-position semantics [`revoke_delegated_devices_batch`]
+/// already uses on the way out.
+///
+/// `extras` runs once per agent AFTER its keys are stored in the keychain: it may
+/// stage additional writes into the shared batch (e.g. the delegation-attestation
+/// blob) and returns extra seals to carry in the anchoring `ixn` (e.g. the
+/// attestation digest). Witness receipting is the caller's concern — one receipt
+/// round per batch instead of per agent; this function does not contact witnesses.
+#[allow(clippy::too_many_arguments)]
+pub fn incept_delegated_agents_bulk(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    root_prefix: &Prefix,
+    root_alias: &KeyAlias,
+    root_curve: CurveType,
+    specs: &[BulkAgentSpec],
+    passphrase_provider: &dyn PassphraseProvider,
+    keychain: &(dyn KeyStorage + Send + Sync),
+    mut extras: impl FnMut(
+        &DeviceDipBundle,
+        &mut crate::storage::registry::backend::AtomicWriteBatch,
+    ) -> Result<Vec<Seal>, InitError>,
+) -> Result<BulkDelegation, InitError> {
+    let mut batch = crate::storage::registry::backend::AtomicWriteBatch::new();
+    let mut bundles = Vec::with_capacity(specs.len());
+    let mut seals = Vec::with_capacity(specs.len() * 3);
+
+    for spec in specs {
+        let bundle = build_device_dip(root_prefix, spec.device_curve)?;
+
+        // Store the agent's keys first so `extras` (attestation building) can read
+        // the public key back through the keychain exactly like the per-agent path.
+        let pass = passphrase_provider.get_passphrase(&format!(
+            "Create passphrase for device key '{}':",
+            spec.device_alias
+        ))?;
+        let enc_cur = encrypt_keypair(bundle.current_pkcs8.as_ref(), &pass)?;
+        keychain.store_key(
+            &spec.device_alias,
+            &bundle.device_did,
+            KeyRole::Primary,
+            &enc_cur,
+        )?;
+        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", spec.device_alias));
+        let enc_next = encrypt_keypair(bundle.next_pkcs8.as_ref(), &pass)?;
+        keychain.store_key(
+            &next_alias,
+            &bundle.device_did,
+            KeyRole::NextRotation,
+            &enc_next,
+        )?;
+
+        seals.push(Seal::KeyEvent {
+            i: bundle.device_prefix.clone(),
+            s: KeriSequence::new(0),
+            d: bundle.dip.d.clone(),
+        });
+        seals.push(Seal::Digest {
+            d: Said::new_unchecked(agent_role_marker(&bundle.device_prefix)),
+        });
+        seals.extend(extras(&bundle, &mut batch)?);
+
+        bundles.push(bundle);
+    }
+
+    // One anchoring ixn for the whole batch, staged BEFORE the dips so the dips
+    // staged after it see the anchor through the batch's state/tip overlays.
+    let anchor_ixn = stage_root_anchor_ixn(
+        backend,
+        root_prefix,
+        root_alias,
+        root_curve,
+        seals,
+        passphrase_provider,
+        keychain,
+        &mut batch,
+    )?;
+
+    let source_seal = SourceSeal {
+        s: anchor_ixn.s,
+        d: anchor_ixn.d.clone(),
+    };
+    let mut devices = Vec::with_capacity(bundles.len());
+    for (spec, bundle) in specs.iter().zip(bundles) {
+        let mut anchored_dip = bundle.dip;
+        anchored_dip.source_seal = Some(source_seal.clone());
+        let mut attachment = bundle.attachment;
+        attachment.extend_from_slice(
+            &serialize_source_seal_couples(std::slice::from_ref(&source_seal))
+                .map_err(|e| InitError::Keri(format!("source seal serialization: {e}")))?,
+        );
+        batch.stage_event(
+            bundle.device_prefix.clone(),
+            Event::Dip(anchored_dip),
+            attachment,
+        );
+        devices.push(DelegatedDevice {
+            device_did: bundle.device_did,
+            device_prefix: bundle.device_prefix,
+            device_alias: spec.device_alias.clone(),
+        });
+    }
+
+    backend
+        .commit_batch(&batch)
+        .map_err(|e| InitError::Registry(e.to_string()))?;
+
+    Ok(BulkDelegation {
+        devices,
+        anchor_ixn,
+    })
+}
+
 /// The role a delegated identifier plays.
 ///
 /// Agents and devices share the exact same `dip`/`drt` delegation mechanism; the

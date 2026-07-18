@@ -56,7 +56,10 @@ fn quick_setup_creates_identity_in_temp_dir() {
     let result = dev_result(config, &ctx, &signer, &provider, &kc);
 
     assert!(result.identity_did.starts_with("did:keri:"));
-    assert!(result.device_did.starts_with("did:key:z"));
+    // A fresh identity delegates device #0; its device_did is that delegated AID (did:keri),
+    // distinct from the root identity — no longer a raw did:key.
+    assert!(result.device_did.starts_with("did:keri:"));
+    assert_ne!(result.device_did.as_str(), result.identity_did.as_str());
     assert_eq!(result.key_alias, "test-key");
     assert!(!result.git_signing_configured);
     assert!(result.registered.is_none());

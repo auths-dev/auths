@@ -32,15 +32,9 @@ pub struct NextStep {
 
 /// Full status report combining identity, devices, and agent state.
 ///
-/// Usage:
-/// ```ignore
-/// let report = StatusWorkflow::query(&ctx, now)?;
-/// println!("Identity: {}", report.identity.controller_did);
-/// println!("Devices: {} linked", report.devices.len());
-/// for step in report.next_steps {
-///     println!("Try: {}", step.command);
-/// }
-/// ```
+/// Assembled by the `auths status` command, which loads identity/devices/agent
+/// and derives `next_steps` via [`crate::workflows::status::StatusWorkflow`]'s
+/// `compute_readiness` + `next_steps_from_readiness`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusReport {
     /// Current identity status, if initialized.

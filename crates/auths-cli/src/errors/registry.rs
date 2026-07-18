@@ -390,6 +390,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5318" => Some("# AUTHS-E5318\n\n**Crate:** `auths-sdk`\n\n**Type:** `AgentError::AnchorError`\n\n## Message\n\nagent delegation attestation anchoring failed: {0}\n"),
 
         // --- auths-sdk (RegistrationError) ---
+        "AUTHS-E5400" => Some("# AUTHS-E5400\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::NoRegistryConfigured`\n\n## Message\n\nno registry configured. Auths needs no registry: identity, signing and verification are local and git-native, and a signer's KEL reaches a verifier over the same git remote as the code. Pass --registry <url> or set AUTHS_REGISTRY_URL only if you are running one.\n"),
         "AUTHS-E5401" => Some("# AUTHS-E5401\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::AlreadyRegistered`\n\n## Message\n\nidentity already registered at this registry\n"),
         "AUTHS-E5402" => Some("# AUTHS-E5402\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::QuotaExceeded`\n\n## Message\n\nregistration quota exceeded — try again later\n\n## Suggestion\n\nWait a few minutes and try again\n"),
         "AUTHS-E5403" => Some("# AUTHS-E5403\n\n**Crate:** `auths-sdk`\n\n**Type:** `RegistrationError::InvalidDidFormat`\n\n## Message\n\ninvalid DID format: {did}\n"),
@@ -452,6 +453,8 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5854" => Some("# AUTHS-E5854\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::AttestationFailed`\n\n## Message\n\nattestation creation failed: {0}\n\n## Suggestion\n\nCheck identity storage with `auths status`\n"),
         "AUTHS-E5855" => Some("# AUTHS-E5855\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::ResignFailed`\n\n## Message\n\nattestation re-signing failed: {0}\n"),
         "AUTHS-E5856" => Some("# AUTHS-E5856\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::InvalidCommitSha`\n\n## Message\n\ninvalid commit SHA: {0} (expected 40 or 64 hex characters)\n"),
+        "AUTHS-E5857" => Some("# AUTHS-E5857\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::DeviceRevoked`\n\n## Message\n\ndevice revoked: {0}\n"),
+        "AUTHS-E5858" => Some("# AUTHS-E5858\n\n**Crate:** `auths-sdk`\n\n**Type:** `ArtifactSigningError::KeyRotatedOut`\n\n## Message\n\nsigning key rotated out of the KEL: {0}\n"),
 
         // --- auths-sdk (SigningError) ---
         "AUTHS-E5901" => Some("# AUTHS-E5901\n\n**Crate:** `auths-sdk`\n\n**Type:** `SigningError::IdentityFrozen`\n\n## Message\n\nidentity is frozen: {0}\n\n## Suggestion\n\nTo unfreeze: auths emergency unfreeze\n"),
@@ -787,6 +790,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5316",
         "AUTHS-E5317",
         "AUTHS-E5318",
+        "AUTHS-E5400",
         "AUTHS-E5401",
         "AUTHS-E5402",
         "AUTHS-E5403",
@@ -839,6 +843,8 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E5854",
         "AUTHS-E5855",
         "AUTHS-E5856",
+        "AUTHS-E5857",
+        "AUTHS-E5858",
         "AUTHS-E5901",
         "AUTHS-E5902",
         "AUTHS-E5903",
@@ -908,6 +914,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 368);
+        assert_eq!(all_codes().len(), 371);
     }
 }

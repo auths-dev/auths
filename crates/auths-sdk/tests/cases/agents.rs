@@ -274,10 +274,17 @@ fn agent_list_excludes_devices() {
     assert_eq!(agents.len(), 1, "exactly one agent");
     assert_eq!(agents[0].agent_did, agent.agent_did);
 
-    // `device list` shows the device, never the agent.
+    // `device list` shows delegated devices (including the init-created device #0), never
+    // the agent.
     let devices = list_delegated_devices(&ctx).expect("list devices");
-    assert_eq!(devices.len(), 1, "exactly one device");
-    assert_eq!(devices[0].device_did, device.device_did);
+    assert!(
+        devices.iter().any(|d| d.device_did == device.device_did),
+        "the delegated device appears in the device list"
+    );
+    assert!(
+        !devices.iter().any(|d| d.device_did == agent.agent_did),
+        "the agent never appears in the device list"
+    );
 }
 
 #[test]
@@ -342,4 +349,67 @@ fn scope_cannot_exceed_delegator() {
         matches!(err, AgentError::OutsideDelegatorScope { ref capability } if capability == "admin"),
         "got {err:?}"
     );
+}
+
+#[test]
+fn scoped_agent_may_narrow_the_delegator_scope() {
+    let (ctx, root_alias, root_prefix, _tmp) = setup();
+
+    // Give the delegator [read, write], so the subset check actually runs (not the
+    // unconstrained-root path).
+    let (_pk, root_curve) = extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        &root_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .expect("root curve");
+    mark_agent_scope(
+        ctx.registry.as_ref(),
+        &root_prefix,
+        &root_alias,
+        root_curve,
+        &root_prefix,
+        &AgentScope {
+            capabilities: vec![
+                Capability::parse("read").unwrap(),
+                Capability::parse("write").unwrap(),
+            ],
+            expires_at: None,
+        },
+        ctx.passphrase_provider.as_ref(),
+        ctx.key_storage.as_ref(),
+    )
+    .expect("anchor delegator scope");
+
+    // Delegating [read] — a strict subset of [read, write] — must be allowed. The subset
+    // rule narrows; it must not reject a legitimate narrowing (a false-reject would be a
+    // usability regression and push callers toward over-broad grants).
+    let agent = add_scoped(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("narrowed-bot"),
+        CurveType::Ed25519,
+        &[Capability::parse("read").unwrap()],
+        None,
+    )
+    .expect("narrowing the delegator's scope to a subset must be allowed");
+    assert!(agent.agent_did.starts_with("did:keri:"));
+}
+
+#[test]
+fn scoped_agent_with_empty_scope_is_allowed() {
+    let (ctx, root_alias, _root_prefix, _tmp) = setup();
+
+    // An empty scope is a subset of any delegator scope — a capability-less, anchor-only
+    // agent (e.g. an identity placeholder) is valid, not an error.
+    let agent = add_scoped(
+        &ctx,
+        &root_alias,
+        &KeyAlias::new_unchecked("no-scope-bot"),
+        CurveType::Ed25519,
+        &[],
+        None,
+    )
+    .expect("an empty scope is a valid (capability-less) delegation");
+    assert!(agent.agent_did.starts_with("did:keri:"));
 }

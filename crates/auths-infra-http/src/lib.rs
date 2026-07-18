@@ -25,11 +25,11 @@ mod npm_auth;
 mod oidc_platforms;
 mod oidc_tsa_client;
 mod oidc_validator;
-mod oobi_resolver;
 mod pairing_client;
 mod platform_context;
 mod registry_client;
 mod request;
+mod ssrf;
 mod witness_client;
 
 pub use async_witness_client::HttpAsyncWitnessClient;
@@ -44,7 +44,6 @@ pub use oidc_platforms::{
 };
 pub use oidc_tsa_client::HttpTimestampClient;
 pub use oidc_validator::{HttpJwksClient, HttpJwtValidator, OidcTokenClaims, PinnedJwksClient};
-pub use oobi_resolver::{HttpOobiError, HttpOobiResolver, MAX_OOBI_BYTES};
 pub use pairing_client::HttpPairingRelayClient;
 pub use platform_context::resolve_verified_platform_context;
 pub use registry_client::HttpRegistryClient;

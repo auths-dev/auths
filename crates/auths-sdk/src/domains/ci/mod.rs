@@ -7,4 +7,4 @@ pub mod environment;
 pub mod types;
 
 pub use environment::map_ci_environment;
-pub use types::{CiEnvironment, CiIdentityConfig, DEFAULT_CI_PASSPHRASE};
+pub use types::{CiEnvironment, CiIdentityConfig, generate_ci_passphrase};

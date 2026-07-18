@@ -1,0 +1,2 @@
+# Pin every oracle this suite's probes compare against, exactly:
+# <oracle-name> <exact-version>

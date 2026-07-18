@@ -3,8 +3,10 @@ use clap::{Parser, Subcommand};
 use serde::Serialize;
 use std::ffi::CString;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
+use auths_sdk::domains::signing::export_policy::{ExportSensitivity, authorize_key_export};
 use auths_sdk::error::AgentError;
 use auths_sdk::ffi::ffi;
 use auths_sdk::keychain::EncryptedFileStorage;
@@ -149,6 +151,30 @@ pub fn handle_key(cmd: KeyCommand) -> Result<()> {
             passphrase,
             format,
         } => {
+            // A plaintext private-key export hands out a usable secret in the clear, so it requires an
+            // interactive confirmation; refused non-interactively so a script holding AUTHS_PASSPHRASE
+            // cannot silently exfiltrate the signing key. Public/encrypted exports are not gated.
+            let sensitivity = match format {
+                ExportFormat::Pem => ExportSensitivity::PlaintextPrivate,
+                ExportFormat::Pub => ExportSensitivity::Public,
+                ExportFormat::Enc => ExportSensitivity::Encrypted,
+            };
+            let interactive = std::io::stdin().is_terminal();
+            let confirmed = if sensitivity == ExportSensitivity::PlaintextPrivate && interactive {
+                dialoguer::Confirm::new()
+                    .with_prompt(
+                        "Export your UNENCRYPTED private key to stdout? Anyone who reads it controls \
+                         this identity. Continue? [y/N]",
+                    )
+                    .default(false)
+                    .interact()
+                    .context("Failed to read export confirmation")?
+            } else {
+                false
+            };
+            authorize_key_export(sensitivity, interactive, confirmed)
+                .map_err(|e| anyhow!("{e}"))?;
+
             let passphrase = match passphrase {
                 Some(p) => p,
                 None => prompt_export_passphrase()?,
@@ -483,7 +509,17 @@ use crate::commands::executable::ExecutableCommand;
 use crate::config::CliConfig;
 
 impl ExecutableCommand for KeyCommand {
-    fn execute(&self, _ctx: &CliConfig) -> Result<()> {
+    fn execute(&self, ctx: &CliConfig) -> Result<()> {
+        // Every `key` subcommand operates on the per-machine keychain selected by
+        // AUTHS_KEYCHAIN_* (backend, file, passphrase) — never on a repo-scoped
+        // registry. `--repo` cannot point at the keychain, so accepting it would
+        // silently act on the global store. Reject it instead of ignoring it.
+        if ctx.repo_path.is_some() {
+            anyhow::bail!(
+                "`--repo` is not supported for `auths key`; the keychain is selected by \
+                 AUTHS_KEYCHAIN_BACKEND / AUTHS_KEYCHAIN_FILE, not by repository."
+            );
+        }
         handle_key(self.clone())
     }
 }

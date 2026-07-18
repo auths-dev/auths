@@ -9,7 +9,8 @@ pub use auths_core::AgentHandle;
 
 #[cfg(unix)]
 pub use auths_core::agent::{
-    AgentStatus, add_identity, agent_sign, check_agent_status, remove_all_identities,
+    AgentStatus, AllowAllSigning, PeerIdentity, PerCallerAuthorizer, SignAuthorizer, add_identity,
+    agent_sign, check_agent_status, remove_all_identities,
 };
 #[cfg(unix)]
 pub use auths_core::api::start_agent_listener_with_handle;

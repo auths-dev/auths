@@ -14,15 +14,19 @@ pub mod commit_sign;
 pub mod commit_verify;
 pub mod device_ext;
 pub mod diagnostics;
+pub mod dsse;
+pub mod ephemeral;
 pub mod identity;
 pub mod identity_sign;
 pub mod org;
 pub mod pairing;
+pub mod passphrase;
 pub mod policy;
 pub mod presentation;
 pub mod rotation;
 pub mod runtime;
 pub mod sign;
+pub mod tlog;
 pub mod token;
 pub mod trust;
 pub mod types;
@@ -54,6 +58,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(sign::sign_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_action, m)?)?;
     m.add_function(wrap_pyfunction!(sign::verify_action_envelope, m)?)?;
+    m.add_function(wrap_pyfunction!(sign::verify_bytes, m)?)?;
+
+    m.add("PASSPHRASE_MIN_LEN", passphrase::PASSPHRASE_MIN_LEN)?;
+    m.add_function(wrap_pyfunction!(passphrase::validate_passphrase, m)?)?;
 
     m.add_function(wrap_pyfunction!(token::get_token, m)?)?;
 
@@ -93,6 +101,18 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(artifact_sign::sign_artifact_bytes_raw, m)?)?;
+
+    m.add_class::<tlog::PyLogAppendResult>()?;
+    m.add_function(wrap_pyfunction!(tlog::log_append, m)?)?;
+    m.add_function(wrap_pyfunction!(tlog::log_prove, m)?)?;
+    m.add_function(wrap_pyfunction!(tlog::log_verify_inclusion, m)?)?;
+
+    m.add_function(wrap_pyfunction!(dsse::dsse_sign_statement, m)?)?;
+    m.add_function(wrap_pyfunction!(dsse::dsse_sign_statement_with_key, m)?)?;
+    m.add_function(wrap_pyfunction!(dsse::dsse_verify_statement, m)?)?;
+
+    m.add_class::<ephemeral::PyEphemeralAgent>()?;
+    m.add_function(wrap_pyfunction!(ephemeral::create_ephemeral_agent, m)?)?;
 
     m.add_class::<commit_sign::PyCommitSignResult>()?;
     m.add_function(wrap_pyfunction!(commit_sign::sign_commit, m)?)?;

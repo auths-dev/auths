@@ -1,6 +1,6 @@
 //! SDK transparency verification workflows.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use auths_core::ports::config_store::{ConfigStore, ConfigStoreError};
 use auths_core::ports::network::{NetworkError, RegistryClient};
@@ -8,12 +8,15 @@ use auths_keri::witness::independence::{
     IndependencePolicy, Infrastructure, Jurisdiction, OperatorId, Organization, WitnessOperatorInfo,
 };
 use auths_transparency::{
-    BundleVerificationReport, ConsistencyProof, LogOrigin, OfflineBundle, SignedCheckpoint,
-    TrustRoot, TrustRootWitness,
+    BundleVerificationReport, ConsistencyProof, FsTileStore, LogOrigin, LogWriter, MerkleHash,
+    OfflineBundle, SignedCheckpoint, TransparencyError, TrustRoot, TrustRootWitness, hash_leaf,
 };
 use auths_verifier::Ed25519PublicKey;
+use auths_verifier::evidence_pack::TransparencyInclusion;
 use chrono::{DateTime, Utc};
 use thiserror::Error;
+
+use crate::domains::compliance::releases::ArtifactDigest;
 
 /// Errors from transparency verification workflows.
 #[derive(Debug, Error)]
@@ -37,6 +40,18 @@ pub enum TransparencyWorkflowError {
     /// Network error fetching trust root or other remote data.
     #[error("network error: {0}")]
     NetworkError(#[source] NetworkError),
+
+    /// Invalid caller input — a malformed artifact digest or log origin.
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+
+    /// No local transparency log exists at the given directory yet.
+    #[error("no transparency log at {0} — append an artifact first")]
+    LogNotFound(PathBuf),
+
+    /// An underlying transparency-log operation (append, prove, key) failed.
+    #[error("transparency log error: {0}")]
+    Transparency(#[from] TransparencyError),
 }
 
 /// Wire-format response from the registry trust-root endpoint.
@@ -373,6 +388,116 @@ pub fn try_cache_checkpoint(
     })
 }
 
+/// Outcome of appending an artifact digest to a local transparency log.
+///
+/// Carries the sequenced position and the fresh signed checkpoint so a
+/// presentation layer can render or persist them; the raw leaf hash is
+/// retained for callers that re-derive it (`hash_leaf(artifact_digest)`).
+#[derive(Debug, Clone)]
+pub struct AppendedArtifact {
+    /// Canonical `sha256:<hex>` digest that was logged.
+    pub artifact_digest: String,
+    /// Merkle leaf hash the digest was stored under.
+    pub leaf_hash: MerkleHash,
+    /// Zero-based index the leaf was sequenced at.
+    pub index: u64,
+    /// The checkpoint signed over the tree that now includes the leaf.
+    pub signed_checkpoint: SignedCheckpoint,
+}
+
+/// Open a writer over the local tile-backed log, validating the origin and
+/// (when `create`) ensuring the log directory and signing key exist. The
+/// filesystem work — creating the directory and loading or minting the signing
+/// key — lives on [`FsTileStore`] so the workflow stays I/O-free.
+fn open_log_writer(
+    log_dir: &Path,
+    origin: &str,
+    create: bool,
+) -> Result<LogWriter<FsTileStore>, TransparencyWorkflowError> {
+    let origin = LogOrigin::new(origin)
+        .map_err(|e| TransparencyWorkflowError::InvalidInput(format!("invalid log origin: {e}")))?;
+    let store = FsTileStore::new(log_dir.to_path_buf());
+    if create {
+        store.ensure_base_dir()?;
+    }
+    let key = store
+        .load_or_create_key(create)?
+        .ok_or_else(|| TransparencyWorkflowError::LogNotFound(log_dir.to_path_buf()))?;
+    Ok(LogWriter::new(store, key, origin))
+}
+
+/// Append an artifact digest to a local tile-backed transparency log.
+///
+/// Validates the digest, creates the log directory and signing key on first
+/// use, hashes the canonical digest string into a leaf, appends it, and
+/// returns the sequenced position plus the newly signed checkpoint. The log
+/// is append-only: repeated calls grow the tree.
+///
+/// Args:
+/// * `log_dir` — Directory holding the tile store and `log.key`.
+/// * `origin` — Log origin string (non-empty ASCII) written into checkpoints.
+/// * `artifact_digest` — Artifact digest to log (`sha256:<64 hex>`).
+/// * `now` — Injected wall-clock time stamped into the checkpoint.
+///
+/// Usage:
+/// ```ignore
+/// let appended =
+///     append_artifact_digest(&log_dir, "acme.dev/releases", "sha256:ab..cd", now).await?;
+/// ```
+pub async fn append_artifact_digest(
+    log_dir: &Path,
+    origin: &str,
+    artifact_digest: &str,
+    now: DateTime<Utc>,
+) -> Result<AppendedArtifact, TransparencyWorkflowError> {
+    let digest = ArtifactDigest::parse(artifact_digest).map_err(|e| {
+        TransparencyWorkflowError::InvalidInput(format!("invalid artifact digest: {e}"))
+    })?;
+    let writer = open_log_writer(log_dir, origin, true)?;
+
+    let leaf_hash = hash_leaf(digest.as_str().as_bytes());
+    let appended = writer.append(leaf_hash, now).await?;
+
+    Ok(AppendedArtifact {
+        artifact_digest: digest.into_inner(),
+        leaf_hash,
+        index: appended.index,
+        signed_checkpoint: appended.signed_checkpoint,
+    })
+}
+
+/// Emit offline inclusion evidence for an artifact digest already appended to
+/// a local transparency log.
+///
+/// Validates the digest, re-derives its leaf, and proves the leaf against the
+/// current signed checkpoint. Errors when no log exists yet ([`TransparencyWorkflowError::LogNotFound`])
+/// or the leaf was never appended (an [`TransparencyWorkflowError::Transparency`]
+/// invalid-proof error). The returned evidence is re-verifiable offline.
+///
+/// Args:
+/// * `log_dir` — Directory holding the tile store and `log.key`.
+/// * `origin` — Log origin string (must match the one used to append).
+/// * `artifact_digest` — Artifact digest to prove (`sha256:<64 hex>`).
+///
+/// Usage:
+/// ```ignore
+/// let evidence = prove_artifact_digest(&log_dir, "acme.dev/releases", "sha256:ab..cd").await?;
+/// ```
+pub async fn prove_artifact_digest(
+    log_dir: &Path,
+    origin: &str,
+    artifact_digest: &str,
+) -> Result<TransparencyInclusion, TransparencyWorkflowError> {
+    let digest = ArtifactDigest::parse(artifact_digest).map_err(|e| {
+        TransparencyWorkflowError::InvalidInput(format!("invalid artifact digest: {e}"))
+    })?;
+    let writer = open_log_writer(log_dir, origin, false)?;
+
+    let leaf_hash = hash_leaf(digest.as_str().as_bytes());
+    let inclusion = writer.prove(&leaf_hash).await?;
+    Ok(inclusion)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::disallowed_methods)]
 mod tests {
@@ -693,5 +818,124 @@ mod tests {
             err,
             TransparencyWorkflowError::CheckpointInconsistent(_)
         ));
+    }
+
+    // ---- local-log append / prove workflow ----
+
+    const TEST_DIGEST: &str =
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const TEST_DIGEST_2: &str =
+        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    fn fixed_now() -> DateTime<Utc> {
+        chrono::DateTime::parse_from_rfc3339("2026-07-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    #[tokio::test]
+    async fn append_creates_log_and_returns_sequenced_leaf() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let appended = append_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST, fixed_now())
+            .await
+            .unwrap();
+
+        assert_eq!(appended.index, 0);
+        assert_eq!(appended.artifact_digest, TEST_DIGEST);
+        assert_eq!(appended.signed_checkpoint.checkpoint.size, 1);
+        assert_eq!(appended.leaf_hash, hash_leaf(TEST_DIGEST.as_bytes()));
+        assert!(dir.path().join("log.key").exists());
+    }
+
+    #[tokio::test]
+    async fn append_normalizes_uppercase_hex() {
+        let dir = tempfile::tempdir().unwrap();
+        let upper = TEST_DIGEST
+            .to_ascii_uppercase()
+            .replace("SHA256:", "sha256:");
+
+        let appended = append_artifact_digest(dir.path(), "test.dev/log", &upper, fixed_now())
+            .await
+            .unwrap();
+
+        assert_eq!(appended.artifact_digest, TEST_DIGEST);
+        assert_eq!(appended.leaf_hash, hash_leaf(TEST_DIGEST.as_bytes()));
+    }
+
+    #[tokio::test]
+    async fn append_is_append_only_and_grows_the_tree() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let a = append_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST, fixed_now())
+            .await
+            .unwrap();
+        let b = append_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST_2, fixed_now())
+            .await
+            .unwrap();
+
+        assert_eq!(a.index, 0);
+        assert_eq!(b.index, 1);
+        assert_eq!(b.signed_checkpoint.checkpoint.size, 2);
+    }
+
+    #[tokio::test]
+    async fn append_then_prove_round_trips_and_proof_verifies() {
+        let dir = tempfile::tempdir().unwrap();
+        append_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST, fixed_now())
+            .await
+            .unwrap();
+
+        let inclusion = prove_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST)
+            .await
+            .unwrap();
+
+        assert_eq!(inclusion.inclusion_proof.index, 0);
+        assert_eq!(inclusion.inclusion_proof.size, 1);
+        assert_eq!(inclusion.leaf_hash, hash_leaf(TEST_DIGEST.as_bytes()));
+        inclusion
+            .inclusion_proof
+            .verify(&inclusion.leaf_hash)
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn prove_without_any_log_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = prove_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, TransparencyWorkflowError::LogNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn prove_absent_leaf_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        append_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST, fixed_now())
+            .await
+            .unwrap();
+
+        let err = prove_artifact_digest(dir.path(), "test.dev/log", TEST_DIGEST_2)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, TransparencyWorkflowError::Transparency(_)));
+    }
+
+    #[tokio::test]
+    async fn append_rejects_malformed_digest() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = append_artifact_digest(dir.path(), "test.dev/log", "not-a-digest", fixed_now())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, TransparencyWorkflowError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn append_rejects_empty_origin() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = append_artifact_digest(dir.path(), "", TEST_DIGEST, fixed_now())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, TransparencyWorkflowError::InvalidInput(_)));
     }
 }

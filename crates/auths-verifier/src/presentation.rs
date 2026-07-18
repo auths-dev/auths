@@ -39,6 +39,7 @@ use chrono::{DateTime, Utc};
 use subtle::ConstantTimeEq;
 
 use crate::credential::{CredentialVerdict, SignedAcdc, verify_credential_sync};
+use crate::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use crate::software_verify::verify_with_key_sync;
 use crate::{CanonicalDid, Capability, IdentityDID};
 
@@ -58,7 +59,7 @@ const EXPIRY_FIELD: &str = "expiry";
 /// replay error (`SubjectKelInvalid`), which is the correct fail-closed outcome.
 fn replay_subject(subject_kel: &[Event], subject_delegator_kel: &[Event]) -> Option<KeyState> {
     let lookup = KelSealIndex::from_events(subject_delegator_kel);
-    // rt-002-allow: subject_kel/delegator_kel are supplied by the caller from the local trusted registry / an authenticated bundle, and the presentation signature is bound to the resulting subject key-state. Residual: untrusted WASM presentation input — signature-carrying transport is the tracked RT-002 follow-up.
+    // rt-002-allow: subject_kel/delegator_kel are authenticated before they reach here — local trusted registry, authenticated bundle, or the JSON contract's authenticate_kel boundary (validate_signed_kel over the wire attachments). The presentation signature is additionally bound to the resulting subject key-state.
     TrustedKel::from_trusted_source(subject_kel)
         .replay_with_lookup(Some(&lookup))
         .ok()
@@ -147,12 +148,28 @@ pub enum PresentationVerdict {
         issuer: IdentityDID,
         /// The subject (holder) AID (`did:keri:`) whose current key signed the presentation.
         subject: CanonicalDid,
+        /// The subject's proven root: for a delegated subject (dip-rooted KEL) the
+        /// delegator AID whose anchoring seal the replay verified; for a root subject,
+        /// the subject itself. Relying parties credit accounts to THIS identity —
+        /// never to a delegator parsed out of unverified input.
+        subject_root: CanonicalDid,
         /// The capabilities the now-bound credential grants (`a.capability`).
         caps: Vec<Capability>,
         /// The optional informational role claim (`a.role`).
         role: Option<String>,
         /// The optional credential expiry (`a.expiry`), as carried in the ACDC attributes.
         expires_at: Option<DateTime<Utc>>,
+        /// How fresh this honored verdict is under the relying party's freshness policy
+        /// (ADR 009). A possessed-but-offline credential slice yields [`Freshness::Unknown`];
+        /// the verdict is never a bare `Valid`, so a relying party can tell `Valid(Fresh)` from
+        /// `Valid(Unknown)` and apply a stricter policy. The gate already refused `Stale`/
+        /// policy-failing freshness, so this is `Fresh` or (tolerated) `Unknown`.
+        freshness: Freshness,
+        /// The issuer-KEL position the bound credential was verified as-of: the tip `(seq)` of
+        /// the given issuer KEL (ADR 009, the `{as_of, freshness}` pair). Carried through from
+        /// the inner credential verdict so a relying party can see *how current* the slice is,
+        /// not just the freshness grade — `Unknown` as-of which position.
+        as_of: u128,
     },
     /// The presentation signature did not verify against the subject KEL's current key —
     /// the presenter does not currently control `a.i` (bearer / stale-key rejection).
@@ -176,6 +193,25 @@ impl PresentationVerdict {
     /// Whether the presentation is honored (`Valid`).
     pub fn is_honored(&self) -> bool {
         matches!(self, PresentationVerdict::Valid { .. })
+    }
+
+    /// The freshness of an honored verdict (ADR 009), or `None` when the presentation was not
+    /// honored. An honored verdict always *names* its freshness — it is never a bare `Valid` —
+    /// so a relying party can distinguish `Valid(Fresh)` from a tolerated `Valid(Unknown)`.
+    pub fn freshness(&self) -> Option<Freshness> {
+        match self {
+            PresentationVerdict::Valid { freshness, .. } => Some(*freshness),
+            _ => None,
+        }
+    }
+
+    /// The issuer-KEL position an honored verdict was verified as-of (the `{as_of, freshness}`
+    /// pair, ADR 009), or `None` when the presentation was not honored.
+    pub fn as_of(&self) -> Option<u128> {
+        match self {
+            PresentationVerdict::Valid { as_of, .. } => Some(*as_of),
+            _ => None,
+        }
     }
 }
 
@@ -230,6 +266,8 @@ pub async fn verify_presentation(
     expected_audience: &str,
     expected_challenge: Option<&[u8]>,
     now: DateTime<Utc>,
+    policy: &FreshnessPolicy,
+    fresher_tip_seq: Option<u128>,
     _provider: &dyn CryptoProvider,
 ) -> PresentationVerdict {
     verify_presentation_sync(
@@ -244,6 +282,8 @@ pub async fn verify_presentation(
         expected_audience,
         expected_challenge,
         now,
+        policy,
+        fresher_tip_seq,
     )
 }
 
@@ -279,6 +319,8 @@ pub fn verify_presentation_sync(
     expected_audience: &str,
     expected_challenge: Option<&[u8]>,
     now: DateTime<Utc>,
+    policy: &FreshnessPolicy,
+    fresher_tip_seq: Option<u128>,
 ) -> PresentationVerdict {
     let credential_verdict = verify_credential_sync(
         signed,
@@ -288,7 +330,21 @@ pub fn verify_presentation_sync(
         witness_policy,
         now,
     );
-    if !credential_verdict.is_valid() {
+    // Consume freshness: the bare credential verdict is positional (`Unknown`). Grade it against a
+    // known-fresher issuer tip — a slice behind the issuer's true tip is `Stale`, since it cannot
+    // see a later revocation — then gate on the relying party's policy. A bare `Valid` is never
+    // honored without clearing the policy (ADR 009 D7).
+    let evidence = match (&credential_verdict, fresher_tip_seq) {
+        (CredentialVerdict::Valid { as_of, .. }, Some(latest_seq)) => {
+            FreshnessEvidence::FresherTip {
+                latest_seq,
+                slice_as_of: *as_of,
+            }
+        }
+        _ => FreshnessEvidence::Offline,
+    };
+    let credential_verdict = credential_verdict.with_freshness(policy, evidence);
+    if !credential_verdict.is_trusted(policy) {
         return PresentationVerdict::CredentialNotValid(credential_verdict);
     }
 
@@ -304,10 +360,17 @@ pub fn verify_presentation_sync(
         return verdict;
     }
 
-    let (issuer, caps) = match credential_verdict {
-        CredentialVerdict::Valid { issuer, caps, .. } => (issuer, caps),
-        // `is_valid()` above guarantees `Valid`; on the impossible arm return a credential
-        // failure rather than panicking or fabricating an identity (keeps this WASM/FFI-safe).
+    let (issuer, caps, freshness, as_of) = match credential_verdict {
+        CredentialVerdict::Valid {
+            issuer,
+            caps,
+            freshness,
+            as_of,
+            ..
+        } => (issuer, caps, freshness, as_of),
+        // The `is_trusted()` gate above guarantees `Valid`; on the impossible arm return a
+        // credential failure rather than panicking or fabricating an identity (keeps this
+        // WASM/FFI-safe).
         other => return PresentationVerdict::CredentialNotValid(other),
     };
 
@@ -316,6 +379,8 @@ pub fn verify_presentation_sync(
         caps,
         role: read_attribute(signed, ROLE_FIELD),
         expires_at: read_expiry(signed),
+        freshness,
+        as_of,
     };
 
     verify_holder_signature(envelope, signed, subject_kel, subject_delegator_kel, grant)
@@ -331,6 +396,8 @@ struct GrantFacts {
     caps: Vec<Capability>,
     role: Option<String>,
     expires_at: Option<DateTime<Utc>>,
+    freshness: Freshness,
+    as_of: u128,
 }
 
 /// Read an optional string claim from the verified ACDC attributes (`a.<field>`).
@@ -407,6 +474,18 @@ fn verify_holder_signature(
     let Ok(subject) = CanonicalDid::parse(&format!("did:keri:{}", signed.acdc.a.i)) else {
         return PresentationVerdict::SubjectKelInvalid;
     };
+    // The proven root: a dip-rooted subject KEL only replays after its delegator's
+    // anchoring seal checked out (the KelSealIndex lookup above), so the delegator
+    // named by the KEL is verified, not claimed. A root subject is its own root.
+    let subject_root = match subject_kel.iter().find_map(|event| event.delegator()) {
+        Some(delegator) => {
+            let Ok(root) = CanonicalDid::parse(&format!("did:keri:{delegator}")) else {
+                return PresentationVerdict::SubjectKelInvalid;
+            };
+            root
+        }
+        None => subject.clone(),
+    };
 
     let message = PresentationEnvelope::signed_message(
         &envelope.credential_said,
@@ -421,9 +500,12 @@ fn verify_holder_signature(
             return PresentationVerdict::Valid {
                 issuer: grant.issuer,
                 subject,
+                subject_root,
                 caps: grant.caps,
                 role: grant.role,
                 expires_at: grant.expires_at,
+                freshness: grant.freshness,
+                as_of: grant.as_of,
             };
         }
     }

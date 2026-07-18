@@ -1,8 +1,7 @@
 //! Auths Telemetry
 //!
 //! Centralized security event API for SIEM ingestion. Provides a unified,
-//! deterministic telemetry standard consumed by auths-auth-server,
-//! auths-registry-server, and auths-chat-server.
+//! deterministic telemetry standard for Auths server and adapter crates.
 
 pub mod config;
 pub mod emitter;

@@ -26,6 +26,8 @@ use crate::commands::error_lookup::ErrorLookupCommand;
 use crate::commands::id::IdCommand;
 use crate::commands::init::InitCommand;
 use crate::commands::ipex::IpexCommand;
+use crate::commands::kel::KelCommand;
+use crate::commands::keri_emit::KeriEmitCommand;
 use crate::commands::key::KeyCommand;
 use crate::commands::key_state::KeyStateCommand;
 use crate::commands::learn::LearnCommand;
@@ -36,7 +38,6 @@ use crate::commands::oobi::OobiCommand;
 use crate::commands::org::OrgCommand;
 use crate::commands::policy::PolicyCommand;
 use crate::commands::publish::PublishCommand;
-use crate::commands::registry::RegistryCommand;
 use crate::commands::reset::ResetCommand;
 use crate::commands::scim::ScimCommand;
 use crate::commands::sign::SignCommand;
@@ -125,10 +126,13 @@ pub enum RootCommand {
     Device(DeviceCommand),
     #[command(hide = true)]
     Key(KeyCommand),
+    Kel(KelCommand),
     #[command(hide = true, name = "key-state")]
     KeyState(KeyStateCommand),
     #[command(hide = true, name = "did-webs")]
     DidWebs(DidWebsCommand),
+    #[command(hide = true, name = "keri-emit")]
+    KeriEmit(KeriEmitCommand),
     #[command(hide = true, name = "tls-cert")]
     TlsCert(TlsCertCommand),
     #[command(hide = true)]
@@ -151,8 +155,6 @@ pub enum RootCommand {
     Audit(AuditCommand),
     #[command(hide = true)]
     Auth(AuthCommand),
-    #[command(hide = true)]
-    Registry(RegistryCommand),
 
     // ── Internal (visible via --help-all) ──
     #[command(hide = true)]

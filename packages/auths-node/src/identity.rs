@@ -1,15 +1,19 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_core::crypto::signer::encrypt_keypair;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::signing::PrefilledPassphraseProvider;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::storage::keychain::{KeyAlias, KeyRole, get_platform_keychain_with_config};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::identity::initialize::initialize_registry_identity;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::storage::attestation::AttestationSource;
 use auths_sdk::context::AuthsContext;
 use auths_sdk::device::link_device;
 use auths_sdk::types::{DeviceLinkConfig, IdentityRotationConfig};
 use auths_sdk::workflows::rotation::rotate_identity;
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
@@ -279,37 +283,19 @@ pub fn delegate_agent(
         Some("Ed25519") | Some("ed25519") => auths_crypto::CurveType::Ed25519,
         _ => auths_crypto::CurveType::P256,
     };
-    let generated = auths_id::keri::inception::generate_keypair_for_init(curve_choice)
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key generation failed: {e}")))?;
-    let agent_pubkey = generated.public_key.clone();
-
-    let (parent_did, _, _) = keychain
-        .load_key(&parent_alias)
-        .map_err(|e| format_error("AUTHS_KEY_NOT_FOUND", format!("Key load failed: {e}")))?;
-
-    // Store the PKCS8 blob directly — it's already curve-aware from generate_keypair_for_init.
-    // No need to extract-then-re-encode the seed (which was Ed25519-only).
-    let encrypted = encrypt_keypair(generated.pkcs8.as_ref(), &passphrase_str)
-        .map_err(|e| format_error("AUTHS_CRYPTO_ERROR", format!("Key encryption failed: {e}")))?;
-    keychain
-        .store_key(
-            &agent_alias,
-            &parent_did,
-            KeyRole::DelegatedAgent,
-            &encrypted,
-        )
-        .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Key storage failed: {e}")))?;
-
-    validate_capabilities(&capabilities)?;
-
-    let link_config = DeviceLinkConfig {
-        identity_key_alias: parent_alias,
-        device_key_alias: Some(agent_alias.clone()),
-        device_did: None,
-        expires_in: expires_in.map(|s| s as u64),
-        note: Some(format!("Agent: {}", agent_name)),
-        payload: None,
-    };
+    let scope: Vec<auths_keri::Capability> = capabilities
+        .iter()
+        .map(|c| {
+            auths_keri::Capability::parse(c).map_err(|e| {
+                format_error(
+                    "AUTHS_INVALID_INPUT",
+                    format!("Invalid capability '{c}': {e}"),
+                )
+            })
+        })
+        .collect::<napi::Result<_>>()?;
+    #[allow(clippy::disallowed_methods)] // presentation boundary: wall clock is injected here
+    let expires_at = expires_in.map(|secs| chrono::Utc::now().timestamp() + secs);
 
     let keychain: Arc<dyn auths_core::storage::keychain::KeyStorage + Send + Sync> =
         Arc::from(keychain);
@@ -326,42 +312,40 @@ pub fn delegate_agent(
         .passphrase_provider(provider)
         .build();
 
-    let result = link_device(link_config, &ctx, clock.as_ref()).map_err(|e| {
+    // KERI-native delegation: the agent gets its own dip-rooted KEL the parent
+    // anchors (with the scope/expiry as a delegator-anchored seal) — never an
+    // attestation-linked did:key.
+    let result = auths_sdk::domains::agents::delegation::add_scoped(
+        &ctx,
+        &parent_alias,
+        &agent_alias,
+        curve_choice,
+        &scope,
+        expires_at,
+    )
+    .map_err(|e| {
         format_error(
             "AUTHS_IDENTITY_ERROR",
-            format!("Agent provisioning failed: {e}"),
+            format!("Agent delegation failed: {e}"),
         )
     })?;
 
-    #[allow(clippy::disallowed_methods)] // INVARIANT: device_did from SDK setup result
-    let device_did = CanonicalDid::new_unchecked(result.device_did.to_string());
-    let attestations = attestation_storage
-        .load_attestations_for_device(&device_did)
-        .map_err(|e| {
-            format_error(
-                "AUTHS_REGISTRY_ERROR",
-                format!("Failed to load attestation: {e}"),
-            )
-        })?;
-
-    let attestation = attestations.last().ok_or_else(|| {
+    let (agent_pubkey, _curve) = auths_core::storage::keychain::extract_public_key_bytes(
+        ctx.key_storage.as_ref(),
+        &agent_alias,
+        ctx.passphrase_provider.as_ref(),
+    )
+    .map_err(|e| {
         format_error(
-            "AUTHS_REGISTRY_ERROR",
-            "No attestation found after provisioning",
-        )
-    })?;
-
-    let attestation_json = serde_json::to_string(attestation).map_err(|e| {
-        format_error(
-            "AUTHS_SERIALIZATION_ERROR",
-            format!("Serialization failed: {e}"),
+            "AUTHS_KEY_NOT_FOUND",
+            format!("Agent key readback failed: {e}"),
         )
     })?;
 
     Ok(NapiDelegatedAgentBundle {
-        agent_did: result.device_did.to_string(),
+        agent_did: result.agent_did,
+        agent_prefix: result.agent_prefix,
         key_alias: agent_alias.to_string(),
-        attestation_json,
         public_key_hex: hex::encode(&agent_pubkey),
         repo_path: Some(repo.to_string_lossy().to_string()),
     })

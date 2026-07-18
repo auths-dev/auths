@@ -57,6 +57,22 @@ impl GitConfigProvider for SystemGitConfigProvider {
         Ok(())
     }
 
+    fn get(&self, key: &str) -> Result<Option<String>, GitConfigError> {
+        let mut cmd = crate::subprocess::git_command(&["config", self.scope_flag, "--get", key]);
+        if let Some(dir) = &self.working_dir {
+            cmd.current_dir(dir);
+        }
+        let output = cmd
+            .output()
+            .map_err(|e| GitConfigError::CommandFailed(format!("failed to run git config: {e}")))?;
+        // Exit code 1 means the key is unset, which is not an error.
+        if !output.status.success() {
+            return Ok(None);
+        }
+        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok((!value.is_empty()).then_some(value))
+    }
+
     fn unset(&self, key: &str) -> Result<(), GitConfigError> {
         let mut cmd = crate::subprocess::git_command(&["config", self.scope_flag, "--unset", key]);
         if let Some(dir) = &self.working_dir {

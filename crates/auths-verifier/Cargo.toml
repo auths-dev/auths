@@ -50,6 +50,10 @@ tokio = { workspace = true, optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# Enable this crate's own `test-utils` (AttestationBuilder, MockClock) for the
+# integration tests — they link the lib as a separate crate and so don't get
+# `cfg(test)`.
+auths-verifier = { path = ".", features = ["test-utils"] }
 auths-crypto = { workspace = true, features = ["test-utils"] }
 proptest = "1.4"
 pkcs8 = { version = "0.10", features = ["alloc"] }

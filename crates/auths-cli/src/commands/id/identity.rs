@@ -14,7 +14,6 @@ use auths_sdk::{
 use auths_verifier::{IdentityBundle, IdentityDID};
 use clap::ValueEnum;
 
-use super::register::DEFAULT_REGISTRY_URL;
 use crate::commands::registry_overrides::RegistryOverrides;
 use crate::ux::format::{JsonResponse, is_json_mode};
 
@@ -217,29 +216,6 @@ pub enum IdSubcommand {
         timeout: u64,
     },
 
-    /// Expand a single-device identity into multi-device via one rotation.
-    Expand {
-        /// Add a device slot (repeatable). Curve name: `P256` or `Ed25519`.
-        #[arg(long, action = ArgAction::Append, value_name = "CURVE")]
-        add_device: Vec<String>,
-
-        /// Signing threshold after expansion. Required.
-        #[arg(long)]
-        signing_threshold: String,
-
-        /// Rotation threshold after expansion. Required.
-        #[arg(long)]
-        rotation_threshold: String,
-
-        /// Base alias for the existing single-key identity.
-        #[arg(long, default_value = "main")]
-        alias: String,
-
-        /// Alias for the new multi-key identity set.
-        #[arg(long, default_value = "main")]
-        next_alias: String,
-    },
-
     /// Export an identity bundle for stateless CI/CD verification.
     ///
     /// Creates a portable JSON bundle containing the identity ID, public key,
@@ -262,11 +238,34 @@ pub enum IdSubcommand {
         max_age_secs: u64,
     },
 
+    /// Export a KEL-derived `allowed_signers` file so plain `git` / `ssh` can
+    /// verify this identity's signatures on machines without auths installed.
+    ///
+    /// Point git at it with:
+    ///   git config gpg.ssh.allowedSignersFile <file>
+    AllowedSigners {
+        /// Key alias whose current public key to export.
+        #[arg(long, help = "Key alias to export the signing key for")]
+        alias: String,
+
+        /// Principal to bind the key to (usually the committer email). Defaults
+        /// to the identity DID. Must match the signer identity git checks.
+        #[arg(
+            long,
+            help = "Principal for the allowed_signers line (default: identity DID)"
+        )]
+        principal: Option<String>,
+
+        /// Write to this file instead of stdout.
+        #[arg(long = "output", short = 'o', help = "Output file (default: stdout)")]
+        output_file: Option<PathBuf>,
+    },
+
     /// Publish this identity to a public registry for discovery.
     Register {
         /// Registry URL to publish to.
-        #[arg(long, env = "AUTHS_REGISTRY_URL", default_value = DEFAULT_REGISTRY_URL)]
-        registry: String,
+        #[arg(long, env = "AUTHS_REGISTRY_URL")]
+        registry: Option<String>,
     },
 
     /// Add a platform claim to an already-registered identity.
@@ -648,8 +647,9 @@ pub fn handle_id(
             {
                 return Err(anyhow!(
                     "multi-device rotation (--add-device / --remove-device / --signing-threshold / \
-                     --rotation-threshold) is not yet wired through `auths id rotate`. Use \
-                     `auths id expand` to add devices, or omit these flags for a standard rotation."
+                     --rotation-threshold) is not wired through `auths id rotate`. Add a device \
+                     with `auths device pair` (each device is a delegated identity under your \
+                     root), or omit these flags for a standard rotation."
                 ));
             }
             let identity_key_alias = alias.or(current_key_alias);
@@ -778,94 +778,6 @@ pub fn handle_id(
             Ok(())
         }
 
-        IdSubcommand::Expand {
-            add_device,
-            signing_threshold,
-            rotation_threshold,
-            alias,
-            next_alias,
-        } => {
-            if add_device.is_empty() {
-                return Err(anyhow!(
-                    "`auths id expand` requires at least one --add-device; use `auths id rotate` for key-set-preserving rotations"
-                ));
-            }
-
-            // Parse curves from --add-device string values.
-            let curves: Result<Vec<auths_crypto::CurveType>, _> = add_device
-                .iter()
-                .map(|s| match s.to_ascii_lowercase().as_str() {
-                    "p256" | "p-256" => Ok(auths_crypto::CurveType::P256),
-                    "ed25519" => Ok(auths_crypto::CurveType::Ed25519),
-                    other => Err(anyhow!(
-                        "unknown curve {:?}: expected P256 or Ed25519",
-                        other
-                    )),
-                })
-                .collect();
-            let curves = curves?;
-
-            // Current + added count determines post-expansion device count.
-            // Without state read here, assume current is single-key (the
-            // common `expand` case). If state is already multi-key, the
-            // threshold validator in the SDK rejects mismatches.
-            let estimated_count = 1 + curves.len();
-            let new_kt =
-                crate::commands::init::parse_threshold_cli(&signing_threshold, estimated_count)?;
-            let new_nt =
-                crate::commands::init::parse_threshold_cli(&rotation_threshold, estimated_count)?;
-
-            let base_alias = KeyAlias::new_unchecked(alias.clone());
-
-            // Atomically migrate the legacy {alias} slot to {alias}--0 before
-            // the rotation starts. Idempotent: safe if already migrated.
-            let key_storage: Arc<dyn auths_sdk::keychain::KeyStorage + Send + Sync> = Arc::from(
-                auths_sdk::keychain::get_platform_keychain_with_config(env_config)
-                    .context("Failed to access keychain")?,
-            );
-            let _migrated =
-                auths_sdk::keychain::migrate_legacy_alias(key_storage.as_ref(), &base_alias)
-                    .context("Failed to migrate legacy key alias before expansion")?;
-
-            // Build the registry backend and run the multi-device rotation.
-            let backend: Arc<dyn auths_sdk::ports::RegistryBackend + Send + Sync> = Arc::new(
-                auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
-                    auths_sdk::storage::RegistryConfig::single_tenant(&repo_path),
-                ),
-            );
-
-            let shape = auths_sdk::identity::RotationShape {
-                add_devices: curves,
-                remove_indices: vec![],
-                new_kt: Some(new_kt),
-                new_nt: Some(new_nt),
-            };
-            let layout = auths_sdk::storage_layout::StorageLayoutConfig::default();
-            let next_alias_obj = KeyAlias::new_unchecked(next_alias.clone());
-            let result = auths_sdk::identity::rotate_registry_identity_multi(
-                backend,
-                &base_alias,
-                &next_alias_obj,
-                passphrase_provider.as_ref(),
-                &layout,
-                key_storage.as_ref(),
-                None,
-                shape,
-            )
-            .context("Failed to expand identity")?;
-
-            println!(
-                "[OK] Identity expanded — rotation at sequence {} with {} new device(s)",
-                result.sequence,
-                add_device.len()
-            );
-            println!(
-                "     Base alias: {} → slots {}..{}",
-                alias, 0, estimated_count
-            );
-            Ok(())
-        }
-
         IdSubcommand::ExportBundle {
             alias,
             output_file,
@@ -945,6 +857,53 @@ pub fn handle_id(
                 kel_attachments.push(hex::encode(att));
             }
 
+            // Delegated device KELs: commits are signed by a DEVICE AID, so a
+            // stateless verifier needs each device KEL the root anchored — not
+            // only the root's. Enumerate the registry for dip-rooted KELs whose
+            // delegator is this identity, exporting each with its attachments.
+            let root_prefix_str = prefix.as_str().to_string();
+            let mut device_prefixes: Vec<String> = Vec::new();
+            let _ = registry.visit_identities(&mut |candidate| {
+                if candidate != root_prefix_str {
+                    device_prefixes.push(candidate.to_string());
+                }
+                std::ops::ControlFlow::Continue(())
+            });
+            let mut device_kels = Vec::new();
+            for device in device_prefixes {
+                let device_prefix = auths_keri::Prefix::new_unchecked(device.clone());
+                let mut device_events: Vec<auths_keri::Event> = Vec::new();
+                let _ = registry.visit_events(&device_prefix, 0, &mut |e| {
+                    device_events.push(e.clone());
+                    std::ops::ControlFlow::Continue(())
+                });
+                let delegated_by_this_root = device_events
+                    .first()
+                    .and_then(|e| e.delegator())
+                    .is_some_and(|d| d.as_str() == root_prefix_str);
+                if !delegated_by_this_root {
+                    continue;
+                }
+                let mut device_attachments = Vec::with_capacity(device_events.len());
+                for e in &device_events {
+                    let seq = e.sequence().value();
+                    let att = registry
+                        .get_attachment(&device_prefix, seq)
+                        .map_err(|err| anyhow::anyhow!("failed to read device KEL signature: {err}"))?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "device {device} KEL event at seq {seq} has no stored signature                                  attachment; cannot export a verifiable bundle"
+                            )
+                        })?;
+                    device_attachments.push(hex::encode(att));
+                }
+                device_kels.push(auths_verifier::BundleDeviceKel {
+                    did: format!("did:keri:{device}"),
+                    kel: device_events,
+                    kel_attachments: device_attachments,
+                });
+            }
+
             // Create the bundle. Curve flows in-band from the typed keychain
             // extraction so verifiers never re-derive it from byte length.
             let bundle = IdentityBundle {
@@ -954,6 +913,7 @@ pub fn handle_id(
                 attestation_chain: attestations,
                 kel,
                 kel_attachments,
+                device_kels,
                 bundle_timestamp: now,
                 max_valid_for_secs: max_age_secs,
             };
@@ -973,9 +933,58 @@ pub fn handle_id(
             Ok(())
         }
 
-        IdSubcommand::Register { registry } => {
-            super::register::handle_register(&repo_path, &registry)
+        IdSubcommand::AllowedSigners {
+            alias,
+            principal,
+            output_file,
+        } => {
+            let identity_storage = RegistryIdentityStorage::new(repo_path.clone());
+            let identity = identity_storage
+                .load_identity()
+                .with_context(|| format!("Failed to load identity from {:?}", repo_path))?;
+            let principal =
+                principal.unwrap_or_else(|| identity.controller_did.as_str().to_string());
+
+            let keychain = get_platform_keychain()?;
+            let alias_typed = KeyAlias::new_unchecked(&alias);
+            let (public_key_bytes, curve) = auths_sdk::keychain::extract_public_key_bytes(
+                keychain.as_ref(),
+                &alias_typed,
+                passphrase_provider.as_ref(),
+            )
+            .with_context(|| format!("Failed to extract public key for '{}'", alias))?;
+
+            let device_pk = auths_verifier::DevicePublicKey::try_new(curve, &public_key_bytes)
+                .with_context(|| format!("'{}' is not a valid signing key", alias))?;
+            let openssh = auths_sdk::workflows::git_integration::public_key_to_ssh(&device_pk)
+                .context("Failed to encode signing key as OpenSSH")?;
+            // allowed_signers line: `<principal> <keytype> <base64>`. The OpenSSH
+            // encoding already carries `<keytype> <base64>`; trim any trailing
+            // comment so the line is exactly the two fields ssh expects.
+            let key_field = openssh
+                .split_whitespace()
+                .take(2)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let line = format!("{principal} {key_field}\n");
+
+            match &output_file {
+                Some(path) => {
+                    fs::write(path, &line).with_context(|| {
+                        format!("Failed to write allowed_signers to {:?}", path)
+                    })?;
+                    println!("✅ Wrote allowed_signers for {} to {:?}", principal, path);
+                    println!("   git config gpg.ssh.allowedSignersFile {:?}", path);
+                }
+                None => print!("{line}"),
+            }
+            Ok(())
         }
+
+        IdSubcommand::Register { registry } => super::register::handle_register(
+            &repo_path,
+            &crate::commands::verify_helpers::require_registry(registry.clone())?,
+        ),
 
         IdSubcommand::Claim(claim_cmd) => {
             super::claim::handle_claim(&claim_cmd, &repo_path, passphrase_provider, env_config, now)

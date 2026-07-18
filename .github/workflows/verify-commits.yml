@@ -16,9 +16,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Build the verifier from THIS checkout instead of downloading a pinned
+      # release. The KEL/verification format moves between releases; a pinned
+      # older `auths` cannot resolve a KEL that newer signing tooling produced
+      # (the 0.1.4 "KEL not found" break was exactly this skew). Building from
+      # source makes the verifier match the code that signed these commits, by
+      # construction — there is no version to keep in sync.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.93"
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: verify-commits
+          cache-on-failure: true
+
+      - name: Build auths from source
+        run: |
+          cargo build --release --locked -p auths-cli
+          echo "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
+
       - uses: auths-dev/verify@v1
         with:
-          auths-version: '0.1.3'
+          # No auths-version: the action uses the `auths` we just built and put
+          # on PATH, so the verifier always matches this commit's own tooling.
+          #
           # Stateless KEL-native verification: the committed identity bundle
           # carries the identity + authorization chain so the runner can verify
           # commit signatures without ~/.auths. Regenerate when keys rotate or

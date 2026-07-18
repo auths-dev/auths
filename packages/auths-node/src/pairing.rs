@@ -4,13 +4,16 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_core::storage::keychain::{IdentityDID, KeyRole};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_id::storage::identity::IdentityStorage;
 use auths_pairing_daemon::{
     MockNetworkDiscovery, MockNetworkInterfaces, PairingDaemonBuilder, PairingDaemonHandle,
     RateLimiter,
 };
 use auths_sdk::pairing::{PairingSessionParams, build_pairing_session_request};
+// binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_storage::git::RegistryIdentityStorage;
 use chrono::Utc;
 use tokio::sync::Mutex;

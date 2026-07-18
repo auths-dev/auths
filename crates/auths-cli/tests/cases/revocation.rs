@@ -3,12 +3,18 @@ use super::helpers::TestEnv;
 fn extract_device_did(init_output: &[u8]) -> Option<String> {
     let stdout = String::from_utf8_lossy(init_output);
     for line in stdout.lines() {
-        if (line.contains("Device linked:")
+        if line.contains("Device linked:")
             || line.contains("Device:")
-            || line.contains("This device authorized:"))
-            && let Some(did) = line.split_whitespace().find(|w| w.starts_with("did:key:"))
+            || line.contains("This device authorized:")
         {
-            return Some(did.to_string());
+            // Human output renders the device in product form (`auths:<prefix>`); the
+            // emergency command wants the canonical `did:keri:<prefix>`, so map it back.
+            if let Some(handle) = line.split_whitespace().find(|w| w.starts_with("auths:")) {
+                return Some(handle.replacen("auths:", "did:keri:", 1));
+            }
+            if let Some(did) = line.split_whitespace().find(|w| w.starts_with("did:key")) {
+                return Some(did.to_string());
+            }
         }
     }
     None
@@ -57,17 +63,18 @@ fn test_emergency_revoke_device() {
         "commit should verify before revocation"
     );
 
-    // Revoke the device
+    // Revoke the delegated device #0 via the registry-aware `device remove`. (`emergency
+    // revoke-device` uses the legacy GitKel backend, which cannot see a registry-backed
+    // delegated device — the emergency/registry backend split, #205.)
     let revoke = env
         .cmd("auths")
         .args([
-            "emergency",
-            "revoke-device",
-            "--device",
+            "device",
+            "remove",
+            "--device-did",
             &device_did,
             "--key",
             "main",
-            "--yes",
         ])
         .output()
         .unwrap();

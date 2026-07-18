@@ -1,6 +1,6 @@
 # RUN — the sculptor's entrypoint
 
-You are an agent told to run the improvement loop for **auths-network**. This
+You are an agent told to run the improvement loop for **auths**. This
 file is your entrypoint: it tells you your first action and your exact stop
 condition.
 
@@ -28,7 +28,7 @@ recurve matrix       # the baseline: note which gaps are RED and that GATE is OK
 - Any `STALE`: a suite's built artifacts predate the tree — those probes
   were NOT run because their verdict would be a lie. Run that suite's
   rebuild command, then re-run. **This is the rule for the whole cycle:**
-  every time you change `../auths`, rebuild before trusting any probe.
+  every time you change `.`, rebuild before trusting any probe.
 
 ## TRIAGE — value first; the policy lives in code, not here
 
@@ -46,7 +46,7 @@ Rules:
 
 ## SCULPT — the smallest honest change
 
-Make the smallest change in `../auths` that turns the recommended gap's RED
+Make the smallest change in `.` that turns the recommended gap's RED
 line GREEN, under the quality constitution (`.recurve/quality.md`). Build,
 lint, and tests must be clean. No suppressions.
 
@@ -84,13 +84,16 @@ describe the NEW reality (the gap becomes a feature note). Run
 ## SNAPSHOT + COMMIT
 
 Write `cycles/<name>/outcome.md` (what changed, what the gate said) and the
-diffs. Commit policy: **none**.
-no git repo detected — `git init` first; per-cycle commits are the loop's rollback granularity
+diffs. Commit policy: **unsigned-per-cycle**.
+STERN WARNING: this repo normally SIGNS commits. The loop commits UNSIGNED (signing prompts hang headless agents) — review and sign/squash the cycle commits after every run; do not leave unsigned commits as the permanent record
 
 ## REPORT — then STOP
 
 Emit one structured run record (see `schema/run-record.schema.json`):
 status `closed | parked | no-work-left | failed`, the gap, attempts, files
-touched, verdict deltas, one-paragraph summary. Append it with
-`recurve record append --file <record.json>`. Then stop. One cycle = one
-agent. The ledger is the only memory the next agent gets.
+touched, verdict deltas, one-paragraph summary. If `$RECURVE_RESULT_FILE`
+is set you are inside the loop: write the record THERE — the loop validates
+and appends it for you (append is idempotent, so an extra
+`recurve record append --file <record.json>` is harmless). Running
+standalone, append it yourself with that command. Then stop. One cycle =
+one agent. The ledger is the only memory the next agent gets.

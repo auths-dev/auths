@@ -7,7 +7,6 @@ use serde::Serialize;
 
 use auths_infra_http::HttpRegistryClient;
 use auths_sdk::domains::identity::error::RegistrationError;
-pub use auths_sdk::domains::identity::registration::DEFAULT_REGISTRY_URL;
 use auths_sdk::domains::identity::types::RegistrationOutcome;
 use auths_sdk::ports::AttestationSource;
 use auths_sdk::ports::IdentityStorage;

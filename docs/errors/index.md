@@ -286,6 +286,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5316](AUTHS-E5316.md) | `auths-sdk` | `AgentError::OutsideDelegatorScope` | requested capability '{capability}' exceeds the delegator's scope |
 | [AUTHS-E5317](AUTHS-E5317.md) | `auths-sdk` | `AgentError::AttestationError` | agent delegation attestation failed: {0} |
 | [AUTHS-E5318](AUTHS-E5318.md) | `auths-sdk` | `AgentError::AnchorError` | agent delegation attestation anchoring failed: {0} |
+| [AUTHS-E5400](AUTHS-E5400.md) | `auths-sdk` | `RegistrationError::NoRegistryConfigured` | no registry configured. Auths needs no registry: identity, signing and verification are local and git-native, and a signer's KEL reaches a verifier over the same git remote as the code. Pass --registry <url> or set AUTHS_REGISTRY_URL only if you are running one. |
 | [AUTHS-E5401](AUTHS-E5401.md) | `auths-sdk` | `RegistrationError::AlreadyRegistered` | identity already registered at this registry |
 | [AUTHS-E5402](AUTHS-E5402.md) | `auths-sdk` | `RegistrationError::QuotaExceeded` | registration quota exceeded — try again later |
 | [AUTHS-E5403](AUTHS-E5403.md) | `auths-sdk` | `RegistrationError::InvalidDidFormat` | invalid DID format: {did} |
@@ -338,6 +339,8 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5854](AUTHS-E5854.md) | `auths-sdk` | `ArtifactSigningError::AttestationFailed` | attestation creation failed: {0} |
 | [AUTHS-E5855](AUTHS-E5855.md) | `auths-sdk` | `ArtifactSigningError::ResignFailed` | attestation re-signing failed: {0} |
 | [AUTHS-E5856](AUTHS-E5856.md) | `auths-sdk` | `ArtifactSigningError::InvalidCommitSha` | invalid commit SHA: {0} (expected 40 or 64 hex characters) |
+| [AUTHS-E5857](AUTHS-E5857.md) | `auths-sdk` | `ArtifactSigningError::DeviceRevoked` | device revoked: {0} |
+| [AUTHS-E5858](AUTHS-E5858.md) | `auths-sdk` | `ArtifactSigningError::KeyRotatedOut` | signing key rotated out of the KEL: {0} |
 | [AUTHS-E5901](AUTHS-E5901.md) | `auths-sdk` | `SigningError::IdentityFrozen` | identity is frozen: {0} |
 | [AUTHS-E5902](AUTHS-E5902.md) | `auths-sdk` | `SigningError::KeyResolution` | key resolution failed: {0} |
 | [AUTHS-E5903](AUTHS-E5903.md) | `auths-sdk` | `SigningError::SigningFailed` | signing operation failed: {0} |

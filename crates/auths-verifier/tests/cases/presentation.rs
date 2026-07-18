@@ -9,11 +9,13 @@
 
 use auths_crypto::{CurveType, RingCryptoProvider};
 use auths_keri::{
-    Acdc, CesrKey, Event, IcpEvent, IcpEventInit, Iss, IxnEvent, KeriPublicKey, KeriSequence,
-    Prefix, Rev, RotEvent, RotEventInit, Said, Seal, TelAnchorSeal, TelEvent, Threshold, Vcp,
-    VersionString, compute_capability_schema_said, compute_next_commitment, encode_tel_nonce,
-    finalize_icp_event, finalize_ixn_event, finalize_rot_event,
+    Acdc, CesrKey, Event, IcpEvent, IcpEventInit, IndexedSignature, Iss, IxnEvent, KeriPublicKey,
+    KeriSequence, Prefix, Rev, RotEvent, RotEventInit, Said, Seal, TelAnchorSeal, TelEvent,
+    Threshold, Vcp, VersionString, compute_capability_schema_said, compute_next_commitment,
+    encode_tel_nonce, finalize_icp_event, finalize_ixn_event, finalize_rot_event,
+    serialize_attachment, serialize_for_signing,
 };
+use auths_verifier::freshness::FreshnessPolicy;
 use auths_verifier::{
     CredentialVerdict, PresentationBinding, PresentationEnvelope, PresentationVerdict, SignedAcdc,
     VerifierWitnessPolicy, verify_presentation, verify_presentation_json, verify_presentation_sync,
@@ -113,6 +115,23 @@ fn presentation_message(credential_said: &str, audience: &str, nonce: &[u8]) -> 
     message
 }
 
+/// One CESR signature attachment over `event`, signed by `signer`.
+fn attachment_for(signer: &Signer, event: &Event) -> Vec<u8> {
+    let canonical = serialize_for_signing(event).expect("canonical event bytes");
+    serialize_attachment(&[IndexedSignature {
+        index: 0,
+        prior_index: None,
+        sig: signer.sign(&canonical),
+    }])
+    .expect("attachment")
+}
+
+/// Base64 each raw attachment for the JSON contract's `…KelAttachmentsB64` arrays.
+fn attachments_b64(attachments: &[Vec<u8>]) -> Vec<String> {
+    let b64 = base64::engine::general_purpose::STANDARD;
+    attachments.iter().map(|a| b64.encode(a)).collect()
+}
+
 // ── subject KEL (the holder identity that must prove current control) ────────────
 
 /// A subject (holder) identity with its own single-key KEL.
@@ -122,6 +141,8 @@ struct Subject {
     /// The pre-committed next signer (revealed by [`Subject::rotate`]).
     next_signer: Signer,
     kel: Vec<Event>,
+    /// One CESR signature attachment per KEL event (each signed by its controlling key).
+    kel_attachments: Vec<Vec<u8>>,
 }
 
 impl Subject {
@@ -145,11 +166,14 @@ impl Subject {
         }))
         .expect("subject icp");
         let aid = icp.i.clone();
+        let event = Event::Icp(icp);
+        let attachment = attachment_for(&signer, &event);
         Self {
             aid,
             signer,
             next_signer,
-            kel: vec![Event::Icp(icp)],
+            kel: vec![event],
+            kel_attachments: vec![attachment],
         }
     }
 
@@ -175,7 +199,10 @@ impl Subject {
             a: vec![],
         }))
         .expect("subject rot");
-        self.kel.push(Event::Rot(rot));
+        let event = Event::Rot(rot);
+        let attachment = attachment_for(&self.next_signer, &event);
+        self.kel.push(event);
+        self.kel_attachments.push(attachment);
     }
 
     /// Sign a presentation envelope for `credential_said`/`audience`/`binding`.
@@ -205,6 +232,7 @@ impl Subject {
 /// The issuer KEL/TEL fixture credentialing a given subject AID.
 struct Credentialed {
     issuer_kel: Vec<Event>,
+    issuer_kel_attachments: Vec<Vec<u8>>,
     tel: Vec<TelEvent>,
     signed: SignedAcdc,
     credential_said: String,
@@ -287,8 +315,11 @@ fn credential_for(subject_aid: &Prefix, revoke: bool) -> Credentialed {
         tel.push(TelEvent::Rev(rev));
     }
 
+    let issuer_kel_attachments: Vec<Vec<u8>> =
+        kel.iter().map(|e| attachment_for(&issuer, e)).collect();
     Credentialed {
         issuer_kel: kel,
+        issuer_kel_attachments,
         tel,
         signed,
         credential_said,
@@ -344,12 +375,44 @@ async fn verify(
         expected_audience,
         expected_challenge,
         now(),
+        &FreshnessPolicy::default(),
+        None,
         &provider(),
     )
     .await
 }
 
 const AUDIENCE: &str = "audience.example";
+
+/// Drive `verify_presentation` with an explicit freshness policy + a known-fresher issuer tip.
+#[allow(clippy::too_many_arguments)]
+async fn verify_with_tip(
+    envelope: &PresentationEnvelope,
+    cred: &Credentialed,
+    subject_kel: &[Event],
+    expected_audience: &str,
+    expected_challenge: Option<&[u8]>,
+    policy: &FreshnessPolicy,
+    fresher_tip_seq: Option<u128>,
+) -> PresentationVerdict {
+    verify_presentation(
+        envelope,
+        &cred.signed,
+        &cred.issuer_kel,
+        &cred.tel,
+        &[],
+        VerifierWitnessPolicy::Warn,
+        subject_kel,
+        &[],
+        expected_audience,
+        expected_challenge,
+        now(),
+        policy,
+        fresher_tip_seq,
+        &provider(),
+    )
+    .await
+}
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -398,11 +461,18 @@ async fn valid_challenge_presentation_verifies() {
             PresentationVerdict::Valid {
                 issuer,
                 subject: s,
+                subject_root,
                 caps,
                 role,
                 expires_at,
+                freshness,
+                ..
             } => {
                 assert_eq!(s.as_str(), format!("did:keri:{}", subject.aid));
+                assert_eq!(
+                    subject_root, s,
+                    "a root subject is its own proven root on the Valid verdict"
+                );
                 assert_eq!(
                     caps.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
                     ["sign"]
@@ -415,10 +485,99 @@ async fn valid_challenge_presentation_verifies() {
                 // The F.8 fixture writes only `a.capability` (no role/expiry claims).
                 assert_eq!(role, None);
                 assert_eq!(expires_at, None);
+                // `verify` supplies no fresher issuer tip (offline), so the honored verdict
+                // names its freshness as Unknown — never a bare Valid.
+                assert_eq!(freshness, auths_verifier::freshness::Freshness::Unknown);
             }
             other => panic!("expected Valid on {curve:?}, got {other:?}"),
         }
     }
+}
+
+#[tokio::test]
+async fn presentation_behind_a_fresher_issuer_tip_is_rejected() {
+    // A captured slice verifies positionally (Valid as-of its slice), but the verifier knows the
+    // issuer's KEL has advanced past it — a later revocation the slice cannot see. The presentation
+    // path must consume that freshness signal and refuse the stale slice; a slice at or beyond the
+    // known tip is still honored.
+    let subject = Subject::incept(CurveType::Ed25519, 41);
+    let cred = credential_for(&subject.aid, false);
+    let nonce = vec![7u8; 32];
+    let envelope = subject.present(
+        &cred.credential_said,
+        AUDIENCE,
+        PresentationBinding::Challenge {
+            nonce: nonce.clone(),
+        },
+    );
+
+    // A known issuer tip far beyond the slice's as-of → the held slice is stale → not honored.
+    let stale = verify_with_tip(
+        &envelope,
+        &cred,
+        &subject.kel,
+        AUDIENCE,
+        Some(&nonce),
+        &FreshnessPolicy::default(),
+        Some(u128::MAX),
+    )
+    .await;
+    assert!(
+        !matches!(stale, PresentationVerdict::Valid { .. }),
+        "a presentation whose credential slice is behind the issuer's true tip must not be \
+         honored, got {stale:?}"
+    );
+
+    // A tip at or behind the slice → the slice is current → honored.
+    let fresh = verify_with_tip(
+        &envelope,
+        &cred,
+        &subject.kel,
+        AUDIENCE,
+        Some(&nonce),
+        &FreshnessPolicy::default(),
+        Some(0),
+    )
+    .await;
+    assert_eq!(
+        fresh.freshness(),
+        Some(auths_verifier::freshness::Freshness::Fresh),
+        "a presentation whose credential slice is at the known tip must be honored as Fresh, \
+         got {fresh:?}"
+    );
+}
+
+#[tokio::test]
+async fn strict_policy_refuses_offline_unknown_presentation() {
+    // The same offline-resolved slice the default policy honors as `Valid(Unknown)` is refused
+    // outright under a strict policy that denies `Unknown` — the freshness is surfaced *and*
+    // gated, never a silent accept.
+    let subject = Subject::incept(CurveType::P256, 61);
+    let cred = credential_for(&subject.aid, false);
+    let nonce = vec![3u8; 32];
+    let envelope = subject.present(
+        &cred.credential_said,
+        AUDIENCE,
+        PresentationBinding::Challenge {
+            nonce: nonce.clone(),
+        },
+    );
+
+    let strict = FreshnessPolicy::strict(std::time::Duration::from_secs(3600));
+    let verdict = verify_with_tip(
+        &envelope,
+        &cred,
+        &subject.kel,
+        AUDIENCE,
+        Some(&nonce),
+        &strict,
+        None,
+    )
+    .await;
+    assert!(
+        matches!(verdict, PresentationVerdict::CredentialNotValid(_)),
+        "a strict policy must refuse an offline-Unknown presentation, got {verdict:?}"
+    );
 }
 
 #[tokio::test]
@@ -451,6 +610,49 @@ async fn consumed_or_mismatched_challenge_rejected() {
         consumed,
         PresentationVerdict::NonceMismatchOrConsumed,
         "a consumed (no-longer-offered) challenge is rejected"
+    );
+}
+
+/// The challenge nonce is compared in constant time (`ct_eq`), so its accept/reject must
+/// still match exact byte-equality semantics: honored only when the offered challenge is
+/// byte-for-byte the bound nonce, rejected for an equal-length mismatch and — the case a
+/// fixed-length compare could get wrong — for a different-length challenge.
+#[tokio::test]
+async fn challenge_nonce_gate_matches_byte_equality() {
+    let subject = Subject::incept(CurveType::Ed25519, 39);
+    let cred = credential_for(&subject.aid, false);
+    let bound = vec![5u8; 32];
+    let envelope = subject.present(
+        &cred.credential_said,
+        AUDIENCE,
+        PresentationBinding::Challenge {
+            nonce: bound.clone(),
+        },
+    );
+
+    // Exact match → honored.
+    let exact = verify(&envelope, &cred, &subject.kel, AUDIENCE, Some(&bound)).await;
+    assert!(
+        exact.is_honored(),
+        "the exact bound nonce is honored, got {exact:?}"
+    );
+
+    // Equal-length, one byte different → rejected.
+    let mut off_by_one = bound.clone();
+    off_by_one[31] ^= 0x01;
+    let mismatch = verify(&envelope, &cred, &subject.kel, AUDIENCE, Some(&off_by_one)).await;
+    assert_eq!(
+        mismatch,
+        PresentationVerdict::NonceMismatchOrConsumed,
+        "a single differing byte is rejected"
+    );
+
+    // Different length (a prefix of the bound nonce) → rejected, never honored.
+    let shorter = verify(&envelope, &cred, &subject.kel, AUDIENCE, Some(&bound[..16])).await;
+    assert_eq!(
+        shorter,
+        PresentationVerdict::NonceMismatchOrConsumed,
+        "a different-length challenge is rejected, never treated as a prefix match"
     );
 }
 
@@ -642,6 +844,8 @@ async fn sync_and_async_presentation_verdicts_match() {
                 audience,
                 challenge,
                 now(),
+                &FreshnessPolicy::default(),
+                Some(0),
                 &provider(),
             )
             .await;
@@ -658,6 +862,8 @@ async fn sync_and_async_presentation_verdicts_match() {
                 audience,
                 challenge,
                 now(),
+                &FreshnessPolicy::default(),
+                Some(0),
             );
 
             assert_eq!(
@@ -674,7 +880,7 @@ async fn sync_and_async_presentation_verdicts_match() {
 fn presentation_request_json(
     envelope: &PresentationEnvelope,
     cred: &Credentialed,
-    subject_kel: &[Event],
+    subject: &Subject,
     audience: &str,
     expected_challenge: Option<&[u8]>,
 ) -> String {
@@ -703,7 +909,9 @@ fn presentation_request_json(
             "signatureB64": b64.encode(&cred.signed.signature),
         },
         "issuerKel": cred.issuer_kel,
-        "subjectKel": subject_kel,
+        "issuerKelAttachmentsB64": attachments_b64(&cred.issuer_kel_attachments),
+        "subjectKel": subject.kel,
+        "subjectKelAttachmentsB64": attachments_b64(&subject.kel_attachments),
         "tel": cred.tel,
         "receipts": [],
         "witnessPolicy": "warn",
@@ -753,7 +961,7 @@ fn presentation_json_contract_matches_sync() {
             (&bearer, "holderNotCurrentKey"),
         ] {
             let request =
-                presentation_request_json(envelope, &cred, &subject.kel, AUDIENCE, Some(&nonce));
+                presentation_request_json(envelope, &cred, &subject, AUDIENCE, Some(&nonce));
             let verdict: serde_json::Value =
                 serde_json::from_str(&verify_presentation_json(&request)).expect("verdict json");
 
@@ -768,7 +976,15 @@ fn presentation_json_contract_matches_sync() {
                     format!("did:keri:{}", subject.aid),
                     "valid verdict carries the holder subject DID"
                 );
+                assert_eq!(
+                    verdict["subjectRoot"], verdict["subject"],
+                    "a root subject is its own proven root on the wire"
+                );
                 assert_eq!(verdict["caps"], serde_json::json!(["sign"]));
+                assert_eq!(
+                    verdict["freshness"], "unknown",
+                    "the JSON valid verdict surfaces freshness in lockstep with the native verdict"
+                );
             }
         }
     }
@@ -791,7 +1007,7 @@ fn emit_presentation_fixture() {
             nonce: nonce.clone(),
         },
     );
-    let request = presentation_request_json(&envelope, &cred, &subject.kel, AUDIENCE, Some(&nonce));
+    let request = presentation_request_json(&envelope, &cred, &subject, AUDIENCE, Some(&nonce));
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/presentation_valid.json"

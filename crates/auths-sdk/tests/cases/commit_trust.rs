@@ -24,8 +24,9 @@ use auths_keri::{
     finalize_icp_event, finalize_ixn_event,
 };
 use auths_sdk::domains::signing::service as signing;
-use auths_sdk::workflows::commit_trust::verify_commit_local;
+use auths_sdk::workflows::commit_trust::{CommitDecision, PolicyOutcome, verify_commit_local};
 use auths_verifier::CommitVerdict;
+use auths_verifier::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use ssh_key::private::Ed25519Keypair;
 
 /// The git empty-tree hash — a placeholder tree the verdict path never dereferences.
@@ -194,6 +195,61 @@ async fn pinned_root_yields_valid() {
         CommitVerdict::Valid { root_did, .. } => assert_eq!(root_did, f.root_did),
         other => panic!("expected Valid for a pinned delegating root, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn commit_verdict_names_freshness_and_authorization_consumes_it() {
+    // The wired commit-trust path must surface the freshness it carries (never drop it) AND
+    // the authorization decision must *consume* it: a verdict graded Stale is refused even when
+    // the root anchored no org policy. This locks the freshness gate against a regression to a
+    // bare `is_valid()` check.
+    let (f, registry, commit) = setup();
+
+    let verdict = verify_commit_local(
+        &registry,
+        std::slice::from_ref(&f.root_did),
+        &commit,
+        &RingCryptoProvider,
+    )
+    .await
+    .expect("trust resolution succeeds");
+
+    // Surfaced, not dropped: an offline commit verify names its freshness as Unknown.
+    assert!(matches!(verdict, CommitVerdict::Valid { .. }));
+    assert_eq!(
+        verdict.freshness(),
+        Freshness::Unknown,
+        "an offline commit verdict must name Unknown, never a bare Valid"
+    );
+
+    // Consumed: re-grade the *same* valid verdict against a known-fresher signer tip → Stale,
+    // and the authorization decision refuses it despite there being no org policy to fail.
+    let stale = verdict.clone().with_freshness(
+        &FreshnessPolicy::default(),
+        FreshnessEvidence::FresherTip {
+            latest_seq: u128::MAX,
+            slice_as_of: 0,
+        },
+    );
+    assert_eq!(stale.freshness(), Freshness::Stale);
+    let denied = CommitDecision {
+        verdict: stale,
+        policy: PolicyOutcome::NoPolicy,
+    };
+    assert!(
+        !denied.is_authorized(),
+        "a Stale commit verdict must not authorize, even with no org policy"
+    );
+
+    // The offline-Unknown verdict clears the default policy (which tolerates Unknown).
+    let allowed = CommitDecision {
+        verdict,
+        policy: PolicyOutcome::NoPolicy,
+    };
+    assert!(
+        allowed.is_authorized(),
+        "an offline-Unknown verdict is authorized under the default policy + no org policy"
+    );
 }
 
 #[tokio::test]

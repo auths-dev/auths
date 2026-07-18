@@ -101,13 +101,13 @@ pub use authorization_summary::AuthorizationSummary;
 
 // Re-export core types
 pub use core::{
-    ATTESTATION_VERSION, Attestation, Capability, CapabilityError, CommitOid, CommitOidError,
-    DevicePublicKey, EcdsaP256Error, EcdsaP256PublicKey, EcdsaP256Signature, Ed25519KeyError,
-    Ed25519PublicKey, Ed25519Signature, IdentityBundle, InvalidKeyError, MAX_ATTESTATION_JSON_SIZE,
-    MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyDecodeError, PublicKeyHex,
-    PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureAlgorithm, SignatureLengthError,
-    SignatureVerifyError, ThresholdPolicy, TypedSignature, VerifiedAttestation,
-    decode_public_key_bytes, decode_public_key_hex,
+    ATTESTATION_VERSION, Attestation, BundleDeviceKel, Capability, CapabilityError, CommitOid,
+    CommitOidError, DevicePublicKey, EcdsaP256Error, EcdsaP256PublicKey, EcdsaP256Signature,
+    Ed25519KeyError, Ed25519PublicKey, Ed25519Signature, IdentityBundle, InvalidKeyError,
+    MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyDecodeError,
+    PublicKeyHex, PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureAlgorithm,
+    SignatureLengthError, SignatureVerifyError, ThresholdPolicy, TypedSignature,
+    VerifiedAttestation, decode_public_key_bytes, decode_public_key_hex,
 };
 
 // Re-export the OIDC policy join (keyless CI verify-time exchange)
@@ -156,7 +156,9 @@ pub use auths_keri::{
 
 // Re-export commit verification types
 pub use commit::{VerifiedCommit, commit_object_is_signed};
-pub use commit_bundle::{BundleTrust, BundleTrustError, verify_commit_with_bundle_json};
+pub use commit_bundle::{
+    AuthenticatedDeviceKel, BundleTrust, BundleTrustError, verify_commit_with_bundle_json,
+};
 pub use commit_kel::{
     ANCHOR_SEQ_TRAILER, CommitVerdict, DEVICE_TRAILER, ID_TRAILER, SCOPE_TRAILER,
     VerifierWitnessPolicy, WitnessGateStatus, WitnessedVerdict, anchor_seq_trailer,
@@ -179,6 +181,10 @@ pub use presentation::{
     PresentationBinding, PresentationEnvelope, PresentationVerdict, verify_presentation,
     verify_presentation_sync,
 };
+
+// Re-export the freshness model (ADR 009): it now appears in public verdict surfaces
+// (`PresentationVerdict::Valid`, `CredentialVerdict::Valid`), so consumers reach it directly.
+pub use freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 
 // Re-export the cross-boundary JSON verify contract (Epic D2). One bundled request in, one
 // tagged discriminated-union verdict out — the single surface FFI/WASM/Node/Python/Go share.
@@ -249,6 +255,26 @@ mod tests {
     }
 
     #[test]
+    fn is_valid_is_false_when_a_duplicity_warning_is_present() {
+        // Fail-closed: a valid signature on a KEL that has forked is not trustworthy.
+        // The signature `status` stays Valid, but the trust decision (`is_valid`) refuses.
+        let report = VerificationReport::with_status(VerificationStatus::Valid, vec![])
+            .with_duplicity_warning(crate::duplicity::DuplicityReport::Diverging {
+                #[allow(clippy::disallowed_methods)]
+                shared_kel_prefix: crate::types::IdentityDID::new_unchecked(
+                    "did:keri:EShared".to_string(),
+                ),
+                seq: 2,
+                event_saids: vec!["ErotA".into(), "ErotB".into()],
+            });
+        assert!(matches!(report.status, VerificationStatus::Valid));
+        assert!(
+            !report.is_valid(),
+            "a diverging KEL must fail closed, not warn-and-pass"
+        );
+    }
+
+    #[test]
     fn verification_report_serializes_to_expected_json() {
         let chain = vec![
             ChainLink::valid(
@@ -269,6 +295,8 @@ mod tests {
             witness_quorum: None,
             anchored: None,
             duplicity_warning: None,
+            freshness: crate::freshness::Freshness::Unknown,
+            as_of: None,
         };
 
         let json = serde_json::to_string(&report).expect("serialization failed");

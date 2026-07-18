@@ -87,9 +87,8 @@ pub fn local_self_root(ctx: &crate::context::AuthsContext) -> Option<String> {
 /// `registry`, then replays them to decide whether the commit's signer is a device
 /// delegated under a root pinned in `pinned_roots`. This is the trust primitive the
 /// artifact-provenance path uses for the human-signed commit an ephemeral attestation
-/// is bound to. Witnessed and transport-aware verification (the `auths verify`
-/// command) layers `--remote`/`--oobi` and witness receipts on top of the same
-/// `auths_verifier` KEL primitive.
+/// is bound to. Witnessed verification (the `auths verify` command) layers
+/// witness receipts on top of the same `auths_verifier` KEL primitive.
 ///
 /// Args:
 /// * `registry`: The registry backend holding identity KELs.
@@ -162,9 +161,11 @@ pub struct CommitDecision {
 #[cfg(feature = "backend-git")]
 impl CommitDecision {
     /// True iff the commit is cryptographically valid **and** org policy authorizes it
-    /// (or the root anchored no policy). Fail-closed: any policy deny/indeterminate, or
-    /// a non-`Valid` verdict, is unauthorized.
+    /// (or the root anchored no policy). Fail-closed: any policy deny/indeterminate, a
+    /// non-`Valid` verdict, **or a duplicitous (forked) root KEL** is unauthorized.
     pub fn is_authorized(&self) -> bool {
+        // Fail-closed on a duplicitous root KEL is enforced by `verdict.is_trusted` below
+        // (the shared trust primitive the CLI also consumes), not re-derived here.
         if !self.verdict.is_trusted(&FreshnessPolicy::default()) {
             return false;
         }
@@ -361,6 +362,34 @@ mod tests {
         assert_eq!(
             commit_signer_trailers(&commit),
             Some((ROOT.to_string(), DEVICE.to_string()))
+        );
+    }
+
+    #[cfg(feature = "backend-git")]
+    #[test]
+    fn duplicitous_root_is_not_authorized_even_when_valid_and_fresh() {
+        use auths_verifier::freshness::Freshness;
+        let decision = |duplicitous_root: bool| CommitDecision {
+            verdict: CommitVerdict::Valid {
+                signer_did: DEVICE.to_string(),
+                root_did: ROOT.to_string(),
+                duplicitous_root,
+                as_of: 1,
+                freshness: Freshness::Fresh,
+            },
+            policy: PolicyOutcome::NoPolicy,
+        };
+        // Fail-closed: a forked (duplicitous) root KEL is not trustworthy even with a valid,
+        // fresh signature and no org policy to deny it — the relying party cannot tell which
+        // branch is real.
+        assert!(
+            !decision(true).is_authorized(),
+            "a duplicitous root must fail closed"
+        );
+        // Control: the same commit without divergence is authorized.
+        assert!(
+            decision(false).is_authorized(),
+            "a clean, valid, fresh, policy-clear commit is authorized"
         );
     }
 }

@@ -5,11 +5,14 @@ use dialoguer::{Confirm, Input, Select};
 use std::path::Path;
 use std::sync::Arc;
 
+use auths_sdk::domains::identity::replace_policy::authorize_identity_replacement;
 use auths_sdk::keychain::IdentityDID;
 use auths_sdk::ports::IdentityStorage;
 use auths_sdk::signing::PassphraseProvider;
 use auths_sdk::storage::RegistryIdentityStorage;
 use auths_sdk::types::{GitSigningScope, IdentityConflictPolicy};
+
+use super::GitScopeArg;
 
 use super::InitCommand;
 use super::InitProfile;
@@ -58,6 +61,26 @@ pub(crate) fn prompt_for_conflict_policy(
     out: &Output,
 ) -> Result<IdentityConflictPolicy> {
     if cmd.force {
+        // --force only replaces something when an identity already exists; on a fresh setup it is a
+        // no-op. Replacing an existing root repoints signing, so require an explicit confirmation —
+        // an interactive prompt, or --confirm-replace non-interactively — never a silent swap.
+        let identity_storage = RegistryIdentityStorage::new(registry_path.to_path_buf());
+        if identity_storage.load_identity().is_ok() {
+            let confirmed = if interactive {
+                Confirm::new()
+                    .with_prompt(
+                        "--force will REPLACE your existing root identity with a new one. The old keys \
+                         are not deleted, but signing repoints to the new root. Continue?",
+                    )
+                    .default(false)
+                    .interact()?
+            } else {
+                cmd.confirm_replace
+            };
+            authorize_identity_replacement(confirmed).map_err(|e| {
+                anyhow!("{e}\n\nRe-run interactively to confirm, or pass --confirm-replace to replace non-interactively.")
+            })?;
+        }
         return Ok(IdentityConflictPolicy::ForceNew);
     }
 
@@ -92,9 +115,36 @@ pub(crate) fn prompt_for_conflict_policy(
     Ok(IdentityConflictPolicy::ForceNew)
 }
 
-pub(crate) fn prompt_for_git_scope(interactive: bool) -> Result<GitSigningScope> {
+/// Resolve the git-signing scope from an explicit `--git-scope`, else by asking.
+///
+/// The default is **global**, matching the interactive prompt's own default and
+/// the command's stated job ("Create your signing identity and configure Git").
+/// Setting up signing for one repo and silently not for the next is its own
+/// surprise, and `git config --local` outside a repository is an error — running
+/// `auths init` from a home directory is an ordinary first run.
+///
+/// The real gap this closes is that the scope was previously **unchooseable**
+/// non-interactively: `--non-interactive` hard-returned `Global` with no override,
+/// so a scripted, CI or agent init had no way to keep its hands off the user's
+/// `~/.gitconfig`. `--git-scope local|global|skip` decides it outright.
+///
+/// Args:
+/// * `interactive`: Whether there is a TTY to prompt at.
+/// * `requested`: An explicit `--git-scope`, if given.
+///
+/// Usage:
+/// ```ignore
+/// let scope = prompt_for_git_scope(interactive, cmd.git_scope)?;
+/// ```
+pub(crate) fn prompt_for_git_scope(
+    interactive: bool,
+    requested: Option<GitScopeArg>,
+) -> Result<GitSigningScope> {
+    if let Some(scope) = requested {
+        return scope.resolve();
+    }
     if !interactive {
-        return Ok(GitSigningScope::Global);
+        return GitScopeArg::Global.resolve();
     }
 
     let choice = Select::new()

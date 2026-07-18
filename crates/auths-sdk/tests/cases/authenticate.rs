@@ -19,8 +19,8 @@ use auths_id::keri::types::Prefix;
 use auths_rp::{Audience, ChallengeStore, InMemoryChallengeStore, WirePresentation};
 use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::credentials::{
-    PresentationAuthError, PresentationChallenge, authenticate_presentation, issue,
-    present_credential, revoke,
+    FreshnessDecision, PresentationAuthError, PresentationChallenge, RevocationFreshnessSource,
+    authenticate_presentation, issue, present_credential, revoke,
 };
 use auths_sdk::domains::device::add_device;
 use auths_sdk::domains::identity::service::initialize;
@@ -151,6 +151,32 @@ async fn valid_presentation_authenticates_and_replay_rejected() {
     assert_eq!(err.http_status(), 401);
 }
 
+#[tokio::test]
+async fn authenticated_principal_surfaces_offline_freshness_as_unknown() {
+    // The relying party resolves the credential slice offline (no fresher issuer tip is threaded
+    // through the SDK caller yet), so the honored verdict must surface a *named* freshness —
+    // `Unknown` — at the principal boundary, never a bare honored verdict. This is what lets a
+    // relying party tell `Valid(Fresh)` from `Valid(Unknown)` and apply a stricter policy if it
+    // wants. The default policy tolerates `Unknown`, so the presentation still authenticates.
+    let h = setup();
+    let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+    let audience = Audience::parse(AUDIENCE).unwrap();
+    let store = InMemoryChallengeStore::new(16);
+    let now = chrono::Utc::now();
+
+    let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+    let principal =
+        authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
+            .await
+            .expect("offline-resolved presentation authenticates under the default policy");
+
+    assert_eq!(
+        principal.freshness(),
+        auths_verifier::freshness::Freshness::Unknown,
+        "an offline-resolved honored verdict must surface Unknown, not a bare Valid"
+    );
+}
+
 /// The issuer's KEL prefix (it acts as the org/policy authority in this harness).
 fn issuer_prefix(h: &Harness) -> Prefix {
     let did = h
@@ -160,6 +186,65 @@ fn issuer_prefix(h: &Harness) -> Prefix {
         .expect("issuer identity")
         .controller_did;
     parse_did_keri(did.as_str()).expect("issuer prefix")
+}
+
+/// A revocation-freshness source returning a fixed decision, to drive the gate without a live poll.
+struct FakeFreshness(FreshnessDecision);
+
+impl RevocationFreshnessSource for FakeFreshness {
+    fn freshness(
+        &self,
+        _delegator: &Prefix,
+        _now: chrono::DateTime<chrono::Utc>,
+    ) -> FreshnessDecision {
+        self.0
+    }
+}
+
+#[tokio::test]
+async fn revocation_freshness_gate_refuses_a_stale_copy_and_honors_a_fresh_one() {
+    // A configured staleness source whose copy is too stale → the presentation is refused
+    // (fail-closed: a `rev` may have landed unseen), even though it otherwise verifies.
+    {
+        let h = setup();
+        let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+        let audience = Audience::parse(AUDIENCE).unwrap();
+        let store = InMemoryChallengeStore::new(16);
+        let now = chrono::Utc::now();
+        let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+        let ctx = h.ctx.with_revocation_freshness(Arc::new(FakeFreshness(
+            FreshnessDecision::StaleRejected {
+                age: chrono::Duration::minutes(5),
+            },
+        )));
+        let err = authenticate_presentation(&ctx, &h.issuer_alias, &store, &audience, wire, now)
+            .await
+            .expect_err("a stale issuer-log copy must refuse the presentation");
+        assert!(
+            matches!(err, PresentationAuthError::RevocationStale(_)),
+            "expected RevocationStale, got {err:?}"
+        );
+        assert_eq!(err.http_status(), 401);
+    }
+    // A fresh copy → the presentation is honored.
+    {
+        let h = setup();
+        let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+        let audience = Audience::parse(AUDIENCE).unwrap();
+        let store = InMemoryChallengeStore::new(16);
+        let now = chrono::Utc::now();
+        let wire = present_with_store(&h, &subject_alias, &cred, &audience, &store, now);
+        let ctx =
+            h.ctx
+                .with_revocation_freshness(Arc::new(FakeFreshness(FreshnessDecision::Fresh {
+                    age: chrono::Duration::seconds(1),
+                })));
+        let principal =
+            authenticate_presentation(&ctx, &h.issuer_alias, &store, &audience, wire, now)
+                .await
+                .expect("a fresh issuer-log copy must honor the presentation");
+        assert!(!principal.capabilities().is_empty());
+    }
 }
 
 #[tokio::test]
@@ -288,5 +373,38 @@ async fn valid_then_revoked_presentation_transition() {
     assert!(
         after.is_err(),
         "after revocation, a fresh presentation of the same credential must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn malformed_nonce_length_is_rejected_as_a_client_error() {
+    let h = setup();
+    let (subject_alias, _subject, cred) = issue_to_subject(&h, "agent", CurveType::P256);
+    let audience = Audience::parse(AUDIENCE).unwrap();
+    let store = InMemoryChallengeStore::new(16);
+    let now = chrono::Utc::now();
+
+    // Present over a 31-byte nonce (a real challenge is always 32). The nonce length is
+    // checked at the wire boundary, before the challenge is consumed or any signature is
+    // trusted — so a mis-sized nonce is a 400 client error, never a path to a bypass.
+    let envelope = present_credential(
+        &h.ctx,
+        &subject_alias,
+        &cred,
+        AUDIENCE,
+        PresentationChallenge::Challenge {
+            nonce: vec![0u8; 31],
+        },
+    )
+    .expect("present");
+    let wire = WirePresentation::from_envelope(&envelope);
+
+    let err = authenticate_presentation(&h.ctx, &h.issuer_alias, &store, &audience, wire, now)
+        .await
+        .expect_err("a 31-byte nonce must be rejected");
+    assert_eq!(
+        err.http_status(),
+        400,
+        "a mis-sized nonce is a client error, got {err:?}"
     );
 }

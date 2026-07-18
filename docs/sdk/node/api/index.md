@@ -325,7 +325,7 @@ service properties.
 #### Example
 
 ```typescript
-import { Auths } from '@auths-dev/node'
+import { Auths } from '@auths-dev/sdk'
 
 const auths = new Auths()
 
@@ -642,7 +642,10 @@ The signature and signer DID.
 verify(opts): Promise<VerificationResult>;
 ```
 
-Verifies a single attestation with optional capability and time constraints.
+Verifies a single attestation's authenticity, with an optional time constraint.
+
+Capability/role authority is no longer checked here — that grant comes from a
+holder-verified ACDC credential, not the attestation.
 
 ###### Parameters
 
@@ -678,7 +681,10 @@ console.log(result.valid)
 verifyChain(opts): Promise<VerificationReport>;
 ```
 
-Verifies an attestation chain with optional capability and witness constraints.
+Verifies an attestation chain's authenticity, with optional witness quorum.
+
+Capability authority is no longer checked here — that grant comes from a
+holder-verified ACDC credential.
 
 ###### Parameters
 
@@ -698,6 +704,20 @@ The verification report.
 
 [VerificationError](#verificationerror) if verification encounters an error.
 
+##### availableChecks()
+
+```ts
+static availableChecks(): string[];
+```
+
+Returns the list of known diagnostic check names.
+
+###### Returns
+
+`string`[]
+
+Array of check name strings.
+
 ***
 
 ### AuthsError
@@ -711,7 +731,7 @@ machine-readable [code](#code) and human-readable
 #### Example
 
 ```typescript
-import { Auths, AuthsError } from '@auths-dev/node'
+import { Auths, AuthsError } from '@auths-dev/sdk'
 
 try {
   auths.signAs({ message: data, identityDid: did })
@@ -1031,7 +1051,7 @@ Common codes: `'invalid_key'`, `'key_not_found'`, `'signing_failed'`.
 #### Example
 
 ```typescript
-import { Auths, CryptoError } from '@auths-dev/node'
+import { Auths, CryptoError } from '@auths-dev/sdk'
 
 try {
   auths.signAs({ message: data, identityDid: did })
@@ -1392,6 +1412,144 @@ auths.devices.revoke({
 
 ***
 
+### EphemeralIdentity
+
+In-memory identity for tests, demos, and CI.
+
+Generates a fresh Ed25519 keypair on construction. The resulting DID is
+`did:key:z...` (not `did:keri:`), which is valid for `signActionRaw`
+and `verifyActionEnvelope` but cannot be used with KERI operations.
+
+#### Example
+
+```ts
+import { EphemeralIdentity } from '@auths/node/testing'
+
+const alice = new EphemeralIdentity()
+const sig = alice.sign(Buffer.from('hello'))
+const envelope = alice.signAction('tool_call', '{"tool": "web_search"}')
+const result = alice.verifyAction(envelope)
+console.log(result.valid) // true
+```
+
+#### Constructors
+
+##### Constructor
+
+```ts
+new EphemeralIdentity(): EphemeralIdentity;
+```
+
+###### Returns
+
+[`EphemeralIdentity`](#ephemeralidentity)
+
+#### Accessors
+
+##### did
+
+###### Get Signature
+
+```ts
+get did(): string;
+```
+
+The `did:key:z...` identifier for this ephemeral identity.
+
+###### Returns
+
+`string`
+
+##### privateKeyHex
+
+###### Get Signature
+
+```ts
+get privateKeyHex(): string;
+```
+
+Hex-encoded 32-byte Ed25519 seed (private key).
+
+###### Returns
+
+`string`
+
+##### publicKeyHex
+
+###### Get Signature
+
+```ts
+get publicKeyHex(): string;
+```
+
+Hex-encoded 32-byte Ed25519 public key.
+
+###### Returns
+
+`string`
+
+#### Methods
+
+##### sign()
+
+```ts
+sign(message): string;
+```
+
+Sign arbitrary bytes. Returns hex-encoded signature.
+
+###### Parameters
+
+###### message
+
+`Buffer`
+
+###### Returns
+
+`string`
+
+##### signAction()
+
+```ts
+signAction(actionType, payloadJson): string;
+```
+
+Sign an action envelope. Returns JSON envelope string.
+
+###### Parameters
+
+###### actionType
+
+`string`
+
+###### payloadJson
+
+`string`
+
+###### Returns
+
+`string`
+
+##### verifyAction()
+
+```ts
+verifyAction(envelopeJson): NapiVerificationResult;
+```
+
+Verify an action envelope against this identity's public key.
+
+###### Parameters
+
+###### envelopeJson
+
+`string`
+
+###### Returns
+
+`NapiVerificationResult`
+
+***
+
 ### IdentityError
 
 Raised when an identity or device operation fails.
@@ -1401,7 +1559,7 @@ Common codes: `'identity_not_found'`, `'unknown'`.
 #### Example
 
 ```typescript
-import { Auths, IdentityError } from '@auths-dev/node'
+import { Auths, IdentityError } from '@auths-dev/sdk'
 
 try {
   auths.devices.link({ identityDid: did, capabilities: ['sign'] })
@@ -1834,7 +1992,7 @@ Common codes: `'keychain_locked'`.
 #### Example
 
 ```typescript
-import { Auths, KeychainError } from '@auths-dev/node'
+import { Auths, KeychainError } from '@auths-dev/sdk'
 
 try {
   auths.identities.create({ label: 'main' })
@@ -2058,7 +2216,7 @@ Common codes: `'server_error'`.
 #### Example
 
 ```typescript
-import { NetworkError } from '@auths-dev/node'
+import { NetworkError } from '@auths-dev/sdk'
 
 try {
   // network operation
@@ -2297,7 +2455,7 @@ Common codes: `'org_error'`.
 #### Example
 
 ```typescript
-import { Auths, OrgError } from '@auths-dev/node'
+import { Auths, OrgError } from '@auths-dev/sdk'
 
 try {
   auths.orgs.addMember({ orgDid, memberDid, role: 'member' })
@@ -2516,6 +2674,9 @@ https://v8.dev/docs/stack-trace-api#customizing-stack-traces
 
 Manages organizations and their membership.
 
+The organization mints a fresh delegated key for each member from a label;
+callers do not provide member public keys.
+
 Access via [Auths.orgs](#orgs).
 
 #### Example
@@ -2524,9 +2685,8 @@ Access via [Auths.orgs](#orgs).
 const org = auths.orgs.create({ label: 'my-team' })
 auths.orgs.addMember({
   orgDid: org.orgDid,
-  memberDid: dev.did,
+  memberLabel: 'alice',
   role: 'member',
-  memberPublicKeyHex: dev.publicKey,
 })
 ```
 
@@ -2556,7 +2716,8 @@ new OrgService(client): OrgService;
 addMember(opts): OrgMember;
 ```
 
-Adds a member to an organization.
+Adds a member to an organization. The org mints a fresh delegated key for
+the member from `memberLabel`; the returned `memberDid` is the new AID.
 
 ###### Parameters
 
@@ -2581,9 +2742,8 @@ The new member record.
 ```typescript
 const member = auths.orgs.addMember({
   orgDid: org.orgDid,
-  memberDid: dev.did,
+  memberLabel: 'alice',
   role: 'member',
-  memberPublicKeyHex: dev.publicKey,
 })
 ```
 
@@ -2690,7 +2850,7 @@ Common codes: `'pairing_error'`, `'timeout'`.
 #### Example
 
 ```typescript
-import { PairingError } from '@auths-dev/node'
+import { PairingError } from '@auths-dev/sdk'
 
 try {
   await auths.pairing.createSession({ bindAddress: '127.0.0.1' })
@@ -2925,7 +3085,7 @@ https://v8.dev/docs/stack-trace-api#customizing-stack-traces
 Handles device pairing for cross-device identity authorization.
 
 The pairing flow: controller creates a session, device joins with the
-short code, controller completes pairing to authorize the device.
+short code, the controller waits for the device's response.
 
 Access via [Auths.pairing](#pairing).
 
@@ -2985,32 +3145,6 @@ dispose: void;
 ###### Returns
 
 `void`
-
-##### complete()
-
-```ts
-complete(opts): Promise<PairingResult>;
-```
-
-Completes pairing by authorizing the connected device.
-
-###### Parameters
-
-###### opts
-
-[`CompletePairingOptions`](#completepairingoptions)
-
-Completion options with device identity and capabilities.
-
-###### Returns
-
-`Promise`\<[`PairingResult`](#pairingresult)\>
-
-The pairing result with the device's authorization attestation.
-
-###### Throws
-
-[PairingError](#pairingerror) if no session is active or completion fails.
 
 ##### createSession()
 
@@ -3138,7 +3272,7 @@ against an attestation context to produce an allow/deny decision.
 #### Example
 
 ```typescript
-import { PolicyBuilder } from '@auths-dev/node'
+import { PolicyBuilder } from '@auths-dev/sdk'
 
 // Quick standard policy
 const policy = PolicyBuilder.standard('sign_commit')
@@ -3170,6 +3304,24 @@ new PolicyBuilder(): PolicyBuilder;
 ###### Returns
 
 [`PolicyBuilder`](#policybuilder)
+
+#### Properties
+
+##### AVAILABLE\_PREDICATES
+
+```ts
+readonly static AVAILABLE_PREDICATES: string[];
+```
+
+All available predicate method names.
+
+##### AVAILABLE\_PRESETS
+
+```ts
+readonly static AVAILABLE_PRESETS: string[];
+```
+
+Built-in preset policy names.
 
 #### Methods
 
@@ -3786,6 +3938,52 @@ Policies to OR together.
 
 A new builder combining the policies.
 
+##### availablePredicates()
+
+```ts
+static availablePredicates(): string[];
+```
+
+Returns the list of available predicate method names.
+
+###### Returns
+
+`string`[]
+
+##### availablePresets()
+
+```ts
+static availablePresets(): string[];
+```
+
+Returns the list of available preset policy names.
+
+###### Returns
+
+`string`[]
+
+##### fromJson()
+
+```ts
+static fromJson(jsonStr): PolicyBuilder;
+```
+
+Reconstructs a PolicyBuilder from a JSON policy expression.
+
+###### Parameters
+
+###### jsonStr
+
+`string`
+
+JSON string from `toJson()` or config files.
+
+###### Returns
+
+[`PolicyBuilder`](#policybuilder)
+
+A new builder with the parsed predicates.
+
 ##### standard()
 
 ```ts
@@ -4006,7 +4204,7 @@ Common codes: `'repo_not_found'`, `'trust_error'`, `'witness_error'`.
 #### Example
 
 ```typescript
-import { Auths, StorageError } from '@auths-dev/node'
+import { Auths, StorageError } from '@auths-dev/sdk'
 
 try {
   auths.trust.pin({ did: 'did:keri:ENOTREAL' })
@@ -4374,7 +4572,7 @@ Common codes: `'invalid_signature'`, `'expired_attestation'`,
 #### Example
 
 ```typescript
-import { verifyAttestation, VerificationError } from '@auths-dev/node'
+import { verifyAttestation, VerificationError } from '@auths-dev/sdk'
 
 try {
   await verifyAttestation(json, publicKey)
@@ -4651,7 +4849,10 @@ The witness entry.
 ###### Example
 
 ```typescript
-const w = auths.witnesses.add({ url: 'http://witness.example.com:3333' })
+const w = auths.witnesses.add({
+  url: 'http://witness.example.com:3333',
+  aid: 'did:keri:EWitness...',
+})
 console.log(w.url) // http://witness.example.com:3333
 ```
 
@@ -4743,31 +4944,23 @@ Options for [OrgService.addMember](#addmember).
 optional capabilities: string[];
 ```
 
-Capabilities to grant the member.
+Capabilities to grant the member. If omitted, role defaults are used.
 
-##### memberDid
-
-```ts
-memberDid: string;
-```
-
-DID of the member to add.
-
-##### memberPublicKeyHex?
+##### expiresAt?
 
 ```ts
-optional memberPublicKeyHex: string;
+optional expiresAt: number;
 ```
 
-Hex-encoded public key of the member (required for cross-repo adds).
+Optional Unix timestamp (seconds) at which the membership expires.
 
-##### note?
+##### memberLabel
 
 ```ts
-optional note: string;
+memberLabel: string;
 ```
 
-Optional note for the membership record.
+Human-readable alias for the member key minted by the org.
 
 ##### orgDid
 
@@ -4800,6 +4993,14 @@ Role to assign (e.g. `'admin'`, `'member'`).
 Options for [WitnessService.add](#add).
 
 #### Properties
+
+##### aid
+
+```ts
+aid: string;
+```
+
+AID (`did:keri:` prefix) of the witness.
 
 ##### label?
 
@@ -4904,14 +5105,6 @@ Unique resource identifier of the attestation.
 An attestation record from the local registry.
 
 #### Properties
-
-##### capabilities
-
-```ts
-capabilities: string[];
-```
-
-List of capabilities granted (e.g. `['sign']`).
 
 ##### createdAt
 
@@ -5145,6 +5338,14 @@ optional author: string;
 
 Only include commits by this author.
 
+##### identityBundlePath?
+
+```ts
+optional identityBundlePath: string;
+```
+
+Path to an Auths identity-bundle JSON file for signer DID resolution.
+
 ##### limit?
 
 ```ts
@@ -5251,6 +5452,145 @@ Number of signatures that passed verification.
 
 ***
 
+### BundleAttestation
+
+An attestation in the identity bundle's chain.
+
+Represents a 2-way key attestation between a primary identity and a device key.
+Matches `auths/schemas/attestation-v1.json`.
+
+#### Properties
+
+##### capabilities?
+
+```ts
+optional capabilities: string[];
+```
+
+Capabilities this attestation grants.
+
+##### delegated\_by?
+
+```ts
+optional delegated_by: string | null;
+```
+
+DID of the attestation that delegated authority.
+
+##### device\_public\_key
+
+```ts
+device_public_key: string;
+```
+
+Ed25519 public key of the device (32 bytes, hex-encoded).
+
+##### device\_signature
+
+```ts
+device_signature: string;
+```
+
+Device's Ed25519 signature over the canonical attestation data (hex-encoded).
+
+##### expires\_at?
+
+```ts
+optional expires_at: string | null;
+```
+
+Expiration timestamp (ISO 8601).
+
+##### identity\_signature?
+
+```ts
+optional identity_signature: string;
+```
+
+Issuer's Ed25519 signature over the canonical attestation data (hex-encoded).
+
+##### issuer
+
+```ts
+issuer: string;
+```
+
+DID of the issuing identity (`did:keri:...`).
+
+##### note?
+
+```ts
+optional note: string | null;
+```
+
+Optional human-readable note.
+
+##### payload?
+
+```ts
+optional payload: unknown;
+```
+
+Optional arbitrary JSON payload.
+
+##### revoked\_at?
+
+```ts
+optional revoked_at: string | null;
+```
+
+Timestamp when the attestation was revoked (ISO 8601).
+
+##### rid
+
+```ts
+rid: string;
+```
+
+Record identifier linking this attestation to its storage ref.
+
+##### role?
+
+```ts
+optional role: Role | null;
+```
+
+Role for org membership attestations.
+
+##### signer\_type?
+
+```ts
+optional signer_type: SignerType | null;
+```
+
+The type of entity that produced this signature.
+
+##### subject
+
+```ts
+subject: string;
+```
+
+DID of the device being attested (`did:key:z...`).
+
+##### timestamp?
+
+```ts
+optional timestamp: string | null;
+```
+
+Creation timestamp (ISO 8601).
+
+##### version
+
+```ts
+version: number;
+```
+
+Schema version.
+
+***
+
 ### ChainLink
 
 A single link in a verified attestation chain.
@@ -5315,6 +5655,38 @@ Path to the Auths Git registry. Defaults to `'~/.auths'`.
 
 ***
 
+### CommitResultLike
+
+A commit verification result (from Git commit verification).
+
+#### Properties
+
+##### commitSha
+
+```ts
+commitSha: string;
+```
+
+Git commit SHA.
+
+##### isValid
+
+```ts
+isValid: boolean;
+```
+
+Whether the commit signature is valid.
+
+##### signer?
+
+```ts
+optional signer: string | null;
+```
+
+Hex-encoded public key of the signer, if identified.
+
+***
+
 ### CommitSignResult
 
 Result of signing a Git commit.
@@ -5344,46 +5716,6 @@ signaturePem: string;
 ```
 
 PEM-encoded signature for the commit.
-
-***
-
-### CompletePairingOptions
-
-Options for [PairingService.complete](#complete).
-
-#### Properties
-
-##### capabilities?
-
-```ts
-optional capabilities: string[];
-```
-
-Capabilities to grant the device.
-
-##### deviceDid
-
-```ts
-deviceDid: string;
-```
-
-DID of the device to authorize.
-
-##### devicePublicKeyHex
-
-```ts
-devicePublicKeyHex: string;
-```
-
-Hex-encoded Ed25519 public key of the device.
-
-##### passphrase?
-
-```ts
-optional passphrase: string;
-```
-
-Override the client's passphrase.
 
 ***
 
@@ -5585,21 +5917,13 @@ An agent delegated under an existing identity.
 
 #### Properties
 
-##### attestation
-
-```ts
-attestation: string;
-```
-
-JSON-serialized delegation attestation signed by the parent identity.
-
 ##### did
 
 ```ts
 did: string;
 ```
 
-The delegated agent's DID (typically `did:key:z...`).
+The agent's `did:keri:` AID — a delegated identifier the parent root anchored.
 
 ##### keyAlias
 
@@ -5609,13 +5933,21 @@ keyAlias: string;
 
 Keychain alias for the agent's signing key.
 
+##### prefix
+
+```ts
+prefix: string;
+```
+
+The agent's KEL prefix (the delegated inception SAID).
+
 ##### publicKey
 
 ```ts
 publicKey: string;
 ```
 
-Hex-encoded Ed25519 public key.
+Hex-encoded public key.
 
 ***
 
@@ -5679,6 +6011,26 @@ Previous expiration timestamp, or `null` if there was none.
 
 Context for policy evaluation.
 
+**DID format requirements:**
+- `issuer`: Must be a valid DID. Typically `did:keri:E...` for identity DIDs
+  (organizations, individuals) or `did:key:z...` for device DIDs.
+- `subject`: Same format rules as `issuer`. For device attestations, this is
+  usually a `did:key:z...` device DID.
+
+Both `issuer` and `subject` are parsed into `CanonicalDid` values by the
+Rust policy engine. The engine accepts both `did:keri:` and `did:key:` formats.
+Invalid DID strings will cause evaluation to fail with a parse error.
+
+#### Example
+
+```typescript
+const ctx: EvalContextOpts = {
+  issuer: 'did:keri:EOrg123',      // organization identity
+  subject: 'did:key:z6MkDevice',   // device key
+  capabilities: ['sign_commit'],
+}
+```
+
 #### Properties
 
 ##### capabilities?
@@ -5729,6 +6081,9 @@ issuer: string;
 
 DID of the attestation issuer.
 
+Must be a valid `did:keri:` or `did:key:` DID string.
+Typically the organization or identity that issued the attestation.
+
 ##### repo?
 
 ```ts
@@ -5768,6 +6123,9 @@ subject: string;
 ```
 
 DID of the attestation subject.
+
+Must be a valid `did:keri:` or `did:key:` DID string.
+For device attestations, this is the device's `did:key:z...` DID.
 
 ***
 
@@ -5880,6 +6238,135 @@ repoPath: string;
 ```
 
 Path to the Git registry that stores this identity.
+
+***
+
+### IdentityBundle
+
+Identity bundle for stateless verification in CI/CD environments.
+
+Contains all the information needed to verify commit signatures without
+requiring access to the identity repository or daemon.
+
+Matches `auths/schemas/identity-bundle-v1.json`.
+
+#### Example
+
+```typescript
+import { readFileSync } from 'node:fs'
+import type { IdentityBundle } from '@auths-dev/sdk'
+
+const bundle: IdentityBundle = JSON.parse(
+  readFileSync('.auths/identity-bundle.json', 'utf-8')
+)
+console.log(bundle.identity_did) // did:keri:E...
+```
+
+#### Properties
+
+##### attestation\_chain
+
+```ts
+attestation_chain: BundleAttestation[];
+```
+
+Chain of attestations linking the signing key to the identity.
+
+##### bundle\_timestamp
+
+```ts
+bundle_timestamp: string;
+```
+
+UTC timestamp when this bundle was created (ISO 8601).
+
+##### identity\_did
+
+```ts
+identity_did: string;
+```
+
+The DID of the identity (`did:keri:...`).
+
+##### max\_valid\_for\_secs
+
+```ts
+max_valid_for_secs: number;
+```
+
+Maximum age in seconds before this bundle is considered stale.
+
+##### public\_key\_hex
+
+```ts
+public_key_hex: string;
+```
+
+The public key in hex format for signature verification (32 bytes, hex).
+
+***
+
+### IdentityBundleInfo
+
+Parsed identity bundle metadata.
+
+#### Properties
+
+##### deviceCount
+
+```ts
+deviceCount: number;
+```
+
+Number of device attestations in the chain.
+
+##### did
+
+```ts
+did: string;
+```
+
+Identity DID (`did:keri:...`).
+
+##### label
+
+```ts
+label: string | null;
+```
+
+Human-readable identity label.
+
+##### publicKeyHex
+
+```ts
+publicKeyHex: string;
+```
+
+Hex-encoded Ed25519 public key.
+
+***
+
+### InMemoryKeypair
+
+#### Properties
+
+##### did
+
+```ts
+did: string;
+```
+
+##### privateKeyHex
+
+```ts
+privateKeyHex: string;
+```
+
+##### publicKeyHex
+
+```ts
+publicKeyHex: string;
+```
 
 ***
 
@@ -6001,14 +6488,6 @@ An organization member record.
 
 #### Properties
 
-##### attestationRid
-
-```ts
-attestationRid: string;
-```
-
-Resource identifier of the membership attestation.
-
 ##### capabilities
 
 ```ts
@@ -6025,21 +6504,29 @@ expiresAt: string | null;
 
 Expiration timestamp (RFC 3339), or `null` if no expiry.
 
-##### issuerDid
-
-```ts
-issuerDid: string;
-```
-
-DID of the admin who added this member.
-
 ##### memberDid
 
 ```ts
 memberDid: string;
 ```
 
-DID of the member.
+Delegated `did:keri:` AID minted by the org for this member.
+
+##### memberPrefix
+
+```ts
+memberPrefix: string;
+```
+
+KERI prefix of the member's delegated identity.
+
+##### orgDid
+
+```ts
+orgDid: string;
+```
+
+DID of the organization that owns this membership.
 
 ##### revoked
 
@@ -6128,38 +6615,6 @@ devicePublicKeyHex: string;
 ```
 
 Hex-encoded Ed25519 public key of the device.
-
-***
-
-### PairingResult
-
-Result of completing a pairing and authorizing the device.
-
-#### Properties
-
-##### attestationRid
-
-```ts
-attestationRid: string;
-```
-
-Resource identifier of the authorization attestation.
-
-##### deviceDid
-
-```ts
-deviceDid: string;
-```
-
-DID of the paired device.
-
-##### deviceName
-
-```ts
-deviceName: string | null;
-```
-
-Optional name of the device, or `null`.
 
 ***
 
@@ -6399,23 +6854,7 @@ Options for [OrgService.revokeMember](#revokemember).
 memberDid: string;
 ```
 
-DID of the member to revoke.
-
-##### memberPublicKeyHex?
-
-```ts
-optional memberPublicKeyHex: string;
-```
-
-Hex-encoded public key of the member.
-
-##### note?
-
-```ts
-optional note: string;
-```
-
-Optional revocation note.
+Delegated DID of the member to revoke.
 
 ##### orgDid
 
@@ -6593,6 +7032,14 @@ Options for [ArtifactService.signBytes](#signbytes).
 
 #### Properties
 
+##### commitSha?
+
+```ts
+optional commitSha: string;
+```
+
+Optional commit SHA to bind the attestation to.
+
 ##### data
 
 ```ts
@@ -6640,6 +7087,14 @@ Override the client's passphrase.
 Options for [ArtifactService.sign](#sign).
 
 #### Properties
+
+##### commitSha?
+
+```ts
+optional commitSha: string;
+```
+
+Optional commit SHA to bind the attestation to.
 
 ##### expiresInDays?
 
@@ -6937,14 +7392,6 @@ attestations: string[];
 
 Array of JSON-serialized attestations (leaf to root).
 
-##### requiredCapability?
-
-```ts
-optional requiredCapability: string;
-```
-
-Optional capability the leaf attestation must grant.
-
 ##### rootKey
 
 ```ts
@@ -6992,14 +7439,6 @@ issuerKey: string;
 ```
 
 Hex-encoded Ed25519 public key of the issuer.
-
-##### requiredCapability?
-
-```ts
-optional requiredCapability: string;
-```
-
-Optional capability the attestation must grant.
 
 ***
 
@@ -7105,7 +7544,551 @@ publicKeyHex: string;
 
 Hex-encoded Ed25519 public key of the witness.
 
+## Type Aliases
+
+### CanonicalDid
+
+```ts
+type CanonicalDid = Brand<string, "CanonicalDid">;
+```
+
+Device DID — always `did:key:z...` format.
+
+Represents a device's ephemeral key-based identity. Used for device
+attestations and signing keys. Parse with [parseDeviceDid](#parsedevicedid).
+
+***
+
+### IdentityDID
+
+```ts
+type IdentityDID = Brand<string, "IdentityDID">;
+```
+
+Identity DID — always `did:keri:...` format.
+
+Represents a KERI-based decentralized identity. Used for organizations
+and individual identities. Parse with [parseIdentityDid](#parseidentitydid).
+
+***
+
+### Outcome
+
+```ts
+type Outcome = typeof Outcome[keyof typeof Outcome];
+```
+
+Authorization outcome from a policy evaluation.
+
+Values match the Rust `Outcome` enum in `auths-policy/src/decision.rs`.
+
+***
+
+### ReasonCode
+
+```ts
+type ReasonCode = typeof ReasonCode[keyof typeof ReasonCode];
+```
+
+Machine-readable reason code for stable logging and alerting.
+
+Values match the Rust `ReasonCode` enum in `auths-policy/src/decision.rs`.
+
+***
+
+### Role
+
+```ts
+type Role = typeof Role[keyof typeof Role];
+```
+
+Organization member role.
+
+***
+
+### SignerType
+
+```ts
+type SignerType = typeof SignerType[keyof typeof SignerType];
+```
+
+The type of entity that produced a signature.
+
+***
+
+### TrustLevel
+
+```ts
+type TrustLevel = typeof TrustLevel[keyof typeof TrustLevel];
+```
+
+Trust level for a pinned identity.
+
+Values match the Rust `TrustLevel` enum in `auths-core/src/trust/pinned.rs`.
+
 ## Variables
+
+### generateInmemoryKeypair()
+
+```ts
+const generateInmemoryKeypair: () => InMemoryKeypair = native.generateInmemoryKeypair;
+```
+
+#### Returns
+
+[`InMemoryKeypair`](#inmemorykeypair)
+
+***
+
+### Outcome
+
+```ts
+const Outcome: object;
+```
+
+Authorization outcome from a policy evaluation.
+
+Values match the Rust `Outcome` enum in `auths-policy/src/decision.rs`.
+
+#### Type Declaration
+
+##### Allow
+
+```ts
+readonly Allow: "Allow" = 'Allow';
+```
+
+##### Deny
+
+```ts
+readonly Deny: "Deny" = 'Deny';
+```
+
+##### Indeterminate
+
+```ts
+readonly Indeterminate: "Indeterminate" = 'Indeterminate';
+```
+
+##### MissingCredential
+
+```ts
+readonly MissingCredential: "MissingCredential" = 'MissingCredential';
+```
+
+##### RequiresApproval
+
+```ts
+readonly RequiresApproval: "RequiresApproval" = 'RequiresApproval';
+```
+
+***
+
+### ReasonCode
+
+```ts
+const ReasonCode: object;
+```
+
+Machine-readable reason code for stable logging and alerting.
+
+Values match the Rust `ReasonCode` enum in `auths-policy/src/decision.rs`.
+
+#### Type Declaration
+
+##### AllChecksPassed
+
+```ts
+readonly AllChecksPassed: "AllChecksPassed" = 'AllChecksPassed';
+```
+
+##### ApprovalAlreadyUsed
+
+```ts
+readonly ApprovalAlreadyUsed: "ApprovalAlreadyUsed" = 'ApprovalAlreadyUsed';
+```
+
+##### ApprovalExpired
+
+```ts
+readonly ApprovalExpired: "ApprovalExpired" = 'ApprovalExpired';
+```
+
+##### ApprovalGranted
+
+```ts
+readonly ApprovalGranted: "ApprovalGranted" = 'ApprovalGranted';
+```
+
+##### ApprovalRequestMismatch
+
+```ts
+readonly ApprovalRequestMismatch: "ApprovalRequestMismatch" = 'ApprovalRequestMismatch';
+```
+
+##### ApprovalRequired
+
+```ts
+readonly ApprovalRequired: "ApprovalRequired" = 'ApprovalRequired';
+```
+
+##### AttrMismatch
+
+```ts
+readonly AttrMismatch: "AttrMismatch" = 'AttrMismatch';
+```
+
+##### CapabilityMissing
+
+```ts
+readonly CapabilityMissing: "CapabilityMissing" = 'CapabilityMissing';
+```
+
+##### CapabilityPresent
+
+```ts
+readonly CapabilityPresent: "CapabilityPresent" = 'CapabilityPresent';
+```
+
+##### ChainTooDeep
+
+```ts
+readonly ChainTooDeep: "ChainTooDeep" = 'ChainTooDeep';
+```
+
+##### CombinatorResult
+
+```ts
+readonly CombinatorResult: "CombinatorResult" = 'CombinatorResult';
+```
+
+##### DelegationMismatch
+
+```ts
+readonly DelegationMismatch: "DelegationMismatch" = 'DelegationMismatch';
+```
+
+##### Expired
+
+```ts
+readonly Expired: "Expired" = 'Expired';
+```
+
+##### InsufficientTtl
+
+```ts
+readonly InsufficientTtl: "InsufficientTtl" = 'InsufficientTtl';
+```
+
+##### IssuedTooLongAgo
+
+```ts
+readonly IssuedTooLongAgo: "IssuedTooLongAgo" = 'IssuedTooLongAgo';
+```
+
+##### IssuerMatch
+
+```ts
+readonly IssuerMatch: "IssuerMatch" = 'IssuerMatch';
+```
+
+##### IssuerMismatch
+
+```ts
+readonly IssuerMismatch: "IssuerMismatch" = 'IssuerMismatch';
+```
+
+##### MissingField
+
+```ts
+readonly MissingField: "MissingField" = 'MissingField';
+```
+
+##### RecursionExceeded
+
+```ts
+readonly RecursionExceeded: "RecursionExceeded" = 'RecursionExceeded';
+```
+
+##### Revoked
+
+```ts
+readonly Revoked: "Revoked" = 'Revoked';
+```
+
+##### RoleMismatch
+
+```ts
+readonly RoleMismatch: "RoleMismatch" = 'RoleMismatch';
+```
+
+##### ScopeMismatch
+
+```ts
+readonly ScopeMismatch: "ScopeMismatch" = 'ScopeMismatch';
+```
+
+##### ShortCircuit
+
+```ts
+readonly ShortCircuit: "ShortCircuit" = 'ShortCircuit';
+```
+
+##### SignerTypeMatch
+
+```ts
+readonly SignerTypeMatch: "SignerTypeMatch" = 'SignerTypeMatch';
+```
+
+##### SignerTypeMismatch
+
+```ts
+readonly SignerTypeMismatch: "SignerTypeMismatch" = 'SignerTypeMismatch';
+```
+
+##### Unconditional
+
+```ts
+readonly Unconditional: "Unconditional" = 'Unconditional';
+```
+
+##### WitnessQuorumNotMet
+
+```ts
+readonly WitnessQuorumNotMet: "WitnessQuorumNotMet" = 'WitnessQuorumNotMet';
+```
+
+##### WorkloadMismatch
+
+```ts
+readonly WorkloadMismatch: "WorkloadMismatch" = 'WorkloadMismatch';
+```
+
+***
+
+### Role
+
+```ts
+const Role: object;
+```
+
+Organization member role.
+
+#### Type Declaration
+
+##### Admin
+
+```ts
+readonly Admin: "admin" = 'admin';
+```
+
+##### Member
+
+```ts
+readonly Member: "member" = 'member';
+```
+
+##### Readonly
+
+```ts
+readonly Readonly: "readonly" = 'readonly';
+```
+
+***
+
+### signActionRaw()
+
+```ts
+const signActionRaw: (privateKeyHex, actionType, payloadJson, identityDid) => string = native.signActionRaw;
+```
+
+#### Parameters
+
+##### privateKeyHex
+
+`string`
+
+##### actionType
+
+`string`
+
+##### payloadJson
+
+`string`
+
+##### identityDid
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
+### signArtifactBytesRaw()
+
+```ts
+const signArtifactBytesRaw: (data, privateKeyHex, identityDid, expiresIn?, note?) => NapiArtifactResult = native.signArtifactBytesRaw;
+```
+
+#### Parameters
+
+##### data
+
+`Buffer`
+
+##### privateKeyHex
+
+`string`
+
+##### identityDid
+
+`string`
+
+##### expiresIn?
+
+`number` | `null`
+
+##### note?
+
+`string` | `null`
+
+#### Returns
+
+`NapiArtifactResult`
+
+***
+
+### signBytesRaw()
+
+```ts
+const signBytesRaw: (privateKeyHex, message) => string = native.signBytesRaw;
+```
+
+#### Parameters
+
+##### privateKeyHex
+
+`string`
+
+##### message
+
+`Buffer`
+
+#### Returns
+
+`string`
+
+***
+
+### SignerType
+
+```ts
+const SignerType: object;
+```
+
+The type of entity that produced a signature.
+
+#### Type Declaration
+
+##### Agent
+
+```ts
+readonly Agent: "Agent" = 'Agent';
+```
+
+##### Human
+
+```ts
+readonly Human: "Human" = 'Human';
+```
+
+##### Workload
+
+```ts
+readonly Workload: "Workload" = 'Workload';
+```
+
+***
+
+### TrustLevel
+
+```ts
+const TrustLevel: object;
+```
+
+Trust level for a pinned identity.
+
+Values match the Rust `TrustLevel` enum in `auths-core/src/trust/pinned.rs`.
+
+#### Type Declaration
+
+##### Manual
+
+```ts
+readonly Manual: "manual" = 'manual';
+```
+
+Manually pinned via CLI or `--issuer-pk`.
+
+##### OrgPolicy
+
+```ts
+readonly OrgPolicy: "org_policy" = 'org_policy';
+```
+
+Loaded from roots.json org policy file.
+
+##### Tofu
+
+```ts
+readonly Tofu: "tofu" = 'tofu';
+```
+
+Accepted on first use (interactive prompt).
+
+***
+
+### verifyActionEnvelope()
+
+```ts
+const verifyActionEnvelope: (envelopeJson, publicKeyHex) => object = native.verifyActionEnvelope;
+```
+
+#### Parameters
+
+##### envelopeJson
+
+`string`
+
+##### publicKeyHex
+
+`string`
+
+#### Returns
+
+`object`
+
+##### error?
+
+```ts
+optional error: string | null;
+```
+
+##### errorCode?
+
+```ts
+optional errorCode: string | null;
+```
+
+##### valid
+
+```ts
+valid: boolean;
+```
+
+***
 
 ### version()
 
@@ -7116,6 +8099,45 @@ const version: () => string = native.version;
 #### Returns
 
 `string`
+
+***
+
+### WellKnownCapability
+
+```ts
+const WellKnownCapability: object;
+```
+
+Well-known capability identifiers.
+
+Custom capabilities can be any valid string (alphanumeric + `:` + `-` + `_`, max 64 chars).
+The `auths:` prefix is reserved.
+
+#### Type Declaration
+
+##### ManageMembers
+
+```ts
+readonly ManageMembers: "manage_members" = 'manage_members';
+```
+
+##### RotateKeys
+
+```ts
+readonly RotateKeys: "rotate_keys" = 'rotate_keys';
+```
+
+##### SignCommit
+
+```ts
+readonly SignCommit: "sign_commit" = 'sign_commit';
+```
+
+##### SignRelease
+
+```ts
+readonly SignRelease: "sign_release" = 'sign_release';
+```
 
 ## Functions
 
@@ -7144,6 +8166,55 @@ Compiled policy JSON.
 #### Throws
 
 [AuthsError](#authserror) if the policy is invalid.
+
+***
+
+### evalContextFromCommitResult()
+
+```ts
+function evalContextFromCommitResult(
+   commitResult,
+   issuer,
+   capabilities?): EvalContextOpts;
+```
+
+Build an EvalContext options object from a commit verification result.
+
+Extracts the signer hex from the commit result and converts it to a
+`did:key:` DID for use as the `subject` field.
+
+#### Parameters
+
+##### commitResult
+
+[`CommitResultLike`](#commitresultlike)
+
+A commit verification result with a `signer` hex field.
+
+##### issuer
+
+`string`
+
+The issuer DID (`did:keri:...`).
+
+##### capabilities?
+
+`string`[]
+
+Optional capability list to include.
+
+#### Returns
+
+[`EvalContextOpts`](#evalcontextopts)
+
+An EvalContextOpts suitable for `evaluatePolicy()`.
+
+#### Example
+
+```typescript
+const ctx = evalContextFromCommitResult(cr, org.orgDid, ['sign_commit'])
+const decision = evaluatePolicy(compiled, ctx)
+```
 
 ***
 
@@ -7182,7 +8253,7 @@ The policy decision with `allowed`/`denied` convenience booleans.
 #### Example
 
 ```typescript
-import { compilePolicy, evaluatePolicy } from '@auths-dev/node'
+import { compilePolicy, evaluatePolicy } from '@auths-dev/sdk'
 
 const compiled = compilePolicy(policyJson)
 const decision = evaluatePolicy(compiled, {
@@ -7190,6 +8261,30 @@ const decision = evaluatePolicy(compiled, {
   subject: 'did:key:zDevice',
 })
 ```
+
+***
+
+### isAdmin()
+
+```ts
+function isAdmin(member): boolean;
+```
+
+Check whether an organization member has admin role.
+
+#### Parameters
+
+##### member
+
+[`OrgMember`](#orgmember)
+
+The organization member to check.
+
+#### Returns
+
+`boolean`
+
+`true` if the member's role is `'admin'`.
 
 ***
 
@@ -7223,6 +8318,131 @@ Fallback error class when the code is unrecognized.
 [`AuthsError`](#authserror)
 
 A typed [AuthsError](#authserror) instance.
+
+***
+
+### parseDeviceDid()
+
+```ts
+function parseDeviceDid(raw): CanonicalDid;
+```
+
+Parse and validate a device DID string.
+
+#### Parameters
+
+##### raw
+
+`string`
+
+A DID string that should start with `did:key:z`.
+
+#### Returns
+
+[`CanonicalDid`](#canonicaldid)
+
+The validated DID as a `CanonicalDid` branded type.
+
+#### Throws
+
+Error if the string does not start with `did:key:z`.
+
+#### Example
+
+```typescript
+const did = parseDeviceDid('did:key:z6MkDevice...')
+// did is typed as CanonicalDid
+```
+
+***
+
+### parseIdentityBundle()
+
+```ts
+function parseIdentityBundle(path): Record<string, unknown>;
+```
+
+Parse an Auths identity-bundle JSON file.
+
+#### Parameters
+
+##### path
+
+`string`
+
+Path to the identity-bundle JSON file.
+
+#### Returns
+
+`Record`\<`string`, `unknown`\>
+
+The parsed bundle object.
+
+#### Example
+
+```typescript
+const bundle = parseIdentityBundle('.auths/identity-bundle.json')
+console.log(bundle.did)
+```
+
+***
+
+### parseIdentityBundleInfo()
+
+```ts
+function parseIdentityBundleInfo(path): IdentityBundleInfo;
+```
+
+Parse an identity bundle into a typed [IdentityBundleInfo](#identitybundleinfo).
+
+#### Parameters
+
+##### path
+
+`string`
+
+Path to the identity-bundle JSON file.
+
+#### Returns
+
+[`IdentityBundleInfo`](#identitybundleinfo)
+
+Typed bundle metadata.
+
+***
+
+### parseIdentityDid()
+
+```ts
+function parseIdentityDid(raw): IdentityDID;
+```
+
+Parse and validate an identity DID string.
+
+#### Parameters
+
+##### raw
+
+`string`
+
+A DID string that should start with `did:keri:`.
+
+#### Returns
+
+[`IdentityDID`](#identitydid-12)
+
+The validated DID as an `IdentityDID` branded type.
+
+#### Throws
+
+Error if the string does not start with `did:keri:`.
+
+#### Example
+
+```typescript
+const did = parseIdentityDid('did:keri:EOrg123')
+// did is typed as IdentityDID
+```
 
 ***
 
@@ -7261,54 +8481,11 @@ The verification result.
 #### Example
 
 ```typescript
-import { verifyAttestation } from '@auths-dev/node'
+import { verifyAttestation } from '@auths-dev/sdk'
 
 const result = await verifyAttestation(attestationJson, publicKeyHex)
 console.log(result.valid) // true
 ```
-
-***
-
-### verifyAttestationWithCapability()
-
-```ts
-function verifyAttestationWithCapability(
-   attestationJson,
-   issuerPkHex,
-requiredCapability): Promise<VerificationResult>;
-```
-
-Verifies a single attestation with a required capability check.
-
-#### Parameters
-
-##### attestationJson
-
-`string`
-
-JSON-serialized attestation.
-
-##### issuerPkHex
-
-`string`
-
-Hex-encoded Ed25519 public key of the issuer.
-
-##### requiredCapability
-
-`string`
-
-Capability the attestation must grant.
-
-#### Returns
-
-`Promise`\<[`VerificationResult`](#verificationresult)\>
-
-The verification result.
-
-#### Throws
-
-[VerificationError](#verificationerror) if verification fails.
 
 ***
 
@@ -7342,56 +8519,6 @@ Hex-encoded Ed25519 public key of the issuer.
 `string`
 
 RFC 3339 timestamp to verify at.
-
-#### Returns
-
-`Promise`\<[`VerificationResult`](#verificationresult)\>
-
-The verification result.
-
-#### Throws
-
-[VerificationError](#verificationerror) if verification fails.
-
-***
-
-### verifyAtTimeWithCapability()
-
-```ts
-function verifyAtTimeWithCapability(
-   attestationJson,
-   issuerPkHex,
-   atRfc3339,
-requiredCapability): Promise<VerificationResult>;
-```
-
-Verifies an attestation at a specific time with a required capability.
-
-#### Parameters
-
-##### attestationJson
-
-`string`
-
-JSON-serialized attestation.
-
-##### issuerPkHex
-
-`string`
-
-Hex-encoded Ed25519 public key of the issuer.
-
-##### atRfc3339
-
-`string`
-
-RFC 3339 timestamp to verify at.
-
-##### requiredCapability
-
-`string`
-
-Capability the attestation must grant.
 
 #### Returns
 
@@ -7440,54 +8567,11 @@ The verification report with chain link details.
 #### Example
 
 ```typescript
-import { verifyChain } from '@auths-dev/node'
+import { verifyChain } from '@auths-dev/sdk'
 
 const report = await verifyChain(attestationChain, rootPublicKeyHex)
 console.log(report.status.statusType) // 'Valid'
 ```
-
-***
-
-### verifyChainWithCapability()
-
-```ts
-function verifyChainWithCapability(
-   attestationsJson,
-   rootPkHex,
-requiredCapability): Promise<VerificationReport>;
-```
-
-Verifies an attestation chain with a required capability at the leaf.
-
-#### Parameters
-
-##### attestationsJson
-
-`string`[]
-
-Array of JSON-serialized attestations (leaf to root).
-
-##### rootPkHex
-
-`string`
-
-Hex-encoded Ed25519 public key of the root identity.
-
-##### requiredCapability
-
-`string`
-
-Capability the leaf attestation must grant.
-
-#### Returns
-
-`Promise`\<[`VerificationReport`](#verificationreport)\>
-
-The verification report.
-
-#### Throws
-
-[VerificationError](#verificationerror) if verification fails.
 
 ***
 
@@ -7535,7 +8619,7 @@ The verification report.
 #### Example
 
 ```typescript
-import { verifyChainWithWitnesses } from '@auths-dev/node'
+import { verifyChainWithWitnesses } from '@auths-dev/sdk'
 
 const report = await verifyChainWithWitnesses(chain, rootKey, {
   receipts: witnessReceipts,

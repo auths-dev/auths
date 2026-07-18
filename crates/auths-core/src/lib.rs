@@ -43,6 +43,15 @@
 //! | Windows | Credential Manager | `keychain-windows` |
 //! | Any | Encrypted file | `keychain-file-fallback` |
 
+// The `test-utils` feature swaps in deliberately weak Argon2 KDF parameters
+// (m=8 KiB, t=1) so test suites run fast; it must never reach a shipping build.
+// `debug_assertions` is off in `--release`, so this fails the compile if
+// `test-utils` is ever enabled in a release build.
+#[cfg(all(feature = "test-utils", not(debug_assertions)))]
+compile_error!(
+    "the `test-utils` feature enables weak KDF parameters and must not be in a release build"
+);
+
 pub mod agent;
 pub mod api;
 pub mod config;

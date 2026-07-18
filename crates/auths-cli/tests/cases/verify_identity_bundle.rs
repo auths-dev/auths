@@ -87,39 +87,53 @@ fn good_identity_bundle_pins_root_and_verifies() {
 }
 
 #[test]
-fn stale_identity_bundle_is_not_trusted_under_the_verifier_policy() {
+fn bundle_freshness_grade_ignores_the_producer_timestamp() {
+    // The bundle's `bundle_timestamp` / `max_valid_for_secs` are producer-set, unsigned fields.
+    // An offline verifier holds no source it can trust to confirm freshness, so the grade must be
+    // identical no matter what the producer wrote: a forged recent timestamp cannot buy "fresh",
+    // and an aged one cannot be distinguished from it. Otherwise an attacker edits one JSON field
+    // and a stale/revoked bundle reads fresh. The honest offline grade is Unknown; the relying
+    // party's policy decides whether to tolerate it.
     let (env, good) = setup_signed_commit_and_bundle();
 
-    // Age the bundle past the verifier's freshness window, but well within its own
-    // (inflated) TTL — a bundle's self-declared TTL must not buy unbounded trust; the
-    // verifier's policy caps it.
-    let stale = env.home.path().join("stale-bundle.json");
-    let mut bundle: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&good).unwrap()).unwrap();
-    let aged = chrono::Utc::now() - chrono::Duration::hours(25);
-    bundle["bundle_timestamp"] = serde_json::json!(aged.to_rfc3339());
-    bundle["max_valid_for_secs"] = serde_json::json!(31_536_000u64); // one year
-    std::fs::write(&stale, serde_json::to_string(&bundle).unwrap()).unwrap();
+    let graded = |name: &str, ts: chrono::DateTime<chrono::Utc>, ttl: u64| -> serde_json::Value {
+        let path = env.home.path().join(name);
+        let mut bundle: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&good).unwrap()).unwrap();
+        bundle["bundle_timestamp"] = serde_json::json!(ts.to_rfc3339());
+        bundle["max_valid_for_secs"] = serde_json::json!(ttl);
+        std::fs::write(&path, serde_json::to_string(&bundle).unwrap()).unwrap();
+        let out = env
+            .cmd("auths")
+            .args([
+                "verify",
+                "HEAD",
+                "--identity-bundle",
+                path.to_str().unwrap(),
+                "--json",
+            ])
+            .output()
+            .unwrap();
+        serde_json::from_slice(&out.stdout).expect("verify --json")
+    };
 
-    let out = env
-        .cmd("auths")
-        .args([
-            "verify",
-            "HEAD",
-            "--identity-bundle",
-            stale.to_str().unwrap(),
-            "--json",
-        ])
-        .output()
-        .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("verify --json");
+    let now = chrono::Utc::now();
+    // The attacker's move: stamp the bundle as just-created so it looks maximally fresh.
+    let forged_fresh = graded("forged-fresh.json", now, 3600);
+    // A genuinely old export, with an inflated TTL so the producer can't be the one capping trust.
+    let aged = graded(
+        "aged.json",
+        now - chrono::Duration::hours(24 * 100),
+        31_536_000,
+    );
+
     assert_eq!(
-        json["freshness"], "stale",
-        "the verifier must grade an over-aged bundle stale"
+        forged_fresh["freshness"], aged["freshness"],
+        "freshness grade must not depend on the producer-set timestamp"
     );
     assert_eq!(
-        json["valid"], false,
-        "a stale bundle must not be trusted under the default policy"
+        forged_fresh["freshness"], "unknown",
+        "an offline bundle's freshness is Unknown — never a producer-claimed Fresh or Stale"
     );
 }
 

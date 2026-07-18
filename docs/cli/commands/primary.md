@@ -71,8 +71,6 @@ Verify a signed commit or attestation.
 | `--witnesses-required <WITNESS_THRESHOLD>` | `1` | Number of witnesses required |
 | `--witness-keys <WITNESS_KEYS>...` | — | Witness public keys as DID:hex pairs |
 | `--signature <PATH>` | — | Path to signature file. Only used when verifying an artifact file (not a commit). Defaults to <FILE>.auths.json |
-| `--remote <REMOTE>` | — | Fetch a signer's KEL from this git remote when it is absent locally (opt-in). The local registry stays the trusted floor — a remote can only advance the key-state, never roll it back. Without it, resolution is local-only (no network) |
-| `--oobi <OOBI>` | — | Fetch signer KELs over HTTP from this OOBI base URL (SSRF-hardened: HTTPS-only, no redirects, private/loopback hosts blocked). Takes precedence over `--remote` |
 | `--require-witnesses` | — | Fail verification when the signer's root KEL has not reached witness quorum (fail-closed). Default: warn and continue |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |

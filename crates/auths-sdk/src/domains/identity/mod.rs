@@ -10,6 +10,8 @@ pub mod local;
 pub mod provision;
 /// Identity registration on remote registries
 pub mod registration;
+/// Identity-replacement authorization (`init --force` requires explicit confirmation)
+pub mod replace_policy;
 /// Identity key rotation
 pub mod rotation;
 /// Identity services

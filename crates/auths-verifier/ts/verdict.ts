@@ -29,6 +29,7 @@ export type Capability = string & { readonly __brand: "Capability" };
 /** Request-layer failures shared by both verdict unions (never a verification outcome). */
 export type RequestError =
   | { kind: "malformedRequest"; message: string }
+  | { kind: "kelUnauthenticated"; field: string; detail: string }
   | { kind: "inputTooLarge"; field: string; count: number; limit: number }
   | { kind: "unsupportedSchemaVersion"; got: number; expected: number };
 
@@ -57,6 +58,8 @@ export type PresentationVerdict =
       kind: "valid";
       issuer: CanonicalDid;
       subject: CanonicalDid;
+      /** The subject's proven root: its delegator for a delegated subject, itself otherwise. */
+      subjectRoot: CanonicalDid;
       caps: readonly Capability[];
       role: string | null;
       expiresAt: string | null;

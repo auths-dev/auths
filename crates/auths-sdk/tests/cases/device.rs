@@ -23,6 +23,10 @@ use auths_id::keri::types::Prefix;
 use auths_id::keri::validate_delegation;
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_sdk::domains::device::{add_device, list_delegated_devices, remove_device};
+use auths_sdk::domains::signing::service::{
+    ArtifactSigningError, ArtifactSigningParams, SigningKeyMaterial, sign_artifact,
+};
+use auths_sdk::testing::fakes::FakeArtifactSource;
 
 fn setup_test_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKeychainHandle) {
     let keychain = IsolatedKeychainHandle::new();
@@ -185,19 +189,23 @@ fn list_delegated_devices_reflects_revocation() {
     )
     .expect("add phone");
 
-    // Two delegated devices, none revoked yet.
+    // Two added devices plus the init-created device #0, none revoked yet.
     let listed = list_delegated_devices(&ctx).expect("list devices");
-    assert_eq!(listed.len(), 2, "both delegations are recorded");
-    assert_eq!(listed.iter().filter(|d| !d.revoked).count(), 2);
+    assert_eq!(
+        listed.len(),
+        3,
+        "both delegations plus device #0 are recorded"
+    );
+    assert_eq!(listed.iter().filter(|d| !d.revoked).count(), 3);
 
-    // Revoke one → the live set drops to one (the revoked delegation is still recorded).
+    // Revoke one → the live set drops by one (the revoked delegation is still recorded).
     remove_device(&ctx, &root_alias, &d1.device_did).expect("revoke laptop");
     let listed = list_delegated_devices(&ctx).expect("list after revoke");
-    assert_eq!(listed.len(), 2);
+    assert_eq!(listed.len(), 3);
     assert_eq!(
         listed.iter().filter(|d| !d.revoked).count(),
-        1,
-        "only one device is live after revocation"
+        2,
+        "the laptop is revoked; the phone and device #0 stay live"
     );
     assert!(
         listed
@@ -396,5 +404,50 @@ fn extend_device_nonexistent_device_returns_error() {
         matches!(result, Err(DeviceExtensionError::NoAttestationFound { .. })),
         "Expected NoAttestationFound, got: {:?}",
         result.unwrap_err()
+    );
+}
+
+fn try_sign_with_device(
+    ctx: &auths_sdk::context::AuthsContext,
+    device_alias: &KeyAlias,
+) -> Result<(), ArtifactSigningError> {
+    let params = ArtifactSigningParams {
+        artifact: Arc::new(FakeArtifactSource::from_data("release.bin", b"payload")),
+        identity_key: None,
+        device_key: SigningKeyMaterial::Alias(device_alias.clone()),
+        expires_in: None,
+        note: None,
+        commit_sha: None,
+    };
+    sign_artifact(params, ctx).map(|_| ())
+}
+
+#[test]
+fn revoked_device_cannot_produce_accepted_signature() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (root_alias, keychain) = setup_test_identity(tmp.path());
+    let provider: Arc<dyn PassphraseProvider + Send + Sync> =
+        Arc::new(PrefilledPassphraseProvider::new("Test-passphrase1!"));
+    let ctx =
+        build_test_context_with_provider(tmp.path(), Arc::new(keychain.clone()), Some(provider));
+
+    let device_alias = KeyAlias::new_unchecked("laptop");
+    let dev = add_device(&ctx, &root_alias, &device_alias, CurveType::Ed25519).expect("add device");
+
+    // Before removal the device's key is current and not revoked, so it signs. This also
+    // confirms the current-key comparison accepts a legitimately current key.
+    assert!(
+        try_sign_with_device(&ctx, &device_alias).is_ok(),
+        "an active device should be able to sign"
+    );
+
+    // Remove (revoke) the device on the root KEL.
+    remove_device(&ctx, &root_alias, &dev.device_did).expect("revoke device");
+
+    // The producer must now refuse to sign with the revoked device's key.
+    let denied = try_sign_with_device(&ctx, &device_alias);
+    assert!(
+        matches!(denied, Err(ArtifactSigningError::DeviceRevoked(_))),
+        "expected DeviceRevoked, got {denied:?}"
     );
 }

@@ -12,7 +12,9 @@
 //! `verifyCommitJson` WASM export), so the verdict cannot drift between
 //! transports.
 
-use auths_keri::{Event, compute_event_said, pair_kel_attachments, validate_signed_kel};
+use auths_keri::{
+    Event, KelSealIndex, compute_event_said, pair_kel_attachments, validate_signed_kel,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -61,7 +63,12 @@ pub enum BundleTrustError {
 pub struct BundleTrust {
     root_did: String,
     kel: Vec<Event>,
+    device_kels: Vec<AuthenticatedDeviceKel>,
 }
+
+/// One authenticated device KEL from a bundle: the device's `did:keri:` and its
+/// seal-checked events, oldest first.
+pub type AuthenticatedDeviceKel = (String, Vec<Event>);
 
 impl BundleTrust {
     /// Parse a bundle into a trust anchor: freshness + RT-005 + RT-002.
@@ -135,9 +142,63 @@ impl BundleTrust {
                 .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
         }
 
+        // Device KELs authenticate the same way, with the just-authenticated
+        // root KEL resolving each delegation seal. Self-certification first: a
+        // bundle cannot pair a victim's device DID with an attacker-authored
+        // KEL any more than it can for the root.
+        let root_seals = KelSealIndex::from_events(&bundle.kel);
+        let mut device_kels = Vec::with_capacity(bundle.device_kels.len());
+        for device in &bundle.device_kels {
+            let prefix = device
+                .did
+                .strip_prefix("did:keri:")
+                .unwrap_or(device.did.as_str());
+            let Some(inception) = device.kel.first() else {
+                return Err(BundleTrustError::KelUnauthenticated(format!(
+                    "device {} carries an empty KEL",
+                    device.did
+                )));
+            };
+            let said = compute_event_said(inception).map_err(|e| {
+                BundleTrustError::NotSelfCertifying(format!(
+                    "device {} KEL inception has no computable SAID: {e}",
+                    device.did
+                ))
+            })?;
+            if prefix != said.as_str() {
+                return Err(BundleTrustError::NotSelfCertifying(format!(
+                    "device did {} does not self-certify to its inception SAID did:keri:{said}",
+                    device.did
+                )));
+            }
+            let attachment_bytes: Vec<Vec<u8>> = device
+                .kel_attachments
+                .iter()
+                .map(|att_hex| {
+                    hex::decode(att_hex).map_err(|e| {
+                        BundleTrustError::KelUnauthenticated(format!(
+                            "non-hex device KEL signature attachment: {e}"
+                        ))
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+            let signed = pair_kel_attachments(device.kel.clone(), &attachment_bytes)
+                .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
+            validate_signed_kel(&signed, Some(&root_seals))
+                .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
+            // Keep the rehydrated events: pairing restored each delegated
+            // event's -G source seal, which downstream structural replays
+            // re-enforce against the root KEL.
+            device_kels.push((
+                device.did.clone(),
+                signed.into_iter().map(|se| se.event).collect(),
+            ));
+        }
+
         Ok(Self {
             root_did: bundle.identity_did.to_string(),
             kel: bundle.kel.clone(),
+            device_kels,
         })
     }
 
@@ -152,10 +213,16 @@ impl BundleTrust {
         &self.kel
     }
 
-    /// Consume the anchor into `(root_did, kel)` for callers that thread the
-    /// parts separately (the CLI's stateless resolver).
-    pub fn into_parts(self) -> (String, Vec<Event>) {
-        (self.root_did, self.kel)
+    /// The authenticated device KELs — `(did, events)` per delegated device the
+    /// bundle carries, each seal-checked against the root KEL.
+    pub fn device_kels(&self) -> &[AuthenticatedDeviceKel] {
+        &self.device_kels
+    }
+
+    /// Consume the anchor into `(root_did, kel, device_kels)` for callers that
+    /// thread the parts separately (the CLI's stateless resolver).
+    pub fn into_parts(self) -> (String, Vec<Event>, Vec<AuthenticatedDeviceKel>) {
+        (self.root_did, self.kel, self.device_kels)
     }
 }
 
@@ -387,14 +454,12 @@ async fn verify_commit_with_bundle_inner(
     )
     .await;
 
-    // Grade the verdict from the bundle's age against the verifier's freshness policy: the
-    // verifier caps trust, never the bundle's self-declared TTL (ADR 009). A bundle older
-    // than the policy window is Stale and a strict/default relying party rejects it.
-    let age = (now - bundle.bundle_timestamp).to_std().unwrap_or_default();
-    Ok(verdict.with_freshness(
-        &FreshnessPolicy::default(),
-        FreshnessEvidence::SourceAge(age),
-    ))
+    // An offline bundle carries no source the verifier can trust to confirm freshness: its
+    // timestamp and TTL are producer-set, unsigned fields, so an edited or inflated value must not
+    // buy trust. Absent a verifier-supplied fresher tip (a witness head / checkpoint / log tip),
+    // the strongest honest grade is Unknown — the relying party's policy decides whether to
+    // tolerate it (ADR 009 D5).
+    Ok(verdict.with_freshness(&FreshnessPolicy::default(), FreshnessEvidence::Offline))
 }
 
 #[cfg(test)]
@@ -414,6 +479,7 @@ mod tests {
             attestation_chain: Vec::new(),
             kel: Vec::new(),
             kel_attachments: Vec::new(),
+            device_kels: Vec::new(),
             bundle_timestamp: ts,
             max_valid_for_secs: ttl,
         }
