@@ -35,6 +35,7 @@ mod proxy;
 mod replay;
 mod spend_log;
 mod transcript;
+mod treasury;
 
 #[derive(Parser)]
 #[command(
@@ -64,6 +65,48 @@ enum Command {
     /// trust in the operator that produced the log. Exits non-zero on any non-`consistent`
     /// verdict. Needs the issuer's registry to resolve the agent + delegator KELs.
     VerifySpend(VerifySpendArgs),
+
+    /// The fleet treasury coordinator: ONE spending cap across N gateway processes.
+    ///
+    /// Gateways point `TREASURY_URL=tcp://host:port` at it; each metered call
+    /// reserves fleet capacity here BEFORE the local budget, so the tighter cap
+    /// always governs. Signs periodic `{fleet, count, cumulative}` checkpoints
+    /// that `verify-spend --treasury-checkpoints` cross-checks offline.
+    #[command(subcommand)]
+    Treasury(TreasuryCommand),
+}
+
+#[derive(Subcommand)]
+enum TreasuryCommand {
+    /// Serve the fleet counter until killed.
+    Serve(TreasuryServeArgs),
+}
+
+#[derive(Parser)]
+struct TreasuryServeArgs {
+    /// `host:port` to listen on, e.g. `127.0.0.1:7801`.
+    #[arg(long = "listen", value_name = "ADDR")]
+    listen: String,
+
+    /// The fleet identifier — by convention the delegator root `did:keri:…`.
+    #[arg(long = "fleet", value_name = "ID")]
+    fleet: String,
+
+    /// The fleet-wide cap, e.g. `--cap '$5'`.
+    #[arg(long = "cap", value_name = "BUDGET")]
+    cap: String,
+
+    /// Where the durable ledger and the signed checkpoint trail persist.
+    #[arg(long = "state-dir", value_name = "DIR")]
+    state_dir: std::path::PathBuf,
+
+    /// Hex seed for the P-256 checkpoint-signing key; generated fresh when omitted.
+    #[arg(long = "signing-seed", value_name = "HEX", env = "TREASURY_SIGNING_SEED")]
+    signing_seed: Option<String>,
+
+    /// Seconds between checkpoint signatures (written only when the counter moved).
+    #[arg(long = "checkpoint-secs", value_name = "SECS", default_value = "5")]
+    checkpoint_secs: u64,
 }
 
 #[derive(Parser)]
@@ -165,6 +208,21 @@ struct VerifySpendArgs {
     /// The delegator/root `did:keri:…` the grant is anchored to (the pinned trust root).
     #[arg(long = "root", value_name = "DID")]
     root: String,
+
+    /// A treasury checkpoint trail (`checkpoints.jsonl`) to cross-check: every
+    /// signature must verify, the trail must be monotonic, and with
+    /// `--expect-cumulative` the final total must equal the re-derived sum.
+    #[arg(long = "treasury-checkpoints", value_name = "FILE")]
+    treasury_checkpoints: Option<std::path::PathBuf>,
+
+    /// Pin the coordinator's checkpoint-signing public key (compressed P-256, hex).
+    #[arg(long = "treasury-pubkey", value_name = "HEX")]
+    treasury_pubkey: Option<String>,
+
+    /// Assert the final checkpointed cumulative equals this many cents (the caller's
+    /// re-derived fleet-wide sum across every delegation log).
+    #[arg(long = "expect-cumulative", value_name = "CENTS")]
+    expect_cumulative: Option<u64>,
 }
 
 fn main() -> ExitCode {
@@ -180,6 +238,35 @@ fn main() -> ExitCode {
         Command::Wrap(args) => runtime.block_on(run_wrap(args)),
         Command::Replay(args) => runtime.block_on(run_replay(args)),
         Command::VerifySpend(args) => runtime.block_on(run_verify_spend(args)),
+        Command::Treasury(TreasuryCommand::Serve(args)) => {
+            runtime.block_on(run_treasury_serve(args))
+        }
+    }
+}
+
+/// The fleet treasury coordinator process: parse the cap, then serve until killed.
+async fn run_treasury_serve(args: TreasuryServeArgs) -> ExitCode {
+    let cap_cents = match auths_mcp_core::Budget::parse(&args.cap) {
+        Ok(budget) => budget.cap_cents(),
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: invalid --cap `{}`: {e}", args.cap);
+            return ExitCode::FAILURE;
+        }
+    };
+    let cfg = treasury::ServeConfig {
+        listen: args.listen,
+        fleet: args.fleet,
+        cap_cents,
+        state_dir: args.state_dir,
+        signing_seed_hex: args.signing_seed,
+        checkpoint_secs: args.checkpoint_secs,
+    };
+    match treasury::serve(cfg).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: treasury serve exited: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -280,9 +367,66 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
         .audit_spend_log(&records, chrono::Utc::now().timestamp(), &counter, None)
         .await;
     println!("verify-spend: {} — {verdict}", verdict.code());
-    if verdict.is_consistent() {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
+    if !verdict.is_consistent() {
+        return ExitCode::FAILURE;
     }
+    if let Some(path) = &args.treasury_checkpoints
+        && !cross_check_treasury(
+            path,
+            args.treasury_pubkey.as_deref(),
+            args.expect_cumulative,
+        )
+    {
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+/// Cross-check a treasury checkpoint trail: signatures, monotonicity, and (when
+/// asserted) the final cumulative against the caller's re-derived fleet total.
+fn cross_check_treasury(
+    path: &std::path::Path,
+    expect_pubkey: Option<&str>,
+    expect_cumulative: Option<u64>,
+) -> bool {
+    use auths_crypto::ring_provider::RingCryptoProvider;
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) => {
+            eprintln!(
+                "auths-mcp-gateway: cannot read treasury checkpoints `{}`: {e}",
+                path.display()
+            );
+            return false;
+        }
+    };
+    let lines: Vec<String> = raw.lines().map(str::to_string).collect();
+    let last = match auths_mcp_core::verify_checkpoint_trail(&lines, expect_pubkey, |pk, m, s| {
+        RingCryptoProvider::p256_verify(pk, m, s).is_ok()
+    }) {
+        Ok(last) => last,
+        Err(e) => {
+            println!("treasury-checkpoints: invalid — {e}");
+            return false;
+        }
+    };
+    if let Some(expected) = expect_cumulative
+        && last.cumulative_cents.get() != expected
+    {
+        println!(
+            "treasury-checkpoints: invalid — {}",
+            auths_mcp_core::TreasuryError::CumulativeMismatch {
+                checkpointed: last.cumulative_cents.get(),
+                rederived: expected,
+            }
+        );
+        return false;
+    }
+    println!(
+        "treasury-checkpoints: valid — fleet {} at count {}, cumulative {} cents",
+        last.fleet,
+        last.count,
+        last.cumulative_cents.get()
+    );
+    true
 }

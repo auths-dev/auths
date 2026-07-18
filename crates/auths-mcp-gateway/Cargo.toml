@@ -21,6 +21,9 @@ auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.5" }
 # native per-call gate can authenticate each signed call (no shelling on the
 # enforcement path — D2).
 auths-sdk = { workspace = true, features = ["backend-git"] }
+# The treasury coordinator signs its {fleet, count, cumulative} checkpoints with a
+# P-256 key and verify-spend re-verifies them — same primitives as the rest of the stack.
+auths-crypto = { workspace = true }
 
 # Real MCP transport (PRD §5 Build item 2 / D1): the official Rust MCP SDK. The
 # `wrap` proxy speaks MCP JSON-RPC up to the agent (server) and down to the wrapped

@@ -25,8 +25,8 @@ use std::sync::Arc;
 use auths_mcp_core::budget::CrossRailBudget;
 use auths_mcp_core::{
     Actual, AtomicUsdc, Budget, Capability, Cents, Decision, Meter, NonZeroCents, PaymentMode,
-    Receipt, Settlement, SpendLogRecord, TEST_MODE_ENV, ToolCall, Verdict, env_opts_into_test,
-    require_budget,
+    Receipt, Settlement, SpendLogRecord, TEST_MODE_ENV, ToolCall, TreasuryReply, Verdict,
+    env_opts_into_test, require_budget,
 };
 use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 use chrono::Utc;
@@ -277,9 +277,53 @@ struct GatewayProxy {
     /// the sequential single-agent flow; concurrent persists from multiple agents on one gateway
     /// would need this serialized across sign+append (a follow-on).
     prev_binding: Arc<Mutex<String>>,
+    /// The fleet treasury coordinator, when `TREASURY_URL` names one: every metered
+    /// call reserves fleet capacity there BEFORE the local budget, so ONE cap binds
+    /// N gateway processes. `None` (unset or unreachable) leaves the local — smaller
+    /// — budget as the only cap: fail-closed to the tighter bound, never open.
+    treasury: Option<Arc<crate::treasury::TreasuryClient>>,
 }
 
 impl GatewayProxy {
+    /// Pre-authorize a metered call's ceiling against the fleet treasury when one is
+    /// configured (`TREASURY_URL`). `Some(decision)` is the fleet's refusal — the
+    /// call is `usage-cap-exceeded` before any local reserve or rail touch. `None`
+    /// means no coordinator, a fleet grant, or an unreachable coordinator — in every
+    /// one of those the local (smaller) budget still judges next, so degradation is
+    /// fail-closed to the tighter cap, never open.
+    async fn fleet_refusal(
+        &self,
+        rail: &str,
+        ceiling: NonZeroCents,
+    ) -> Result<Option<Decision>, McpError> {
+        let Some(treasury) = &self.treasury else {
+            return Ok(None);
+        };
+        let Some(TreasuryReply::Refused {
+            cap_cents,
+            would_be_cents,
+        }) = treasury.reserve(&self.chain.agent_did, ceiling.get()).await
+        else {
+            return Ok(None);
+        };
+        let cumulative = {
+            let budget = self.budget.lock().await;
+            budget.settled_cents().map_err(|e| {
+                McpError::internal_error(format!("read the cross-rail counter: {e}"), None)
+            })?
+        };
+        Ok(Some(Decision {
+            verdict: Verdict::UsageCapExceeded {
+                cap_cents,
+                would_be_cents,
+            },
+            cumulative_cents: cumulative,
+            reserved_cents: Cents::ZERO,
+            hold: None,
+            rail: Some(rail.to_string()),
+        }))
+    }
+
     /// Derive the metered cost + rail of a brokered call for the cross-rail budget.
     ///
     /// The live per-call *cost extraction* from a rail's charge response is the
@@ -455,15 +499,22 @@ impl ServerHandler for GatewayProxy {
                     .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
             }
             CallCost::Metered { rail, ceiling, .. } => {
-                let meter = Meter::Metered {
-                    rail: rail.clone(),
-                    ceiling: *ceiling,
-                };
-                let mut budget = self.budget.lock().await;
-                self.gate
-                    .judge(&meter, &proof_bytes, now, &mut budget)
-                    .await
-                    .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
+                match self.fleet_refusal(rail, *ceiling).await? {
+                    Some(fleet_refused) => fleet_refused,
+                    None => {
+                        let meter = Meter::Metered {
+                            rail: rail.clone(),
+                            ceiling: *ceiling,
+                        };
+                        let mut budget = self.budget.lock().await;
+                        self.gate
+                            .judge(&meter, &proof_bytes, now, &mut budget)
+                            .await
+                            .map_err(|e| {
+                                McpError::internal_error(format!("per-call gate: {e}"), None)
+                            })?
+                    }
+                }
             }
         };
         // Forward to the downstream ONLY on a forwarding verdict — a refused call never touches
@@ -832,6 +883,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         Err(_) => auths_mcp_core::SPEND_LOG_GENESIS.to_string(),
     };
 
+    let treasury = crate::treasury::TreasuryClient::from_env(&chain.root_did).map(Arc::new);
     let proxy = GatewayProxy {
         downstream,
         budget: Arc::new(Mutex::new(budget)),
@@ -840,6 +892,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         next_call: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         rail: cfg.rail,
         prev_binding: Arc::new(Mutex::new(prev_binding)),
+        treasury,
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.

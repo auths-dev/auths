@@ -40,6 +40,7 @@ pub mod paymode;
 pub mod rail;
 pub mod receipt;
 pub mod session;
+pub mod treasury;
 
 pub use attestation::{AttestationError, Attested, RailAttestation};
 pub use audit::{
@@ -59,6 +60,10 @@ pub use paymode::{
 pub use rail::{ExtractedCost, RailError, extract as extract_rail_cost, extract_stripe};
 pub use receipt::{Receipt, ReceiptError};
 pub use session::{Budget, BudgetParseError};
+pub use treasury::{
+    FleetLedger, FleetReserveOutcome, SignedTreasuryCheckpoint, TreasuryCheckpoint, TreasuryError,
+    TreasuryReply, TreasuryRequest, verify_checkpoint_trail,
+};
 
 /// A capability string a downstream tool maps to (e.g. `fs.read`, `fs.write`,
 /// `github.comment`). The gate enforces that the capability a `tools/call`
