@@ -685,13 +685,24 @@ impl ServerHandler for GatewayProxy {
                      downstream NOT touched; proof={proof_short}",
                     verdict.code(),
                 );
-                Err(McpError::invalid_request(
-                    format!(
+                let refusal = match &verdict {
+                    // The refusal teaches the fix: a buyer can self-correct from the
+                    // error alone, without docs (the example is a runnable tools/call).
+                    Verdict::MeteredAmountRequired { rail } => format!(
+                        "metered-amount-required: this downstream settles on `{rail}`, so every \
+                         call must declare what it intends to spend before the rail is touched. \
+                         Re-send with the amount in your arguments, e.g. \
+                         {{\"method\":\"tools/call\",\"params\":{{\"name\":\"{tool}\",\
+                         \"arguments\":{{\"amount_atomic\":30000}}}}}} \
+                         (USDC 6-decimals: 30000 = $0.03) — or declare a raw cent ceiling with \
+                         \"_auths_reserve_ceiling_cents\"."
+                    ),
+                    _ => format!(
                         "{}: the per-call gate refused this call before the downstream was touched",
                         verdict.code()
                     ),
-                    None,
-                ))
+                };
+                Err(McpError::invalid_request(refusal, None))
             }
         }
     }
