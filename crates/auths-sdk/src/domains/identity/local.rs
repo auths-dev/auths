@@ -64,7 +64,7 @@ pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupErro
                 ctx.registry.as_ref(),
                 &root_prefix,
             )
-            && let Some(dev) = devices.iter().find(|d| !d.revoked)
+            && let Some(dev) = devices.iter().find(|d| is_local_signing_device(ctx, d))
         {
             return Ok(LocalSigner {
                 signer_did: format!("did:keri:{}", dev.device_prefix),
@@ -72,6 +72,11 @@ pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupErro
                 anchor_seq,
             });
         }
+        // No delegated device whose key this machine actually holds: sign as the
+        // root directly (whose key IS local). This is the pre-delegation default,
+        // and it is what keeps the stamped `Auths-Device` equal to the key that
+        // will make the signature — a device we cannot sign as must never be
+        // stamped, or every commit fails `SignerKeyMismatch` at verify time.
         return Ok(LocalSigner {
             signer_did: root_did.clone(),
             root_did,
@@ -113,6 +118,44 @@ pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupErro
         )
         .into(),
     ))
+}
+
+/// Whether a delegated device may stand in as THIS machine's interactive signer.
+///
+/// Two conditions, both required — because the stamped `Auths-Device` must be the
+/// identity whose key actually makes the signature:
+/// * not revoked, and not an `agent:` role delegation (a headless agent delegated
+///   for its own signing is never the human operator's interactive identity), and
+/// * its signing key is present in THIS machine's keychain — a device whose key
+///   lives elsewhere (or was never stored, e.g. a failed delegation's orphan `dip`)
+///   cannot be signed as here, so stamping it would guarantee a verify-time
+///   `SignerKeyMismatch`.
+///
+/// Args:
+/// * `ctx`: the auths context (key storage + registry).
+/// * `dev`: one delegated device from `list_delegated_devices`.
+///
+/// Usage:
+/// ```ignore
+/// let signer = devices.iter().find(|d| is_local_signing_device(ctx, d));
+/// ```
+fn is_local_signing_device(
+    ctx: &AuthsContext,
+    dev: &auths_id::keri::delegation::DelegatedDeviceInfo,
+) -> bool {
+    use auths_id::keri::delegation::DelegatedRole;
+    if dev.revoked || matches!(dev.role, DelegatedRole::Agent) {
+        return false;
+    }
+    let device_did = format!("did:keri:{}", dev.device_prefix);
+    match auths_core::storage::keychain::IdentityDID::parse(&device_did) {
+        Ok(did) => ctx
+            .key_storage
+            .list_aliases_for_identity(&did)
+            .map(|aliases| !aliases.is_empty())
+            .unwrap_or(false),
+        Err(_) => false,
+    }
 }
 
 /// The delegator (root) KEL tip sequence for `root_did`, or `None` if unreadable.
