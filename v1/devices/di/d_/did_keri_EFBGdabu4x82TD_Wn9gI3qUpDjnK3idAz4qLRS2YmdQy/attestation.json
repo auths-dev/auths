@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "rid": ".auths",
+  "issuer": "did:keri:EB5cPHY0t-ejNC_rUzPS1dclTvd6kG-R9mQzjozCuGgd",
+  "subject": "did:keri:EFBGdabu4x82TD_Wn9gI3qUpDjnK3idAz4qLRS2YmdQy",
+  "device_public_key": {
+    "curve": "p256",
+    "key": "02f0b52b1829bb0a848dcfc7eec67d21bc032fdad711815c222363f7b9ff932800"
+  },
+  "identity_signature": "ba82e88fd4da085bfb20122b3069ae7fce97e2618e32891e8f4f4e72a402d684e2a0a7f8cec16d1ed8e38a61291a547b2fbeabdaa799b1912624d107b7f59f8b",
+  "device_signature": "c9a04a5135642bb87804d24c27b2d50b51bd8aea22b99cfb5453e4db264dd24857404c44fead4ae13247e60ad83602bf407b31949f20c1977eee02acc4470547",
+  "expires_at": "2026-08-17T15:23:20Z",
+  "timestamp": "2026-07-18T15:23:24.735834Z",
+  "signer_type": "Agent"
+}
