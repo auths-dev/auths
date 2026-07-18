@@ -20,12 +20,12 @@ name = "auths_mcp_server"
 path = "src/lib.rs"
 
 [dependencies]
-auths-api = { path = "../auths-api", version = "0.1.7" }
+auths-api = { path = "../auths-api", version = "0.1.8" }
 auths-jwt.workspace = true
 auths-telemetry.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
 auths-sdk = { workspace = true, features = ["backend-git"] }
-auths-rp = { path = "../auths-rp", version = "0.1.7" }
+auths-rp = { path = "../auths-rp", version = "0.1.8" }
 
 anyhow = "1"
 axum = "0.8"
