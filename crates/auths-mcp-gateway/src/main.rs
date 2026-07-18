@@ -31,6 +31,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod chain;
+mod channel;
 mod inproc_sign;
 mod proxy;
 mod replay;
@@ -75,6 +76,55 @@ enum Command {
     /// that `verify-spend --treasury-checkpoints` cross-checks offline.
     #[command(subcommand)]
     Treasury(TreasuryCommand),
+
+    /// Payment channels: open a metered capacity reservation, stream rail-free
+    /// per-call spend against it (the signed spend log IS the channel state), and
+    /// close with ONE netted rail action plus a settlement record citing the
+    /// exact log_hash it was re-derived from. Rail legs are env-gated, never faked.
+    #[command(subcommand)]
+    Channel(ChannelCommand),
+}
+
+#[derive(Subcommand)]
+enum ChannelCommand {
+    /// Record a funded (or stated-unfunded) capacity reservation.
+    Open(ChannelOpenArgs),
+    /// Re-derive the streamed total from the signed log and emit the netted settlement.
+    Close(ChannelCloseArgs),
+}
+
+#[derive(Parser)]
+struct ChannelOpenArgs {
+    /// The seller identity the channel streams to.
+    #[arg(long = "seller", value_name = "DID")]
+    seller: String,
+
+    /// The reserved channel capacity, e.g. `--capacity '$50'`.
+    #[arg(long = "capacity", value_name = "BUDGET")]
+    capacity: String,
+
+    /// The settling rail: `x402` or `stripe`.
+    #[arg(long = "rail", value_name = "RAIL")]
+    rail: String,
+
+    /// The gateway live dir the channel record persists under.
+    #[arg(long = "live-dir", value_name = "DIR", env = "AUTHS_MCP_LIVE_DIR")]
+    live_dir: std::path::PathBuf,
+}
+
+#[derive(Parser)]
+struct ChannelCloseArgs {
+    /// The channel id to close (from `channel open`).
+    #[arg(long = "channel", value_name = "ID")]
+    channel: String,
+
+    /// The spend log whose agent-signed cumulative is the closing state.
+    #[arg(long = "log", value_name = "FILE")]
+    log: std::path::PathBuf,
+
+    /// The gateway live dir holding the channel record.
+    #[arg(long = "live-dir", value_name = "DIR", env = "AUTHS_MCP_LIVE_DIR")]
+    live_dir: std::path::PathBuf,
 }
 
 #[derive(Subcommand)]
@@ -241,6 +291,24 @@ fn main() -> ExitCode {
         Command::VerifySpend(args) => runtime.block_on(run_verify_spend(args)),
         Command::Treasury(TreasuryCommand::Serve(args)) => {
             runtime.block_on(run_treasury_serve(args))
+        }
+        Command::Channel(cmd) => run_channel(cmd),
+    }
+}
+
+/// The channel CLI: pure record I/O — no async, no rail touch.
+fn run_channel(cmd: ChannelCommand) -> ExitCode {
+    let result = match cmd {
+        ChannelCommand::Open(args) => {
+            channel::open(&args.seller, &args.capacity, &args.rail, &args.live_dir)
+        }
+        ChannelCommand::Close(args) => channel::close(&args.channel, &args.log, &args.live_dir),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: channel: {e}");
+            ExitCode::FAILURE
         }
     }
 }

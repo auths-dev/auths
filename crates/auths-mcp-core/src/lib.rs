@@ -34,6 +34,7 @@
 pub mod attestation;
 pub mod audit;
 pub mod budget;
+pub mod channel;
 pub mod gate;
 pub mod money;
 pub mod paymode;
@@ -59,6 +60,9 @@ pub use paymode::{
 };
 pub use rail::{ExtractedCost, RailError, extract as extract_rail_cost, extract_stripe};
 pub use receipt::{Receipt, ReceiptError};
+pub use channel::{
+    ChannelRecord, ChannelSettlement, ChannelState, netted_settle_cents, spend_log_hash,
+};
 pub use session::{Budget, BudgetParseError};
 pub use treasury::{
     FleetLedger, FleetReserveOutcome, SignedTreasuryCheckpoint, TreasuryCheckpoint, TreasuryError,
