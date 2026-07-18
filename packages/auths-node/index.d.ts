@@ -140,6 +140,20 @@ export declare function listPinnedIdentities(repoPath: string): string
 
 export declare function listWitnesses(repoPath: string): string
 
+/**
+ * Mint a single-use challenge nonce (32 random bytes, base64url) for the
+ * relying party to store and hand to an agent. Format and length are the
+ * auths-rp contract — a relying party never invents its own nonce shape.
+ *
+ * Args: (none)
+ *
+ * Usage:
+ * ```ignore
+ * const nonce = mintChallengeNonce(); // store with a TTL, consume exactly once
+ * ```
+ */
+export declare function mintChallengeNonce(): string
+
 export interface NapiActionEnvelope {
   envelopeJson: string
   signatureHex: string

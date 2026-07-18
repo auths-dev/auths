@@ -600,6 +600,7 @@ module.exports.listAttestationsByDevice = nativeBinding.listAttestationsByDevice
 module.exports.listOrgMembers = nativeBinding.listOrgMembers
 module.exports.listPinnedIdentities = nativeBinding.listPinnedIdentities
 module.exports.listWitnesses = nativeBinding.listWitnesses
+module.exports.mintChallengeNonce = nativeBinding.mintChallengeNonce
 module.exports.pinIdentity = nativeBinding.pinIdentity
 module.exports.presentationNonce = nativeBinding.presentationNonce
 module.exports.PresentationStatus = nativeBinding.PresentationStatus

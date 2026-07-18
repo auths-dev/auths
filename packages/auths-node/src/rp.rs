@@ -65,6 +65,22 @@ fn denied(code: &str, detail: Option<String>) -> NapiAgentAuthReport {
     }
 }
 
+/// Mint a single-use challenge nonce (32 random bytes, base64url) for the
+/// relying party to store and hand to an agent. Format and length are the
+/// auths-rp contract — a relying party never invents its own nonce shape.
+///
+/// Args: (none)
+///
+/// Usage:
+/// ```ignore
+/// const nonce = mintChallengeNonce(); // store with a TTL, consume exactly once
+/// ```
+#[napi]
+pub fn mint_challenge_nonce() -> String {
+    let bytes: [u8; 32] = rand::random();
+    Nonce::from_bytes(bytes).to_b64url()
+}
+
 fn parse_wire(authorization_header: &str) -> Result<WirePresentation, &'static str> {
     let scheme = format!("{AUTHS_PRESENTATION_SCHEME} ");
     let token = authorization_header
