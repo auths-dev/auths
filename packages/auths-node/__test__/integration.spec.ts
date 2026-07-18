@@ -64,9 +64,9 @@ describe('identity lifecycle', () => {
       name: 'ci-bot',
       capabilities: ['sign'],
     })
-    expect(agent.did).toMatch(/^did:key:/)
+    expect(agent.did).toMatch(/^did:keri:/)
+    expect(agent.prefix).toBeDefined()
     expect(agent.keyAlias).toBeDefined()
-    expect(agent.attestation).toBeDefined()
   })
 
   it('creates standalone agent', () => {

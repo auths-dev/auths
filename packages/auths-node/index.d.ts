@@ -168,9 +168,14 @@ export interface NapiCommitSignResult {
 }
 
 export interface NapiDelegatedAgentBundle {
+  /**
+   * The agent's `did:keri:` AID — a real delegated identifier whose KEL the
+   * parent root anchored, not an attestation-linked `did:key`.
+   */
   agentDid: string
+  /** The agent's KEL prefix (the `dip` SAID). */
+  agentPrefix: string
   keyAlias: string
-  attestationJson: string
   publicKeyHex: string
   repoPath?: string
 }
