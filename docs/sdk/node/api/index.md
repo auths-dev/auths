@@ -2237,8 +2237,8 @@ try {
 
 ```ts
 new NetworkError(
-   message, 
-   code, 
+   message,
+   code,
    shouldRetry?): NetworkError;
 ```
 
@@ -2871,8 +2871,8 @@ try {
 
 ```ts
 new PairingError(
-   message, 
-   code, 
+   message,
+   code,
    shouldRetry?): PairingError;
 ```
 
@@ -8173,8 +8173,8 @@ Compiled policy JSON.
 
 ```ts
 function evalContextFromCommitResult(
-   commitResult, 
-   issuer, 
+   commitResult,
+   issuer,
    capabilities?): EvalContextOpts;
 ```
 
@@ -8493,8 +8493,8 @@ console.log(result.valid) // true
 
 ```ts
 function verifyAtTime(
-   attestationJson, 
-   issuerPkHex, 
+   attestationJson,
+   issuerPkHex,
 atRfc3339): Promise<VerificationResult>;
 ```
 
@@ -8579,8 +8579,8 @@ console.log(report.status.statusType) // 'Valid'
 
 ```ts
 function verifyChainWithWitnesses(
-   attestationsJson, 
-   rootPkHex, 
+   attestationsJson,
+   rootPkHex,
 witnesses): Promise<VerificationReport>;
 ```
 
@@ -8634,9 +8634,9 @@ const report = await verifyChainWithWitnesses(chain, rootKey, {
 
 ```ts
 function verifyDeviceAuthorization(
-   identityDid, 
-   deviceDid, 
-   attestationsJson, 
+   identityDid,
+   deviceDid,
+   attestationsJson,
 identityPkHex): Promise<VerificationReport>;
 ```
 
