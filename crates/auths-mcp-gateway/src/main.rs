@@ -609,7 +609,6 @@ fn cross_check_treasury(
     expect_pubkey: Option<&str>,
     expect_cumulative: Option<u64>,
 ) -> bool {
-    use auths_crypto::ring_provider::RingCryptoProvider;
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(e) => {
@@ -621,8 +620,11 @@ fn cross_check_treasury(
         }
     };
     let lines: Vec<String> = raw.lines().map(str::to_string).collect();
+    // The coordinator signs on the project-default curve; absent an explicit
+    // curve field on the trail, P-256 is the wire default (see the curve-tagging
+    // rules) — dispatched through the typed API, never by key length.
     let last = match auths_mcp_core::verify_checkpoint_trail(&lines, expect_pubkey, |pk, m, s| {
-        RingCryptoProvider::p256_verify(pk, m, s).is_ok()
+        auths_crypto::typed_verify(auths_crypto::CurveType::P256, pk, m, s).is_ok()
     }) {
         Ok(last) => last,
         Err(e) => {

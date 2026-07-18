@@ -105,6 +105,15 @@ impl RingCryptoProvider {
     }
 
     /// Derive compressed public key from P-256 seed.
+    /// Generate an Ed25519 keypair. Returns `(seed, public_key)`.
+    pub fn ed25519_generate() -> Result<(SecureSeed, [u8; 32]), CryptoError> {
+        use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+        let mut seed = [0u8; 32];
+        OsRng.fill_bytes(&mut seed);
+        let public_key = Self::ed25519_public_key(&seed)?;
+        Ok((SecureSeed::new(seed), public_key))
+    }
+
     pub fn p256_public_key_from_seed(seed: &[u8; 32]) -> Result<Vec<u8>, CryptoError> {
         use p256::ecdsa::SigningKey;
 

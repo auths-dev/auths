@@ -15,7 +15,7 @@
 //! `verify-spend --treasury-checkpoints` cross-checks offline.
 
 use anyhow::{Context, bail};
-use auths_crypto::ring_provider::RingCryptoProvider;
+use auths_crypto::{CurveType, TypedSeed};
 use auths_mcp_core::treasury::{
     FleetLedger, SignedTreasuryCheckpoint, TreasuryCheckpoint, encode_hex,
 };
@@ -154,15 +154,21 @@ pub async fn serve(cfg: ServeConfig) -> anyhow::Result<()> {
     let ledger_path = cfg.state_dir.join("fleet-ledger.json");
     let ledger = load_ledger(&ledger_path, cfg.cap_cents)?;
 
-    let (seed, public_key) = match &cfg.signing_seed_hex {
+    // Checkpoints sign on the project-default curve; the trail's verifier
+    // dispatches on the same explicit CurveType, never on key length.
+    let signing_key = match &cfg.signing_seed_hex {
         Some(hex) => {
             let seed = auths_crypto::decode_seed_hex(hex).context("parse --signing-seed")?;
-            let public_key = RingCryptoProvider::p256_public_key_from_seed(seed.as_bytes())
-                .context("derive the checkpoint public key")?;
-            (seed, public_key)
+            TypedSeed::from_curve(CurveType::P256, *seed.as_bytes())
         }
-        None => RingCryptoProvider::p256_generate().context("generate the checkpoint key")?,
+        None => {
+            auths_crypto::typed_generate(CurveType::P256)
+                .context("generate the checkpoint key")?
+                .0
+        }
     };
+    let public_key =
+        auths_crypto::typed_public_key(&signing_key).context("derive the checkpoint public key")?;
 
     let listener = TcpListener::bind(&cfg.listen)
         .await
@@ -330,7 +336,7 @@ fn append_checkpoint(
     path: &Path,
     fleet: &str,
     (count, cumulative_cents): (u64, Cents),
-    seed: &auths_crypto::SecureSeed,
+    signing_key: &TypedSeed,
     public_key: &[u8],
 ) -> anyhow::Result<()> {
     let checkpoint = TreasuryCheckpoint {
@@ -340,7 +346,7 @@ fn append_checkpoint(
         at: Utc::now(),
     };
     let message = checkpoint.signing_bytes()?;
-    let signature = RingCryptoProvider::p256_sign(seed.as_bytes(), &message)
+    let signature = auths_crypto::typed_sign(signing_key, &message)
         .map_err(|e| anyhow::anyhow!("sign checkpoint: {e}"))?;
     let signed = SignedTreasuryCheckpoint {
         checkpoint,

@@ -51,6 +51,15 @@ impl AwsLcProvider {
         Ok((SecureSeed::new(seed), pubkey_bytes))
     }
 
+    /// Generate an Ed25519 keypair. Returns `(seed, public_key)`.
+    pub fn ed25519_generate() -> Result<(SecureSeed, [u8; 32]), CryptoError> {
+        use p256::elliptic_curve::rand_core::{OsRng, RngCore};
+        let mut seed = [0u8; 32];
+        OsRng.fill_bytes(&mut seed);
+        let public_key = Self::ed25519_public_key(&seed)?;
+        Ok((SecureSeed::new(seed), public_key))
+    }
+
     /// Sign with P-256 via aws-lc-rs (FIPS-validated). Returns 64-byte r||s.
     pub fn p256_sign(seed: &[u8; 32], message: &[u8]) -> Result<Vec<u8>, CryptoError> {
         use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair};

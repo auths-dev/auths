@@ -46,7 +46,10 @@ pub use hash256::Hash256;
 pub use key_material::{build_ed25519_pkcs8_v2, parse_ed25519_key_material, parse_ed25519_seed};
 pub use key_ops::{ParsedKey, TypedSeed, TypedSignerKey, normalize_verkey, parse_key_material};
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
-pub use key_ops::{public_key as typed_public_key, sign as typed_sign};
+pub use key_ops::{
+    generate as typed_generate, public_key as typed_public_key, sign as typed_sign,
+    verify as typed_verify,
+};
 pub use pkcs8::Pkcs8Der;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub use provider::default_provider;
