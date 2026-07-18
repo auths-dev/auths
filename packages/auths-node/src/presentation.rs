@@ -234,7 +234,7 @@ fn credential_report(value: &Value) -> CredentialReport {
         as_of: number_field(value, "asOf"),
         revoked_at: number_field(value, "revokedAt"),
         expired_at: string_field(value, "expiredAt"),
-        message: string_field(value, "message"),
+        message: string_field(value, "message").or_else(|| string_field(value, "detail")),
         field: string_field(value, "field"),
     }
 }
@@ -249,7 +249,7 @@ fn presentation_report(value: &Value) -> PresentationReport {
         role: string_field(value, "role"),
         expires_at: string_field(value, "expiresAt"),
         credential: value.get("credential").map(credential_report),
-        message: string_field(value, "message"),
+        message: string_field(value, "message").or_else(|| string_field(value, "detail")),
         field: string_field(value, "field"),
     }
 }

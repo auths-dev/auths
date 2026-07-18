@@ -473,6 +473,7 @@ mod tests {
             attestation_chain: Vec::new(),
             kel: Vec::new(),
             kel_attachments: Vec::new(),
+            device_kels: Vec::new(),
             bundle_timestamp: ts,
             max_valid_for_secs: ttl,
         }

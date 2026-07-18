@@ -1878,6 +1878,7 @@ mod tests {
             attestation_chain: vec![],
             kel: vec![],
             kel_attachments: vec![],
+            device_kels: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc),
@@ -1929,6 +1930,7 @@ mod tests {
             attestation_chain: vec![attestation],
             kel: vec![],
             kel_attachments: vec![],
+            device_kels: vec![],
             bundle_timestamp: DateTime::parse_from_rfc3339("2099-01-01T00:00:00Z")
                 .unwrap()
                 .with_timezone(&Utc),
