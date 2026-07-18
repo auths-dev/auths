@@ -9,9 +9,55 @@
 <!-- <auths-verify repo="https://github.com/auths-dev/auths" mode="badge" size="md"></auths-verify> -->
 <!-- <script type="module" src="https://unpkg.com/@auths-dev/verify@0.3.0/dist/auths-verify.mjs"></script> -->
 
-Cryptographic identity and signing for software supply chains.
+Cryptographic identity and signing for budgeted agents, developer identity, and software supply chains.
 
 No central authority. No CA. No server. Just Git and cryptography.
+
+# MCP
+
+Bounded agents for MCP: wrap any MCP server so every `tools/call` an agent makes is
+signed, metered against a hard budget, and receipted. A call outside the granted
+scope, past the cap, or after expiry is refused **before** the downstream server is
+ever invoked — and anyone can re-derive the spend from the signed log offline,
+without trusting you or us.
+
+See more here: https://docs.auths.dev/docs/mcp
+
+Wrap a server (test mode — nothing at risk):
+
+```bash
+npx -y @auths-dev/mcp wrap --scope paid.call --budget '$5' --ttl 30m \
+  --rail x402 --test-mode -- <your MCP server command>
+```
+
+Or drop it into your MCP client's `mcp.json` — the agent connects to the gateway
+exactly as it would to the raw server:
+
+```json
+"my-paid-tool": {
+  "command": "npx",
+  "args": [
+    "-y", "@auths-dev/mcp", "wrap",
+    "--scope", "paid.call",
+    "--budget", "$5",
+    "--ttl", "30m",
+    "--rail", "x402",
+    "--test-mode",
+    "--", "<your MCP server command>"
+  ]
+}
+```
+
+Audit the spend afterwards — every figure re-derives from the signed log, with no
+trust in the operator that produced it:
+
+```bash
+npx -y @auths-dev/mcp verify-spend --log spend.jsonl \
+  --registry ./registry --agent <agent did> --root <root did>
+# verify-spend: consistent — 12 call(s), $0.36 re-derived from signed costs
+```
+
+# Identity & Signing
 
 ## Quick Start
 
