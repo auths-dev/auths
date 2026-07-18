@@ -106,6 +106,8 @@ pub struct PresentationReport {
     pub issuer: Option<String>,
     /// Subject (holder) AID whose current key signed — present on `Valid`.
     pub subject: Option<String>,
+    /// The subject's proven root (its delegator when delegated, itself otherwise) — present on `Valid`.
+    pub subject_root: Option<String>,
     /// Granted capabilities — present on `Valid`. Never silently dropped (fn-153.2).
     pub caps: Option<Vec<String>>,
     /// Optional informational role claim — present on `Valid`.
@@ -242,6 +244,7 @@ fn presentation_report(value: &Value) -> PresentationReport {
         status: presentation_status(kind_of(value)),
         issuer: string_field(value, "issuer"),
         subject: string_field(value, "subject"),
+        subject_root: string_field(value, "subjectRoot"),
         caps: caps_field(value),
         role: string_field(value, "role"),
         expires_at: string_field(value, "expiresAt"),

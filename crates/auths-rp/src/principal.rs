@@ -177,6 +177,7 @@ mod tests {
         PresentationVerdict::Valid {
             issuer: IdentityDID::parse("did:keri:Eissuer").expect("valid test issuer"),
             subject: CanonicalDid::parse(subject).expect("valid test subject"),
+            subject_root: CanonicalDid::parse(subject).expect("valid test subject"),
             caps: caps
                 .iter()
                 .map(|c| Capability::parse(c).expect("valid test capability"))
@@ -193,6 +194,7 @@ mod tests {
         let fresh = PresentationVerdict::Valid {
             issuer: IdentityDID::parse("did:keri:Eissuer").expect("issuer"),
             subject: CanonicalDid::parse("did:keri:Eagent").expect("subject"),
+            subject_root: CanonicalDid::parse("did:keri:Eagent").expect("subject"),
             caps: vec![],
             role: None,
             expires_at: None,

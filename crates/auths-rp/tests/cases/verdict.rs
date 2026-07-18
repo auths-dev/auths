@@ -7,6 +7,7 @@ fn valid_verdict(subject: &str, caps: &[&str]) -> PresentationVerdict {
     PresentationVerdict::Valid {
         issuer: IdentityDID::parse("did:keri:Eissuer").unwrap(),
         subject: CanonicalDid::parse(subject).unwrap(),
+        subject_root: CanonicalDid::parse(subject).unwrap(),
         caps: caps.iter().map(|c| Capability::parse(c).unwrap()).collect(),
         role: None,
         expires_at: None,

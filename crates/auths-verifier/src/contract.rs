@@ -104,6 +104,7 @@ enum WirePresentationVerdict {
     Valid {
         issuer: String,
         subject: String,
+        subject_root: String,
         caps: Vec<String>,
         role: Option<String>,
         expires_at: Option<String>,
@@ -195,6 +196,7 @@ impl From<PresentationVerdict> for WirePresentationVerdict {
             PresentationVerdict::Valid {
                 issuer,
                 subject,
+                subject_root,
                 caps,
                 role,
                 expires_at,
@@ -203,6 +205,7 @@ impl From<PresentationVerdict> for WirePresentationVerdict {
             } => WirePresentationVerdict::Valid {
                 issuer: issuer.as_str().to_string(),
                 subject: subject.as_str().to_string(),
+                subject_root: subject_root.as_str().to_string(),
                 caps: caps.iter().map(|c| c.as_str().to_string()).collect(),
                 role,
                 expires_at: expires_at.map(|t| t.to_rfc3339()),

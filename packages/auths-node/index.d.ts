@@ -288,6 +288,8 @@ export interface PresentationReport {
   issuer?: string
   /** Subject (holder) AID whose current key signed — present on `Valid`. */
   subject?: string
+  /** The subject's proven root (its delegator when delegated, itself otherwise) — present on `Valid`. */
+  subjectRoot?: string
   /** Granted capabilities — present on `Valid`. Never silently dropped (fn-153.2). */
   caps?: Array<string>
   /** Optional informational role claim — present on `Valid`. */
