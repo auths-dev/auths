@@ -337,12 +337,22 @@ pub fn stage_root_anchor_ixn(
 
     let canonical = serialize_for_signing(&Event::Ixn(ixn.clone()))
         .map_err(|e| InitError::Keri(e.to_string()))?;
-    let (_did, _role, encrypted) = keychain.load_key(root_alias)?;
-    let pass = passphrase_provider
-        .get_passphrase(&format!("Enter passphrase for root key '{}':", root_alias))?;
-    let pkcs8 = Pkcs8Der::new(decrypt_keypair(&encrypted, &pass)?.to_vec());
-    let sig = sign_with_pkcs8_for_init(root_curve, &pkcs8, &canonical)
-        .map_err(|e| InitError::Crypto(e.to_string()))?;
+    // The root key may live in a HARDWARE backend (Secure Enclave), whose blob is
+    // an opaque handle no software decrypt can open. Route the signature through
+    // the keychain's hardware-aware signer — the same dispatch the commit-signing
+    // path trusts — instead of decrypting a seed that may not exist in software.
+    let (sig, _pubkey, signed_curve) = auths_core::storage::keychain::sign_with_key(
+        keychain,
+        root_alias,
+        passphrase_provider,
+        &canonical,
+    )
+    .map_err(|e| InitError::Crypto(e.to_string()))?;
+    if signed_curve != root_curve {
+        return Err(InitError::Crypto(format!(
+            "root key curve mismatch: expected {root_curve:?}, key signed as {signed_curve:?}"
+        )));
+    }
     let attachment = serialize_attachment(&[IndexedSignature {
         index: 0,
         prior_index: None,

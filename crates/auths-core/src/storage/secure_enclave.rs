@@ -115,6 +115,13 @@ impl SecureEnclaveKeyStorage {
         self.keys_dir.join(format!("{}.meta.json", alias.as_str()))
     }
 
+    /// A SOFTWARE key stored under this backend (e.g. a delegated agent's
+    /// Ed25519 key, which the enclave cannot hold). The blob is the caller's
+    /// passphrase-encrypted key material, stored verbatim.
+    fn swkey_path(&self, alias: &KeyAlias) -> PathBuf {
+        self.keys_dir.join(format!("{}.swkey", alias.as_str()))
+    }
+
     fn load_handle(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
         let mut cache = self.handle_cache.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(h) = cache.get(alias.as_str()) {
@@ -140,7 +147,31 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         role: KeyRole,
         _encrypted_key_data: &[u8],
     ) -> Result<(), AgentError> {
-        // Ignore encrypted_key_data — generate key in SE hardware
+        // NON-EMPTY material is a SOFTWARE key the caller already encrypted (a
+        // delegated agent's Ed25519 key, an imported key, a pairing-born device
+        // key): store it verbatim. The enclave cannot hold it, and silently
+        // minting an unrelated hardware key here would DISCARD the only copy of
+        // a key the KEL already anchored — the delegation would "succeed" with
+        // its private key lost.
+        if !_encrypted_key_data.is_empty() {
+            let path = self.swkey_path(alias);
+            fs::write(&path, _encrypted_key_data).map_err(|e| {
+                AgentError::IO(std::io::Error::other(format!(
+                    "failed to write software key item: {e}"
+                )))
+            })?;
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).ok();
+            let meta = KeyMetadata {
+                identity_did: identity_did.to_string(),
+                role: format!("{role:?}"),
+            };
+            let meta_json = serde_json::to_string_pretty(&meta).unwrap_or_default();
+            fs::write(self.meta_path(alias), meta_json).ok();
+            return Ok(());
+        }
+
+        // EMPTY material is the hardware-creation convention (identity init on
+        // this backend passes no blob): generate the key inside the enclave.
         let mut handle_buf = vec![0u8; 512];
         let mut handle_len: usize = 0;
         let mut pubkey_buf = vec![0u8; 65];
@@ -190,7 +221,19 @@ impl KeyStorage for SecureEnclaveKeyStorage {
     }
 
     fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
-        let handle = self.load_handle(alias)?;
+        // A software item (delegated/imported key) loads its encrypted blob; a
+        // hardware key loads its opaque handle. Handle wins if both exist.
+        let handle = if self.handle_path(alias).exists() {
+            self.load_handle(alias)?
+        } else {
+            let sw = self.swkey_path(alias);
+            fs::read(&sw).map_err(|e| {
+                AgentError::StorageError(format!(
+                    "SE key handle not found for '{}': {e}",
+                    alias.as_str()
+                ))
+            })?
+        };
 
         // Read metadata. A key whose identity binding is missing must not load under a
         // placeholder DID — without it we cannot prove which identity the key belongs to.
@@ -233,6 +276,14 @@ impl KeyStorage for SecureEnclaveKeyStorage {
                 )))
             })?;
         }
+        let sw_path = self.swkey_path(alias);
+        if sw_path.exists() {
+            fs::remove_file(&sw_path).map_err(|e| {
+                AgentError::IO(std::io::Error::other(format!(
+                    "failed to delete software key item: {e}"
+                )))
+            })?;
+        }
         let meta_path = self.meta_path(alias);
         if meta_path.exists() {
             fs::remove_file(&meta_path).ok();
@@ -248,6 +299,10 @@ impl KeyStorage for SecureEnclaveKeyStorage {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if let Some(alias) = name.strip_suffix(".se") {
+                    #[allow(clippy::disallowed_methods)]
+                    // INVARIANT: alias comes from a filename we created in store_key
+                    aliases.push(KeyAlias::new_unchecked(alias));
+                } else if let Some(alias) = name.strip_suffix(".swkey") {
                     #[allow(clippy::disallowed_methods)]
                     // INVARIANT: alias comes from a filename we created in store_key
                     aliases.push(KeyAlias::new_unchecked(alias));
