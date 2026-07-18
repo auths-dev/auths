@@ -101,13 +101,13 @@ pub use authorization_summary::AuthorizationSummary;
 
 // Re-export core types
 pub use core::{
-    ATTESTATION_VERSION, Attestation, Capability, CapabilityError, CommitOid, CommitOidError,
-    DevicePublicKey, EcdsaP256Error, EcdsaP256PublicKey, EcdsaP256Signature, Ed25519KeyError,
-    Ed25519PublicKey, Ed25519Signature, IdentityBundle, InvalidKeyError, MAX_ATTESTATION_JSON_SIZE,
-    MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyDecodeError, PublicKeyHex,
-    PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureAlgorithm, SignatureLengthError,
-    SignatureVerifyError, ThresholdPolicy, TypedSignature, VerifiedAttestation,
-    decode_public_key_bytes, decode_public_key_hex,
+    ATTESTATION_VERSION, Attestation, BundleDeviceKel, Capability, CapabilityError, CommitOid,
+    CommitOidError, DevicePublicKey, EcdsaP256Error, EcdsaP256PublicKey, EcdsaP256Signature,
+    Ed25519KeyError, Ed25519PublicKey, Ed25519Signature, IdentityBundle, InvalidKeyError,
+    MAX_ATTESTATION_JSON_SIZE, MAX_JSON_BATCH_SIZE, OidcBinding, PolicyId, PublicKeyDecodeError,
+    PublicKeyHex, PublicKeyHexError, ResourceId, Role, RoleParseError, SignatureAlgorithm,
+    SignatureLengthError, SignatureVerifyError, ThresholdPolicy, TypedSignature,
+    VerifiedAttestation, decode_public_key_bytes, decode_public_key_hex,
 };
 
 // Re-export the OIDC policy join (keyless CI verify-time exchange)
@@ -156,7 +156,9 @@ pub use auths_keri::{
 
 // Re-export commit verification types
 pub use commit::{VerifiedCommit, commit_object_is_signed};
-pub use commit_bundle::{BundleTrust, BundleTrustError, verify_commit_with_bundle_json};
+pub use commit_bundle::{
+    AuthenticatedDeviceKel, BundleTrust, BundleTrustError, verify_commit_with_bundle_json,
+};
 pub use commit_kel::{
     ANCHOR_SEQ_TRAILER, CommitVerdict, DEVICE_TRAILER, ID_TRAILER, SCOPE_TRAILER,
     VerifierWitnessPolicy, WitnessGateStatus, WitnessedVerdict, anchor_seq_trailer,

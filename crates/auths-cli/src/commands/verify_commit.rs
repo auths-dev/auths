@@ -170,14 +170,14 @@ pub async fn handle_verify_commit(
     {
         pinned_roots.push(own_root);
     }
-    let mut bundle_kel: Option<BundleKel> = None;
+    let mut bundle_kels: Vec<BundleKel> = Vec::new();
     let bundle_path = cmd
         .identity_bundle
         .clone()
         .or_else(super::verify_helpers::discover_project_bundle);
     if let Some(bundle_path) = &bundle_path {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
-            Ok((root, kel)) => {
+            Ok((root, kel, device_kels)) => {
                 // Evidence-only (RT-005): the bundle is *evidence for* a root that
                 // must be pinned independently (`.auths/roots` or self-trust). It
                 // never becomes its own trust anchor — otherwise the anchor and the
@@ -198,11 +198,18 @@ pub async fn handle_verify_commit(
                     );
                 }
                 if !kel.is_empty() {
-                    bundle_kel = Some(BundleKel {
+                    bundle_kels.push(BundleKel {
                         did: root,
                         events: kel,
                     });
                 }
+                // Device KELs were seal-checked against the root by the parse;
+                // each resolves its own delegated signer DID statelessly.
+                bundle_kels.extend(
+                    device_kels
+                        .into_iter()
+                        .map(|(did, events)| BundleKel { did, events }),
+                );
             }
             Err(e) => return handle_error(&cmd, 2, &e),
         }
@@ -226,7 +233,7 @@ pub async fn handle_verify_commit(
                 &receipt_lookup,
                 &sdk_ctx,
                 &cmd,
-                bundle_kel.as_ref(),
+                &bundle_kels,
                 commit_ref,
             )
             .await,
@@ -256,15 +263,22 @@ struct BundleKel {
 fn load_bundle_trust(
     path: &std::path::Path,
     now: chrono::DateTime<chrono::Utc>,
-) -> std::result::Result<(String, Vec<Event>), String> {
+) -> std::result::Result<
+    (
+        String,
+        Vec<Event>,
+        Vec<auths_verifier::AuthenticatedDeviceKel>,
+    ),
+    String,
+> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("could not read identity bundle {path:?}: {e}"))?;
     let bundle: IdentityBundle = serde_json::from_str(&content)
         .map_err(|e| format!("identity bundle {path:?} is not valid JSON: {e}"))?;
     let trust = BundleTrust::parse(&bundle, now)
         .map_err(|e| format!("identity bundle {path:?} is not a usable trust anchor: {e}"))?;
-    let (root, kel) = trust.into_parts();
-    Ok((root, kel))
+    let (root, kel, device_kels) = trust.into_parts();
+    Ok((root, kel, device_kels))
 }
 
 /// Resolve the commit spec to a list of commit SHAs.
@@ -366,19 +380,18 @@ fn extract_oidc_binding_display(attestation: &Attestation) -> Option<OidcBinding
 ///
 /// Args:
 /// * `registry`: The local registry backend (the trusted floor).
-/// * `bundle_kel`: The authenticated identity-bundle KEL, when one was loaded.
+/// * `bundle_kels`: The authenticated identity-bundle KELs (root + devices), when loaded.
 /// * `did`: The `did:keri:` to resolve.
 async fn resolve_signer_kel(
     registry: &dyn RegistryBackend,
-    bundle_kel: Option<&BundleKel>,
+    bundle_kels: &[BundleKel],
     did: &str,
 ) -> Result<Vec<Event>, String> {
-    // Stateless first: a bundle that carries the signer's KEL satisfies
-    // resolution without any identity store (CI runners). Prefix binding is
-    // still enforced, so a tampered bundle cannot smuggle a foreign KEL.
-    if let Some(bundle) = bundle_kel
-        && bundle.did == did
-    {
+    // Stateless first: a bundle that carries the signer's KEL (the root's or a
+    // delegated device's) satisfies resolution without any identity store (CI
+    // runners). Prefix binding is still enforced, so a tampered bundle cannot
+    // smuggle a foreign KEL.
+    if let Some(bundle) = bundle_kels.iter().find(|b| b.did == did) {
         let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
         auths_sdk::keri::verify_prefix_binding(&prefix, &bundle.events)
             .map_err(|e| e.to_string())?;
@@ -403,7 +416,7 @@ async fn verify_one_commit(
     receipt_lookup: &dyn WitnessReceiptLookup,
     sdk_ctx: &auths_sdk::context::AuthsContext,
     cmd: &VerifyCommitCommand,
-    bundle_kel: Option<&BundleKel>,
+    bundle_kels: &[BundleKel],
     commit_ref: &str,
 ) -> VerifyCommitResult {
     let sha = match resolve_commit_sha(commit_ref) {
@@ -440,7 +453,7 @@ async fn verify_one_commit(
     // KEL sourcing is an SDK/adapter concern: the committed bundle or the local
     // registry — never a network fetch. The prefix-binding guard is applied
     // regardless of source. The command stays presentation-thin.
-    let device_kel = match resolve_signer_kel(registry, bundle_kel, &device_did).await {
+    let device_kel = match resolve_signer_kel(registry, bundle_kels, &device_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -463,7 +476,7 @@ async fn verify_one_commit(
         Some(delegator) => format!("did:keri:{delegator}"),
         None => root_did,
     };
-    let root_kel = match resolve_signer_kel(registry, bundle_kel, &root_did).await {
+    let root_kel = match resolve_signer_kel(registry, bundle_kels, &root_did).await {
         Ok(events) => events,
         Err(e) => {
             return VerifyCommitResult::failure(
@@ -501,11 +514,12 @@ async fn verify_one_commit(
     // no source it can trust to confirm freshness from them. Absent a verifier-supplied fresher
     // tip, the strongest honest grade is Unknown — the policy decides whether to tolerate it
     // (ADR 009 D5). A direct verify carries no such signal and likewise stays Unknown.
-    let verdict = match bundle_kel {
-        Some(_) => witnessed
+    let verdict = if bundle_kels.is_empty() {
+        witnessed.verdict
+    } else {
+        witnessed
             .verdict
-            .with_freshness(&FreshnessPolicy::default(), FreshnessEvidence::Offline),
-        None => witnessed.verdict,
+            .with_freshness(&FreshnessPolicy::default(), FreshnessEvidence::Offline)
     };
     let mut result = verdict_to_result(sha.clone(), verdict);
     match witnessed.witness {

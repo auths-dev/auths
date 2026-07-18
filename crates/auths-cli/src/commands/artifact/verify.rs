@@ -700,7 +700,7 @@ fn resolve_identity_key(
 
         // The identity_did is now PROVEN equal to the authenticated KEL's
         // inception (RT-005), so it is safe to return as the certified signer.
-        let (root_did, _kel) = trust.into_parts();
+        let (root_did, _kel, _device_kels) = trust.into_parts();
         Ok((pk, CanonicalDid::new_unchecked(root_did)))
     } else {
         // Resolve public key from the issuer DID

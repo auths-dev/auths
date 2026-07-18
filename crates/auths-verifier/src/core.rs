@@ -943,6 +943,14 @@ pub struct IdentityBundle {
     /// pre-RT-002 bundles.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kel_attachments: Vec<String>,
+    /// Delegated device KELs anchored under this identity's root. Commits are
+    /// signed by a DEVICE AID, so a stateless verifier needs the device's KEL,
+    /// not only the root's. Each entry authenticates exactly like the root KEL
+    /// (per-event hex CESR attachments), with the root's seal index resolving
+    /// the delegation. Empty in bundles exported before this field existed —
+    /// and for identities whose signing DID IS the root.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub device_kels: Vec<BundleDeviceKel>,
     /// UTC timestamp when this bundle was created
     pub bundle_timestamp: DateTime<Utc>,
     /// Maximum age in seconds before this bundle is considered stale
@@ -969,6 +977,18 @@ impl IdentityBundle {
         }
         Ok(())
     }
+}
+
+/// One delegated device KEL carried inside an [`IdentityBundle`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct BundleDeviceKel {
+    /// The device's `did:keri:` AID (the `dip` prefix the root anchored).
+    pub did: String,
+    /// The device KEL events, oldest first.
+    pub kel: Vec<auths_keri::Event>,
+    /// The CESR signature attachment (hex) for each `kel` event, in order.
+    pub kel_attachments: Vec<String>,
 }
 
 /// Represents a 2-way key attestation between a primary identity and a device key.

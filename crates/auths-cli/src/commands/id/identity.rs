@@ -857,6 +857,53 @@ pub fn handle_id(
                 kel_attachments.push(hex::encode(att));
             }
 
+            // Delegated device KELs: commits are signed by a DEVICE AID, so a
+            // stateless verifier needs each device KEL the root anchored — not
+            // only the root's. Enumerate the registry for dip-rooted KELs whose
+            // delegator is this identity, exporting each with its attachments.
+            let root_prefix_str = prefix.as_str().to_string();
+            let mut device_prefixes: Vec<String> = Vec::new();
+            let _ = registry.visit_identities(&mut |candidate| {
+                if candidate != root_prefix_str {
+                    device_prefixes.push(candidate.to_string());
+                }
+                std::ops::ControlFlow::Continue(())
+            });
+            let mut device_kels = Vec::new();
+            for device in device_prefixes {
+                let device_prefix = auths_keri::Prefix::new_unchecked(device.clone());
+                let mut device_events: Vec<auths_keri::Event> = Vec::new();
+                let _ = registry.visit_events(&device_prefix, 0, &mut |e| {
+                    device_events.push(e.clone());
+                    std::ops::ControlFlow::Continue(())
+                });
+                let delegated_by_this_root = device_events
+                    .first()
+                    .and_then(|e| e.delegator())
+                    .is_some_and(|d| d.as_str() == root_prefix_str);
+                if !delegated_by_this_root {
+                    continue;
+                }
+                let mut device_attachments = Vec::with_capacity(device_events.len());
+                for e in &device_events {
+                    let seq = e.sequence().value();
+                    let att = registry
+                        .get_attachment(&device_prefix, seq)
+                        .map_err(|err| anyhow::anyhow!("failed to read device KEL signature: {err}"))?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "device {device} KEL event at seq {seq} has no stored signature                                  attachment; cannot export a verifiable bundle"
+                            )
+                        })?;
+                    device_attachments.push(hex::encode(att));
+                }
+                device_kels.push(auths_verifier::BundleDeviceKel {
+                    did: format!("did:keri:{device}"),
+                    kel: device_events,
+                    kel_attachments: device_attachments,
+                });
+            }
+
             // Create the bundle. Curve flows in-band from the typed keychain
             // extraction so verifiers never re-derive it from byte length.
             let bundle = IdentityBundle {
@@ -866,6 +913,7 @@ pub fn handle_id(
                 attestation_chain: attestations,
                 kel,
                 kel_attachments,
+                device_kels,
                 bundle_timestamp: now,
                 max_valid_for_secs: max_age_secs,
             };

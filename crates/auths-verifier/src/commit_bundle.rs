@@ -12,7 +12,9 @@
 //! `verifyCommitJson` WASM export), so the verdict cannot drift between
 //! transports.
 
-use auths_keri::{Event, compute_event_said, pair_kel_attachments, validate_signed_kel};
+use auths_keri::{
+    Event, KelSealIndex, compute_event_said, pair_kel_attachments, validate_signed_kel,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
@@ -61,7 +63,12 @@ pub enum BundleTrustError {
 pub struct BundleTrust {
     root_did: String,
     kel: Vec<Event>,
+    device_kels: Vec<AuthenticatedDeviceKel>,
 }
+
+/// One authenticated device KEL from a bundle: the device's `did:keri:` and its
+/// seal-checked events, oldest first.
+pub type AuthenticatedDeviceKel = (String, Vec<Event>);
 
 impl BundleTrust {
     /// Parse a bundle into a trust anchor: freshness + RT-005 + RT-002.
@@ -135,9 +142,57 @@ impl BundleTrust {
                 .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
         }
 
+        // Device KELs authenticate the same way, with the just-authenticated
+        // root KEL resolving each delegation seal. Self-certification first: a
+        // bundle cannot pair a victim's device DID with an attacker-authored
+        // KEL any more than it can for the root.
+        let root_seals = KelSealIndex::from_events(&bundle.kel);
+        let mut device_kels = Vec::with_capacity(bundle.device_kels.len());
+        for device in &bundle.device_kels {
+            let prefix = device
+                .did
+                .strip_prefix("did:keri:")
+                .unwrap_or(device.did.as_str());
+            let Some(inception) = device.kel.first() else {
+                return Err(BundleTrustError::KelUnauthenticated(format!(
+                    "device {} carries an empty KEL",
+                    device.did
+                )));
+            };
+            let said = compute_event_said(inception).map_err(|e| {
+                BundleTrustError::NotSelfCertifying(format!(
+                    "device {} KEL inception has no computable SAID: {e}",
+                    device.did
+                ))
+            })?;
+            if prefix != said.as_str() {
+                return Err(BundleTrustError::NotSelfCertifying(format!(
+                    "device did {} does not self-certify to its inception SAID did:keri:{said}",
+                    device.did
+                )));
+            }
+            let attachment_bytes: Vec<Vec<u8>> = device
+                .kel_attachments
+                .iter()
+                .map(|att_hex| {
+                    hex::decode(att_hex).map_err(|e| {
+                        BundleTrustError::KelUnauthenticated(format!(
+                            "non-hex device KEL signature attachment: {e}"
+                        ))
+                    })
+                })
+                .collect::<Result<_, _>>()?;
+            let signed = pair_kel_attachments(device.kel.clone(), &attachment_bytes)
+                .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
+            validate_signed_kel(&signed, Some(&root_seals))
+                .map_err(|e| BundleTrustError::KelUnauthenticated(e.to_string()))?;
+            device_kels.push((device.did.clone(), device.kel.clone()));
+        }
+
         Ok(Self {
             root_did: bundle.identity_did.to_string(),
             kel: bundle.kel.clone(),
+            device_kels,
         })
     }
 
@@ -152,10 +207,16 @@ impl BundleTrust {
         &self.kel
     }
 
-    /// Consume the anchor into `(root_did, kel)` for callers that thread the
-    /// parts separately (the CLI's stateless resolver).
-    pub fn into_parts(self) -> (String, Vec<Event>) {
-        (self.root_did, self.kel)
+    /// The authenticated device KELs — `(did, events)` per delegated device the
+    /// bundle carries, each seal-checked against the root KEL.
+    pub fn device_kels(&self) -> &[AuthenticatedDeviceKel] {
+        &self.device_kels
+    }
+
+    /// Consume the anchor into `(root_did, kel, device_kels)` for callers that
+    /// thread the parts separately (the CLI's stateless resolver).
+    pub fn into_parts(self) -> (String, Vec<Event>, Vec<AuthenticatedDeviceKel>) {
+        (self.root_did, self.kel, self.device_kels)
     }
 }
 
