@@ -49,7 +49,9 @@ pub fn run(workspace_root: PathBuf) -> anyhow::Result<()> {
             // rustfmt may float a trailing annotation to the next line (inside a
             // brace group) — accept the marker on the line, the one above, or below.
             let annotated = line.contains(ALLOW_MARKER)
-                || idx.checked_sub(1).is_some_and(|i| lines[i].contains(ALLOW_MARKER))
+                || idx
+                    .checked_sub(1)
+                    .is_some_and(|i| lines[i].contains(ALLOW_MARKER))
                 || lines.get(idx + 1).is_some_and(|l| l.contains(ALLOW_MARKER));
             if is_deep && !annotated {
                 violations.push(format!(
