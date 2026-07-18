@@ -1,8 +1,13 @@
 use std::path::PathBuf;
 
 use auths_core::config::{EnvironmentConfig, KeychainConfig}; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-use auths_core::storage::keychain::{ // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-    IdentityDID, KeyAlias, KeyRole, KeyStorage, get_platform_keychain_with_config,
+use auths_core::storage::keychain::{
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+    IdentityDID,
+    KeyAlias,
+    KeyRole,
+    KeyStorage,
+    get_platform_keychain_with_config,
 };
 
 use crate::error::format_error;

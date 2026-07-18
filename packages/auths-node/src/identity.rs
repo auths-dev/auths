@@ -9,8 +9,12 @@ use auths_sdk::context::AuthsContext;
 use auths_sdk::device::link_device;
 use auths_sdk::types::{DeviceLinkConfig, IdentityRotationConfig};
 use auths_sdk::workflows::rotation::rotate_identity;
-use auths_storage::git::{ // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
+use auths_storage::git::{
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+    GitRegistryBackend,
+    RegistryAttestationStorage,
+    RegistryConfig,
+    RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
@@ -282,7 +286,10 @@ pub fn delegate_agent(
         .iter()
         .map(|c| {
             auths_keri::Capability::parse(c).map_err(|e| {
-                format_error("AUTHS_INVALID_INPUT", format!("Invalid capability '{c}': {e}"))
+                format_error(
+                    "AUTHS_INVALID_INPUT",
+                    format!("Invalid capability '{c}': {e}"),
+                )
             })
         })
         .collect::<napi::Result<_>>()?;

@@ -166,7 +166,10 @@ pub fn authenticate_presentation(
         return Ok(denied("challenge-mismatch", None));
     }
     let Ok(nonce_bytes) = Nonce::parse_b64url(nonce).map(|n| n.as_bytes().to_vec()) else {
-        return Ok(denied("bad-authorization-header", Some("malformed nonce".into())));
+        return Ok(denied(
+            "bad-authorization-header",
+            Some("malformed nonce".into()),
+        ));
     };
     let Ok(signature_bytes) = B64_URL.decode(&wire.signature_b64) else {
         return Ok(denied(

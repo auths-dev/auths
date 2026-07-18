@@ -11,8 +11,12 @@ use auths_sdk::signing::{
     ArtifactSigningParams, SigningKeyMaterial, sign_artifact as sdk_sign_artifact,
     sign_artifact_raw,
 };
-use auths_storage::git::{ // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
+use auths_storage::git::{
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+    GitRegistryBackend,
+    RegistryAttestationStorage,
+    RegistryConfig,
+    RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
 use chrono::Utc;

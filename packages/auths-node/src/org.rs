@@ -12,8 +12,12 @@ use auths_id::storage::git_refs::AttestationMetadata; // binding-boundary-allow:
 use auths_id::storage::registry::RegistryBackend; // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
 use auths_sdk::context::AuthsContext;
 use auths_sdk::workflows::org::{add_member, list_members, revoke_member};
-use auths_storage::git::{ // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
+use auths_storage::git::{
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+    GitRegistryBackend,
+    RegistryAttestationStorage,
+    RegistryConfig,
+    RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Role;

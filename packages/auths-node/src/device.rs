@@ -7,8 +7,12 @@ use auths_sdk::context::AuthsContext;
 use auths_sdk::device::extend_device;
 use auths_sdk::device::{link_device, revoke_device};
 use auths_sdk::types::{DeviceExtensionConfig, DeviceLinkConfig};
-use auths_storage::git::{ // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
-    GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
+use auths_storage::git::{
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
+    GitRegistryBackend,
+    RegistryAttestationStorage,
+    RegistryConfig,
+    RegistryIdentityStorage,
 };
 use auths_verifier::clock::SystemClock;
 use auths_verifier::core::Capability;
