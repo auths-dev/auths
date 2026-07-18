@@ -63,6 +63,8 @@ export declare const enum CredentialStatus {
   IssuerKelDuplicitous = 'IssuerKelDuplicitous',
   /** The request JSON could not be parsed; see `message`. */
   MalformedRequest = 'MalformedRequest',
+  /** A supplied KEL failed signature authentication (forged or missing attachments). */
+  KelUnauthenticated = 'KelUnauthenticated',
   /** A request slice exceeded its bound; see `field`. */
   InputTooLarge = 'InputTooLarge',
   /** The request schema version is not understood by this build. */
@@ -318,6 +320,8 @@ export declare const enum PresentationStatus {
   CredentialNotValid = 'CredentialNotValid',
   /** The request JSON could not be parsed; see `message`. */
   MalformedRequest = 'MalformedRequest',
+  /** A supplied KEL failed signature authentication (forged or missing attachments). */
+  KelUnauthenticated = 'KelUnauthenticated',
   /** A request slice exceeded its bound; see `field`. */
   InputTooLarge = 'InputTooLarge',
   /** The request schema version is not understood by this build. */
