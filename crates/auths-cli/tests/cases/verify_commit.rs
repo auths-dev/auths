@@ -44,10 +44,18 @@ fn test_verify_commit_json_output_error() {
 // Tests for the unified `auths verify` command routing to commit verification
 #[test]
 fn test_unified_verify_routes_head_to_commit_verify() {
-    // `auths verify HEAD` routes to commit verification. Without a trusted, trailer-bearing
-    // commit it fails (non-zero exit), but that is a routing success — not a clap parse error.
+    // `auths verify HEAD` routes to commit verification. The VERDICT depends on the
+    // checkout this test runs in: an unsigned or untrusted HEAD fails, while a fully
+    // signed, root-pinned checkout (CI on main, now that every commit is signed)
+    // legitimately succeeds. Routing is what this test pins: either verdict exits
+    // 0 or 1 — never clap's usage-error exit 2.
     let mut cmd = Command::cargo_bin("auths").unwrap();
     cmd.arg("verify").arg("HEAD");
 
-    cmd.assert().failure();
+    let output = cmd.output().unwrap();
+    let code = output.status.code().unwrap_or(-1);
+    assert!(
+        code == 0 || code == 1,
+        "verify HEAD must route to commit verification (exit {code}; 2 = clap parse error)"
+    );
 }

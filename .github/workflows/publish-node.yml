@@ -162,11 +162,27 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@latest
 
+      # A re-pushed tag re-fires this workflow; npm refuses republishing an
+      # existing version, so an already-published version is a SKIP, not a failure.
+      - name: Skip if this version is already on npm
+        id: published
+        working-directory: packages/auths-node
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@auths-dev/sdk@$VERSION" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "@auths-dev/sdk@$VERSION already on npm — skipping republish"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish platform packages
+        if: steps.published.outputs.exists != 'true'
         working-directory: packages/auths-node
         run: npx napi prepublish -t npm --no-gh-release
 
       - name: Publish main package
+        if: steps.published.outputs.exists != 'true'
         working-directory: packages/auths-node
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.target }}" = "dry-run" ]; then
