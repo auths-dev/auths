@@ -10,7 +10,8 @@
 //! ## Features
 //!
 //! - `backend-git` — Git-backed storage via `libgit2` (enables `GitRegistryBackend`)
-//! - `backend-postgres` — PostgreSQL-backed storage via `sqlx` (stub, not yet implemented)
+//! - `backend-postgres` — PostgreSQL-backed storage via `sqlx` (enables
+//!   `PostgresAdapter`, a concurrent multi-writer `RegistryBackend`)
 //!
 //! ## Usage
 //!

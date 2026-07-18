@@ -56,5 +56,9 @@ required-features = ["backend-git"]
 name = "integration"
 required-features = ["backend-git"]
 
+[[test]]
+name = "postgres_integration"
+required-features = ["backend-postgres"]
+
 [lints]
 workspace = true
