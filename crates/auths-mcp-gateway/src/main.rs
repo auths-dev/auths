@@ -303,6 +303,19 @@ struct VerifySpendArgs {
     /// re-derived fleet-wide sum across every delegation log).
     #[arg(long = "expect-cumulative", value_name = "CENTS")]
     expect_cumulative: Option<u64>,
+
+    /// Resume after an already-verified prefix of this many RECORDS (from a prior
+    /// run's `checkpoint:` line). Requires `--resume-binding` and `--resume-cents`.
+    #[arg(long = "resume-index", value_name = "N", requires_all = ["resume_binding", "resume_cents"])]
+    resume_index: Option<usize>,
+
+    /// The verified prefix's final commit binding (`checkpoint:` line `binding=`).
+    #[arg(long = "resume-binding", value_name = "HASH")]
+    resume_binding: Option<String>,
+
+    /// The verified prefix's re-derived settled cents (`checkpoint:` line `settled_cents=`).
+    #[arg(long = "resume-cents", value_name = "CENTS")]
+    resume_cents: Option<u64>,
 }
 
 fn main() -> ExitCode {
@@ -534,12 +547,44 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
     };
     // The facilitator key that would verify a captured rail attestation is supplied out-of-band once
     // the wire captures one (a follow-on); without it the offline audit still re-derives the spend.
-    let verdict = gate
-        .audit_spend_log(&records, chrono::Utc::now().timestamp(), &counter, None)
-        .await;
+    let now_ts = chrono::Utc::now().timestamp();
+    let verdict = match args.resume_index {
+        Some(index) => {
+            if index > records.len() {
+                eprintln!(
+                    "auths-mcp-gateway: --resume-index {index} exceeds the log ({} records)",
+                    records.len()
+                );
+                return ExitCode::FAILURE;
+            }
+            #[allow(clippy::expect_used)] // INVARIANT: clap requires_all guarantees both flags
+            let resume = auths_mcp_core::AuditResume {
+                prior_records: index,
+                prior_binding: args.resume_binding.clone().expect("required by clap"),
+                prior_settled_cents: auths_mcp_core::Cents::new(
+                    args.resume_cents.expect("required by clap"),
+                ),
+            };
+            gate.audit_spend_log_resumed(&records[index..], now_ts, &counter, None, &resume)
+                .await
+        }
+        None => gate.audit_spend_log(&records, now_ts, &counter, None).await,
+    };
     println!("verify-spend: {} — {verdict}", verdict.code());
     if !verdict.is_consistent() {
         return ExitCode::FAILURE;
+    }
+    // The resumable end state a checkpointing caller stores for its next run.
+    if let Some(last) = records.last() {
+        println!(
+            "checkpoint: records={} settled_cents={} binding={}",
+            records.len(),
+            match &verdict {
+                auths_mcp_core::AuditVerdict::Consistent(proof) => proof.settled_cents().get(),
+                _ => 0,
+            },
+            auths_mcp_core::call_commit_binding(&last.call_commit),
+        );
     }
     if let Some(path) = &args.treasury_checkpoints
         && !cross_check_treasury(

@@ -383,11 +383,69 @@ pub async fn audit_spend_log(
     counter: &CounterRef,
     facilitator_pubkey: Option<&[u8]>,
 ) -> AuditVerdict {
+    audit_spend_log_resumed(
+        records,
+        agent_kel,
+        delegator_kel,
+        pinned_roots,
+        now,
+        counter,
+        facilitator_pubkey,
+        &AuditResume::genesis(),
+    )
+    .await
+}
+
+/// Where a resumed audit picks up: the state a PRIOR full verification of the log's
+/// prefix established. Sound because the `Auths-Prev` chain forces the suffix's
+/// first record to link to `prior_binding`, and every suffix signature is still
+/// re-verified — only work already proven by the caller's own earlier audit is
+/// skipped, never trust in the operator.
+#[derive(Debug, Clone)]
+pub struct AuditResume {
+    /// Records already verified (the suffix's index offset in the full log).
+    pub prior_records: usize,
+    /// The verified prefix's final commit binding (`Auths-Prev` for the next record).
+    pub prior_binding: String,
+    /// The settled total the verified prefix re-derived.
+    pub prior_settled_cents: Cents,
+}
+
+impl AuditResume {
+    /// A from-the-top audit: genesis binding, zero prior spend.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let verdict = audit_spend_log_resumed(records, …, &AuditResume::genesis()).await;
+    /// ```
+    pub fn genesis() -> AuditResume {
+        AuditResume {
+            prior_records: 0,
+            prior_binding: SPEND_LOG_GENESIS.to_string(),
+            prior_settled_cents: Cents::ZERO,
+        }
+    }
+}
+
+/// [`audit_spend_log`], resuming after an already-verified prefix: `records` is the
+/// SUFFIX, and `resume` carries the prefix's proven end state. The final verdict
+/// reports whole-log totals (prefix + suffix).
+#[allow(clippy::too_many_arguments)]
+pub async fn audit_spend_log_resumed(
+    records: &[SpendLogRecord],
+    agent_kel: &[Event],
+    delegator_kel: &[Event],
+    pinned_roots: &[String],
+    now: i64,
+    counter: &CounterRef,
+    facilitator_pubkey: Option<&[u8]>,
+    resume: &AuditResume,
+) -> AuditVerdict {
     let provider = auths_crypto::default_provider();
-    let mut settled = Cents::ZERO;
-    // The binding each record's `Auths-Prev` must match — the prior record's commit hash, or the
-    // genesis sentinel for the first record.
-    let mut expected_prev = SPEND_LOG_GENESIS.to_string();
+    let mut settled = resume.prior_settled_cents;
+    // The binding each record's `Auths-Prev` must match — the prior record's commit hash, the
+    // resumed prefix's final binding, or the genesis sentinel for a from-the-top audit.
+    let mut expected_prev = resume.prior_binding.clone();
     for (i, rec) in records.iter().enumerate() {
         // Re-verify the SIGNED proof bytes — the gate's own authenticity check, re-run offline.
         let commit_verdict = auths_verifier::verify_commit_against_kel_scoped(
@@ -567,15 +625,15 @@ pub async fn audit_spend_log(
         }
     }
     // The operator's claimed cross-rail total is the last record's cumulative — an UNTRUSTED hint we
-    // compare against the cost we re-derived from the rail responses.
-    let claimed = records
-        .last()
-        .map(|r| r.receipt.cumulative_cents)
-        .unwrap_or(Cents::ZERO);
-    if settled != claimed {
+    // compare against the cost we re-derived from the rail responses. An EMPTY resumed suffix has
+    // no new claim to compare (the prefix's claim was checked when it was verified); the durable
+    // counter below still cross-checks the carried total.
+    if let Some(last) = records.last()
+        && settled != last.receipt.cumulative_cents
+    {
         return AuditVerdict::BudgetMismatch {
             recomputed_cents: settled,
-            claimed_cents: claimed,
+            claimed_cents: last.receipt.cumulative_cents,
         };
     }
     // Cross-check the re-derived total against the DURABLE verifier-held counter the wire advanced —
@@ -599,7 +657,10 @@ pub async fn audit_spend_log(
             claimed_cents: durable.get(),
         };
     }
-    AuditVerdict::Consistent(ConsistentProof::new(records.len(), settled))
+    AuditVerdict::Consistent(ConsistentProof::new(
+        resume.prior_records + records.len(),
+        settled,
+    ))
 }
 
 /// The first record in a spend log has no predecessor; its signed `Auths-Prev` trailer carries this
