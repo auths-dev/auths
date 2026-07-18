@@ -463,7 +463,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
 
       - name: Build auths binaries
-        run: cargo build --package auths-cli
+        run: cargo build --package auths-cli --package auths-mcp-gateway
 
       - name: Configure git
         run: |

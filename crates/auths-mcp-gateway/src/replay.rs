@@ -192,7 +192,29 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     // re-verify every signed proof + re-derive spend with no trust in the run that produced it.
     // A clean run audits `consistent`; with AUTHS_MCP_REPLAY_TAMPER set, the forged proof in the
     // log is CAUGHT here as `tampered-proof`.
-    let log_path = auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did);
+    // Spend logs rotate by period into `spend-log/<delegation>/<period>.jsonl`.
+    // Resolve the concrete period file this (single-period, hermetic) replay just
+    // wrote, so the offline self-audit AND the emitted `verify-spend` command AND
+    // the red-team file tools (drop-a-record, tail-truncate) all operate on one
+    // real file path — a rotated DIRECTORY has no flat `spend-log/<delegation>.jsonl`
+    // for the old read to find, which is why the pre-rotation path skipped the audit.
+    let log_dir = auths_mcp_core::spend_log_dir(chain.org_repo(), &chain.agent_did);
+    let log_path = if log_dir.is_dir() {
+        std::fs::read_dir(&log_dir)
+            .ok()
+            .map(|rd| {
+                let mut files: Vec<std::path::PathBuf> = rd
+                    .filter_map(|e| e.ok().map(|e| e.path()))
+                    .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+                    .collect();
+                files.sort();
+                files
+            })
+            .and_then(|files| files.into_iter().next_back())
+            .unwrap_or_else(|| auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did))
+    } else {
+        auths_mcp_core::spend_log_path(chain.org_repo(), &chain.agent_did)
+    };
     match auths_mcp_core::read_spend_log(&log_path) {
         Ok(records) => {
             // Open the durable counter the SAME way the standalone verify-spend does (from the

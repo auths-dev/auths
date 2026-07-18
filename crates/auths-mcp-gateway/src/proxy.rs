@@ -876,9 +876,15 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
          Re-verify the spend log offline (trusting neither this gateway nor its operator) with:",
         chain.agent_did, chain.root_did,
     );
+    // Point the re-verify command at the rotated spend-log DIRECTORY, not
+    // `spend_log` above: this line prints at startup BEFORE any call, when the
+    // rotated dir does not yet exist and `resolve_spend_log` falls back to the
+    // flat path — but every brokered call writes to `spend-log/<delegation>/<period>.jsonl`.
+    // `verify-spend --log <dir>` walks all period files, so the emitted command
+    // audits the log this session actually writes.
     eprintln!(
         "auths-mcp-gateway: verify-spend-cmd: verify-spend --log {} --registry {} --agent {} --root {}",
-        spend_log.display(),
+        auths_mcp_core::spend_log_dir(chain.org_repo(), &chain.agent_did).display(),
         chain.org_repo().display(),
         chain.agent_did,
         chain.root_did,
