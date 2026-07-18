@@ -97,6 +97,10 @@ pub struct VerifyArtifactArgs {
     /// exactly this identity. Applied AFTER verification as an allowlist — it can only
     /// narrow a `valid` verdict to invalid on a signer mismatch, never widen it.
     pub expect_signer: Option<String>,
+    /// Require the verified signer to be a rooted `did:keri` identity (a rotatable, revocable
+    /// key-state log), rejecting a bare `did:key` self-attestation. Applied AFTER verification;
+    /// it can only narrow a `valid` verdict to invalid, never widen it.
+    pub require_rooted_signer: bool,
 }
 
 /// Decide whether the verified signer satisfies an `--expect-signer` allowlist.
@@ -113,6 +117,29 @@ fn expected_signer_mismatch(issuer: &str, expect: Option<&str>) -> Option<String
             "Signer mismatch: verified signer {issuer} is not the expected signer {want}"
         )),
         _ => None,
+    }
+}
+
+/// Decide whether the verified signer satisfies a "require a rooted signer" policy.
+///
+/// Pure: a bare `did:key` signer is a self-attestation — the key is its own identity, with no
+/// key-state log behind it, so it cannot be rotated or revoked (a leaked key stays valid
+/// forever). When the caller requires a rooted signer, only a `did:keri` issuer — whose authority
+/// is a replayable, rotatable, revocable key-state log — is accepted; a `did:key`
+/// self-attestation fails closed. Applied only after an attestation has otherwise verified, and
+/// it can only narrow a verdict to invalid, never widen it.
+///
+/// Args:
+/// * `issuer`: the verified attestation issuer (the signer).
+/// * `require_rooted`: whether the caller demands a rooted (`did:keri`) signer.
+fn unrooted_signer_rejected(issuer: &str, require_rooted: bool) -> Option<String> {
+    if require_rooted && !issuer.starts_with("did:keri:") {
+        Some(format!(
+            "Signer not root-authorized: {issuer} is a did:key self-attestation, not a \
+             rotatable did:keri identity backed by a key-state log"
+        ))
+    } else {
+        None
     }
 }
 
@@ -133,6 +160,7 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
         log_evidence,
         log_key,
         expect_signer,
+        require_rooted_signer,
     } = args;
     let witness_keys = &witness_keys;
     let file_str = file.to_string_lossy().to_string();
@@ -304,6 +332,28 @@ pub async fn handle_verify(file: &Path, args: VerifyArtifactArgs) -> Result<()> 
     // mismatch fails the verdict closed; it can only narrow `valid`, never widen it.
     if let Some(msg) =
         expected_signer_mismatch(attestation.issuer.as_str(), expect_signer.as_deref())
+    {
+        return output_result(
+            1,
+            VerifyArtifactResult {
+                file: file_str.clone(),
+                valid: false,
+                digest_match: Some(true),
+                chain_valid,
+                chain_report: chain_report.clone(),
+                witness_quorum: None,
+                issuer: Some(attestation.issuer.to_string()),
+                commit_sha: attestation.commit_sha.clone(),
+                commit_verified: None,
+                oidc_join: None,
+                error: Some(msg),
+            },
+        );
+    }
+
+    // --require-rooted-signer: a bare did:key self-attestation has no key-state log, so it cannot
+    // be rotated or revoked. When a rooted signer is demanded, reject it; narrows the verdict only.
+    if let Some(msg) = unrooted_signer_rejected(attestation.issuer.as_str(), require_rooted_signer)
     {
         return output_result(
             1,
@@ -1075,8 +1125,27 @@ pub(crate) fn raw_commit_bytes(repo: &git2::Repository, oid: git2::Oid) -> Resul
 mod tests {
     use super::expected_signer_mismatch;
     use super::raw_commit_bytes;
+    use super::unrooted_signer_rejected;
     use super::{VerifyArtifactResult, verified_summary};
+    use auths_verifier::Freshness;
     use std::process::Command;
+
+    #[test]
+    fn unrooted_signer_rejected_blocks_did_key_self_attestation() {
+        // A bare did:key signer is a self-attestation with no key-state log: when a
+        // rooted signer is required, it must fail closed.
+        assert!(
+            unrooted_signer_rejected("did:key:z6MkExample", true).is_some(),
+            "a did:key self-attestation must be rejected when a rooted signer is required"
+        );
+        // A did:keri signer is backed by a rotatable, revocable KEL — accepted.
+        assert!(
+            unrooted_signer_rejected("did:keri:EExample", true).is_none(),
+            "a did:keri signer is root-authorized and must pass"
+        );
+        // When the policy is off, the verdict is not narrowed.
+        assert!(unrooted_signer_rejected("did:key:z6MkExample", false).is_none());
+    }
 
     /// A `VerifyArtifactResult` carrying only the fields the summary reads.
     fn verified_result(report: Option<auths_verifier::VerificationReport>) -> VerifyArtifactResult {
@@ -1114,8 +1183,6 @@ mod tests {
         let line = verified_summary(&verified_result(Some(report)));
         assert!(line.contains("freshness fresh"), "got: {line}");
     }
-
-    use auths_verifier::Freshness;
 
     /// Regression: the bytes the verifier checks the SSH signature over must
     /// be byte-identical to `git cat-file commit`. A prior implementation

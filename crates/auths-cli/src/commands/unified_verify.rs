@@ -189,6 +189,7 @@ pub async fn handle_verify_unified(
                     log_evidence: None,
                     log_key: None,
                     expect_signer: None,
+                    require_rooted_signer: false,
                 },
             )
             .await
