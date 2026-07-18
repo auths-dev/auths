@@ -18,6 +18,29 @@ pub const CALL_LATENCY: &str = "auths_mcp_call_latency_seconds";
 pub const SIGN_TOTAL: &str = "auths_mcp_sign_total";
 /// Counter: settlements recorded to the signed spend log.
 pub const SETTLE_TOTAL: &str = "auths_mcp_settle_total";
+/// Histogram: per-call time spent in each brokering stage, labeled by `stage`
+/// (`sign` | `gate` | `downstream` | `settle` | `spend_log`), in seconds. The stage
+/// histograms sum to ≈ the whole-call histogram; the difference between a caller-observed
+/// round-trip and the whole-call histogram is the agent↔gateway transport (decode/encode +
+/// pipe), which the gateway does not see from inside the tool handler.
+pub const STAGE_SECONDS: &str = "auths_mcp_stage_seconds";
+
+/// Record the time spent in one brokering stage. A cheap no-op unless the Prometheus recorder
+/// is installed (i.e. unless `AUTHS_MCP_METRICS_ADDR` was set at startup).
+///
+/// Args:
+/// * `stage`: the stage label (`sign`, `gate`, `downstream`, `settle`, `spend_log`).
+/// * `elapsed`: wall-clock time spent in the stage.
+///
+/// Usage:
+/// ```ignore
+/// let t = std::time::Instant::now();
+/// // … stage work …
+/// record_stage("sign", t.elapsed());
+/// ```
+pub fn record_stage(stage: &'static str, elapsed: std::time::Duration) {
+    metrics::histogram!(STAGE_SECONDS, "stage" => stage).record(elapsed.as_secs_f64());
+}
 
 /// Serve `handle.render()` at `GET /metrics` on `addr` until the process exits.
 ///

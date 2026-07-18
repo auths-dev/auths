@@ -471,10 +471,12 @@ impl ServerHandler for GatewayProxy {
         // Link this call to the prior persisted record (the genesis sentinel for the first) via the
         // signed `Auths-Prev` trailer, so the audit can verify the spend log is a complete chain.
         let prev_binding = self.prev_binding.lock().await.clone();
+        let sign_t = std::time::Instant::now();
         let (proof_bytes, proof_sha) = self
             .chain
             .sign_call(idx, &canonical, capability.as_str(), &prev_binding)
             .map_err(|e| McpError::internal_error(format!("sign the brokered call: {e}"), None))?;
+        crate::metrics_http::record_stage("sign", sign_t.elapsed());
 
         // Authenticate + pre-authorize over the SIGNED proof: the gate verifies the proof
         // (scope ⊆ grant, live, unrevoked) AND reserves the ceiling against the durable
@@ -486,6 +488,7 @@ impl ServerHandler for GatewayProxy {
         // gate: the charge cannot be bounded, so the only safe outcome is a fail-closed
         // metered-amount-required — the call is still signed + persisted (below) as a refused record.
         let now = Utc::now();
+        let gate_t = std::time::Instant::now();
         let decision = match &cost {
             CallCost::AmountRequired { rail } => {
                 let cumulative = {
@@ -532,6 +535,7 @@ impl ServerHandler for GatewayProxy {
         // it. Either way the signed proof + receipt are persisted below, so an out-of-scope or
         // over-budget ATTEMPT is recorded too (not silently dropped), exactly as the replay gate
         // records it.
+        crate::metrics_http::record_stage("gate", gate_t.elapsed());
         let mut verdict = decision.verdict.clone();
         let mut cumulative = decision.cumulative_cents;
         // For a metered call the rail's response carries the ACTUAL settled cost + reference; these
@@ -541,9 +545,11 @@ impl ServerHandler for GatewayProxy {
         let mut settlement_commit: Option<Vec<u8>> = None;
         let mut settled_charge_ref: Option<String> = None;
         let forwarded = if decision.forwards() {
+            let down_t = std::time::Instant::now();
             let result = self.downstream.call_tool(request).await.map_err(|e| {
                 McpError::internal_error(format!("downstream tools/call failed: {e}"), None)
             })?;
+            crate::metrics_http::record_stage("downstream", down_t.elapsed());
 
             // A metered call's ACTUAL cost comes from its settle source: an operator rail reads it
             // from the downstream's OWN response (never a number the agent declared) and keeps the
@@ -608,6 +614,7 @@ impl ServerHandler for GatewayProxy {
                 settled_charge_ref.as_deref(),
                 NonZeroCents::new(actual_cents),
             ) {
+                let settle_t = std::time::Instant::now();
                 let (bytes, _sha) = self
                     .chain
                     .sign_settlement(
@@ -622,6 +629,7 @@ impl ServerHandler for GatewayProxy {
                         McpError::internal_error(format!("sign the settlement: {e}"), None)
                     })?;
                 settlement_commit = Some(bytes);
+                crate::metrics_http::record_stage("settle", settle_t.elapsed());
                 metrics::counter!(crate::metrics_http::SETTLE_TOTAL).increment(1);
             }
             Some(result)
@@ -648,6 +656,7 @@ impl ServerHandler for GatewayProxy {
         // This record's binding — what the NEXT call's `Auths-Prev` links to. Computed from the
         // bytes about to be stored, before they move into the record.
         let new_binding = auths_mcp_core::call_commit_binding(&proof_bytes);
+        let log_t = std::time::Instant::now();
         if let Err(e) = crate::spend_log::append(
             self.chain.org_repo(),
             &self.chain.agent_did,
@@ -672,10 +681,11 @@ impl ServerHandler for GatewayProxy {
                 None,
             ));
         }
+        crate::metrics_http::record_stage("spend_log", log_t.elapsed());
         // Advance the chain head so the next brokered call links to this record.
         *self.prev_binding.lock().await = new_binding;
 
-        // #7: record the call's latency + verdict (no-ops unless the recorder is installed).
+        // Record the call's total latency + verdict (no-ops unless the recorder is installed).
         metrics::histogram!(crate::metrics_http::CALL_LATENCY)
             .record(call_start.elapsed().as_secs_f64());
         metrics::counter!(crate::metrics_http::CALLS_TOTAL, "verdict" => verdict_metric_label(&verdict))
