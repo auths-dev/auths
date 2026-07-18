@@ -60,7 +60,28 @@ fn to_auths_capability(cap: &str) -> String {
     cap.replace('.', ":")
 }
 
+/// The identity the gateway commits under when the machine has none: a clean HOME
+/// (no gitconfig, no GIT_* env) must never abort a chain build on git's
+/// auto-detect. Caller-provided env always wins — these apply only when absent.
+fn default_git_identity() -> [(&'static str, &'static str); 4] {
+    [
+        ("GIT_AUTHOR_NAME", "auths-mcp-gateway"),
+        ("GIT_AUTHOR_EMAIL", "gateway@auths.local"),
+        ("GIT_COMMITTER_NAME", "auths-mcp-gateway"),
+        ("GIT_COMMITTER_EMAIL", "gateway@auths.local"),
+    ]
+}
+
 fn run(cmd: &mut Command) -> anyhow::Result<std::process::Output> {
+    for (key, value) in default_git_identity() {
+        if std::env::var_os(key).is_none()
+            && !cmd
+                .get_envs()
+                .any(|(k, _)| k == std::ffi::OsStr::new(key))
+        {
+            cmd.env(key, value);
+        }
+    }
     let out = cmd
         .output()
         .map_err(|e| anyhow::anyhow!("spawn {:?}: {e}", cmd.get_program()))?;
