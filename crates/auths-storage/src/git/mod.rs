@@ -9,7 +9,6 @@ pub mod remote;
 pub mod standalone_attestation;
 pub mod standalone_export;
 pub mod standalone_identity;
-pub mod sync;
 mod tree_ops;
 pub mod vfs;
 
@@ -28,5 +27,4 @@ pub use remote::{
 pub use standalone_attestation::GitAttestationStorage;
 pub use standalone_export::GitRefSink;
 pub use standalone_identity::GitIdentityStorage;
-pub use sync::{PushOutcome, RegistryPullReport, RegistrySyncError, pull_registry, push_registry};
 pub use vfs::{FixedClock, OsVfs, Vfs};

@@ -187,24 +187,41 @@ jobs:
             --note "Release ${{ github.ref_name }}"
 
       # The ephemeral attestation anchors HEAD, whose trust chain ends at the
-      # maintainer's KEL. The repo publishes that KEL under refs/auths/registry
-      # (KEL-native distribution) — seed the runner's ~/.auths so the verifier
-      # can resolve it.
-      - name: Seed maintainer registry for verification
-        shell: bash
+      # maintainer's KEL. Resolve that KEL from the committed identity bundle
+      # (.auths/ci-bundle.json) — the same stateless bundle the commit-verify
+      # job uses — instead of seeding ~/.auths from refs/auths/registry. The
+      # git-ref mirror was unreliable (transportless push → drift, see #374);
+      # the bundle travels with the repo and needs no network fetch.
+      # Staleness tripwire: the committed bundle is a snapshot, so a key
+      # rotation silently invalidates it. Verifying HEAD's own commit through
+      # the bundle exercises the exact trust chain the artifact check needs and
+      # fails fast with an actionable message instead of at the last step.
+      - name: Guard — committed bundle still covers the signer (Unix)
+        if: matrix.ext == '.tar.gz'
         run: |
-          git init -q "$HOME/.auths"
-          git -C "$HOME/.auths" fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" 'refs/auths/*:refs/auths/*'
-          git -C "$HOME/.auths" for-each-ref refs/auths/
+          ./staging/auths verify HEAD --identity-bundle .auths/ci-bundle.json || {
+            echo "::error::.auths/ci-bundle.json no longer verifies HEAD — the maintainer key likely rotated after the bundle was exported. Regenerate with: auths id export-bundle --alias main --output .auths/ci-bundle.json --max-age-secs 31536000, commit, and re-tag."
+            exit 1
+          }
+
+      - name: Guard — committed bundle still covers the signer (Windows)
+        if: matrix.ext == '.zip'
+        shell: pwsh
+        run: |
+          .\staging\auths.exe verify HEAD --identity-bundle .auths/ci-bundle.json
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::.auths/ci-bundle.json no longer verifies HEAD - regenerate with 'auths id export-bundle --alias main --output .auths/ci-bundle.json --max-age-secs 31536000', commit, and re-tag."
+            exit 1
+          }
 
       - name: Verify own attestation (Unix)
         if: matrix.ext == '.tar.gz'
-        run: ./staging/auths artifact verify "${{ matrix.asset_name }}${{ matrix.ext }}"
+        run: ./staging/auths artifact verify "${{ matrix.asset_name }}${{ matrix.ext }}" --identity-bundle .auths/ci-bundle.json
 
       - name: Verify own attestation (Windows)
         if: matrix.ext == '.zip'
         shell: pwsh
-        run: .\staging\auths.exe artifact verify "${{ matrix.asset_name }}${{ matrix.ext }}"
+        run: .\staging\auths.exe artifact verify "${{ matrix.asset_name }}${{ matrix.ext }}" --identity-bundle .auths/ci-bundle.json
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -4,9 +4,10 @@
 //! Every other verification test in this suite runs as the signer, with a populated
 //! `~/.auths`. That is exactly why a total failure of this property shipped
 //! undetected: `auths init` wrote `<repo>/.auths/roots` but never staged it, so the
-//! trust pin never reached a cloner; and nothing mirrored `refs/auths/registry` to
-//! the remote, so the KEL never travelled either. A fresh clone failed with "KEL not
-//! found" while the engine itself was correct the whole time.
+//! trust pin never reached a cloner. A fresh clone failed with "KEL not found"
+//! while the engine itself was correct the whole time. The KEL travels the same
+//! way the pin does: committed in the clone, as `.auths/ci-bundle.json`
+//! (`auths id export-bundle`) — no side-channel ref mirror, no network fetch.
 //!
 //! These tests play the *second person*: a machine with no auths identity, a plain
 //! `git clone`, and no flags. They must keep failing closed when trust is absent.
@@ -20,9 +21,9 @@ use super::helpers::TestEnv;
 
 /// An identity that has signed HEAD and pushed it to a bare origin.
 ///
-/// Returns the signer's env and the origin path. The push goes through a plain
-/// `git push`: the managed pre-push hook is what mirrors `refs/auths/registry`, and
-/// this test would be worthless if it pushed the registry by hand.
+/// Returns the signer's env and the origin path. The signer's KEL travels inside
+/// the committed `.auths/ci-bundle.json` — the same clone that carries the code
+/// and the trust pin carries the evidence, so verification needs no network.
 fn signer_with_pushed_commit() -> (TestEnv, PathBuf) {
     let alice = TestEnv::new();
     alice.init_identity();
@@ -36,7 +37,33 @@ fn signer_with_pushed_commit() -> (TestEnv, PathBuf) {
     assert!(init_bare.status.success(), "git init --bare failed");
 
     std::fs::write(alice.repo_path.join("main.rs"), "fn main() {}").unwrap();
-    let add = alice.git_cmd().args(["add", "main.rs"]).output().unwrap();
+
+    let bundle = alice.repo_path.join(".auths").join("ci-bundle.json");
+    let export = alice
+        .cmd("auths")
+        .args([
+            "id",
+            "export-bundle",
+            "--alias",
+            "main",
+            "--output",
+            bundle.to_str().unwrap(),
+            "--max-age-secs",
+            "3600",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        export.status.success(),
+        "id export-bundle failed: {}",
+        String::from_utf8_lossy(&export.stderr)
+    );
+
+    let add = alice
+        .git_cmd()
+        .args(["add", "main.rs", ".auths/ci-bundle.json"])
+        .output()
+        .unwrap();
     assert!(add.status.success(), "git add failed");
 
     // A plain signed commit — no `auths sign`. The pin must ride along on its own.
@@ -147,22 +174,23 @@ fn the_trust_pin_travels_with_the_repository() {
     );
 }
 
-/// The KEL must reach the remote the code went to, via the managed pre-push hook —
-/// not via a manual `auths registry push`.
+/// The KEL must be *in the clone* — the committed bundle, like the pin, travels
+/// with the code instead of over a side-channel ref mirror.
 #[test]
-fn a_plain_push_mirrors_the_registry_to_the_remote() {
-    let (alice, origin) = signer_with_pushed_commit();
+fn the_committed_bundle_carries_the_kel_in_the_clone() {
+    let (_alice, origin) = signer_with_pushed_commit();
+    let bob = observer_cloning(&origin);
 
-    let refs = alice
-        .git_cmd()
-        .arg("ls-remote")
-        .arg(&origin)
-        .output()
-        .unwrap();
-    let refs = String::from_utf8_lossy(&refs.stdout);
+    let bundle = bob.repo_path.join(".auths").join("ci-bundle.json");
     assert!(
-        refs.contains("refs/auths/registry"),
-        "a plain `git push` must mirror the signer's KEL to the remote, got:\n{refs}"
+        bundle.is_file(),
+        ".auths/ci-bundle.json must be committed, or a cloner has no KEL to verify against"
+    );
+    let content = std::fs::read_to_string(&bundle).unwrap();
+    assert!(
+        content.contains("kel_attachments"),
+        "the bundle must carry signature attachments, got: {}",
+        &content[..content.len().min(200)]
     );
 }
 

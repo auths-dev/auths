@@ -24,6 +24,31 @@ pub fn load_project_pinned_roots() -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// The committed identity bundle, when the repository carries one.
+///
+/// A repo that commits `.auths/ci-bundle.json` (produced by
+/// `auths id export-bundle`) ships its signer's KEL with the code, so a fresh
+/// clone verifies with no flags and no network. The bundle stays evidence-only:
+/// its root must still match an independently pinned root (`.auths/roots` or
+/// self-trust), exactly as with an explicit `--identity-bundle`, which always
+/// wins over discovery.
+///
+/// Usage:
+/// ```ignore
+/// let bundle = cmd.identity_bundle.clone().or_else(discover_project_bundle);
+/// ```
+pub fn discover_project_bundle() -> Option<std::path::PathBuf> {
+    let output = crate::subprocess::git_command(&["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let root = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let bundle = root.join(".auths").join("ci-bundle.json");
+    bundle.is_file().then_some(bundle)
+}
+
 /// The current repository's `origin` URL, when there is one.
 ///
 /// Used as the default KEL transport: a repo carries its signer's KEL on the same

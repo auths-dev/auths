@@ -18,6 +18,13 @@
 //! **non-forced**, so a remote that rewinds its history (e.g. to resurrect a revoked
 //! credential by serving an older tip) is rejected and the replica keeps the newest state it
 //! has seen.
+//!
+//! **Transport scope (deliberate):** the shipped `GitRegistrySync` adapter links git2
+//! without network transports, so it syncs from **local paths / `file://` remotes only**
+//! (an operator-local mirror kept fresh by whatever moves bytes on that host). Network
+//! distribution is not this crate's job; relying parties that receive KELs over a wire
+//! get them in-band (signed presentation bundles) and enforce freshness per request.
+//! [`RegistrySync`] is the port where a network adapter would land if that changes.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,7 +42,8 @@ pub const AUTHS_REFS_GLOB: &str = "refs/auths/*";
 pub struct RemoteUrl(String);
 
 impl RemoteUrl {
-    /// Parse a non-empty remote URL (e.g. `https://…`, `ssh://…`, `file:///srv/registry`).
+    /// Parse a non-empty remote URL. The shipped `GitRegistrySync` adapter reaches
+    /// local paths and `file://` remotes only (no network transport is linked).
     ///
     /// Args:
     /// * `s`: The git remote URL of the authoritative registry.

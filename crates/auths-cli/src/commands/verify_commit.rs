@@ -63,7 +63,9 @@ pub struct VerifyCommitCommand {
 
     /// Path to an identity bundle JSON whose root `did:keri:` is pinned as a trusted
     /// root for this verification (CI/stateless commit verification). The bundle is
-    /// freshness-checked; an unreadable or stale bundle fails closed.
+    /// freshness-checked; an unreadable or stale bundle fails closed. When absent,
+    /// a committed `.auths/ci-bundle.json` at the repo root is discovered and used
+    /// the same way — that is how a plain clone verifies with no flags.
     #[arg(long, value_parser)]
     pub identity_bundle: Option<PathBuf>,
 }
@@ -185,7 +187,11 @@ pub async fn handle_verify_commit(
         pinned_roots.push(own_root);
     }
     let mut bundle_kel: Option<BundleKel> = None;
-    if let Some(bundle_path) = &cmd.identity_bundle {
+    let bundle_path = cmd
+        .identity_bundle
+        .clone()
+        .or_else(super::verify_helpers::discover_project_bundle);
+    if let Some(bundle_path) = &bundle_path {
         match load_bundle_trust(bundle_path, chrono::Utc::now()) {
             Ok((root, kel)) => {
                 // Evidence-only (RT-005): the bundle is *evidence for* a root that
