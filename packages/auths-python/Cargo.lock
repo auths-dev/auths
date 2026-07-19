@@ -130,7 +130,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "auths-core"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "auths-crypto"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "base64",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "auths-evidence"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "auths-crypto",
  "auths-id",
@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "auths-id"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -260,7 +260,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-git"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "auths-core",
  "auths-keri",
@@ -276,7 +276,7 @@ dependencies = [
 
 [[package]]
 name = "auths-infra-http"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -304,7 +304,7 @@ dependencies = [
 
 [[package]]
 name = "auths-keri"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -323,7 +323,7 @@ dependencies = [
 
 [[package]]
 name = "auths-mcp-core"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "auths-crypto",
  "auths-id",
@@ -340,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "auths-oidc-port"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -353,7 +353,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-daemon"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "auths-core",
  "auths-keri",
@@ -379,7 +379,7 @@ dependencies = [
 
 [[package]]
 name = "auths-pairing-protocol"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "auths-crypto",
  "auths-keri",
@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "auths-policy"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "auths-verifier",
  "blake3",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "auths-rp"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "auths-verifier",
  "base64",
@@ -459,7 +459,7 @@ dependencies = [
 
 [[package]]
 name = "auths-sdk"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -501,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "auths-storage"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-core",
@@ -525,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "auths-telemetry"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "chrono",
  "metrics",
@@ -540,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "auths-transparency"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-crypto",
@@ -562,7 +562,7 @@ dependencies = [
 
 [[package]]
 name = "auths-utils"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "dirs",
  "thiserror 2.0.18",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "auths-verifier"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "auths-crypto",

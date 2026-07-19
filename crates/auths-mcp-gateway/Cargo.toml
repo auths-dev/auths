@@ -16,7 +16,7 @@ name = "auths-mcp-gateway"
 path = "src/main.rs"
 
 [dependencies]
-auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.8" }
+auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.9" }
 # The single spend re-derivation + the activity/v1 attestation live in the shared
 # evidence crate; the CLI is a thin caller (one implementation, no divergence).
 auths-evidence = { workspace = true }
