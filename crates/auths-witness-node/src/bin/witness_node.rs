@@ -358,7 +358,10 @@ async fn main() -> std::process::ExitCode {
                 .layer(ConcurrencyLimitLayer::new(
                     auths_witness_node::MAX_CONCURRENT_REQUESTS,
                 ))
-                .layer(TimeoutLayer::new(auths_witness_node::REQUEST_TIMEOUT));
+                .layer(TimeoutLayer::with_status_code(
+                    axum::http::StatusCode::REQUEST_TIMEOUT,
+                    auths_witness_node::REQUEST_TIMEOUT,
+                ));
             let listener = match tokio::net::TcpListener::bind(&args.bind).await {
                 Ok(listener) => listener,
                 Err(e) => {
