@@ -201,30 +201,43 @@ impl Chain {
             })?
         };
 
-        // 2. The delegated scoped agent.
-        let mut add = Command::new(&auths_bin);
-        add.args([
-            "--repo",
-            &org_repo.to_string_lossy(),
-            "--json",
-            "id",
-            "agent",
-            "add",
-        ])
-        .args(["--label", &agent_alias])
-        .args(["--key", "root"])
-        .args(["--curve", "ed25519"]);
-        for cap in scope {
-            add.args(["--scope", &to_auths_capability(cap)]);
-        }
-        let added = must(&mut add, "id agent add (scoped agent)")?;
-        let agent_did = first_did(&added.stdout)
-            .ok_or_else(|| anyhow::anyhow!("could not read the agent did:keri from agent add"))?;
+        // 2. The delegated scoped agent — resumed when this lab already
+        //    materialized a delegate machine under this alias. A restarted
+        //    gateway must keep its agent DID stable: that DID is the subject of
+        //    the activity attestation, and the market's proven-live signal is
+        //    witnessed growth under ONE subject, so re-delegating on every
+        //    restart would reset the seller's history. The scope seal is the
+        //    one anchored in the org KEL at delegation time — a resumed wrap
+        //    cannot widen it from here.
+        let agent_did = if let Some(did) = resume_agent_did(&agent_repo) {
+            did
+        } else {
+            let mut add = Command::new(&auths_bin);
+            add.args([
+                "--repo",
+                &org_repo.to_string_lossy(),
+                "--json",
+                "id",
+                "agent",
+                "add",
+            ])
+            .args(["--label", &agent_alias])
+            .args(["--key", "root"])
+            .args(["--curve", "ed25519"]);
+            for cap in scope {
+                add.args(["--scope", &to_auths_capability(cap)]);
+            }
+            let added = must(&mut add, "id agent add (scoped agent)")?;
+            let agent_did = first_did(&added.stdout).ok_or_else(|| {
+                anyhow::anyhow!("could not read the agent did:keri from agent add")
+            })?;
 
-        // 3. Materialize the agent's delegate machine: copy the org registry and
-        //    drop the org icp root subtree, leaving only the agent dip so the local
-        //    signer resolves to the agent (tree surgery only — no key moved).
-        materialize_agent_machine(&org_repo, &agent_repo, &root_did)?;
+            // 3. Materialize the agent's delegate machine: copy the org registry and
+            //    drop the org icp root subtree, leaving only the agent dip so the local
+            //    signer resolves to the agent (tree surgery only — no key moved).
+            materialize_agent_machine(&org_repo, &agent_repo, &root_did)?;
+            agent_did
+        };
 
         let inproc = crate::inproc_sign::InprocState::new(&agent_alias);
         let chain = Self {
@@ -520,6 +533,41 @@ impl Chain {
 /// Materialize the agent's delegate machine: copy the org registry, then rewrite
 /// `refs/auths/registry` to drop the org icp root's identity subtree so the local
 /// signer resolves to the agent dip. Tree surgery only — no key material moved.
+/// The agent DID a prior wrap materialized under `agent_repo`, if any.
+///
+/// The delegate machine holds exactly one identity subtree — the org root's is
+/// dropped at materialization — so the single `v1/identities/<aa>/<bb>/<prefix>`
+/// entry names the delegated agent. Anything ambiguous (zero or several
+/// identities) is not resumable and falls through to a fresh delegation.
+fn resume_agent_did(agent_repo: &Path) -> Option<String> {
+    let git_dir = agent_repo.join(".git");
+    if !git_dir.exists() {
+        return None;
+    }
+    let listed = Command::new("git")
+        .args([
+            "--git-dir",
+            &git_dir.to_string_lossy(),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            "refs/auths/registry",
+            "--",
+            "v1/identities",
+        ])
+        .output()
+        .ok()
+        .filter(|out| out.status.success())?;
+    let prefixes: std::collections::BTreeSet<String> = String::from_utf8_lossy(&listed.stdout)
+        .lines()
+        .filter_map(|path| path.split('/').nth(4).map(str::to_string))
+        .collect();
+    match prefixes.into_iter().collect::<Vec<_>>().as_slice() {
+        [prefix] => Some(format!("did:keri:{prefix}")),
+        _ => None,
+    }
+}
+
 fn materialize_agent_machine(org: &Path, agent: &Path, root_did: &str) -> anyhow::Result<()> {
     let root_pfx = root_did.strip_prefix("did:keri:").unwrap_or(root_did);
     // Fresh copy.
