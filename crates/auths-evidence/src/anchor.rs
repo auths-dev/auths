@@ -136,6 +136,46 @@ pub fn treasury_anchor(
     })
 }
 
+/// The by-value proof a witness-tier anchor carries: the finalized anchor
+/// itself (≥ t cosignatures + per-witness inclusion proofs), offline-checkable
+/// exactly like a treasury proof (I-VERIFY-1). The tier ladder becomes real:
+/// `treasury < witness < onchain`.
+pub type WitnessAnchorProof = auths_anchor::FinalizedAnchor;
+
+/// Build a witness-tier anchor from a finalized (t-of-N co-signed) anchor.
+///
+/// The caller has already collected ≥ t cosignatures; [`verify_anchor`]
+/// re-checks them offline. The committer is the KEL-anchored witness-set SAID
+/// the finalized anchor commits to, and `ts` is the anchor's own instant.
+///
+/// Args:
+/// * `head`: the composite head this anchor covers.
+/// * `kel_seq`: the KEL sequence at the anchored instant.
+/// * `finalized`: the finalized anchor, carried by value.
+///
+/// Usage:
+/// ```ignore
+/// let anchor = witness_anchor(head, kel_seq, finalized)?;
+/// ```
+pub fn witness_anchor(
+    head: String,
+    kel_seq: u64,
+    finalized: WitnessAnchorProof,
+) -> Result<AnchorRef, EvidenceError> {
+    let committer = finalized.anchor.witness_set.said.clone();
+    let ts = finalized.anchor.timestamp;
+    let proof =
+        serde_json::to_value(&finalized).map_err(|e| EvidenceError::Canonical(e.to_string()))?;
+    Ok(AnchorRef {
+        tier: AnchorTier::Witness,
+        head,
+        kel_seq,
+        committer: Some(committer),
+        proof: Some(proof),
+        ts,
+    })
+}
+
 /// Verify a treasury checkpoint trail: one stable signer (pinned when supplied),
 /// every signature valid under P-256, count + cumulative monotonic. Returns the
 /// final checkpoint.
@@ -179,7 +219,10 @@ pub enum AnchorCheck {
 ///   under single-delegation scope — require the final checkpointed cumulative to
 ///   equal `rederived_settled_cents` (a stale or forged trail fails here).
 /// * `first-seen`: nothing to verify; the tier IS the statement that nobody committed.
-/// * `witness` / `onchain`: not yet wired — fail closed.
+/// * `witness`: re-check the embedded finalized anchor offline (≥ t cosignatures,
+///   all in the declared set, inclusion proofs), then require its cumulative to
+///   equal `rederived_settled_cents` and its instant to match `anchor.ts`.
+/// * `onchain`: not yet wired — fail closed.
 ///
 /// Args:
 /// * `anchor`: the anchor to verify.
@@ -238,11 +281,71 @@ pub fn verify_anchor(anchor: &AnchorRef, rederived_settled_cents: u64) -> Anchor
             }
             AnchorCheck::Valid
         }
-        AnchorTier::Witness | AnchorTier::Onchain => AnchorCheck::Invalid {
+        AnchorTier::Witness => {
+            let Some(proof) = &anchor.proof else {
+                return AnchorCheck::Invalid {
+                    code: "anchor-unverifiable",
+                    detail: "witness anchor carries no proof".to_string(),
+                };
+            };
+            let finalized: WitnessAnchorProof = match serde_json::from_value(proof.clone()) {
+                Ok(f) => f,
+                Err(e) => {
+                    return AnchorCheck::Invalid {
+                        code: "anchor-unverifiable",
+                        detail: format!("witness proof malformed: {e}"),
+                    };
+                }
+            };
+            if let Err(e) = auths_anchor::verify_finalized(&finalized) {
+                return AnchorCheck::Invalid {
+                    code: "anchor-unverifiable",
+                    detail: e.to_string(),
+                };
+            }
+            if finalized.anchor.cumulative != u128::from(rederived_settled_cents) {
+                return AnchorCheck::Invalid {
+                    code: "head-mismatch",
+                    detail: format!(
+                        "anchored cumulative {}c != re-derived settled {}c",
+                        finalized.anchor.cumulative, rederived_settled_cents
+                    ),
+                };
+            }
+            if finalized.anchor.timestamp != anchor.ts {
+                return AnchorCheck::Invalid {
+                    code: "anchor-unverifiable",
+                    detail: "anchor ts does not match the finalized anchor".to_string(),
+                };
+            }
+            AnchorCheck::Valid
+        }
+        AnchorTier::Onchain => AnchorCheck::Invalid {
             code: "anchor-unverifiable",
-            detail: "anchor tier not yet supported by this verifier".to_string(),
+            detail: "on-chain anchor tier not yet supported by this verifier".to_string(),
         },
     }
+}
+
+/// The AWN witness-tier freshness of a bundle whose head is this anchor.
+///
+/// A bundle self-reports `fresh` only when it carries a finalized quorum anchor
+/// (witness tier); otherwise it is `unanchored` — freshness unknown, never
+/// silently "fresh". The `stale` label is not a bundle's to assign about itself;
+/// it arises when a relying party compares this bundle against a store's *newer*
+/// finalized anchor (call [`auths_anchor::freshness`] with both indices).
+///
+/// Args:
+/// * `anchor`: the bundle's as-of anchor.
+pub fn anchor_freshness_of(anchor: &AnchorRef) -> auths_anchor::Freshness {
+    if anchor.tier == AnchorTier::Witness
+        && let Some(proof) = &anchor.proof
+        && let Ok(finalized) = serde_json::from_value::<WitnessAnchorProof>(proof.clone())
+    {
+        let index = finalized.anchor.index;
+        return auths_anchor::freshness(Some(index), Some(index));
+    }
+    auths_anchor::Freshness::Unanchored
 }
 
 /// Convert a verified trail's final checkpoint into the typed `audit/v1` field.

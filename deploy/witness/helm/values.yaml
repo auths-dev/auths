@@ -1,0 +1,34 @@
+# Pin the digest in production — the tag is a convenience for non-prod.
+image:
+  repository: ghcr.io/auths-dev/auths-witness-node
+  tag: "0.1.12"
+  digest: ""            # e.g. sha256:... — takes precedence over tag when set
+  pullPolicy: IfNotPresent
+
+# Roles this node serves. A role with no working adapter fails closed at startup.
+roles:
+  - kel
+  - cosign
+  - anchor
+
+bind:
+  port: 3333
+
+# The witness first-boot seed. In production, source this from a Secret rather
+# than a plain value (set existingSecret to the Secret name holding WITNESS_SEED).
+seed:
+  value: ""
+  existingSecret: ""
+
+anchorStore:
+  # Durable volume for the per-seed latest-anchor store (CAS contract).
+  size: 1Gi
+  storageClass: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

@@ -35,15 +35,21 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+pub mod anchor_role;
+pub mod anchor_store;
 pub mod build;
 pub mod engine;
 pub mod receipt;
+pub mod signer;
 pub mod standup;
 pub mod vocabulary;
 
+pub use anchor_role::{AnchorService, ServiceError, SubmitOutcome};
+pub use anchor_store::InMemoryAnchorStore;
 pub use build::{BuildAttestation, NodeBuildVerdict};
 pub use engine::{DockerEngine, SocketHealthCheck, SocketHttpFetch};
 pub use receipt::ReceiptBundle;
+pub use signer::{FileSigner, Signer};
 pub use standup::{
     ContainerEngine, HealthCheck, HttpFetch, HttpResponse, StandupError, StandupOutcome, stand_up,
     tear_down,

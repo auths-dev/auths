@@ -82,7 +82,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Pin to the repo's toolchain (1.93) so this fmt/clippy gate is
+      # reproducible; an unpinned @stable drifts ahead of the pinned formatting
+      # and fails spuriously (was red on main for exactly this reason).
+      - uses: dtolnay/rust-toolchain@1.93.0
         with:
           components: rustfmt, clippy
 

@@ -3081,12 +3081,13 @@ mod tests {
         let Event::Icp(icp) = icp_event else {
             panic!("helper returns an icp");
         };
-        let delegator = Prefix::new_unchecked("EDELEGATORDELEGATORDELEGATORDELEGATORDELEG_A".into());
+        let delegator =
+            Prefix::new_unchecked("EDELEGATORDELEGATORDELEGATORDELEGATORDELEG_A".into());
         let dip = DipEvent {
             v: icp.v.clone(),
             d: icp.d.clone(),
             i: icp.i.clone(),
-            s: icp.s.clone(),
+            s: icp.s,
             kt: icp.kt.clone(),
             k: icp.k.clone(),
             nt: icp.nt.clone(),
@@ -4265,7 +4266,7 @@ mod index_consistency_tests {
     use auths_id::keri::validate::finalize_icp_event;
     use auths_id::storage::registry::org_member::MemberFilter;
     use auths_keri::compute_next_commitment;
-    use auths_keri::{CesrKey, DipEvent, Threshold, VersionString};
+    use auths_keri::{CesrKey, Threshold, VersionString};
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::CanonicalDid;
 
@@ -4517,7 +4518,7 @@ mod tenant_isolation_tests {
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::finalize_icp_event;
     use auths_keri::compute_next_commitment;
-    use auths_keri::{CesrKey, DipEvent, Threshold, VersionString};
+    use auths_keri::{CesrKey, Threshold, VersionString};
 
     use super::*;
     use auths_id::storage::registry::backend::TenantIdError;

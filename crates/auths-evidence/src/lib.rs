@@ -28,13 +28,16 @@ pub mod types;
 pub mod verify_spend;
 
 pub use anchor::{
-    AnchorCheck, TreasuryAnchorProof, check_trail, composite_head, kel_digest, spend_binding_head,
-    verify_anchor,
+    AnchorCheck, TreasuryAnchorProof, WitnessAnchorProof, anchor_freshness_of, check_trail,
+    composite_head, kel_digest, spend_binding_head, verify_anchor, witness_anchor,
 };
+// The AWN protocol core, re-exported so evidence consumers reach freshness and
+// the finalized-anchor proof through one crate.
 pub use attestation::{
     ACTIVITY_VERSION, ActivityAsOf, ActivityV1, activity_signing_bytes, monotonicity_violation,
     verify_activity, verify_activity_against_registry,
 };
+pub use auths_anchor::{Freshness, freshness};
 pub use bundle::{
     BuildOpts, BundleSigner, OfflineVerdict, SignatureSuite, build_bundle, did_key_encode,
     signing_bytes, verify_offline,
@@ -62,3 +65,6 @@ pub const RECEIPTS_V1_SCHEMA: &str = include_str!("../schemas/receipts-v1.json")
 
 /// The JSON schema for the `audit/v1` report.
 pub const AUDIT_V1_SCHEMA: &str = include_str!("../schemas/audit-v1.json");
+
+/// The JSON schema for the AWN duplicity proof (published beside `receipts/v1`).
+pub const DUPLICITY_PROOF_V1_SCHEMA: &str = include_str!("../schemas/duplicity-proof-v1.json");

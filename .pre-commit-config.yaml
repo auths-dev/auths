@@ -14,6 +14,9 @@ repos:
         exclude: '^crates/auths-keri/tests/fixtures/keripy/'
       - id: check-yaml
         args: [--unsafe]
+        # Helm chart templates are Go-templated YAML ({{ .Release.Name }}), not
+        # parseable as plain YAML — excluded like any Helm chart.
+        exclude: '^deploy/witness/helm/templates/'
       - id: check-toml
       - id: check-merge-conflict
 

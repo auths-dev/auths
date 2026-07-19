@@ -192,7 +192,10 @@ pub fn fetch_registry(url: String, dest: String) -> Result<()> {
     drop(remote);
 
     let mut branch: Option<String> = None;
-    for reference in repo.references_glob("refs/heads/*").map_err(map("list heads"))? {
+    for reference in repo
+        .references_glob("refs/heads/*")
+        .map_err(map("list heads"))?
+    {
         let reference = reference.map_err(map("read head"))?;
         let name = reference.name().map_err(map("head name"))?;
         if name != "refs/heads/_verifier" {

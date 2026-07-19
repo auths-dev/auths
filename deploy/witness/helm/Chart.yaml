@@ -1,0 +1,6 @@
+apiVersion: v2
+name: auths-witness-node
+description: A single Auths Witness Network node running any combination of the kel, cosign, and anchor roles from the published image.
+type: application
+version: 0.1.0
+appVersion: "0.1.12"

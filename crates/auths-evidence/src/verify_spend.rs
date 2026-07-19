@@ -170,5 +170,6 @@ pub fn report_of(verdict: &AuditVerdict, records: &[SpendLogRecord]) -> AuditV1 
         settled_cents: settled,
         checkpoint,
         treasury: None,
+        freshness: None,
     }
 }

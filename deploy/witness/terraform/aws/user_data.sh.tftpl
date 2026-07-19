@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Start the witness from the published image. The seed is written to a
+# root-only file; the node mints its witness identity from it on first boot.
+install -m 600 /dev/stdin /etc/auths-witness.env <<EOF
+WITNESS_SEED=${witness_seed}
+EOF
+
+docker run -d --name auths-witness --restart unless-stopped \
+  --read-only --tmpfs /data \
+  -p ${port}:${port} \
+  --env-file /etc/auths-witness.env \
+  ${image} \
+  serve --roles ${roles} --bind 0.0.0.0:${port} --anchor-store /data/anchors.db

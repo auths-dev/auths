@@ -1,0 +1,186 @@
+//! # auths-anchor — the Auths Witness Network protocol core
+//!
+//! The base construction proves tamper-evidence and authorization offline, but
+//! a dishonest party defeats accountability for free by **withholding** recent
+//! records or **equivocating**. This crate is the missing pure protocol core
+//! that closes both gaps: a threshold quorum co-signs monotone growth anchors
+//! `⟨seed_id, b_k, k, cum_k, τ_k⟩` into append-only logs, making rollback a
+//! signed contradiction and equivocation a publishable duplicity proof — while
+//! authorization verification stays offline and free (I-VERIFY-1).
+//!
+//! It is modeled on `auths-rp` (D3): pure, I/O-free, Layer 1.5. KEL resolution,
+//! storage, and HTTP live above it in the node/SDK. The verification half
+//! (freshness, finalized-anchor verification, duplicity-proof verification) is
+//! WASM-safe.
+//!
+//! ## The pieces
+//!
+//! - [`accept_anchor`] — the §9.2 acceptance rule (pure, clock-injected).
+//! - [`DuplicityProof`] — equivocation as a self-contained, offline artifact.
+//! - [`verify_finalized`] / [`honesty_ceiling_of`] — `t`-of-`N` finalization.
+//! - [`freshness`] — the `fresh | stale | unanchored` labeled result.
+//! - [`AnchorStore`] — the per-seed latest-anchor port (CAS is the contract).
+
+mod accept;
+mod duplicity;
+mod error;
+mod finalize;
+mod freshness;
+mod keystate;
+mod store;
+mod types;
+mod verify;
+
+pub use accept::{Acceptance, accept_anchor};
+pub use duplicity::DuplicityProof;
+pub use error::{AnchorError, StoreError};
+pub use finalize::{honesty_ceiling_of, quorum_independence, verify_finalized};
+pub use freshness::{Freshness, freshness};
+pub use store::{AnchorStore, CasOutcome};
+pub use types::{
+    Anchor, AnchorReq, ControllerKeys, CurrentKey, FinalizedAnchor, Head, OperatorInfo,
+    PartySignature, SeedId, WitnessRef, WitnessSet, WitnessSetRef,
+};
+pub use verify::verify_signature;
+
+/// The curve tag every anchor signature carries, re-exported so consumers
+/// dispatch on the same allowlisted type the wire format names.
+pub use auths_crypto::CurveType;
+
+/// The shipped transparency types this crate composes over, re-exported so a
+/// consumer building a [`FinalizedAnchor`] needs only one dependency.
+pub use auths_transparency::{InclusionProof, WitnessCosignature};
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    //! Deterministic, fixed-seed fixtures for the in-crate unit tests.
+
+    use crate::types::{
+        Anchor, ControllerKeys, CurrentKey, FinalizedAnchor, Head, OperatorInfo, PartySignature,
+        SeedId, WitnessRef, WitnessSet, WitnessSetRef,
+    };
+    use auths_crypto::CurveType;
+    use chrono::{DateTime, TimeZone, Utc};
+    use ed25519_dalek::{Signer, SigningKey};
+
+    fn party_sk() -> SigningKey {
+        SigningKey::from_bytes(&[9u8; 32])
+    }
+
+    fn witness_sk(i: u8) -> SigningKey {
+        SigningKey::from_bytes(&[100u8.wrapping_add(i); 32])
+    }
+
+    fn ts(index: u64) -> DateTime<Utc> {
+        Utc.timestamp_opt(1_700_000_000 + index as i64, 0).unwrap()
+    }
+
+    /// An Ed25519-signed anchor at `index` with a deterministic head.
+    pub(crate) fn sample_anchor(index: u64) -> Anchor {
+        sample_anchor_with_head(index, [index as u8; 32])
+    }
+
+    /// An Ed25519-signed anchor at `index` with an explicit head.
+    pub(crate) fn sample_anchor_with_head(index: u64, head: [u8; 32]) -> Anchor {
+        let sk = party_sk();
+        let vk = sk.verifying_key();
+        let mut anchor = Anchor {
+            seed_id: SeedId::derive("did:keri:root", "did:keri:agent", "ESeal"),
+            index,
+            head: Head::from_bytes(head),
+            cumulative: index as u128 * 100,
+            timestamp: ts(index),
+            witness_set: WitnessSetRef {
+                said: "EWitSet".into(),
+                threshold: 2,
+            },
+            sig_party: PartySignature {
+                curve: CurveType::Ed25519,
+                public_key: vk.as_bytes().to_vec(),
+                signature: Vec::new(),
+            },
+        };
+        let message = anchor.party_signing_bytes().unwrap();
+        anchor.sig_party.signature = sk.sign(&message).to_bytes().to_vec();
+        anchor
+    }
+
+    /// The controller-keys view that authorizes `anchor`'s party signature.
+    pub(crate) fn controller_keys_for(anchor: &Anchor) -> ControllerKeys {
+        ControllerKeys {
+            current: vec![CurrentKey {
+                curve: anchor.sig_party.curve,
+                public_key: anchor.sig_party.public_key.clone(),
+            }],
+        }
+    }
+
+    /// A finalized anchor over `n` witnesses with the given `threshold`.
+    pub(crate) fn finalized_sample(n: u8, threshold: u32) -> FinalizedAnchor {
+        let mut anchor = sample_anchor(1);
+        anchor.witness_set = WitnessSetRef {
+            said: "EWitSet".into(),
+            threshold,
+        };
+        let sk = party_sk();
+        let message = anchor.party_signing_bytes().unwrap();
+        anchor.sig_party.signature = sk.sign(&message).to_bytes().to_vec();
+
+        let members = (0..n)
+            .map(|i| WitnessRef {
+                name: format!("witness-{i}"),
+                public_key: witness_sk(i).verifying_key().as_bytes().to_vec(),
+                operator: Some(OperatorInfo {
+                    operator: format!("op-{i}"),
+                    organization: format!("org-{i}"),
+                    jurisdiction: "US".into(),
+                    infrastructure: format!("aws/zone-{i}"),
+                }),
+            })
+            .collect();
+        let witness_set = WitnessSet {
+            said: "EWitSet".into(),
+            threshold,
+            members,
+        };
+
+        let cosign_message = anchor.cosign_bytes().unwrap();
+        let cosignatures = (0..n)
+            .map(|i| {
+                let sk = witness_sk(i);
+                let sig = sk.sign(&cosign_message);
+                auths_transparency::WitnessCosignature {
+                    witness_name: format!("witness-{i}"),
+                    witness_public_key: auths_verifier::Ed25519PublicKey::from_bytes(
+                        sk.verifying_key().to_bytes(),
+                    ),
+                    signature: auths_verifier::Ed25519Signature::from_bytes(sig.to_bytes()),
+                    timestamp: ts(1),
+                }
+            })
+            .collect();
+
+        let leaf = auths_transparency::hash_leaf(&cosign_message);
+        let hashes = auths_transparency::prove_inclusion(&[leaf], 0).unwrap();
+        let root = auths_transparency::compute_root(&[leaf]);
+        let inclusion = vec![auths_transparency::InclusionProof {
+            index: 0,
+            size: 1,
+            root,
+            hashes,
+        }];
+
+        FinalizedAnchor {
+            anchor,
+            witness_set,
+            cosignatures,
+            inclusion,
+        }
+    }
+
+    /// Keep only the first `k` cosignatures (to fall below a threshold).
+    pub(crate) fn with_cosigners(mut finalized: FinalizedAnchor, k: usize) -> FinalizedAnchor {
+        finalized.cosignatures.truncate(k);
+        finalized
+    }
+}

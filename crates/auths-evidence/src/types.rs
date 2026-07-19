@@ -343,6 +343,11 @@ pub struct EvidenceBundle {
     pub verdicts: Verdicts,
     /// The self-contained proof material.
     pub proof: BundleProof,
+    /// The AWN witness-tier freshness (fresh|stale|unanchored) — a separate,
+    /// labeled result reported beside, never folded into, `verdicts`
+    /// (D5, I-VERIFY-3). Absent means freshness was not evaluated.
+    #[serde(rename = "freshness", default, skip_serializing_if = "Option::is_none")]
+    pub freshness: Option<auths_anchor::Freshness>,
     /// Optional verified escrow-record summary (dispute bundles).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub escrow: Option<serde_json::Value>,
@@ -383,6 +388,10 @@ pub struct AuditV1 {
     /// The treasury cross-check result, when a trail was supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub treasury: Option<TreasuryCheck>,
+    /// The AWN witness-tier freshness, when the caller resolved a quorum anchor
+    /// (a separate labeled result, never folded into the verdict — D5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freshness: Option<auths_anchor::Freshness>,
 }
 
 /// The `audit/v1` version string.

@@ -33,6 +33,7 @@ members = [
   "crates/auths-utils",
   "crates/auths-oidc-port",
   "crates/auths-rp",
+  "crates/auths-anchor",
   "crates/xtask", "crates/auths-api",
   "crates/auths-witness",
   "crates/auths-witness-node",
@@ -109,6 +110,7 @@ auths-utils = { path = "crates/auths-utils", version = "0.1.12" }
 auths-witness = { path = "crates/auths-witness", version = "0.1.12" }
 auths-evidence = { path = "crates/auths-evidence", version = "0.1.12" }
 auths-witness-node = { path = "crates/auths-witness-node", version = "0.1.12" }
+auths-anchor = { path = "crates/auths-anchor", version = "0.1.12", default-features = false }
 insta = { version = "1", features = ["json"] }
 
 # Compile crypto-heavy crates with optimizations even in dev/test builds.

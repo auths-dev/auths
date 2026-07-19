@@ -12,6 +12,9 @@ anyhow = "1"
 auths-telemetry.workspace = true
 auths-verifier = { workspace = true, features = ["schema"] }
 auths-keri = { path = "../auths-keri", features = ["schema"] }
+auths-anchor = { workspace = true }
+ed25519-dalek = { version = "2", default-features = false }
+chrono = { version = "0.4", features = ["serde"] }
 jsonschema = "0.45.0"
 schemars.workspace = true
 serde = { version = "1", features = ["derive"] }

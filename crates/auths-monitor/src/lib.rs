@@ -31,6 +31,12 @@ pub use evidence::{
 pub mod gossip;
 pub use gossip::{GossipMessage, GossipReject, GossipState, gossip_detection_strength};
 
+/// Spend-anchor watching: duplicity detection and withholding-gap alerts.
+pub mod spend_anchor;
+pub use spend_anchor::{
+    ObservedAnchor, WithholdingGap, detect_spend_anchor_duplicity, withholding_gap,
+};
+
 /// Monitor configuration loaded from environment variables.
 ///
 /// Args:

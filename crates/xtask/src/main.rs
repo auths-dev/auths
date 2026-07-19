@@ -20,6 +20,7 @@ mod gen_error_docs;
 mod gen_schema;
 mod schemas;
 mod test_integration;
+mod witness_conformance;
 
 use clap::{Parser, Subcommand};
 
@@ -86,6 +87,13 @@ enum Command {
     /// (`validate_kel*`/`replay_kel`) in the verifier + CLI-verify surfaces;
     /// require `validate_signed_kel` or an explicit `rt-002-allow:` justification.
     CheckVerifyPathCompleteness,
+    /// Run the AWN witness conformance suite against the shipped protocol core.
+    /// Pass `--emit <dir>` to also write the vectors for a third-party witness.
+    WitnessConformance {
+        /// Directory to write `conformance-vectors.json` to.
+        #[arg(long)]
+        emit: Option<std::path::PathBuf>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -116,5 +124,6 @@ fn main() -> anyhow::Result<()> {
         Command::CheckVerifyPathCompleteness => {
             check_verify_path_completeness::run(workspace_root())
         }
+        Command::WitnessConformance { emit } => witness_conformance::run(emit.as_deref()),
     }
 }

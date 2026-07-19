@@ -47,6 +47,17 @@
         "at": { "type": "string", "format": "date-time" }
       },
       "description": "The verified treasury checkpoint trail's final state, when a trail was supplied."
+    },
+    "freshness": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "description": "AWN witness-tier freshness, when a quorum anchor was resolved (a separate labeled result, never folded into the verdict).",
+      "properties": {
+        "status": { "type": "string", "enum": ["fresh", "stale", "unanchored"] },
+        "anchorIndex": { "type": "integer", "minimum": 0 },
+        "bundleIndex": { "type": "integer", "minimum": 0 }
+      }
     }
   },
   "additionalProperties": false

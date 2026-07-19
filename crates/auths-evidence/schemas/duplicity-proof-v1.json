@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auths.dev/schemas/duplicity-proof-v1.json",
+  "title": "AWN Duplicity Proof v1",
+  "description": "A self-contained, offline-verifiable proof that one party key signed two different heads at the same (seed_id, index) — equivocation made publishable (AWN A6, I-DUP-2). Nothing about verifying it requires contacting the witness that emitted it.",
+  "type": "object",
+  "required": ["seed_id", "index", "anchor_a", "anchor_b"],
+  "additionalProperties": false,
+  "properties": {
+    "seed_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase-hex 32-byte spend-chain id the equivocation is on."
+    },
+    "index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The record index k at which two heads were signed."
+    },
+    "anchor_a": { "$ref": "#/$defs/anchor" },
+    "anchor_b": { "$ref": "#/$defs/anchor" }
+  },
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "required": [
+        "seed_id",
+        "index",
+        "head",
+        "cumulative",
+        "timestamp",
+        "witness_set",
+        "sig_party"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "seed_id": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "index": { "type": "integer", "minimum": 0 },
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Lowercase-hex 32-byte spend-log chain head b_k."
+        },
+        "cumulative": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Cumulative settled cents cum_k."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC-3339 instant the aggregate was computed (tau_k)."
+        },
+        "witness_set": {
+          "type": "object",
+          "required": ["said", "threshold"],
+          "additionalProperties": false,
+          "properties": {
+            "said": {
+              "type": "string",
+              "description": "SAID of the KEL-anchored witness set (I-TRUST-3)."
+            },
+            "threshold": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Finalization threshold t of the t-of-N set."
+            }
+          }
+        },
+        "sig_party": {
+          "type": "object",
+          "required": ["curve", "public_key", "signature"],
+          "additionalProperties": false,
+          "description": "The party signature over the tuple, curve-tagged in-band (I-DUP-3).",
+          "properties": {
+            "curve": {
+              "type": "string",
+              "enum": ["ed25519", "p256"],
+              "description": "The signing curve; verification dispatches on this, never on length."
+            },
+            "public_key": {
+              "type": "string",
+              "pattern": "^[0-9a-f]+$",
+              "description": "Lowercase-hex verifying key (32-byte Ed25519 or 33-byte compressed P-256)."
+            },
+            "signature": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{128}$",
+              "description": "Lowercase-hex 64-byte signature."
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -159,6 +159,7 @@ pub fn build_bundle(
         Settlement::Unmetered => "none".to_string(),
     };
     let amount_cents = fact.signed_cents.map(|c| c.get()).unwrap_or(0);
+    let freshness = Some(crate::anchor::anchor_freshness_of(&anchor));
 
     let mut bundle = EvidenceBundle {
         version: RECEIPTS_VERSION.to_string(),
@@ -194,6 +195,7 @@ pub fn build_bundle(
             spend_log: records.to_vec(),
             revocation: chain.revocation.clone(),
         },
+        freshness,
         escrow: opts.escrow,
         compliance: opts.compliance,
         rendered: opts.rendered,
