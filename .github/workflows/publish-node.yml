@@ -36,9 +36,11 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
-          - os: ubuntu-latest
+          # arm64 stays on the native runner (higher glibc baseline): the
+          # napi-rs cross image's aarch64 gcc is too old to compile aws-lc-sys.
+          # No arm64-lambda consumer exists today; tracked to revisit.
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
 
           # Windows — native runners per arch
           - os: windows-latest
