@@ -26,6 +26,8 @@ pub async fn verify_spend(
     agent: String,
     root: String,
 ) -> Result<String> {
+    #[allow(clippy::disallowed_methods)] // binding boundary: wall clock injected here
+    let now = chrono::Utc::now();
     let spend = auths_evidence::verify_spend(
         auths_evidence::VerifyOpts::new(
             std::path::Path::new(&log_path),
@@ -33,7 +35,7 @@ pub async fn verify_spend(
             &agent,
             &root,
         ),
-        chrono::Utc::now(),
+        now,
     )
     .await
     .map_err(|e| Error::from_reason(e.to_string()))?;

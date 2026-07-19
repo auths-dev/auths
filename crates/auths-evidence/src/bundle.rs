@@ -5,7 +5,7 @@
 //! that built it. Signing is RFC-8785 canonical JSON over the bundle minus its
 //! own `signature`, under an in-band curve-tagged suite (P-256 default).
 
-use auths_crypto::{CurveType, DecodedDidKey, TypedSeed, did_key_decode};
+use auths_crypto::{DecodedDidKey, TypedSeed, did_key_decode};
 use auths_mcp_core::{AnnotatedAudit, AuditResume, AuditVerdict, Settlement, SpendLogRecord};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;

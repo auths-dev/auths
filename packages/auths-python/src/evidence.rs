@@ -25,6 +25,8 @@ pub fn verify_spend(
     agent: String,
     root: String,
 ) -> PyResult<String> {
+    #[allow(clippy::disallowed_methods)] // binding boundary: wall clock injected here
+    let now = chrono::Utc::now();
     let spend = runtime()
         .block_on(auths_evidence::verify_spend(
             auths_evidence::VerifyOpts::new(
@@ -33,7 +35,7 @@ pub fn verify_spend(
                 &agent,
                 &root,
             ),
-            chrono::Utc::now(),
+            now,
         ))
         .map_err(|e| PyValueError::new_err(e.to_string()))?;
     serde_json::to_string(&spend.report).map_err(|e| PyValueError::new_err(e.to_string()))
