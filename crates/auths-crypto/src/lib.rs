@@ -31,6 +31,7 @@ pub mod provider;
 pub mod ring_provider;
 pub mod secret;
 pub mod ssh;
+pub mod suite;
 #[cfg(feature = "wasm")]
 pub mod webcrypto_provider;
 
@@ -39,7 +40,8 @@ pub use aws_lc_provider::AwsLcProvider;
 #[cfg(all(feature = "cnsa", not(target_arch = "wasm32")))]
 pub use cnsa_provider::CnsaProvider;
 pub use did_key::{
-    DecodedDidKey, DidKeyError, did_key_decode, did_key_to_p256, ed25519_pubkey_to_did_keri,
+    DecodedDidKey, DidKeyError, did_key_decode, did_key_encode, did_key_to_p256,
+    ed25519_pubkey_to_did_keri,
 };
 pub use error::AuthsErrorInfo;
 pub use hash256::Hash256;
@@ -62,6 +64,7 @@ pub use provider::{
 pub use ring_provider::RingCryptoProvider;
 pub use secret::Secret;
 pub use ssh::{SshKeyError, openssh_pub_to_raw};
+pub use suite::SignatureSuite;
 #[cfg(all(any(test, feature = "test-utils"), not(target_arch = "wasm32")))]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 pub mod testing;

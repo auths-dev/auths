@@ -96,7 +96,10 @@ pub async fn run(args: &[String]) -> Result<(), CliError> {
 }
 
 fn receipts_config() -> Result<ReceiptsConfig, CliError> {
-    let registry = match (env("AUTHS_RECEIPTS_REGISTRY"), env("AUTHS_RECEIPTS_REGISTRY_URL")) {
+    let registry = match (
+        env("AUTHS_RECEIPTS_REGISTRY"),
+        env("AUTHS_RECEIPTS_REGISTRY_URL"),
+    ) {
         (Some(path), _) => RegistrySource::Local(PathBuf::from(path)),
         (None, Some(url)) => RegistrySource::Remote {
             url,
@@ -193,7 +196,10 @@ async fn accounts_create(args: &[String]) -> Result<(), CliError> {
     let price_book = flag(args, "--price-book").unwrap_or_else(|| "{}".to_string());
     let pool = pool().await?;
     migrate(&pool).await?;
-    let id = format!("acct-{}", &super::handlers::hex_digest(name.as_bytes())[..12]);
+    let id = format!(
+        "acct-{}",
+        &super::handlers::hex_digest(name.as_bytes())[..12]
+    );
     sqlx::query(
         "INSERT INTO api_accounts (id, name, auths_root, billing_mode, retainer_included_bundles,
              price_book, created_at)
@@ -213,11 +219,10 @@ async fn accounts_create(args: &[String]) -> Result<(), CliError> {
 }
 
 async fn keys_issue(args: &[String]) -> Result<(), CliError> {
-    let account = flag(args, "--account")
-        .ok_or_else(|| CliError::Usage("--account required".into()))?;
-    let scopes = flag(args, "--scopes").unwrap_or_else(|| {
-        "bundles:write,bundles:read,verify,export,usage:read".to_string()
-    });
+    let account =
+        flag(args, "--account").ok_or_else(|| CliError::Usage("--account required".into()))?;
+    let scopes = flag(args, "--scopes")
+        .unwrap_or_else(|| "bundles:write,bundles:read,verify,export,usage:read".to_string());
     let name = flag(args, "--name").unwrap_or_default();
     let pool = pool().await?;
     let (full, prefix, hash) =
@@ -259,8 +264,7 @@ async fn keys_revoke(args: &[String]) -> Result<(), CliError> {
 }
 
 async fn billing_rollup(args: &[String]) -> Result<(), CliError> {
-    let period = flag(args, "--period")
-        .unwrap_or_else(|| Utc::now().format("%Y-%m").to_string());
+    let period = flag(args, "--period").unwrap_or_else(|| Utc::now().format("%Y-%m").to_string());
     let pool = pool().await?;
     let rows = sqlx::query_as::<_, (String, String, i64, i64)>(
         "SELECT account_id, kind, COUNT(*), COALESCE(SUM(unit_cost_cents), 0)
@@ -271,8 +275,10 @@ async fn billing_rollup(args: &[String]) -> Result<(), CliError> {
     .bind(&period)
     .fetch_all(&pool)
     .await?;
-    let mut per_account: std::collections::HashMap<String, (serde_json::Map<String, serde_json::Value>, i64)> =
-        std::collections::HashMap::new();
+    let mut per_account: std::collections::HashMap<
+        String,
+        (serde_json::Map<String, serde_json::Value>, i64),
+    > = std::collections::HashMap::new();
     for (account, kind, count, cents) in rows {
         let entry = per_account.entry(account).or_default();
         entry

@@ -8,7 +8,7 @@
 //! the seal on the way back in.
 
 use auths_id::keri::Event;
-use auths_keri::{SourceSeal};
+use auths_keri::SourceSeal;
 use serde_json::Value;
 
 use crate::error::EvidenceError;
@@ -31,7 +31,7 @@ fn attach_seal(event: &mut Event, seal: SourceSeal) {
 
 fn seal_to_value(seal: &SourceSeal) -> Result<Value, EvidenceError> {
     Ok(serde_json::json!({
-        "s": serde_json::to_value(&seal.s).map_err(|e| EvidenceError::Canonical(e.to_string()))?,
+        "s": serde_json::to_value(seal.s).map_err(|e| EvidenceError::Canonical(e.to_string()))?,
         "d": serde_json::to_value(&seal.d).map_err(|e| EvidenceError::Canonical(e.to_string()))?,
     }))
 }
@@ -58,8 +58,8 @@ pub fn kel_to_wire(events: &[Event]) -> Result<Vec<Value>, EvidenceError> {
     events
         .iter()
         .map(|event| {
-            let body = serde_json::to_value(event)
-                .map_err(|e| EvidenceError::Canonical(e.to_string()))?;
+            let body =
+                serde_json::to_value(event).map_err(|e| EvidenceError::Canonical(e.to_string()))?;
             let seal = match seal_of(event) {
                 Some(seal) => seal_to_value(seal)?,
                 None => Value::Null,

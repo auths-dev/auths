@@ -548,7 +548,6 @@ dependencies = [
  "auths-sdk",
  "auths-verifier",
  "base64",
- "bs58",
  "chrono",
  "json-canon",
  "serde",

@@ -93,10 +93,7 @@ impl ReceiptsServer {
 }
 
 fn tool(name: &'static str, description: &'static str, schema: serde_json::Value) -> Tool {
-    let schema = schema
-        .as_object()
-        .cloned()
-        .unwrap_or_default();
+    let schema = schema.as_object().cloned().unwrap_or_default();
     Tool::new(name, description, schema)
 }
 
@@ -254,7 +251,10 @@ impl ReceiptsServer {
             Some("x402-reversible") => HoldState::X402Reversible,
             Some("none") | None => HoldState::None,
             Some(other) => {
-                return Err(McpError::invalid_params(format!("unknown hold `{other}`"), None));
+                return Err(McpError::invalid_params(
+                    format!("unknown hold `{other}`"),
+                    None,
+                ));
             }
         };
         let outcome = determine_reversal(
@@ -390,7 +390,10 @@ impl ServerHandler for ReceiptsServer {
             "dispute_evidence" => self.dispute_evidence(params(&request)?).await,
             "evidence_export" => self.evidence_export(params(&request)?).await,
             "reversal_determine" => self.reversal_determine(params(&request)?).await,
-            other => Err(McpError::invalid_params(format!("unknown tool `{other}`"), None)),
+            other => Err(McpError::invalid_params(
+                format!("unknown tool `{other}`"),
+                None,
+            )),
         }
     }
 }
@@ -596,7 +599,8 @@ impl ServerHandler for EscrowServer {
         _ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let record_schema = serde_json::json!({ "type": "object" });
-        let event_schema = serde_json::json!({ "type": "object", "description": "a fully-signed EscrowEvent" });
+        let event_schema =
+            serde_json::json!({ "type": "object", "description": "a fully-signed EscrowEvent" });
         Ok(ListToolsResult {
             tools: vec![
                 tool(
@@ -654,7 +658,10 @@ impl ServerHandler for EscrowServer {
                 self.escrow_append(params(&request)?)
             }
             "escrow_arbitrate" => self.escrow_arbitrate(params(&request)?),
-            other => Err(McpError::invalid_params(format!("unknown tool `{other}`"), None)),
+            other => Err(McpError::invalid_params(
+                format!("unknown tool `{other}`"),
+                None,
+            )),
         }
     }
 }

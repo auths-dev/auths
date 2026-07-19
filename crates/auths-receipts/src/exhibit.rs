@@ -55,7 +55,10 @@ pub fn pdf_exhibit(title: &str, lines: &[String]) -> Vec<u8> {
         pdf.push_str(&format!("{} 0 obj\n{object}\nendobj\n", index + 1));
     }
     let xref_at = pdf.len();
-    pdf.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1));
+    pdf.push_str(&format!(
+        "xref\n0 {}\n0000000000 65535 f \n",
+        objects.len() + 1
+    ));
     for offset in &offsets {
         pdf.push_str(&format!("{offset:010} 00000 n \n"));
     }
@@ -72,7 +75,8 @@ pub fn verification_appendix() -> Vec<String> {
     vec![
         String::new(),
         "--- VERIFICATION APPENDIX ---".to_string(),
-        "This exhibit is a RENDER of a signed, self-contained EvidenceBundle (receipts/v1).".to_string(),
+        "This exhibit is a RENDER of a signed, self-contained EvidenceBundle (receipts/v1)."
+            .to_string(),
         "Do not trust this render. Re-derive the verdicts from the bundle itself:".to_string(),
         "  1. Obtain the bundle JSON that accompanies this exhibit.".to_string(),
         "  2. Run `receipt_verify` (MCP) or POST /v1/verify (HTTP), or call".to_string(),

@@ -61,7 +61,8 @@ fn hex_sha256(bytes: &[u8]) -> String {
 /// let digest = kel_digest(&proof.agent_kel)?;
 /// ```
 pub fn kel_digest(events: &[serde_json::Value]) -> Result<String, EvidenceError> {
-    let canon = json_canon::to_string(&events).map_err(|e| EvidenceError::Canonical(e.to_string()))?;
+    let canon =
+        json_canon::to_string(&events).map_err(|e| EvidenceError::Canonical(e.to_string()))?;
     Ok(hex_sha256(canon.as_bytes()))
 }
 
@@ -90,7 +91,8 @@ pub fn composite_head(
         "delegatorKel": delegator_kel_digest,
         "revocation": revocation,
     });
-    let canon = json_canon::to_string(&body).map_err(|e| EvidenceError::Canonical(e.to_string()))?;
+    let canon =
+        json_canon::to_string(&body).map_err(|e| EvidenceError::Canonical(e.to_string()))?;
     Ok(hex_sha256(canon.as_bytes()))
 }
 

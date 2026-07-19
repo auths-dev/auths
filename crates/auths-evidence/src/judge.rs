@@ -100,12 +100,7 @@ pub fn judge_call(view: &ChainView<'_>, index: usize, counterparty: &str) -> Cal
     }
 
     // The counterparty remit — the single adapter implementation (§2.4).
-    if view
-        .grant
-        .counterparty_policy
-        .decide(counterparty)
-        == PolicyDecision::Deny
-    {
+    if view.grant.counterparty_policy.decide(counterparty) == PolicyDecision::Deny {
         return CallVerdict::OutOfCounterparty;
     }
 

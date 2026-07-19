@@ -7,7 +7,7 @@ use auths_evidence::{
     AnchorRef, BudgetBasis, BundleGrant, CallVerdict, ChainView, CounterpartyPolicy,
     CounterpartyPolicyKind, PolicyDecision, RevocationFact, judge_call,
 };
-use auths_mcp_core::{AuditVerdict, Cents, RecordFact, Receipt, SpendLogRecord, ToolCall, Verdict};
+use auths_mcp_core::{AuditVerdict, Cents, Receipt, RecordFact, SpendLogRecord, ToolCall, Verdict};
 use chrono::{Duration, TimeZone, Utc};
 
 fn t0() -> chrono::DateTime<Utc> {
@@ -109,7 +109,10 @@ fn clean_fixture() -> Fixture {
 #[test]
 fn clean_call_is_authorized() {
     let fx = clean_fixture();
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::Authorized);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::Authorized
+    );
 }
 
 /// Row 6 — a call the gate refused over-cap, whose recorded numbers re-derive:
@@ -125,7 +128,10 @@ fn over_budget_when_gate_refusal_rederives() {
         400,
     )];
     fx.facts = vec![fact(0, Verdict::Allowed, 400, None)];
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::OverBudget);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::OverBudget
+    );
 }
 
 /// Row 16 (D1) — the gate recorded `granted` but the settled-only re-derivation
@@ -137,7 +143,10 @@ fn gate_vs_rederivation_mismatch_is_unverifiable() {
     fx.records = vec![record(Verdict::Allowed, 600)];
     fx.facts = vec![fact(0, Verdict::Allowed, 450, Some(150))]; // 450+150 = 600 > $5 cap
     fx.audit = consistent(1, 600);
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::Unverifiable);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::Unverifiable
+    );
 }
 
 /// Row 17 (D2) — the budget check runs over the CROSS-RAIL settled counter the
@@ -164,7 +173,10 @@ fn cross_rail_spend_counts_against_one_cap() {
         fact(1, Verdict::Allowed, 300, None),
     ];
     fx.audit = consistent(2, 300);
-    assert_eq!(judge_call(&fx.view(), 1, "0xseller"), CallVerdict::OverBudget);
+    assert_eq!(
+        judge_call(&fx.view(), 1, "0xseller"),
+        CallVerdict::OverBudget
+    );
 }
 
 /// Row 20 — injection redirect under `AllowList`: in-scope, under cap, but the
@@ -177,7 +189,10 @@ fn allow_list_denies_off_list_counterparty() {
         allow: Some(vec!["0xseller".to_string()]),
         predicate_ref: None,
     });
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::Authorized);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::Authorized
+    );
     assert_eq!(
         judge_call(&fx.view(), 0, "0xattacker"),
         CallVerdict::OutOfCounterparty
@@ -237,7 +252,10 @@ fn tel_revocation_before_anchor_is_unauthorized() {
         seq: None,
         ts: Some(t0() - Duration::minutes(5)),
     });
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::Unauthorized);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::Unauthorized
+    );
 }
 
 /// Row 8 (unit leg) — a revocation recorded AFTER the anchor instant does not
@@ -250,7 +268,10 @@ fn revocation_after_anchor_leaves_as_of_verdict() {
         seq: None,
         ts: Some(t0() + Duration::minutes(5)),
     });
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::Authorized);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::Authorized
+    );
 }
 
 /// A call outside the grant window is expired.
@@ -268,7 +289,10 @@ fn tampered_walk_grounds_no_call() {
     fx.audit = AuditVerdict::TamperedProof {
         proof_ref: "deadbeef".to_string(),
     };
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::Unverifiable);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::Unverifiable
+    );
 }
 
 /// Row 7 (unit leg) — the walk stopped at an in-KEL revocation: calls at/after
@@ -278,5 +302,8 @@ fn revoked_walk_kills_covered_calls() {
     let mut fx = clean_fixture();
     fx.audit = AuditVerdict::Revoked { at: 0 };
     fx.facts = vec![];
-    assert_eq!(judge_call(&fx.view(), 0, "0xseller"), CallVerdict::Unauthorized);
+    assert_eq!(
+        judge_call(&fx.view(), 0, "0xseller"),
+        CallVerdict::Unauthorized
+    );
 }

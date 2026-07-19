@@ -90,7 +90,9 @@ pub fn render_human(
 ) -> String {
     let record = chain.records.get(call_index);
     let tool = record.map(|r| r.receipt.tool.as_str()).unwrap_or("?");
-    let args_hash = record.map(|r| r.receipt.action_hash.as_str()).unwrap_or("?");
+    let args_hash = record
+        .map(|r| r.receipt.action_hash.as_str())
+        .unwrap_or("?");
     let at = record
         .map(|r| r.receipt.at.to_rfc3339())
         .unwrap_or_else(|| "?".to_string());

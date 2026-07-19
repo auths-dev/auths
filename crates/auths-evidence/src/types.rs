@@ -142,7 +142,11 @@ pub struct CounterpartyPolicy {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow: Option<Vec<String>>,
     /// A reference naming the predicate, for `kind = predicate`.
-    #[serde(rename = "predicateRef", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "predicateRef",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub predicate_ref: Option<String>,
 }
 

@@ -28,8 +28,8 @@ fn env(name: &str) -> Option<String> {
 }
 
 fn fresh_seed_hex() -> Result<String, String> {
-    let (seed, _) = auths_crypto::typed_generate(auths_crypto::CurveType::P256)
-        .map_err(|e| e.to_string())?;
+    let (seed, _) =
+        auths_crypto::typed_generate(auths_crypto::CurveType::P256).map_err(|e| e.to_string())?;
     let bytes = match seed {
         auths_crypto::TypedSeed::P256(bytes) | auths_crypto::TypedSeed::Ed25519(bytes) => bytes,
     };
@@ -81,7 +81,9 @@ fn main() -> ExitCode {
         }
     };
     let result = runtime.block_on(async move {
-        let server = EscrowServer::new(cfg, signer, Utc::now).serve(stdio()).await?;
+        let server = EscrowServer::new(cfg, signer, Utc::now)
+            .serve(stdio())
+            .await?;
         server.waiting().await?;
         Ok::<(), Box<dyn std::error::Error>>(())
     });

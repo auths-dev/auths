@@ -99,7 +99,11 @@ pub struct ReversalDetermination {
     /// In-band curve-tagged signature suite.
     pub suite: String,
     /// The dispute reference, when one exists (RC-E3.2).
-    #[serde(rename = "disputeRef", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "disputeRef",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub dispute_ref: Option<String>,
     /// The settlement being reversed.
     #[serde(rename = "disputedTx")]
@@ -286,16 +290,24 @@ pub async fn verify_determination(
     bundle: &EvidenceBundle,
 ) -> Result<(), EvidenceError> {
     if det.version != REVERSAL_VERSION {
-        return Err(EvidenceError::Input(format!("unknown version {}", det.version)));
+        return Err(EvidenceError::Input(format!(
+            "unknown version {}",
+            det.version
+        )));
     }
     if det.direction != "payee->payerPrincipal" {
-        return Err(EvidenceError::Input("reversals only run payee->payerPrincipal".to_string()));
+        return Err(EvidenceError::Input(
+            "reversals only run payee->payerPrincipal".to_string(),
+        ));
     }
-    let suite = crate::bundle::SignatureSuite::parse(&det.suite)?;
+    let suite = crate::bundle::SignatureSuite::parse(&det.suite)
+        .ok_or_else(|| EvidenceError::Input(format!("unknown suite `{}`", det.suite)))?;
     let decoded = auths_crypto::did_key_decode(&det.issued_by)
         .map_err(|e| EvidenceError::Input(format!("issued_by: {e}")))?;
     if decoded.curve() != suite.curve() {
-        return Err(EvidenceError::Input("issued_by curve does not match suite".to_string()));
+        return Err(EvidenceError::Input(
+            "issued_by curve does not match suite".to_string(),
+        ));
     }
     let message = reversal_signing_bytes(det)?;
     let signature = BASE64
@@ -310,10 +322,14 @@ pub async fn verify_determination(
 
     let verified = verify_offline(bundle).await;
     if !verified.ok {
-        return Err(EvidenceError::Input("cited bundle does not verify".to_string()));
+        return Err(EvidenceError::Input(
+            "cited bundle does not verify".to_string(),
+        ));
     }
     if det.disputed_tx != bundle.settlement.tx || det.basis.verdict != bundle.verdicts.call {
-        return Err(EvidenceError::Input("determination does not match the cited bundle".to_string()));
+        return Err(EvidenceError::Input(
+            "determination does not match the cited bundle".to_string(),
+        ));
     }
     let expected = match bundle.verdicts.call {
         CallVerdict::OverBudget => overage_cents(bundle).await?,
@@ -336,7 +352,9 @@ pub async fn verify_determination(
     if det.parties.payer_principal != bundle.subject.root
         || det.parties.acting_agent != bundle.subject.agent
     {
-        return Err(EvidenceError::Input("parties do not re-derive from the bundle".to_string()));
+        return Err(EvidenceError::Input(
+            "parties do not re-derive from the bundle".to_string(),
+        ));
     }
     Ok(())
 }
@@ -378,10 +396,9 @@ async fn overage_cents(bundle: &EvidenceBundle) -> Result<u64, EvidenceError> {
     // A refused over-budget call settled nothing; the would-be figure is the
     // gate's recorded refusal, cross-checked against the re-derived spent-before.
     let (spent_before, would_be) = match (&record.receipt.verdict, annotated.facts.get(index)) {
-        (
-            auths_mcp_core::Verdict::UsageCapExceeded { would_be_cents, .. },
-            Some(fact),
-        ) => (fact.settled_cents_before.get(), would_be_cents.get()),
+        (auths_mcp_core::Verdict::UsageCapExceeded { would_be_cents, .. }, Some(fact)) => {
+            (fact.settled_cents_before.get(), would_be_cents.get())
+        }
         (_, Some(fact)) => {
             let cost = fact.signed_cents.map(|c| c.get()).unwrap_or(0);
             (

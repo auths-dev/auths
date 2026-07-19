@@ -81,20 +81,22 @@ pub fn activity_signing_bytes(doc: &ActivityV1) -> Result<Vec<u8>, EvidenceError
 /// ```ignore
 /// verify_activity(&doc, &keys)?;
 /// ```
-pub fn verify_activity(doc: &ActivityV1, current_keys: &[KeriPublicKey]) -> Result<(), EvidenceError> {
+pub fn verify_activity(
+    doc: &ActivityV1,
+    current_keys: &[KeriPublicKey],
+) -> Result<(), EvidenceError> {
     if doc.version != ACTIVITY_VERSION {
-        return Err(EvidenceError::Input(format!("unknown version {}", doc.version)));
+        return Err(EvidenceError::Input(format!(
+            "unknown version {}",
+            doc.version
+        )));
     }
     let message = activity_signing_bytes(doc)?;
     let signature = BASE64
         .decode(&doc.signature)
         .map_err(|e| EvidenceError::Input(format!("signature b64: {e}")))?;
     for key in current_keys {
-        let (curve, bytes): (auths_crypto::CurveType, &[u8]) = match key {
-            KeriPublicKey::Ed25519 { key, .. } => (auths_crypto::CurveType::Ed25519, key),
-            KeriPublicKey::P256 { key, .. } => (auths_crypto::CurveType::P256, key),
-        };
-        if auths_crypto::typed_verify(curve, bytes, &message, &signature).is_ok() {
+        if auths_crypto::typed_verify(key.curve(), key.raw_bytes(), &message, &signature).is_ok() {
             return Ok(());
         }
     }

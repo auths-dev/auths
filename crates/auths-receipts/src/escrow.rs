@@ -244,7 +244,9 @@ impl EscrowAnchor {
     /// to cover (the binding must match the record's prefix head at `upto_seq`).
     pub fn verify(&self, record: &EscrowRecord, pinned_key_hex: &str) -> Result<(), EscrowError> {
         if self.public_key_hex != pinned_key_hex {
-            return Err(EscrowError::Invalid("anchor signer not the pinned key".to_string()));
+            return Err(EscrowError::Invalid(
+                "anchor signer not the pinned key".to_string(),
+            ));
         }
         let expected = record.binding_at(self.upto_seq)?;
         if expected != self.binding {
@@ -301,8 +303,8 @@ impl PartyKey {
             .try_into()
             .map_err(|_| EscrowError::Signing("seed must be 32 bytes".to_string()))?;
         let seed = TypedSeed::from_curve(curve, seed);
-        let public_key =
-            auths_crypto::typed_public_key(&seed).map_err(|e| EscrowError::Signing(e.to_string()))?;
+        let public_key = auths_crypto::typed_public_key(&seed)
+            .map_err(|e| EscrowError::Signing(e.to_string()))?;
         Ok(PartyKey {
             seed,
             did: crate::escrow::did_key_of(curve, &public_key),
@@ -411,7 +413,9 @@ impl EscrowRecord {
             ..
         } = &body
         else {
-            return Err(EscrowError::Rejected("r₀ must be an Open event".to_string()));
+            return Err(EscrowError::Rejected(
+                "r₀ must be an Open event".to_string(),
+            ));
         };
         if *mode == EscrowMode::Locked {
             return Err(EscrowError::Rejected(
@@ -522,7 +526,9 @@ impl EscrowRecord {
             )));
         }
         if event.prev != self.head() {
-            return Err(EscrowError::Rejected("prev does not match the head".to_string()));
+            return Err(EscrowError::Rejected(
+                "prev does not match the head".to_string(),
+            ));
         }
         let message = event_signing_bytes(event.seq, &event.prev, event.at, &event.body)?;
         let milestone_of = |index: usize| -> Result<&Milestone, EscrowError> {
@@ -570,7 +576,11 @@ impl EscrowRecord {
     }
 
     /// Attach a verified anchor (the pin stores it; the rule track reads its time).
-    pub fn attach_anchor(&mut self, anchor: EscrowAnchor, pinned_key_hex: &str) -> Result<(), EscrowError> {
+    pub fn attach_anchor(
+        &mut self,
+        anchor: EscrowAnchor,
+        pinned_key_hex: &str,
+    ) -> Result<(), EscrowError> {
         anchor.verify(self, pinned_key_hex)?;
         self.anchors.push(anchor);
         Ok(())
@@ -622,7 +632,9 @@ impl EscrowRecord {
                 .sigs
                 .iter()
                 .find(|s| &s.signer == required)
-                .ok_or_else(|| EscrowError::Invalid(format!("r₀ missing signature by {required}")))?;
+                .ok_or_else(|| {
+                    EscrowError::Invalid(format!("r₀ missing signature by {required}"))
+                })?;
             verify_party_sig(sig, &message)?;
         }
         for event in record.events.iter().skip(1) {

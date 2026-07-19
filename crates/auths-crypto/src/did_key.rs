@@ -56,6 +56,29 @@ pub fn ed25519_pubkey_to_did_keri(pk: &[u8]) -> String {
     format!("did:keri:{}", bs58::encode(pk).into_string())
 }
 
+/// Encode a raw public key as a `did:key:z…` string (multicodec-tagged,
+/// base58btc) — the self-describing inverse of [`did_key_decode`]. The curve is
+/// carried in the multicodec prefix, never inferred from length.
+///
+/// Args:
+/// * `curve`: The key's curve.
+/// * `public_key`: 32 raw bytes (Ed25519) or 33 compressed SEC1 bytes (P-256).
+///
+/// Usage:
+/// ```ignore
+/// let did = did_key_encode(CurveType::P256, &compressed_point);
+/// ```
+pub fn did_key_encode(curve: crate::CurveType, public_key: &[u8]) -> String {
+    let prefix = match curve {
+        crate::CurveType::Ed25519 => ED25519_MULTICODEC,
+        crate::CurveType::P256 => P256_MULTICODEC,
+    };
+    let mut bytes = Vec::with_capacity(2 + public_key.len());
+    bytes.extend_from_slice(&prefix);
+    bytes.extend_from_slice(public_key);
+    format!("did:key:z{}", bs58::encode(bytes).into_string())
+}
+
 /// Decode a `did:key:z...` string to a 33-byte compressed P-256 public key.
 ///
 /// Args:

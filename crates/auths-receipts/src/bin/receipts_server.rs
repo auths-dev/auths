@@ -48,7 +48,10 @@ fn default_grant() -> BundleGrant {
 }
 
 fn main() -> ExitCode {
-    let registry = match (env("AUTHS_RECEIPTS_REGISTRY"), env("AUTHS_RECEIPTS_REGISTRY_URL")) {
+    let registry = match (
+        env("AUTHS_RECEIPTS_REGISTRY"),
+        env("AUTHS_RECEIPTS_REGISTRY_URL"),
+    ) {
         (Some(path), _) => RegistrySource::Local(PathBuf::from(path)),
         (None, Some(url)) => RegistrySource::Remote {
             url,
@@ -57,7 +60,9 @@ fn main() -> ExitCode {
                 .unwrap_or_else(|| PathBuf::from(".auths-receipts-cache")),
         },
         (None, None) => {
-            eprintln!("auths-receipts-server: set AUTHS_RECEIPTS_REGISTRY or AUTHS_RECEIPTS_REGISTRY_URL");
+            eprintln!(
+                "auths-receipts-server: set AUTHS_RECEIPTS_REGISTRY or AUTHS_RECEIPTS_REGISTRY_URL"
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -120,7 +125,9 @@ fn main() -> ExitCode {
         }
     };
     let result = runtime.block_on(async move {
-        let server = ReceiptsServer::new(cfg, signer, Utc::now).serve(stdio()).await?;
+        let server = ReceiptsServer::new(cfg, signer, Utc::now)
+            .serve(stdio())
+            .await?;
         server.waiting().await?;
         Ok::<(), Box<dyn std::error::Error>>(())
     });

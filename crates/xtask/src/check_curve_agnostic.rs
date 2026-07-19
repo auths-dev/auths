@@ -22,6 +22,10 @@ const ALLOWED_PARENTS: &[&str] = &[
     "CurveTag",
     "DecodedDidKey",
     "SignatureAlgorithm",
+    // The canonical-JSON suite tag (auths-crypto::suite) — same category as
+    // SignatureAlgorithm: a typed curve-dispatch enum defined in the sanctioned
+    // crypto crate, matched/constructed by consumers.
+    "SignatureSuite",
     "Codex",
     "SigType",
     "KeyData",

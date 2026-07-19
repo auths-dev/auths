@@ -80,7 +80,8 @@ pub async fn build_bundle(
         hex_digest(bytes.as_bytes())
     };
     if let Some(idem) = &idem_key
-        && let Some(replay) = super::idempotency_replay(&state, &account.id, idem, &request_hash).await?
+        && let Some(replay) =
+            super::idempotency_replay(&state, &account.id, idem, &request_hash).await?
     {
         return Ok(replay);
     }
@@ -139,8 +140,15 @@ pub async fn build_bundle(
     .bind(now.to_rfc3339())
     .execute(&state.pool)
     .await?;
-    super::record_usage(&state, &account, &key, "dispute_evidence", Some(&id), idem_key.as_deref())
-        .await?;
+    super::record_usage(
+        &state,
+        &account,
+        &key,
+        "dispute_evidence",
+        Some(&id),
+        idem_key.as_deref(),
+    )
+    .await?;
 
     let body = serde_json::json!({
         "id": id,
@@ -195,7 +203,20 @@ pub async fn list_bundles(
     key.require("bundles:read")?;
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
     let offset = query.cursor.unwrap_or(0).max(0);
-    let rows = sqlx::query_as::<_, (String, Option<String>, String, String, String, i32, String, String, String)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            String,
+            Option<String>,
+            String,
+            String,
+            String,
+            i32,
+            String,
+            String,
+            String,
+        ),
+    >(
         "SELECT id, dispute_ref, subject_root, subject_agent, settlement_tx, call_index,
                 call_verdict, log_verdict, created_at::text
          FROM bundles
@@ -419,7 +440,9 @@ pub async fn post_reversal(
             serde_json::from_str(&row.0).map_err(|e| ApiError::Internal(e.to_string()))?
         }
         (None, None) => {
-            return Err(ApiError::BadRequest("bundle or bundleId required".to_string()));
+            return Err(ApiError::BadRequest(
+                "bundle or bundleId required".to_string(),
+            ));
         }
     };
     let hold = match request.hold.as_deref() {

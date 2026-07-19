@@ -190,6 +190,16 @@ impl KeriPublicKey {
         }
     }
 
+    /// The raw public-key bytes (32 for Ed25519, 33 compressed SEC1 for P-256) —
+    /// paired with [`Self::curve`] so consumers dispatch on the typed curve and
+    /// never re-match variants.
+    pub fn raw_bytes(&self) -> &[u8] {
+        match self {
+            KeriPublicKey::Ed25519 { key, .. } => key,
+            KeriPublicKey::P256 { key, .. } => key,
+        }
+    }
+
     /// Whether this key is transferable (rotating).
     ///
     /// Each variant carries the transferability recorded from its CESR code:

@@ -438,7 +438,10 @@ async fn run_export_attestation(args: ExportAttestationArgs) -> ExitCode {
                 Some(serde_json::json!({ "tier": "treasury", "checkpoints": lines }))
             }
             Err(e) => {
-                eprintln!("auths-mcp-gateway: cannot read --anchor `{}`: {e}", path.display());
+                eprintln!(
+                    "auths-mcp-gateway: cannot read --anchor `{}`: {e}",
+                    path.display()
+                );
                 return ExitCode::FAILURE;
             }
         },
@@ -721,7 +724,10 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    println!("verify-spend: {} — {}", spend.report.code, spend.report.verdict);
+    println!(
+        "verify-spend: {} — {}",
+        spend.report.code, spend.report.verdict
+    );
     if !spend.report.consistent {
         return ExitCode::FAILURE;
     }

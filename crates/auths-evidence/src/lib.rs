@@ -42,19 +42,17 @@ pub use bundle::{
 pub use error::EvidenceError;
 pub use judge::{ChainView, judge_call, judge_log, locate_call};
 pub use kel_wire::{kel_from_wire, kel_to_wire};
-pub use resolve_chain::{
-    ChainInput, RegistrySource, ResolvedChain, TreasuryInput, resolve_chain,
+pub use resolve_chain::{ChainInput, RegistrySource, ResolvedChain, TreasuryInput, resolve_chain};
+pub use reversal::{
+    HoldState, REVERSAL_VERSION, RailHint, ReversalAmount, ReversalAmountKind, ReversalBasis,
+    ReversalDetermination, ReversalInputs, ReversalOutcome, ReversalParties, determine_reversal,
+    reversal_signing_bytes, verify_determination,
 };
 pub use types::{
     AUDIT_VERSION, AnchorRef, AnchorTier, AuditCheckpoint, AuditV1, BudgetBasis, BundleCall,
     BundleGrant, BundleProof, BundleSettlement, CallVerdict, CounterpartyPolicy,
     CounterpartyPolicyKind, EvidenceBundle, LogVerdict, OnlineFreshness, PolicyDecision,
     RECEIPTS_VERSION, RevocationFact, Subject, TreasuryCheck, Verdicts,
-};
-pub use reversal::{
-    HoldState, REVERSAL_VERSION, RailHint, ReversalAmount, ReversalAmountKind, ReversalBasis,
-    ReversalDetermination, ReversalInputs, ReversalOutcome, ReversalParties, determine_reversal,
-    reversal_signing_bytes, verify_determination,
 };
 pub use verify_spend::{VerifiedSpend, VerifyOpts, report_of, verify_spend};
 

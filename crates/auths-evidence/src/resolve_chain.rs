@@ -17,8 +17,7 @@ use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 
 use crate::anchor::{
-    check_trail, composite_head, first_seen_anchor, kel_digest, spend_binding_head,
-    treasury_anchor,
+    check_trail, composite_head, first_seen_anchor, kel_digest, spend_binding_head, treasury_anchor,
 };
 use crate::error::EvidenceError;
 use crate::types::{AnchorRef, AuditV1, BundleGrant, LogVerdict, RevocationFact};
@@ -138,7 +137,9 @@ pub async fn resolve_chain(
         Some(t) => {
             let raw = tokio::fs::read_to_string(&t.checkpoints)
                 .await
-                .map_err(|e| EvidenceError::Treasury(format!("{}: {e}", t.checkpoints.display())))?;
+                .map_err(|e| {
+                    EvidenceError::Treasury(format!("{}: {e}", t.checkpoints.display()))
+                })?;
             let lines: Vec<String> = raw.lines().map(str::to_string).collect();
             let last = check_trail(&lines, Some(&t.pubkey_hex))?;
             (last.at, Some((lines, last, t.pubkey_hex.clone())))
@@ -253,7 +254,11 @@ async fn fetch_registry(url: &str, cache_dir: &Path) -> Result<PathBuf, Evidence
     )
     .await?;
     // Materialize the working files (spend log, budget ledger) from the first head.
-    let heads = run_git(&repo, &["for-each-ref", "--format=%(refname)", "refs/heads"]).await?;
+    let heads = run_git(
+        &repo,
+        &["for-each-ref", "--format=%(refname)", "refs/heads"],
+    )
+    .await?;
     if let Some(first) = heads.lines().next() {
         run_git(&repo, &["checkout", "--quiet", first.trim()]).await?;
     }

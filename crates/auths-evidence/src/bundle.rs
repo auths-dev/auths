@@ -21,68 +21,19 @@ use crate::types::{
     OnlineFreshness, RECEIPTS_VERSION, Subject, Verdicts,
 };
 
-/// The in-band signature suite a bundle carries. Curve-tagged per the wire-format
-/// rule; P-256 is the project default.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SignatureSuite {
-    /// RFC-8785 canonical JSON, ECDSA P-256.
-    P256,
-    /// RFC-8785 canonical JSON, Ed25519.
-    Ed25519,
+// The curve-tagged suite tag lives in auths-crypto (the sanctioned home for
+// curve-specific wire naming); re-exported so consumers keep one path.
+pub use auths_crypto::SignatureSuite;
+
+/// Parse an in-band suite string, failing closed on an unknown suite.
+fn parse_suite(raw: &str) -> Result<SignatureSuite, EvidenceError> {
+    SignatureSuite::parse(raw).ok_or_else(|| EvidenceError::Input(format!("unknown suite `{raw}`")))
 }
 
-impl SignatureSuite {
-    /// The in-band wire string.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SignatureSuite::P256 => "json-canon/p256",
-            SignatureSuite::Ed25519 => "json-canon/ed25519",
-        }
-    }
-
-    /// Parse the wire string.
-    pub fn parse(raw: &str) -> Result<Self, EvidenceError> {
-        match raw {
-            "json-canon/p256" => Ok(SignatureSuite::P256),
-            "json-canon/ed25519" => Ok(SignatureSuite::Ed25519),
-            other => Err(EvidenceError::Input(format!("unknown suite `{other}`"))),
-        }
-    }
-
-    /// The suite's curve.
-    pub fn curve(&self) -> CurveType {
-        match self {
-            SignatureSuite::P256 => CurveType::P256,
-            SignatureSuite::Ed25519 => CurveType::Ed25519,
-        }
-    }
-}
-
-const ED25519_MULTICODEC: [u8; 2] = [0xed, 0x01];
-const P256_MULTICODEC: [u8; 2] = [0x80, 0x24];
-
-/// Encode a raw public key as a `did:key:z…` (multicodec-tagged, base58btc) — the
-/// self-describing identity a bundle's `issued_by` carries so verification needs
-/// no registry.
-///
-/// Args:
-/// * `curve`: the key's curve (carried in the multicodec, never inferred).
-/// * `public_key`: 32 raw bytes (Ed25519) or 33 compressed SEC1 bytes (P-256).
-///
-/// Usage:
-/// ```ignore
-/// let did = did_key_encode(CurveType::P256, &pubkey);
-/// ```
-pub fn did_key_encode(curve: CurveType, public_key: &[u8]) -> String {
-    let prefix = match curve {
-        CurveType::Ed25519 => ED25519_MULTICODEC,
-        CurveType::P256 => P256_MULTICODEC,
-    };
-    let mut bytes = Vec::with_capacity(2 + public_key.len());
-    bytes.extend_from_slice(&prefix);
-    bytes.extend_from_slice(public_key);
-    format!("did:key:z{}", bs58::encode(bytes).into_string())
-}
+// The multicodec-tagged encoder lives in auths-crypto's did_key module (the one
+// sanctioned home for curve-specific wire tags); re-exported so the bindings and
+// the escrow domain keep one path.
+pub use auths_crypto::did_key_encode;
 
 /// The tool server's own signing identity: a curve-tagged seed plus the
 /// `did:key:` it signs as.
@@ -271,7 +222,11 @@ fn anchored_prefix<'a>(
 > {
     if chain.anchor.tier != AnchorTier::Treasury || !chain.audit.consistent {
         let anchor = if chain.anchor.tier == AnchorTier::Treasury {
-            first_seen_anchor(chain.anchor.head.clone(), chain.anchor.kel_seq, chain.anchor.ts)
+            first_seen_anchor(
+                chain.anchor.head.clone(),
+                chain.anchor.kel_seq,
+                chain.anchor.ts,
+            )
         } else {
             chain.anchor.clone()
         };
@@ -314,7 +269,11 @@ fn anchored_prefix<'a>(
         return Ok((
             &chain.records,
             &chain.facts,
-            first_seen_anchor(chain.anchor.head.clone(), chain.anchor.kel_seq, chain.anchor.ts),
+            first_seen_anchor(
+                chain.anchor.head.clone(),
+                chain.anchor.kel_seq,
+                chain.anchor.ts,
+            ),
         ));
     }
     Err(EvidenceError::AnchorLagging(format!(
@@ -518,7 +477,7 @@ pub async fn verify_offline(bundle: &EvidenceBundle) -> OfflineVerdict {
 }
 
 fn check_issuer_signature(bundle: &EvidenceBundle) -> Result<(), String> {
-    let suite = SignatureSuite::parse(&bundle.suite).map_err(|e| e.to_string())?;
+    let suite = parse_suite(&bundle.suite).map_err(|e| e.to_string())?;
     let decoded = did_key_decode(&bundle.issued_by).map_err(|e| format!("issued_by: {e}"))?;
     if decoded.curve() != suite.curve() {
         return Err("issued_by curve does not match the suite".to_string());

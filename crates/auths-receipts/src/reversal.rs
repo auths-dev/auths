@@ -125,7 +125,9 @@ impl ReversalRail for EscrowReleaseRail {
                 }
                 .execute(det)?;
                 let RailOutcome::ClaimRecorded { claim_ref } = claim else {
-                    return Err(RailError::Io("claim adapter returned execution".to_string()));
+                    return Err(RailError::Io(
+                        "claim adapter returned execution".to_string(),
+                    ));
                 };
                 Ok(RailOutcome::ClaimRecorded {
                     claim_ref: format!("{claim_ref} (rule track: {other:?})"),

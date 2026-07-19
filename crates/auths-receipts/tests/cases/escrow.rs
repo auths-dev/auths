@@ -96,7 +96,9 @@ fn signed_event(
 
 fn anchor_now(deal: &mut Deal, at: DateTime<Utc>) {
     let anchor = EscrowAnchor::commit(&deal.record, at, &deal.anchor_seed).unwrap();
-    deal.record.attach_anchor(anchor, &deal.anchor_key_hex).unwrap();
+    deal.record
+        .attach_anchor(anchor, &deal.anchor_key_hex)
+        .unwrap();
 }
 
 #[test]
