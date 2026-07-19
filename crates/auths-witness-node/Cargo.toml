@@ -54,8 +54,10 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sig
 sqlite = { version = "0.32", features = ["bundled"] }
 # The cosign role's signed-note signing primitive (as in auths-transparency).
 ring = { workspace = true }
-# The KEL role's shared router + state (composed, never forked).
-auths-core = { workspace = true }
+# The KEL role's shared router + state (composed, never forked). The feature
+# is declared here, not inherited: without it a `-p auths-witness-node` build
+# only compiles when some other workspace member happens to unify it in.
+auths-core = { workspace = true, features = ["witness-server"] }
 
 [dev-dependencies]
 tempfile = "3"
