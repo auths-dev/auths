@@ -64,6 +64,62 @@ pub fn detect_spend_anchor_duplicity(observations: &[ObservedAnchor]) -> Option<
     None
 }
 
+/// Pull each watched seed's latest co-signed anchor from every watched
+/// witness. Unreachable witnesses and unknown seeds are skipped (a watcher
+/// tolerates partial visibility); whatever was observed feeds the duplicity
+/// scan and the gap alerts.
+///
+/// Args:
+/// * `client`: the shared HTTP client.
+/// * `witnesses`: witness base URLs.
+/// * `seeds`: watched seeds, lowercase-hex.
+///
+/// Usage:
+/// ```ignore
+/// let observed = fetch_observed_anchors(&client, &witnesses, &seeds).await;
+/// if let Some(proof) = detect_spend_anchor_duplicity(&observed) { publish(proof); }
+/// ```
+pub async fn fetch_observed_anchors(
+    client: &reqwest::Client,
+    witnesses: &[String],
+    seeds: &[String],
+) -> Vec<ObservedAnchor> {
+    #[derive(serde::Deserialize)]
+    struct LatestBody {
+        anchor: Anchor,
+    }
+    let mut observed = Vec::new();
+    for witness in witnesses {
+        for seed in seeds {
+            let url = format!("{}/v1/anchor/{seed}", witness.trim_end_matches('/'));
+            let response = client
+                .get(&url)
+                .timeout(std::time::Duration::from_secs(10))
+                .send()
+                .await;
+            match response {
+                Ok(resp) if resp.status().is_success() => match resp.json::<LatestBody>().await {
+                    Ok(body) => observed.push(ObservedAnchor {
+                        source: witness.clone(),
+                        anchor: body.anchor,
+                    }),
+                    Err(e) => {
+                        tracing::warn!(witness = %witness, seed = %seed, error = %e, "bad anchor body")
+                    }
+                },
+                Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {}
+                Ok(resp) => {
+                    tracing::warn!(witness = %witness, seed = %seed, status = %resp.status(), "anchor read refused")
+                }
+                Err(e) => {
+                    tracing::warn!(witness = %witness, seed = %seed, error = %e, "witness unreachable")
+                }
+            }
+        }
+    }
+    observed
+}
+
 /// Raise a withholding-gap alert when the newest anchor for a seed is stale.
 ///
 /// Args:

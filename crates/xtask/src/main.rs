@@ -93,6 +93,10 @@ enum Command {
         /// Directory to write `conformance-vectors.json` to.
         #[arg(long)]
         emit: Option<std::path::PathBuf>,
+        /// A live witness base URL to drive through the black-box transport
+        /// checks (e.g. `http://127.0.0.1:3333`).
+        #[arg(long)]
+        url: Option<String>,
     },
 }
 
@@ -124,6 +128,12 @@ fn main() -> anyhow::Result<()> {
         Command::CheckVerifyPathCompleteness => {
             check_verify_path_completeness::run(workspace_root())
         }
-        Command::WitnessConformance { emit } => witness_conformance::run(emit.as_deref()),
+        Command::WitnessConformance { emit, url } => {
+            witness_conformance::run(emit.as_deref())?;
+            match url {
+                Some(url) => witness_conformance::drive(&url),
+                None => Ok(()),
+            }
+        }
     }
 }

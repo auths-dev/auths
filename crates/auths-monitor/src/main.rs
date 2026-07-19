@@ -11,6 +11,9 @@
 //! - `AUTHS_MONITOR_STATE_PATH` — State persistence path (default: /data/monitor_state.json)
 //! - `AUTHS_LOG_PUBLIC_KEY` — Hex-encoded Ed25519 public key of the log operator (required)
 //! - `AUTHS_LOG_ORIGIN` — Log origin string (default: auths.dev/log)
+//! - `AUTHS_WATCH_WITNESSES` — Comma-separated witness base URLs to pull spend anchors from
+//! - `AUTHS_WATCH_SEEDS` — Comma-separated seed ids (lowercase hex) to watch
+//! - `AUTHS_WATCH_GAP_SECS` — Tolerated silence before a withholding-gap alert (default: 86400)
 
 #![allow(clippy::disallowed_methods, clippy::exit)]
 
@@ -105,8 +108,68 @@ async fn main() -> anyhow::Result<()> {
 
     let client = reqwest::Client::new();
 
+    let watch_witnesses: Vec<String> = std::env::var("AUTHS_WATCH_WITNESSES")
+        .map(|v| {
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let watch_seeds: Vec<String> = std::env::var("AUTHS_WATCH_SEEDS")
+        .map(|v| {
+            v.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let watch_gap_secs: i64 = std::env::var("AUTHS_WATCH_GAP_SECS")
+        .unwrap_or_else(|_| "86400".into())
+        .parse()
+        .map_err(|e| anyhow::anyhow!("invalid AUTHS_WATCH_GAP_SECS: {e}"))?;
+    if !watch_witnesses.is_empty() {
+        tracing::info!(
+            witnesses = watch_witnesses.len(),
+            seeds = watch_seeds.len(),
+            "spend-anchor watch enabled"
+        );
+    }
+
     loop {
         tracing::info!("starting verification cycle");
+
+        if !watch_witnesses.is_empty() && !watch_seeds.is_empty() {
+            let observed =
+                auths_monitor::fetch_observed_anchors(&client, &watch_witnesses, &watch_seeds)
+                    .await;
+            if let Some(proof) = auths_monitor::detect_spend_anchor_duplicity(&observed) {
+                // The proof is the publishable artifact: emitted whole so any
+                // channel can carry it to strangers for offline re-checking.
+                match serde_json::to_string(&proof) {
+                    Ok(wire) => tracing::error!(proof = %wire, "SPEND-ANCHOR DUPLICITY DETECTED"),
+                    Err(e) => tracing::error!(error = %e, "duplicity proof serialization"),
+                }
+            }
+            let now = chrono::Utc::now();
+            for seed in &watch_seeds {
+                let newest = observed
+                    .iter()
+                    .filter(|o| o.anchor.seed_id.to_hex() == *seed)
+                    .map(|o| o.anchor.timestamp)
+                    .max();
+                if let Some(latest) = newest
+                    && let Some(gap) =
+                        auths_monitor::withholding_gap(seed, latest, now, watch_gap_secs)
+                {
+                    tracing::warn!(
+                        seed = %gap.seed_id,
+                        gap_seconds = gap.gap_seconds,
+                        "withholding gap past tolerance"
+                    );
+                }
+            }
+        }
 
         match run_verification_cycle(&config, &client).await {
             Ok(report) => {
