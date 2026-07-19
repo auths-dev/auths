@@ -36,8 +36,9 @@ deny = [
     "jsonschema",
     "auths-monitor",
     "auths-sdk",
+    "auths-mcp-gateway",
     "murmur-relay",
-  ], reason = "HTTP clients confined to adapter/binary layer (auths-monitor binary fetches checkpoints; auths-sdk reqwest is optional, behind the `mcp` feature)" },
+  ], reason = "HTTP clients confined to adapter/binary layer (auths-monitor binary fetches checkpoints; auths-sdk reqwest is optional, behind the `mcp` feature; the mcp-gateway binary submits anchors to witness endpoints)" },
 
   # dialoguer is a terminal UX dependency — CLI only
   { crate = "dialoguer", wrappers = ["auths-cli"], reason = "interactive TUI confined to CLI" },
@@ -53,8 +54,9 @@ deny = [
     "auths-scim-server",
     "auths-checkpoint-cosigner",
     "auths-witness",
+    "auths-witness-node",
     "murmur-relay",
-  ], reason = "HTTP framework confined to adapter/server crates (scim-server is the SCIM provisioning server; auth-server is the OAuth/OIDC server; checkpoint-cosigner and witness are HTTP service binaries)" },
+  ], reason = "HTTP framework confined to adapter/server crates (scim-server is the SCIM provisioning server; auth-server is the OAuth/OIDC server; checkpoint-cosigner, witness, and witness-node are HTTP service binaries)" },
 
   # git2 must not be a production dependency of auths-sdk or auths-core
   { crate = "git2", wrappers = [
