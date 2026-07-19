@@ -7,7 +7,6 @@
 //! quorum reuses the shipped `witness::independence` engine — the diversity math
 //! is not re-derived here.
 
-use auths_crypto::CurveType;
 use auths_keri::witness::independence::{
     EquivocationDetection, HonestyCeiling, Independence, IndependencePolicy, Infrastructure,
     Jurisdiction, OperatorAttributes, OperatorId, Organization, honesty_ceiling, spans_distinct,
