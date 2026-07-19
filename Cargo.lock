@@ -538,6 +538,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-evidence"
+version = "0.1.8"
+dependencies = [
+ "auths-crypto",
+ "auths-id",
+ "auths-keri",
+ "auths-mcp-core",
+ "auths-sdk",
+ "auths-verifier",
+ "base64",
+ "bs58",
+ "chrono",
+ "json-canon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "auths-id"
 version = "0.1.8"
 dependencies = [
@@ -734,9 +756,11 @@ version = "0.1.8"
 dependencies = [
  "anyhow",
  "auths-crypto",
+ "auths-evidence",
  "auths-mcp-core",
  "auths-sdk",
  "auths-telemetry",
+ "base64",
  "chrono",
  "clap",
  "metrics",
@@ -878,6 +902,33 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "auths-receipts"
+version = "0.1.8"
+dependencies = [
+ "argon2",
+ "auths-crypto",
+ "auths-evidence",
+ "auths-mcp-core",
+ "axum",
+ "base64",
+ "chrono",
+ "json-canon",
+ "rand 0.8.6",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "subtle",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower",
+ "tower-http",
+ "uuid",
 ]
 
 [[package]]
@@ -6022,6 +6073,7 @@ checksum = "69f9466fb2c14ea04357e91413efb882e2a6d4a406e625449bc0a5d360d53a21"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki 0.103.13",
  "subtle",
@@ -6750,6 +6802,7 @@ dependencies = [
  "memchr",
  "once_cell",
  "percent-encoding",
+ "rustls 0.23.38",
  "serde",
  "serde_json",
  "sha2",
@@ -6759,6 +6812,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]

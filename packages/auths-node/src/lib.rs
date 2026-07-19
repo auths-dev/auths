@@ -7,6 +7,7 @@ pub mod commit_sign;
 pub mod device;
 pub mod diagnostics;
 pub mod error;
+pub mod evidence;
 pub mod helpers;
 pub mod identity;
 pub mod org;

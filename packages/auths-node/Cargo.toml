@@ -23,6 +23,7 @@ auths-crypto = { path = "../../crates/auths-crypto" }
 auths-verifier = { path = "../../crates/auths-verifier" }
 auths-keri = { path = "../../crates/auths-keri" }
 auths-rp = { path = "../../crates/auths-rp" }
+auths-evidence = { path = "../../crates/auths-evidence" }
 auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"] }
 auths-policy = { path = "../../crates/auths-policy" }
 auths-pairing-daemon = { path = "../../crates/auths-pairing-daemon" }

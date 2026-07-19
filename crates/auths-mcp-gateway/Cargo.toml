@@ -17,6 +17,9 @@ path = "src/main.rs"
 
 [dependencies]
 auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.8" }
+# The single spend re-derivation + the activity/v1 attestation live in the shared
+# evidence crate; the CLI is a thin caller (one implementation, no divergence).
+auths-evidence = { workspace = true }
 # The gateway resolves the agent + delegator KELs from the sandbox registry so the
 # native per-call gate can authenticate each signed call (no shelling on the
 # enforcement path — D2).
@@ -36,6 +39,7 @@ rmcp = { version = "0.9", features = [
 ] }
 
 clap = { version = "4", features = ["derive", "env"] }
+base64.workspace = true
 # In-process per-call signing builds git objects directly; repos are SHA-1.
 sha1 = "0.10"
 tokio = { workspace = true }

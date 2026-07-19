@@ -224,7 +224,7 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
             // No facilitator key on the hermetic replay path — the attestation leg is exercised by
             // the standalone verify-spend (with --facilitator-key) once the wire captures one.
             let verdict = gate
-                .audit_spend_log(&records, Utc::now().timestamp(), &counter, None)
+                .audit_spend_log(&records, Utc::now().timestamp(), Some(&counter), None)
                 .await;
             println!("▸ audit: {} — {verdict}", verdict.code());
             // Emit the exact args to re-run the audit as a STANDALONE process (`verify-spend`),

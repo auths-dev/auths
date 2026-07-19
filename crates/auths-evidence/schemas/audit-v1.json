@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auths.dev/schemas/audit-v1.json",
+  "title": "AuditV1 (audit/v1)",
+  "description": "The versioned, typed output of one spend re-derivation — shared by the gateway CLI, the tool servers, and every language binding.",
+  "type": "object",
+  "required": ["version", "verdict", "code", "consistent", "records", "settled_cents"],
+  "properties": {
+    "version": { "const": "audit/v1" },
+    "verdict": {
+      "type": "object",
+      "required": ["verdict"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["consistent", "tampered-proof", "cost-mismatch", "budget-mismatch", "dropped-call", "revoked"]
+        }
+      },
+      "description": "The typed audit verdict (internally tagged, kebab-case), carrying the failing check's own fields."
+    },
+    "code": {
+      "type": "string",
+      "enum": ["consistent", "tampered-proof", "cost-mismatch", "budget-mismatch", "dropped-call", "revoked"]
+    },
+    "consistent": { "type": "boolean" },
+    "records": { "type": "integer", "minimum": 0 },
+    "settled_cents": { "type": "integer", "minimum": 0 },
+    "checkpoint": {
+      "type": "object",
+      "required": ["records", "settled_cents", "binding"],
+      "additionalProperties": false,
+      "properties": {
+        "records": { "type": "integer", "minimum": 0 },
+        "settled_cents": { "type": "integer", "minimum": 0 },
+        "binding": { "type": "string" }
+      },
+      "description": "The resumable end state a checkpointing caller stores for its next run."
+    },
+    "treasury": {
+      "type": "object",
+      "required": ["fleet", "count", "cumulative_cents", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "fleet": { "type": "string" },
+        "count": { "type": "integer", "minimum": 0 },
+        "cumulative_cents": { "type": "integer", "minimum": 0 },
+        "at": { "type": "string", "format": "date-time" }
+      },
+      "description": "The verified treasury checkpoint trail's final state, when a trail was supplied."
+    }
+  },
+  "additionalProperties": false
+}

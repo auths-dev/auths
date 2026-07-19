@@ -54,6 +54,11 @@ pub struct Receipt {
     /// summed across all rails (the verifier-held monotonic counter). This is the
     /// `cross_rail_cumulative` the receipt reports.
     pub cumulative_cents: Cents,
+    /// An operator-supplied dispute reference (from `wrap --dispute-ref`) linking this
+    /// settlement to the evidence surface that adjudicates it. Producer-side only —
+    /// downstream consumers read it off the receipt, never parse it out of anything.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispute_ref: Option<String>,
     /// When the call was judged.
     pub at: DateTime<Utc>,
 }
@@ -99,8 +104,23 @@ impl Receipt {
             charge_ref: charge_ref.map(str::to_string),
             reserved_cents,
             cumulative_cents,
+            dispute_ref: None,
             at,
         }
+    }
+
+    /// Stamp the operator's dispute reference onto this receipt (from `wrap --dispute-ref`).
+    ///
+    /// Args:
+    /// * `dispute_ref`: the reference linking this settlement to its evidence surface.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let receipt = Receipt::for_call(...).with_dispute_ref(Some("chargeback-8842"));
+    /// ```
+    pub fn with_dispute_ref(mut self, dispute_ref: Option<&str>) -> Self {
+        self.dispute_ref = dispute_ref.map(str::to_string);
+        self
     }
 
     /// The canonical (RFC-8785) receipt body bytes — the stable serialization a

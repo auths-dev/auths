@@ -257,7 +257,7 @@ impl PerCallGate {
         &self,
         records: &[crate::audit::SpendLogRecord],
         now: i64,
-        counter: &crate::budget::CounterRef,
+        counter: Option<&crate::budget::CounterRef>,
         facilitator_pubkey: Option<&[u8]>,
     ) -> crate::audit::AuditVerdict {
         crate::audit::audit_spend_log(
@@ -278,7 +278,7 @@ impl PerCallGate {
         &self,
         records: &[crate::audit::SpendLogRecord],
         now: i64,
-        counter: &crate::budget::CounterRef,
+        counter: Option<&crate::budget::CounterRef>,
         facilitator_pubkey: Option<&[u8]>,
         resume: &crate::audit::AuditResume,
     ) -> crate::audit::AuditVerdict {
@@ -291,6 +291,40 @@ impl PerCallGate {
             counter,
             facilitator_pubkey,
             resume,
+        )
+        .await
+    }
+
+    /// The agent's resolved delegated KEL — for callers (the evidence layer) that
+    /// drive the audit walk directly, e.g. to embed the KEL in a self-contained bundle.
+    pub fn agent_kel(&self) -> &[auths_id::keri::Event] {
+        &self.agent_kel
+    }
+
+    /// The delegator's resolved KEL (carries the scope/expiry/revocation seals).
+    pub fn delegator_kel(&self) -> &[auths_id::keri::Event] {
+        &self.delegator_kel
+    }
+
+    /// [`Self::audit_spend_log`], additionally collecting the per-record
+    /// [`crate::audit::RecordFact`]s the walk re-derived — the facts an evidence-layer
+    /// judge consumes so the audit walk stays the single implementation.
+    pub async fn audit_spend_log_annotated(
+        &self,
+        records: &[crate::audit::SpendLogRecord],
+        now: i64,
+        counter: Option<&crate::budget::CounterRef>,
+        facilitator_pubkey: Option<&[u8]>,
+    ) -> crate::audit::AnnotatedAudit {
+        crate::audit::audit_spend_log_annotated(
+            records,
+            &self.agent_kel,
+            &self.delegator_kel,
+            std::slice::from_ref(&self.delegator_did),
+            now,
+            counter,
+            facilitator_pubkey,
+            &crate::audit::AuditResume::genesis(),
         )
         .await
     }

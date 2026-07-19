@@ -1,0 +1,84 @@
+[package]
+name = "auths-receipts"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "Portfolio 1 — accountability & dispute: the receipts/dispute-evidence MCP server, the non-custodial escrow MCP server, and the enterprise retainer HTTP API, all over the auths-evidence trust core."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["identity", "receipts", "escrow", "dispute", "evidence"]
+categories = ["authentication"]
+
+[lib]
+name = "auths_receipts"
+path = "src/lib.rs"
+
+[[bin]]
+name = "auths-receipts-server"
+path = "src/bin/receipts_server.rs"
+
+[[bin]]
+name = "auths-escrow-server"
+path = "src/bin/escrow_server.rs"
+
+[[bin]]
+name = "receipts-api"
+path = "src/bin/receipts_api.rs"
+required-features = ["api"]
+
+[features]
+default = []
+# The enterprise retainer HTTP surface (axum + Postgres). Off by default so the
+# MCP tool servers build without a database stack.
+api = [
+    "dep:axum",
+    "dep:tower",
+    "dep:tower-http",
+    "dep:sqlx",
+    "dep:argon2",
+    "dep:subtle",
+    "dep:uuid",
+    "dep:rand",
+]
+
+[dependencies]
+auths-evidence = { workspace = true }
+auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.8" }
+auths-crypto = { workspace = true }
+
+rmcp = { version = "0.9", features = ["server", "transport-io"] }
+tokio = { workspace = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+json-canon.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+base64.workspace = true
+
+axum = { version = "0.8", optional = true }
+tower = { version = "0.5", optional = true }
+tower-http = { version = "0.6", optional = true, features = ["limit", "trace"] }
+# NOTE: sqlx's `uuid`/`chrono`/`json`/`migrate` features name `sqlx-sqlite?/…`,
+# which (weak or not) pulls sqlx-sqlite into version resolution and its
+# libsqlite3-sys `links = sqlite3` collides with the workspace's `sqlite` crate
+# (auths-core/auths-index). So: postgres only; uuids/timestamps/json bind as TEXT
+# (cast in SQL), and migrations run as plain DDL at startup — the same posture as
+# auths-storage's backend-postgres.
+sqlx = { version = "0.8", optional = true, default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+] }
+argon2 = { version = "0.5", optional = true }
+subtle = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -136,6 +136,17 @@ impl SessionKey {
     }
 }
 
+/// Load the agent's session signing key (the same headless keychain identity the
+/// per-call signer uses) as a curve-tagged seed — for signed aggregates (the
+/// `activity/v1` attestation) that must chain to the root through the KEL.
+pub(crate) fn load_agent_signing_key(
+    alias: &str,
+) -> anyhow::Result<(auths_crypto::TypedSeed, auths_crypto::CurveType)> {
+    let key = SessionKey::try_new(alias)?;
+    let seed = auths_crypto::TypedSeed::from_curve(key.curve, *key.seed.as_bytes());
+    Ok((seed, key.curve))
+}
+
 /// Per-session in-process signing state, held by the chain.
 pub struct InprocState {
     alias: String,

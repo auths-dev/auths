@@ -374,13 +374,18 @@ fn safe_key(delegation: &str) -> String {
 ///
 /// A legitimately refused call (out-of-scope / over-cap) carries an AUTHENTIC proof and is NOT a
 /// tamper.
+///
+/// `counter` is the durable verifier-held counter to cross-check the re-derived total against.
+/// Pass `None` ONLY when the caller anchors log completeness some other way (an anchored head
+/// commitment over the embedded log, as an `EvidenceBundle` does) — with no counter AND no
+/// anchor, a tail truncation is undetectable.
 pub async fn audit_spend_log(
     records: &[SpendLogRecord],
     agent_kel: &[Event],
     delegator_kel: &[Event],
     pinned_roots: &[String],
     now: i64,
-    counter: &CounterRef,
+    counter: Option<&CounterRef>,
     facilitator_pubkey: Option<&[u8]>,
 ) -> AuditVerdict {
     audit_spend_log_resumed(
@@ -437,9 +442,97 @@ pub async fn audit_spend_log_resumed(
     delegator_kel: &[Event],
     pinned_roots: &[String],
     now: i64,
-    counter: &CounterRef,
+    counter: Option<&CounterRef>,
     facilitator_pubkey: Option<&[u8]>,
     resume: &AuditResume,
+) -> AuditVerdict {
+    audit_walk(
+        records,
+        agent_kel,
+        delegator_kel,
+        pinned_roots,
+        now,
+        counter,
+        facilitator_pubkey,
+        resume,
+        None,
+    )
+    .await
+}
+
+/// The per-record facts one audited spend-log record established — everything the walk
+/// RE-DERIVED for that record, as opposed to what the operator's receipt merely claims.
+/// A downstream judge (the evidence layer's per-call verdict) consumes these instead of
+/// re-running the walk, so there stays exactly one audit implementation.
+#[derive(Debug, Clone)]
+pub struct RecordFact {
+    /// The record's index in the WHOLE log (prefix + suffix under a resumed audit).
+    pub index: usize,
+    /// The verdict RE-DERIVED from the record's signed proof by the verifier replay —
+    /// never the receipt's claimed verdict.
+    pub rederived_verdict: crate::gate::Verdict,
+    /// This record's commit binding (the value the next record's `Auths-Prev` links to).
+    pub binding: String,
+    /// The re-derived cross-rail SETTLED total STRICTLY BEFORE this record.
+    pub settled_cents_before: Cents,
+    /// The agent-signed (facilitator-attested when available) settled cost of this
+    /// record — `None` for an unmetered or zero-cost call.
+    pub signed_cents: Option<Cents>,
+}
+
+/// An audit verdict together with the per-record [`RecordFact`]s the walk established
+/// up to the point it stopped (all records on `Consistent`; the verified prefix on a
+/// failure — the failing record has no fact, its defect is the verdict itself).
+#[derive(Debug)]
+#[must_use]
+pub struct AnnotatedAudit {
+    /// The whole-log verdict.
+    pub verdict: AuditVerdict,
+    /// Per-record re-derived facts, in log order.
+    pub facts: Vec<RecordFact>,
+}
+
+/// [`audit_spend_log_resumed`], additionally collecting a [`RecordFact`] per verified
+/// record. Same walk, same checks, one implementation — the annotation is a side
+/// channel, never a second authority.
+#[allow(clippy::too_many_arguments)]
+pub async fn audit_spend_log_annotated(
+    records: &[SpendLogRecord],
+    agent_kel: &[Event],
+    delegator_kel: &[Event],
+    pinned_roots: &[String],
+    now: i64,
+    counter: Option<&CounterRef>,
+    facilitator_pubkey: Option<&[u8]>,
+    resume: &AuditResume,
+) -> AnnotatedAudit {
+    let mut facts = Vec::with_capacity(records.len());
+    let verdict = audit_walk(
+        records,
+        agent_kel,
+        delegator_kel,
+        pinned_roots,
+        now,
+        counter,
+        facilitator_pubkey,
+        resume,
+        Some(&mut facts),
+    )
+    .await;
+    AnnotatedAudit { verdict, facts }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn audit_walk(
+    records: &[SpendLogRecord],
+    agent_kel: &[Event],
+    delegator_kel: &[Event],
+    pinned_roots: &[String],
+    now: i64,
+    counter: Option<&CounterRef>,
+    facilitator_pubkey: Option<&[u8]>,
+    resume: &AuditResume,
+    mut facts: Option<&mut Vec<RecordFact>>,
 ) -> AuditVerdict {
     let provider = auths_crypto::default_provider();
     let mut settled = resume.prior_settled_cents;
@@ -447,6 +540,8 @@ pub async fn audit_spend_log_resumed(
     // resumed prefix's final binding, or the genesis sentinel for a from-the-top audit.
     let mut expected_prev = resume.prior_binding.clone();
     for (i, rec) in records.iter().enumerate() {
+        let settled_before = settled;
+        let mut fact_signed_cents: Option<Cents> = None;
         // Re-verify the SIGNED proof bytes — the gate's own authenticity check, re-run offline.
         let commit_verdict = auths_verifier::verify_commit_against_kel_scoped(
             &rec.call_commit,
@@ -603,6 +698,7 @@ pub async fn audit_spend_log_resumed(
                     _ => signed,
                 };
                 settled = settled.saturating_add(summand);
+                fact_signed_cents = Some(summand);
                 // 4. The signed running total ties the cumulative to signed material, so the budget
                 //    leg does not rest on the operator's own (unsigned) receipt cumulative. The
                 //    trailer is a decimal string — parse to u64 then wrap at this boundary.
@@ -623,6 +719,15 @@ pub async fn audit_spend_log_resumed(
                 }
             }
         }
+        if let Some(list) = facts.as_deref_mut() {
+            list.push(RecordFact {
+                index: resume.prior_records + i,
+                rederived_verdict: verdict.clone(),
+                binding: expected_prev.clone(),
+                settled_cents_before: settled_before,
+                signed_cents: fact_signed_cents,
+            });
+        }
     }
     // The operator's claimed cross-rail total is the last record's cumulative — an UNTRUSTED hint we
     // compare against the cost we re-derived from the rail responses. An EMPTY resumed suffix has
@@ -642,20 +747,24 @@ pub async fn audit_spend_log_resumed(
     // settled high-water, so a truncated tail makes re-derived < durable → caught here. A counter
     // that cannot be read confirms nothing, so it fails closed. (Caveat: an operator who ALSO holds
     // the counter could roll it back to match a truncated log — see the residual note in spend_log.)
-    let durable = match counter.open_counter().settled_cents() {
-        Ok(cents) => DurableSettled(cents),
-        Err(_) => {
+    // A caller passing NO counter must anchor completeness elsewhere (an anchored head commitment
+    // over the embedded log); this skip is that caller's explicit, documented trade.
+    if let Some(counter) = counter {
+        let durable = match counter.open_counter().settled_cents() {
+            Ok(cents) => DurableSettled(cents),
+            Err(_) => {
+                return AuditVerdict::BudgetMismatch {
+                    recomputed_cents: settled,
+                    claimed_cents: Cents::ZERO,
+                };
+            }
+        };
+        if settled != durable.get() {
             return AuditVerdict::BudgetMismatch {
                 recomputed_cents: settled,
-                claimed_cents: Cents::ZERO,
+                claimed_cents: durable.get(),
             };
         }
-    };
-    if settled != durable.get() {
-        return AuditVerdict::BudgetMismatch {
-            recomputed_cents: settled,
-            claimed_cents: durable.get(),
-        };
     }
     AuditVerdict::Consistent(ConsistentProof::new(
         resume.prior_records + records.len(),

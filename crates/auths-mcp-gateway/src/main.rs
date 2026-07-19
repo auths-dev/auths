@@ -90,6 +90,53 @@ enum Command {
     /// and `root`, and leave the registry working files committed — everything a
     /// stranger needs to run `verify-spend` with no trust in this operator.
     ExportSpendBundle(ExportSpendBundleArgs),
+
+    /// Emit the signed aggregate `activity/v1` attestation: re-derive the LOCAL,
+    /// PRIVATE spend log, compute `{head, count, cumulative_cents}`, stamp `as_of`,
+    /// and sign with the agent key under the root. No per-call data leaves the
+    /// process — the market earns proven-live from witnessed monotone growth of
+    /// this aggregate, never from the raw log (which exposes the counterparty
+    /// graph and is never published).
+    ExportAttestation(ExportAttestationArgs),
+}
+
+#[derive(Parser)]
+struct ExportAttestationArgs {
+    /// The gateway live dir (holds `registry/` with the spend log + counter).
+    #[arg(long = "live-dir", value_name = "DIR", env = "AUTHS_MCP_LIVE_DIR")]
+    live_dir: std::path::PathBuf,
+
+    /// The agent delegation whose aggregate is attested.
+    #[arg(long = "agent", value_name = "DID")]
+    agent: String,
+
+    /// The delegator/root the attestation chains to.
+    #[arg(long = "root", value_name = "DID")]
+    root: String,
+
+    /// The agent's keychain alias (its delegate signing key).
+    #[arg(
+        long = "agent-label",
+        value_name = "ALIAS",
+        env = "AUTHS_MCP_AGENT_LABEL",
+        default_value = "agent"
+    )]
+    agent_label: String,
+
+    /// Where `activity.json` is written.
+    #[arg(long = "out", value_name = "FILE")]
+    out: std::path::PathBuf,
+
+    /// The public URL a verifier fetches the identity registry from; when set, a
+    /// sibling `audit.json` (`{registry_git_url, root, agent}` — identity/key
+    /// resolution ONLY, never a spend log) is written beside `--out`.
+    #[arg(long = "registry-url", value_name = "URL")]
+    registry_url: Option<String>,
+
+    /// A treasury/witness checkpoint trail to embed as the `as_of.anchor`
+    /// countersignature tier.
+    #[arg(long = "anchor", value_name = "FILE")]
+    anchor: Option<std::path::PathBuf>,
 }
 
 #[derive(Parser)]
@@ -263,6 +310,12 @@ struct WrapArgs {
     #[arg(long = "custody-credential", value_name = "NAME[=VALUE]")]
     custody_credential: Vec<String>,
 
+    /// A dispute reference stamped into every settlement receipt this session
+    /// writes, so a dispute-evidence bundle can be found later by the payment it
+    /// disputes. Producer-side only — consumers read it off the receipt.
+    #[arg(long = "dispute-ref", value_name = "REF")]
+    dispute_ref: Option<String>,
+
     /// The downstream MCP server command (everything after `--`).
     #[arg(last = true, value_name = "DOWNSTREAM", required = true)]
     downstream: Vec<String>,
@@ -341,6 +394,129 @@ fn main() -> ExitCode {
         }
         Command::Channel(cmd) => run_channel(cmd),
         Command::ExportSpendBundle(args) => run_export_spend_bundle(args),
+        Command::ExportAttestation(args) => runtime.block_on(run_export_attestation(args)),
+    }
+}
+
+/// The attestation producer: re-derive the LOCAL private log with the one shared
+/// implementation, aggregate, sign with the agent key, and write `activity.json`
+/// (plus the identity-only `audit.json` sibling when `--registry-url` is given).
+async fn run_export_attestation(args: ExportAttestationArgs) -> ExitCode {
+    let registry = args.live_dir.join("registry");
+    let log = auths_mcp_core::resolve_spend_log(&registry, &args.agent);
+    let spend = match auths_evidence::verify_spend(
+        auths_evidence::VerifyOpts::new(&log, &registry, &args.agent, &args.root),
+        chrono::Utc::now(),
+    )
+    .await
+    {
+        Ok(spend) => spend,
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: export-attestation: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    // Never attest an inconsistent log — the aggregate must commit to a chain
+    // that re-derives, or the market's verification is attesting garbage.
+    if !spend.report.consistent {
+        eprintln!(
+            "auths-mcp-gateway: export-attestation refused — the local log re-derives `{}`, not consistent",
+            spend.report.code
+        );
+        return ExitCode::FAILURE;
+    }
+    let head = spend
+        .report
+        .checkpoint
+        .as_ref()
+        .map(|cp| cp.binding.clone())
+        .unwrap_or_else(|| auths_mcp_core::SPEND_LOG_GENESIS.to_string());
+    let anchor = match &args.anchor {
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(raw) => {
+                let lines: Vec<String> = raw.lines().map(str::to_string).collect();
+                Some(serde_json::json!({ "tier": "treasury", "checkpoints": lines }))
+            }
+            Err(e) => {
+                eprintln!("auths-mcp-gateway: cannot read --anchor `{}`: {e}", path.display());
+                return ExitCode::FAILURE;
+            }
+        },
+        None => None,
+    };
+    let (seed, curve) = match crate::inproc_sign::load_agent_signing_key(&args.agent_label) {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: export-attestation: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let suite = match curve {
+        auths_crypto::CurveType::Ed25519 => "json-canon/ed25519",
+        auths_crypto::CurveType::P256 => "json-canon/p256",
+    };
+    let mut doc = auths_evidence::ActivityV1 {
+        version: auths_evidence::ACTIVITY_VERSION.to_string(),
+        suite: suite.to_string(),
+        subject: auths_evidence::Subject {
+            root: args.root.clone(),
+            agent: args.agent.clone(),
+        },
+        head,
+        count: spend
+            .report
+            .checkpoint
+            .as_ref()
+            .map(|cp| cp.records as u64)
+            .unwrap_or(0),
+        cumulative_cents: spend.report.settled_cents,
+        as_of: auths_evidence::ActivityAsOf {
+            ts: chrono::Utc::now(),
+            anchor,
+        },
+        signature: String::new(),
+    };
+    let result = (|| -> anyhow::Result<()> {
+        let message = auths_evidence::activity_signing_bytes(&doc)
+            .map_err(|e| anyhow::anyhow!("canonicalize: {e}"))?;
+        let signature =
+            auths_crypto::typed_sign(&seed, &message).map_err(|e| anyhow::anyhow!("sign: {e}"))?;
+        use base64::Engine as _;
+        doc.signature = base64::engine::general_purpose::STANDARD.encode(signature);
+        if let Some(dir) = args.out.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(&args.out, serde_json::to_vec_pretty(&doc)?)?;
+        if let Some(url) = &args.registry_url {
+            let manifest = serde_json::json!({
+                "registry_git_url": url,
+                "agent": args.agent,
+                "root": args.root,
+            });
+            let sibling = args
+                .out
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."))
+                .join("audit.json");
+            std::fs::write(sibling, serde_json::to_vec_pretty(&manifest)?)?;
+        }
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {
+            println!(
+                "export-attestation: head {}… count {} cumulative {}c → {}",
+                &doc.head[..16.min(doc.head.len())],
+                doc.count,
+                doc.cumulative_cents,
+                args.out.display(),
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("auths-mcp-gateway: export-attestation: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -479,6 +655,7 @@ async fn run_wrap(args: WrapArgs) -> ExitCode {
         downstream: args.downstream,
         test_mode: args.test_mode,
         show_mode: args.show_mode,
+        dispute_ref: args.dispute_ref,
     };
     match proxy::serve(cfg).await {
         Ok(()) => ExitCode::SUCCESS,
@@ -507,88 +684,52 @@ async fn run_replay(args: ReplayArgs) -> ExitCode {
     }
 }
 
-/// The offline auditor: re-verify a persisted spend log against the issuer's
-/// registry with the gate's OWN `verify_commit_against_kel_scoped` + `audit_spend_log` — run by
-/// anyone, with no trust in the operator that produced the log. Exits non-zero on any
-/// non-`consistent` verdict.
+/// The offline auditor — a THIN caller of the single re-derivation in
+/// `auths-evidence` (`verify_spend`), which the tool servers and every language
+/// binding share. This CLI only parses flags and prints the stable output lines;
+/// the trust logic lives in one place and cannot diverge.
 async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
-    use auths_mcp_core::PerCallGate;
-    use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
-
-    let records = match auths_mcp_core::read_spend_log(&args.log) {
-        Ok(r) => r,
+    let resume = args.resume_index.map(|index| {
+        #[allow(clippy::expect_used)] // INVARIANT: clap requires_all guarantees both flags
+        auths_mcp_core::AuditResume {
+            prior_records: index,
+            prior_binding: args.resume_binding.clone().expect("required by clap"),
+            prior_settled_cents: auths_mcp_core::Cents::new(
+                args.resume_cents.expect("required by clap"),
+            ),
+        }
+    });
+    let spend = match auths_evidence::verify_spend(
+        auths_evidence::VerifyOpts {
+            log: &args.log,
+            registry: &args.registry,
+            agent: &args.agent,
+            root: &args.root,
+            treasury_checkpoints: None,
+            treasury_pubkey: None,
+            expect_cumulative: None,
+            resume,
+            facilitator_pubkey: None,
+        },
+        chrono::Utc::now(),
+    )
+    .await
+    {
+        Ok(spend) => spend,
         Err(e) => {
-            eprintln!(
-                "auths-mcp-gateway: cannot read spend log `{}`: {e}",
-                args.log.display()
-            );
+            eprintln!("auths-mcp-gateway: verify-spend: {e}");
             return ExitCode::FAILURE;
         }
     };
-    let registry =
-        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&args.registry));
-    let gate = match PerCallGate::resolve(&registry, &args.agent, &args.root) {
-        Ok(g) => g,
-        Err(e) => {
-            eprintln!(
-                "auths-mcp-gateway: cannot resolve KELs from registry `{}`: {e}",
-                args.registry.display()
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-    // Locate the durable counter the SAME way the wire did (from this --registry + --agent), so the
-    // audit cross-checks the re-derived total against the counter the wire advanced — a tail-truncated
-    // log re-derives below it and is caught.
-    let counter = match auths_mcp_core::CounterRef::for_agent(&args.registry, &args.agent) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!(
-                "auths-mcp-gateway: cannot locate the durable counter for agent `{}`: {e}",
-                args.agent
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-    // The facilitator key that would verify a captured rail attestation is supplied out-of-band once
-    // the wire captures one (a follow-on); without it the offline audit still re-derives the spend.
-    let now_ts = chrono::Utc::now().timestamp();
-    let verdict = match args.resume_index {
-        Some(index) => {
-            if index > records.len() {
-                eprintln!(
-                    "auths-mcp-gateway: --resume-index {index} exceeds the log ({} records)",
-                    records.len()
-                );
-                return ExitCode::FAILURE;
-            }
-            #[allow(clippy::expect_used)] // INVARIANT: clap requires_all guarantees both flags
-            let resume = auths_mcp_core::AuditResume {
-                prior_records: index,
-                prior_binding: args.resume_binding.clone().expect("required by clap"),
-                prior_settled_cents: auths_mcp_core::Cents::new(
-                    args.resume_cents.expect("required by clap"),
-                ),
-            };
-            gate.audit_spend_log_resumed(&records[index..], now_ts, &counter, None, &resume)
-                .await
-        }
-        None => gate.audit_spend_log(&records, now_ts, &counter, None).await,
-    };
-    println!("verify-spend: {} — {verdict}", verdict.code());
-    if !verdict.is_consistent() {
+    println!("verify-spend: {} — {}", spend.report.code, spend.report.verdict);
+    if !spend.report.consistent {
         return ExitCode::FAILURE;
     }
     // The resumable end state a checkpointing caller stores for its next run.
-    if let Some(last) = records.last() {
+    if let Some(cp) = &spend.report.checkpoint {
         println!(
             "checkpoint: records={} settled_cents={} binding={}",
-            records.len(),
-            match &verdict {
-                auths_mcp_core::AuditVerdict::Consistent(proof) => proof.settled_cents().get(),
-                _ => 0,
-            },
-            auths_mcp_core::call_commit_binding(&last.call_commit),
+            cp.records, cp.settled_cents, cp.binding
         );
     }
     if let Some(path) = &args.treasury_checkpoints
@@ -605,6 +746,7 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
 
 /// Cross-check a treasury checkpoint trail: signatures, monotonicity, and (when
 /// asserted) the final cumulative against the caller's re-derived fleet total.
+/// Thin over `auths_evidence::check_trail` — the one trail verification.
 fn cross_check_treasury(
     path: &std::path::Path,
     expect_pubkey: Option<&str>,
@@ -621,12 +763,7 @@ fn cross_check_treasury(
         }
     };
     let lines: Vec<String> = raw.lines().map(str::to_string).collect();
-    // The coordinator signs on the project-default curve; absent an explicit
-    // curve field on the trail, P-256 is the wire default (see the curve-tagging
-    // rules) — dispatched through the typed API, never by key length.
-    let last = match auths_mcp_core::verify_checkpoint_trail(&lines, expect_pubkey, |pk, m, s| {
-        auths_crypto::typed_verify(auths_crypto::CurveType::P256, pk, m, s).is_ok()
-    }) {
+    let last = match auths_evidence::check_trail(&lines, expect_pubkey) {
         Ok(last) => last,
         Err(e) => {
             println!("treasury-checkpoints: invalid — {e}");

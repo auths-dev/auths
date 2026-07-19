@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://auths.dev/schemas/receipts-v1.json",
+  "title": "EvidenceBundle (receipts/v1)",
+  "description": "A portable, signed, offline-re-derivable evidence bundle. Every verdict is anchored: 'X, as of head H'. The bundle is self-contained — a recipient with only this document and the Auths verifier reaches the same as-of verdict with no network.",
+  "type": "object",
+  "required": [
+    "version",
+    "suite",
+    "subject",
+    "grant",
+    "call",
+    "settlement",
+    "verdicts",
+    "proof",
+    "issued_by",
+    "signature"
+  ],
+  "properties": {
+    "version": { "const": "receipts/v1" },
+    "suite": {
+      "type": "string",
+      "description": "In-band, curve-tagged signature suite for the bundle signature, e.g. 'json-canon/p256' (default) or 'json-canon/ed25519'.",
+      "enum": ["json-canon/p256", "json-canon/ed25519"]
+    },
+    "subject": {
+      "type": "object",
+      "required": ["root", "agent"],
+      "additionalProperties": false,
+      "properties": {
+        "root": { "type": "string", "description": "The principal's root DID (did:keri:…)" },
+        "agent": { "type": "string", "description": "The delegated agent DID" }
+      }
+    },
+    "grant": {
+      "type": "object",
+      "required": ["scope", "cap", "currency", "issuedAt", "expiresAt", "budgetBasis", "counterpartyPolicy"],
+      "additionalProperties": false,
+      "properties": {
+        "scope": { "type": "array", "items": { "type": "string" } },
+        "cap": { "type": "string", "description": "Budget cap in minor units or decimal string, denominated per budgetBasis" },
+        "currency": { "type": "string" },
+        "issuedAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "budgetBasis": {
+          "type": "string",
+          "enum": ["single-rail", "cross-rail"],
+          "description": "cross-rail caps re-derive via the settled cross-rail counter, never raw sum-of-cost"
+        },
+        "counterpartyPolicy": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "type": "string", "enum": ["allow-all", "allow-list", "predicate"] },
+            "allow": { "type": "array", "items": { "type": "string" } },
+            "predicateRef": { "type": "string" }
+          },
+          "description": "Signed into the delegation (part of the remit) — never gateway config"
+        }
+      }
+    },
+    "call": {
+      "type": "object",
+      "required": ["tool", "args_hash", "ts", "signature", "index"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string" },
+        "args_hash": { "type": "string", "description": "Hash of the tool arguments — plaintext args never travel in a bundle" },
+        "ts": { "type": "string", "format": "date-time" },
+        "signature": { "type": "string" },
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "settlement": {
+      "type": "object",
+      "required": ["rail", "tx", "amount", "network", "counterparty"],
+      "additionalProperties": false,
+      "properties": {
+        "rail": { "const": "x402" },
+        "tx": { "type": "string" },
+        "amount": { "type": "string" },
+        "network": { "type": "string", "description": "CAIP-2 chain id — an open string, never a closed union" },
+        "counterparty": { "type": "string", "description": "Resolved settlement address / counterparty root DID, checked against counterpartyPolicy" }
+      }
+    },
+    "verdicts": {
+      "type": "object",
+      "required": ["call", "log", "asOf"],
+      "additionalProperties": false,
+      "properties": {
+        "call": {
+          "type": "string",
+          "enum": ["authorized", "unauthorized", "expired", "out-of-scope", "out-of-counterparty", "over-budget", "unverifiable"],
+          "description": "'unverifiable' also covers a gate-verdict vs re-derivation reconciliation mismatch — the recorded verdict is never silently overridden"
+        },
+        "log": { "type": "string", "enum": ["consistent", "inconsistent", "unverifiable"] },
+        "asOf": { "$ref": "#/$defs/anchorRef" },
+        "onlineFreshness": {
+          "type": "object",
+          "required": ["checkedAt", "contradicted"],
+          "additionalProperties": false,
+          "properties": {
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "contradicted": { "type": "boolean" }
+          },
+          "description": "Build-time online re-check for a later contradicting head. Absence means 'offline-only, freshness unknown' — never 'fresh'."
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "required": ["agentKel", "delegatorKel", "spendLog"],
+      "additionalProperties": false,
+      "properties": {
+        "agentKel": { "type": "array", "items": { "type": "object" }, "description": "The agent's delegated KEL, in order — each item {event, sourceSeal} (the seal rides the CESR attachment, not the event body)" },
+        "delegatorKel": { "type": "array", "items": { "type": "object" }, "description": "The delegator/root KEL, in order — each item {event, sourceSeal}" },
+        "spendLog": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Every spend-log record up to the anchor head — completeness checking needs them all"
+        },
+        "revocation": {
+          "type": "object",
+          "required": ["source"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "type": "string", "enum": ["kel", "tel"] },
+            "seq": { "type": "integer", "minimum": 0 },
+            "ts": { "type": "string", "format": "date-time" }
+          },
+          "description": "The revocation surface as resolved fresh at build time (§2.2(c))"
+        }
+      }
+    },
+    "escrow": {
+      "type": "object",
+      "description": "Optional verified escrow-record summary attached by dispute_evidence (by value or pin — never read from an identity registry)"
+    },
+    "compliance": {
+      "type": "object",
+      "description": "Optional minimized, subject-consented compliance attestation or reference — never a full screening payload"
+    },
+    "rendered": {
+      "type": "string",
+      "description": "Optional human-readable render, built over hashed argument fields and never re-expanding them"
+    },
+    "issued_by": { "type": "string", "description": "The issuing tool's own agent DID" },
+    "signature": { "type": "string", "description": "sign(canon(bundle minus signature)) by issued_by, per suite" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "anchorRef": {
+      "type": "object",
+      "required": ["tier", "head", "kelSeq", "ts"],
+      "additionalProperties": false,
+      "properties": {
+        "tier": {
+          "type": "string",
+          "enum": ["treasury", "witness", "onchain", "first-seen"],
+          "description": "The anchor ladder — a verdict is never stronger than its tier"
+        },
+        "head": {
+          "type": "string",
+          "description": "Commitment over the composite state as of H: spend-log binding head + KEL head + revocation surface"
+        },
+        "kelSeq": { "type": "integer", "minimum": 0, "description": "Last KEL event covered by the anchor" },
+        "committer": { "type": "string", "description": "Pinned key / witness id / tx ref — absent for first-seen" },
+        "proof": { "description": "Checkpoint-by-value / inclusion proof / tx ref, per tier" },
+        "ts": { "type": "string", "format": "date-time", "description": "When the head was committed — verdicts are 'as of' this instant" }
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@ pub mod device_ext;
 pub mod diagnostics;
 pub mod dsse;
 pub mod ephemeral;
+pub mod evidence;
 pub mod identity;
 pub mod identity_sign;
 pub mod org;
@@ -54,6 +55,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<presentation::CredentialReport>()?;
     m.add_function(wrap_pyfunction!(presentation::verify_presentation, m)?)?;
     m.add_function(wrap_pyfunction!(presentation::verify_credential, m)?)?;
+
+    m.add_function(wrap_pyfunction!(evidence::verify_spend, m)?)?;
+    m.add_function(wrap_pyfunction!(evidence::verify_offline, m)?)?;
+    m.add_function(wrap_pyfunction!(evidence::verify_activity, m)?)?;
+    m.add_function(wrap_pyfunction!(evidence::receipts_v1_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(evidence::audit_v1_schema, m)?)?;
 
     m.add_function(wrap_pyfunction!(sign::sign_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(sign::sign_action, m)?)?;

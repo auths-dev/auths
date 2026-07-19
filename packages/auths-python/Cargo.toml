@@ -27,6 +27,7 @@ axum = "0.8"
 
 # Phase 2: Identity lifecycle
 auths-sdk = { path = "../../crates/auths-sdk" }
+auths-evidence = { path = "../../crates/auths-evidence" }
 auths-core = { path = "../../crates/auths-core", features = ["keychain-file-fallback"] }
 auths-id = { path = "../../crates/auths-id" }
 auths-crypto = { path = "../../crates/auths-crypto" }

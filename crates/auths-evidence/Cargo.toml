@@ -1,0 +1,42 @@
+[package]
+name = "auths-evidence"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "The single trust implementation behind Auths evidence bundles: spend re-derivation, chain resolution, anchored per-call/per-log verdicts, and offline-verifiable EvidenceBundle build + verify. Shared by the gateway CLI, the first-party tool servers, and every language binding."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["identity", "evidence", "receipts", "audit", "delegation"]
+categories = ["authentication"]
+
+[lib]
+name = "auths_evidence"
+path = "src/lib.rs"
+
+[dependencies]
+# The one audit walk (per-record proof replay + binding-chain continuity + budget
+# re-derivation) lives in auths-mcp-core; this crate orchestrates it and never forks it.
+auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.8" }
+auths-verifier = { workspace = true, features = ["native"] }
+auths-sdk = { workspace = true, features = ["backend-git"] }
+auths-crypto = { workspace = true, features = ["native"] }
+auths-id = { workspace = true }
+auths-keri = { workspace = true }
+
+bs58.workspace = true
+base64.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+json-canon.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

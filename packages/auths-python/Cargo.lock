@@ -200,6 +200,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-evidence"
+version = "0.1.8"
+dependencies = [
+ "auths-crypto",
+ "auths-id",
+ "auths-keri",
+ "auths-mcp-core",
+ "auths-sdk",
+ "auths-verifier",
+ "base64",
+ "bs58",
+ "chrono",
+ "json-canon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "auths-id"
 version = "0.1.8"
 dependencies = [
@@ -301,6 +322,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-mcp-core"
+version = "0.1.8"
+dependencies = [
+ "auths-crypto",
+ "auths-id",
+ "auths-keri",
+ "auths-sdk",
+ "auths-verifier",
+ "chrono",
+ "json-canon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "auths-oidc-port"
 version = "0.1.8"
 dependencies = [
@@ -379,6 +417,7 @@ version = "0.1.0"
 dependencies = [
  "auths-core",
  "auths-crypto",
+ "auths-evidence",
  "auths-id",
  "auths-infra-git",
  "auths-pairing-daemon",
@@ -431,6 +470,7 @@ dependencies = [
  "auths-oidc-port",
  "auths-policy",
  "auths-rp",
+ "auths-storage",
  "auths-telemetry",
  "auths-transparency",
  "auths-verifier",

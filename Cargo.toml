@@ -24,6 +24,8 @@ members = [
   "crates/auths-mcp-server",
   "crates/auths-mcp-core",
   "crates/auths-mcp-gateway",
+  "crates/auths-evidence",
+  "crates/auths-receipts",
   "crates/auths-pairing-daemon",
   "crates/auths-pairing-protocol",
   "crates/auths-scim",
@@ -105,6 +107,7 @@ auths-storage = { path = "crates/auths-storage", version = "0.1.8" }
 auths-transparency = { path = "crates/auths-transparency", version = "0.1.8", default-features = false }
 auths-utils = { path = "crates/auths-utils", version = "0.1.8" }
 auths-witness = { path = "crates/auths-witness", version = "0.1.8" }
+auths-evidence = { path = "crates/auths-evidence", version = "0.1.8" }
 auths-witness-node = { path = "crates/auths-witness-node", version = "0.1.8" }
 insta = { version = "1", features = ["json"] }
 

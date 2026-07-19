@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "auths-receipts-client"
+version = "0.1.8"
+description = "Typed Python client for the auths receipts-api (dispute evidence, offline verification, reversals, usage)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2",
+]
+
+[project.urls]
+Homepage = "https://github.com/auths-dev/auths"
+
+[tool.hatch.build.targets.wheel]
+packages = ["auths_receipts_client"]

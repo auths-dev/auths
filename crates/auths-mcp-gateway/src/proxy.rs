@@ -144,6 +144,10 @@ pub struct WrapConfig {
     /// Resolve the payment mode, disclose it, and exit — a dry run that touches no
     /// rail and charges nothing.
     pub show_mode: bool,
+    /// A dispute reference stamped into every settlement receipt this session
+    /// writes (`wrap --dispute-ref`) — the index entry pointing at the evidence
+    /// surface that adjudicates a later dispute.
+    pub dispute_ref: Option<String>,
 }
 
 impl WrapConfig {
@@ -285,6 +289,9 @@ struct GatewayProxy {
     /// Whether to print a human-readable verdict line per call (`AUTHS_MCP_VERBOSE`). Off by
     /// default so the hot path does no synchronous per-call stderr; metrics carry observability.
     verbose: bool,
+    /// The operator's dispute reference (`wrap --dispute-ref`), stamped into every
+    /// settlement receipt this session writes.
+    dispute_ref: Option<String>,
 }
 
 impl GatewayProxy {
@@ -658,7 +665,8 @@ impl ServerHandler for GatewayProxy {
             decision.reserved_cents,
             cumulative,
             now,
-        );
+        )
+        .with_dispute_ref(self.dispute_ref.as_deref());
         // This record's binding — what the NEXT call's `Auths-Prev` links to. Computed from the
         // bytes about to be stored, before they move into the record.
         let new_binding = call_binding;
@@ -964,6 +972,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         prev_binding: Arc::new(Mutex::new(prev_binding)),
         treasury,
         verbose: std::env::var("AUTHS_MCP_VERBOSE").is_ok(),
+        dispute_ref: cfg.dispute_ref,
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.
