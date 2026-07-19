@@ -574,9 +574,14 @@ export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex:
  * Verify a published `activity/v1` attestation against a fetched registry copy:
  * resolve the agent's current keys from the KEL (identity resolution ONLY —
  * never a spend log), require its delegator to be the claimed root, verify the
- * signature. Returns `{ok, reason?, head, count, cumulativeCents, asOfTs,
- * subjectRoot, subjectAgent}` as JSON — everything the market's receipts worker
- * needs, as verdict fields (the report is the only API).
+ * signature — including the embedded quorum anchor when one is present (a
+ * document with a bad anchor fails whole). Returns `{ok, reason?, head, count,
+ * cumulativeCents, asOfTs, subjectRoot, subjectAgent, anchor}` as JSON —
+ * everything the market's receipts worker needs, as verdict fields (the report
+ * is the only API). `anchor` is `null` for an unanchored document, else the
+ * VERIFIED quorum shape `{tier, threshold, witnesses, cosigners, seedId,
+ * witnessSetSaid}` — a relying party never derives a tier from the seller's
+ * own claims.
  *
  * Usage:
  * ```ignore

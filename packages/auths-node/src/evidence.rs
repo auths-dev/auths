@@ -63,9 +63,14 @@ pub async fn verify_offline(bundle_json: String) -> Result<String> {
 /// Verify a published `activity/v1` attestation against a fetched registry copy:
 /// resolve the agent's current keys from the KEL (identity resolution ONLY —
 /// never a spend log), require its delegator to be the claimed root, verify the
-/// signature. Returns `{ok, reason?, head, count, cumulativeCents, asOfTs,
-/// subjectRoot, subjectAgent}` as JSON — everything the market's receipts worker
-/// needs, as verdict fields (the report is the only API).
+/// signature — including the embedded quorum anchor when one is present (a
+/// document with a bad anchor fails whole). Returns `{ok, reason?, head, count,
+/// cumulativeCents, asOfTs, subjectRoot, subjectAgent, anchor}` as JSON —
+/// everything the market's receipts worker needs, as verdict fields (the report
+/// is the only API). `anchor` is `null` for an unanchored document, else the
+/// VERIFIED quorum shape `{tier, threshold, witnesses, cosigners, seedId,
+/// witnessSetSaid}` — a relying party never derives a tier from the seller's
+/// own claims.
 ///
 /// Usage:
 /// ```ignore
@@ -99,6 +104,16 @@ pub fn verify_activity_attestation(
             "asOfTs": doc.as_of.ts.to_rfc3339(),
             "subjectRoot": doc.subject.root,
             "subjectAgent": doc.subject.agent,
+            // Only reachable when verify_embedded_anchor already re-checked the
+            // finalization, so this summary restates proven facts.
+            "anchor": doc.anchor.as_ref().map(|finalized| serde_json::json!({
+                "tier": "witness",
+                "threshold": finalized.witness_set.threshold,
+                "witnesses": finalized.witness_set.members.len(),
+                "cosigners": finalized.cosignatures.len(),
+                "seedId": finalized.anchor.seed_id.to_hex(),
+                "witnessSetSaid": finalized.witness_set.said,
+            })),
         }),
         Err(e) => serde_json::json!({ "ok": false, "reason": e.to_string() }),
     };
