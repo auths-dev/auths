@@ -47,9 +47,9 @@ auths-telemetry = { workspace = true, features = ["sink-http"] }
 auths-verifier = { workspace = true, features = ["native"] }
 auths-infra-git.workspace = true
 auths-infra-http.workspace = true
-auths-infra-rekor = { path = "../auths-infra-rekor", version = "0.1.10" }
-auths-rp = { path = "../auths-rp", version = "0.1.10" }
-auths-scim-server = { path = "../auths-scim-server", version = "0.1.10" }
+auths-infra-rekor = { path = "../auths-infra-rekor", version = "0.1.11" }
+auths-rp = { path = "../auths-rp", version = "0.1.11" }
+auths-scim-server = { path = "../auths-scim-server", version = "0.1.11" }
 auths-utils.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 ring.workspace = true
