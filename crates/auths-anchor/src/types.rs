@@ -249,6 +249,89 @@ impl WitnessSet {
     pub fn member(&self, name: &str) -> Option<&WitnessRef> {
         self.members.iter().find(|w| w.name == name)
     }
+
+    /// Structural validity: at least one member, unique names, unique keys,
+    /// `1 ≤ threshold ≤ members.len()`. A set failing any of these can make
+    /// [`Self::member`] resolve the wrong key or a threshold unreachable, so
+    /// verification refuses it before trusting anything it declares.
+    pub fn validate(&self) -> Result<(), AnchorError> {
+        if self.members.is_empty() {
+            return Err(AnchorError::SetInvalid("no members".into()));
+        }
+        if self.threshold == 0 || self.threshold as usize > self.members.len() {
+            return Err(AnchorError::SetInvalid(format!(
+                "threshold {} outside 1..={}",
+                self.threshold,
+                self.members.len()
+            )));
+        }
+        let mut names: Vec<&str> = self.members.iter().map(|m| m.name.as_str()).collect();
+        names.sort_unstable();
+        if names.windows(2).any(|w| w[0] == w[1]) {
+            return Err(AnchorError::SetInvalid("duplicate member name".into()));
+        }
+        let mut keys: Vec<&[u8]> = self
+            .members
+            .iter()
+            .map(|m| m.public_key.as_slice())
+            .collect();
+        keys.sort_unstable();
+        if keys.windows(2).any(|w| w[0] == w[1]) {
+            return Err(AnchorError::SetInvalid("duplicate member key".into()));
+        }
+        Ok(())
+    }
+
+    /// The self-addressing identifier of this set's content.
+    ///
+    /// Canonical form: members sorted by name, each as
+    /// `{name, publicKey, operator?}`, plus the threshold, saidified with the
+    /// shipped section-SAID primitive (Blake3-256, CESR-encoded — the same
+    /// digest KELs use). A verifier recomputes this and compares it to the
+    /// SAID the anchor commits to; a set whose content does not hash to its
+    /// claimed SAID proves nothing.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let said = set.computed_said()?;
+    /// if said != anchor.witness_set.said { /* refuse */ }
+    /// ```
+    pub fn computed_said(&self) -> Result<String, AnchorError> {
+        let mut members = self.members.clone();
+        members.sort_by(|a, b| a.name.cmp(&b.name));
+        let members_json: Vec<serde_json::Value> = members
+            .iter()
+            .map(|m| {
+                let mut obj = serde_json::Map::new();
+                obj.insert("name".into(), serde_json::Value::String(m.name.clone()));
+                obj.insert(
+                    "publicKey".into(),
+                    serde_json::Value::String(hex::encode(&m.public_key)),
+                );
+                if let Some(op) = &m.operator {
+                    obj.insert(
+                        "operator".into(),
+                        serde_json::json!({
+                            "operator": op.operator,
+                            "organization": op.organization,
+                            "jurisdiction": op.jurisdiction,
+                            "infrastructure": op.infrastructure,
+                        }),
+                    );
+                }
+                serde_json::Value::Object(obj)
+            })
+            .collect();
+        let section = serde_json::json!({
+            "d": "",
+            "kind": "auths-anchor/witness-set/v1",
+            "threshold": self.threshold,
+            "members": members_json,
+        });
+        let said = auths_keri::compute_section_said(&section)
+            .map_err(|e| AnchorError::Canonicalization(e.to_string()))?;
+        Ok(said.to_string())
+    }
 }
 
 /// The anchor tuple — the only thing a witness ever sees (I-TRUST-1) and the
@@ -269,6 +352,11 @@ pub struct Anchor {
     /// Cumulative settled cents `cum_k` (widened from the `u64` on the wire).
     pub cumulative: u128,
     /// When the aggregate was computed `τ_k` (== `activity/v1` `as_of.ts`).
+    /// Whole-second precision only: signing bytes commit to seconds, so a
+    /// sub-second wire value would be malleable without invalidating the
+    /// signature. Deserialization truncates; the acceptance rule refuses any
+    /// in-process value that still carries sub-second precision.
+    #[serde(with = "ts_seconds")]
     pub timestamp: DateTime<Utc>,
     /// Pointer to the witness set anchored in the KEL (I-TRUST-3).
     pub witness_set: WitnessSetRef,
@@ -322,21 +410,42 @@ impl Anchor {
     }
 }
 
+/// One cosigner's proof that it logged the anchor: the witness's *signed*
+/// checkpoint plus a Merkle inclusion proof rooted in that checkpoint.
+///
+/// A bare inclusion proof against a self-stated root proves membership in
+/// *some* tree anyone could build; only a root inside a checkpoint signed by
+/// the declared member key ties the anchor to that witness's append-only log.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoggedInclusion {
+    /// The cosigning witness this inclusion belongs to (a declared member name).
+    #[serde(rename = "witnessName")]
+    pub witness_name: String,
+    /// The witness's signed log checkpoint. Its signature is verified under the
+    /// declared member key — never the key the checkpoint itself carries.
+    pub checkpoint: auths_transparency::SignedCheckpoint,
+    /// Inclusion of the anchor leaf, rooted in `checkpoint`'s root.
+    pub proof: auths_transparency::InclusionProof,
+}
+
 /// A finalized anchor: an [`Anchor`] with ≥ `t` distinct co-signatures from its
-/// declared witness set plus each cosigner's log-inclusion proof. Offline- and
-/// by-value-checkable exactly like a treasury proof (D5, I-VERIFY-1).
+/// declared witness set plus each counted cosigner's logged inclusion.
+/// Offline- and by-value-checkable exactly like a treasury proof (D5,
+/// I-VERIFY-1) — with the declared set proven self-addressing before any of
+/// its keys are trusted.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FinalizedAnchor {
     /// The finalized tuple.
     pub anchor: Anchor,
-    /// The resolved declared set (its `said` must match `anchor.witness_set`).
+    /// The resolved declared set. Its content must hash to the SAID the anchor
+    /// commits to ([`WitnessSet::computed_said`]).
     pub witness_set: WitnessSet,
     /// Witness cosignatures over [`Anchor::cosign_bytes`]. Reuses the shipped
     /// transparency cosignature container.
     pub cosignatures: Vec<auths_transparency::WitnessCosignature>,
-    /// Per-cosigner inclusion proof that the anchor leaf is in that witness's
-    /// append-only log.
-    pub inclusion: Vec<auths_transparency::InclusionProof>,
+    /// Per-cosigner logged inclusion; a cosigner without one is not counted
+    /// toward the threshold.
+    pub inclusion: Vec<LoggedInclusion>,
 }
 
 /// RFC-8785 canonicalize a JSON value into signing bytes.
@@ -351,6 +460,26 @@ fn decode_hex32(s: &str) -> Result<[u8; 32], AnchorError> {
     let raw = hex::decode(s).map_err(|e| AnchorError::Encoding(e.to_string()))?;
     let got = raw.len();
     raw.try_into().map_err(|_| AnchorError::BadLength { got })
+}
+
+/// Serde helper: an RFC-3339 timestamp truncated to whole seconds on both
+/// directions, so sub-second precision is unrepresentable on the wire and the
+/// serialized form always matches what the signature commits to.
+mod ts_seconds {
+    use chrono::{DateTime, SecondsFormat, Utc};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(ts: &DateTime<Utc>, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&ts.to_rfc3339_opts(SecondsFormat::Secs, true))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<DateTime<Utc>, D::Error> {
+        let raw = String::deserialize(d)?;
+        let parsed = DateTime::parse_from_rfc3339(&raw).map_err(serde::de::Error::custom)?;
+        let secs = parsed.timestamp();
+        DateTime::<Utc>::from_timestamp(secs, 0)
+            .ok_or_else(|| serde::de::Error::custom("timestamp out of range"))
+    }
 }
 
 /// Serde helper: `Vec<u8>` as a lowercase-hex string.

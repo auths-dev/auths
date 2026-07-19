@@ -18,6 +18,9 @@ path = "src/lib.rs"
 auths-crypto = { workspace = true }
 auths-keri = { workspace = true }
 auths-transparency = { workspace = true }
+# Names the checkpoint key/signature types `SignedCheckpoint` carries (the same
+# WASM-safe core `auths-rp` builds on) — verification stays offline and pure.
+auths-verifier = { workspace = true }
 
 # Sync, pure-Rust signature verification (byte-for-byte parity with the shipped
 # verifier's own p256/ed25519-dalek path). Curve is carried in-band and
@@ -53,8 +56,6 @@ default = []
 # Deterministic (fixed-seed) key material for tests — no RNG, so vectors are
 # reproducible. `ed25519-dalek`/`p256` signing come from the primary deps.
 p256 = { version = "=0.13.2", features = ["ecdsa"] }
-# Naming the shipped cosignature/key types to build fixtures.
-auths-verifier = { workspace = true }
 
 [lints]
 workspace = true

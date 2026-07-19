@@ -81,11 +81,14 @@ pub fn controller_keys_for(anchor: &Anchor) -> ControllerKeys {
     }
 }
 
-/// A finalized anchor over `n` witnesses with threshold `t` and a matching set
-/// SAID.
-pub fn finalized(n: u8, threshold: u32, said: &str) -> FinalizedAnchor {
-    let anchor = signed_anchor(1, [1u8; 32], threshold, said);
-    let members = (0..n)
+/// A finalized anchor over `n` witnesses with threshold `t`.
+///
+/// The declared set is genuinely self-addressing (SAID computed from content,
+/// committed into the party-signed anchor), and each cosigner carries a
+/// member-signed checkpoint rooting its inclusion proof — the material a real
+/// node must produce.
+pub fn finalized(n: u8, threshold: u32) -> FinalizedAnchor {
+    let members: Vec<WitnessRef> = (0..n)
         .map(|i| WitnessRef {
             name: format!("witness-{i}"),
             public_key: witness_sk(i).verifying_key().as_bytes().to_vec(),
@@ -97,42 +100,74 @@ pub fn finalized(n: u8, threshold: u32, said: &str) -> FinalizedAnchor {
             }),
         })
         .collect();
-    let witness_set = WitnessSet {
-        said: said.to_string(),
+    let mut witness_set = WitnessSet {
+        said: String::new(),
         threshold,
         members,
     };
+    witness_set.said = witness_set.computed_said().unwrap();
+
+    let anchor = signed_anchor(1, [1u8; 32], threshold, &witness_set.said);
 
     let cosign_message = anchor.cosign_bytes().unwrap();
-    let cosignatures = (0..n)
-        .map(|i| {
-            let sk = witness_sk(i);
-            let sig = sk.sign(&cosign_message);
-            auths_anchor::WitnessCosignature {
-                witness_name: format!("witness-{i}"),
-                witness_public_key: auths_verifier::Ed25519PublicKey::from_bytes(
-                    sk.verifying_key().to_bytes(),
-                ),
-                signature: auths_verifier::Ed25519Signature::from_bytes(sig.to_bytes()),
-                timestamp: ts(1),
-            }
-        })
-        .collect();
-
     let leaf = auths_transparency::hash_leaf(&cosign_message);
-    let hashes = auths_transparency::prove_inclusion(&[leaf], 0).unwrap();
-    let root = auths_transparency::compute_root(&[leaf]);
-    let inclusion = vec![auths_anchor::InclusionProof {
-        index: 0,
-        size: 1,
-        root,
-        hashes,
-    }];
+    let mut cosignatures = Vec::new();
+    let mut inclusion = Vec::new();
+    for i in 0..n {
+        let sk = witness_sk(i);
+        let sig = sk.sign(&cosign_message);
+        cosignatures.push(auths_anchor::WitnessCosignature {
+            witness_name: format!("witness-{i}"),
+            witness_public_key: auths_verifier::Ed25519PublicKey::from_bytes(
+                sk.verifying_key().to_bytes(),
+            ),
+            signature: auths_verifier::Ed25519Signature::from_bytes(sig.to_bytes()),
+            timestamp: ts(1),
+        });
+        inclusion.push(logged_inclusion(&format!("witness-{i}"), &sk, leaf));
+    }
 
     FinalizedAnchor {
         anchor,
         witness_set,
         cosignatures,
         inclusion,
+    }
+}
+
+/// A member-signed checkpoint over a one-leaf log containing `leaf`, plus the
+/// inclusion proof rooted in it.
+pub fn logged_inclusion(
+    name: &str,
+    witness_key: &SigningKey,
+    leaf: auths_transparency::MerkleHash,
+) -> auths_anchor::LoggedInclusion {
+    let hashes = auths_transparency::prove_inclusion(&[leaf], 0).unwrap();
+    let root = auths_transparency::compute_root(&[leaf]);
+    let checkpoint = auths_transparency::Checkpoint {
+        origin: auths_transparency::LogOrigin::new(&format!("awn/{name}")).unwrap(),
+        size: 1,
+        root,
+        timestamp: ts(1),
+    };
+    let log_signature = witness_key.sign(checkpoint.to_note_body().as_bytes());
+    auths_anchor::LoggedInclusion {
+        witness_name: name.to_string(),
+        checkpoint: auths_transparency::SignedCheckpoint {
+            checkpoint,
+            log_signature: auths_verifier::Ed25519Signature::from_bytes(log_signature.to_bytes()),
+            log_public_key: auths_verifier::Ed25519PublicKey::from_bytes(
+                witness_key.verifying_key().to_bytes(),
+            ),
+            witnesses: vec![],
+            ecdsa_checkpoint_signature: None,
+            ecdsa_checkpoint_key: None,
+        },
+        proof: auths_anchor::InclusionProof {
+            index: 0,
+            size: 1,
+            root,
+            hashes,
+        },
     }
 }

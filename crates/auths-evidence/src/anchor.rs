@@ -213,26 +213,48 @@ pub enum AnchorCheck {
     },
 }
 
+/// What a witness-tier anchor must be bound to: facts the verifier re-derived
+/// from the bundle itself, never taken from the anchor. Without these, any
+/// party's genuine finalized anchor with a coincidentally-equal cumulative
+/// transplants into any other bundle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WitnessBinding {
+    /// The spend-log binding head re-derived from the bundle's embedded log
+    /// (lowercase hex) — the collision-resistant commitment to this exact log.
+    pub binding_head: String,
+    /// The number of records in the bundle's embedded log.
+    pub record_count: u64,
+}
+
 /// Verify an anchor's tier-specific proof against the re-derived settled total.
 ///
 /// * `treasury`: re-check the embedded trail against the pinned committer, then —
 ///   under single-delegation scope — require the final checkpointed cumulative to
 ///   equal `rederived_settled_cents` (a stale or forged trail fails here).
 /// * `first-seen`: nothing to verify; the tier IS the statement that nobody committed.
-/// * `witness`: re-check the embedded finalized anchor offline (≥ t cosignatures,
-///   all in the declared set, inclusion proofs), then require its cumulative to
-///   equal `rederived_settled_cents` and its instant to match `anchor.ts`.
+/// * `witness`: re-check the embedded finalized anchor offline (self-addressing
+///   declared set, ≥ t logged cosignatures), then bind it to THIS bundle: its
+///   head must equal the re-derived spend binding head, its index the embedded
+///   record count, its cumulative the re-derived settled total, and its instant
+///   the anchor's `ts`. A caller that cannot supply the binding gets fail-closed.
 /// * `onchain`: not yet wired — fail closed.
 ///
 /// Args:
 /// * `anchor`: the anchor to verify.
 /// * `rederived_settled_cents`: the settled total re-derived from the embedded log.
+/// * `witness_binding`: the bundle-re-derived facts a witness anchor must match.
 ///
 /// Usage:
 /// ```ignore
-/// if let AnchorCheck::Invalid { code, .. } = verify_anchor(&anchor, settled) { deny(code) }
+/// if let AnchorCheck::Invalid { code, .. } = verify_anchor(&anchor, settled, Some(&binding)) {
+///     deny(code)
+/// }
 /// ```
-pub fn verify_anchor(anchor: &AnchorRef, rederived_settled_cents: u64) -> AnchorCheck {
+pub fn verify_anchor(
+    anchor: &AnchorRef,
+    rederived_settled_cents: u64,
+    witness_binding: Option<&WitnessBinding>,
+) -> AnchorCheck {
     match anchor.tier {
         AnchorTier::FirstSeen => AnchorCheck::Valid,
         AnchorTier::Treasury => {
@@ -297,10 +319,32 @@ pub fn verify_anchor(anchor: &AnchorRef, rederived_settled_cents: u64) -> Anchor
                     };
                 }
             };
-            if let Err(e) = auths_anchor::verify_finalized(&finalized) {
+            if let Err(e) = auths_anchor::verify_finalized(&finalized, None) {
                 return AnchorCheck::Invalid {
                     code: "anchor-unverifiable",
                     detail: e.to_string(),
+                };
+            }
+            let Some(binding) = witness_binding else {
+                return AnchorCheck::Invalid {
+                    code: "anchor-unverifiable",
+                    detail: "caller supplied no bundle binding for the witness anchor".to_string(),
+                };
+            };
+            if finalized.anchor.head.to_hex() != binding.binding_head {
+                return AnchorCheck::Invalid {
+                    code: "head-mismatch",
+                    detail: "finalized anchor head is not this bundle's spend binding head"
+                        .to_string(),
+                };
+            }
+            if finalized.anchor.index != binding.record_count {
+                return AnchorCheck::Invalid {
+                    code: "head-mismatch",
+                    detail: format!(
+                        "finalized anchor index {} != embedded record count {}",
+                        finalized.anchor.index, binding.record_count
+                    ),
                 };
             }
             if finalized.anchor.cumulative != u128::from(rederived_settled_cents) {
@@ -327,25 +371,25 @@ pub fn verify_anchor(anchor: &AnchorRef, rederived_settled_cents: u64) -> Anchor
     }
 }
 
-/// The AWN witness-tier freshness of a bundle whose head is this anchor.
+/// The finalized-anchor index a witness-tier anchor carries, if any.
 ///
-/// A bundle self-reports `fresh` only when it carries a finalized quorum anchor
-/// (witness tier); otherwise it is `unanchored` — freshness unknown, never
-/// silently "fresh". The `stale` label is not a bundle's to assign about itself;
-/// it arises when a relying party compares this bundle against a store's *newer*
-/// finalized anchor (call [`auths_anchor::freshness`] with both indices).
+/// This is deliberately NOT a freshness claim: `fresh`/`stale` are a relying
+/// party's judgment, requiring an anchor index obtained *independently* of the
+/// bundle (its own store, a witness latest-anchor read). A bundle labeling itself `fresh`
+/// against its own embedded anchor would be assurance inflation — a
+/// withholding party embeds an old anchor plus a truncated log and reads
+/// internally consistent. Compute freshness as
+/// `auths_anchor::freshness(anchored_index_of(a), your_best_index)`.
 ///
 /// Args:
 /// * `anchor`: the bundle's as-of anchor.
-pub fn anchor_freshness_of(anchor: &AnchorRef) -> auths_anchor::Freshness {
-    if anchor.tier == AnchorTier::Witness
-        && let Some(proof) = &anchor.proof
-        && let Ok(finalized) = serde_json::from_value::<WitnessAnchorProof>(proof.clone())
-    {
-        let index = finalized.anchor.index;
-        return auths_anchor::freshness(Some(index), Some(index));
+pub fn anchored_index_of(anchor: &AnchorRef) -> Option<u64> {
+    if anchor.tier != AnchorTier::Witness {
+        return None;
     }
-    auths_anchor::Freshness::Unanchored
+    let proof = anchor.proof.as_ref()?;
+    let finalized: WitnessAnchorProof = serde_json::from_value(proof.clone()).ok()?;
+    Some(finalized.anchor.index)
 }
 
 /// Convert a verified trail's final checkpoint into the typed `audit/v1` field.

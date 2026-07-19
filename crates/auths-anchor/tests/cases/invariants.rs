@@ -75,12 +75,12 @@ fn i_dup_3_party_signature_is_curve_tagged() {
 /// I-FINAL-1: finalization requires ≥ t distinct cosignatures.
 #[test]
 fn i_final_1_threshold_enforced() {
-    verify_finalized(&finalized(3, 2, "EWitSet")).unwrap();
+    verify_finalized(&finalized(3, 2), None).unwrap();
 
-    let mut under = finalized(3, 3, "EWitSet");
+    let mut under = finalized(3, 3);
     under.cosignatures.truncate(2);
     assert!(matches!(
-        verify_finalized(&under),
+        verify_finalized(&under, None),
         Err(AnchorError::ThresholdNotMet {
             got: 2,
             threshold: 3
@@ -92,10 +92,10 @@ fn i_final_1_threshold_enforced() {
 /// attributed to a name outside the set is refused.
 #[test]
 fn i_final_2_cosigner_must_be_in_declared_set() {
-    let mut f = finalized(3, 2, "EWitSet");
+    let mut f = finalized(3, 2);
     f.cosignatures[0].witness_name = "impostor".to_string();
     assert!(matches!(
-        verify_finalized(&f),
+        verify_finalized(&f, None),
         Err(AnchorError::CosignerOutsideSet { .. })
     ));
 }
@@ -104,10 +104,10 @@ fn i_final_2_cosigner_must_be_in_declared_set() {
 /// a different SAID is refused before any signature is trusted.
 #[test]
 fn i_trust_3_witness_set_said_binds() {
-    let mut f = finalized(3, 2, "EWitSet");
+    let mut f = finalized(3, 2);
     f.witness_set.said = "EDifferentSet".to_string();
     assert!(matches!(
-        verify_finalized(&f),
+        verify_finalized(&f, None),
         Err(AnchorError::WitnessSetMismatch { .. })
     ));
 }
@@ -116,7 +116,7 @@ fn i_trust_3_witness_set_said_binds() {
 /// `freshness` take no I/O handles, so a passing call proves the offline path.
 #[test]
 fn i_verify_1_offline_only() {
-    verify_finalized(&finalized(3, 2, "EWitSet")).unwrap();
+    verify_finalized(&finalized(3, 2), None).unwrap();
     assert!(freshness(Some(9), Some(7)).is_fresh());
 }
 
@@ -130,6 +130,66 @@ fn i_verify_3_freshness_is_separate_and_labeled() {
         Freshness::Stale { .. }
     ));
     assert_eq!(freshness(Some(1), None), Freshness::Unanchored);
+}
+
+/// A set whose members were swapped but whose SAID string
+/// was copied from the real set is refused — the SAID is recomputed from
+/// content, never trusted as a label.
+#[test]
+fn i_trust_3_set_content_is_self_addressing() {
+    let real = finalized(3, 2);
+    let mut forged = finalized(3, 2);
+    forged.witness_set.members[0].public_key = vec![0xAA; 32];
+    forged.witness_set.said = real.anchor.witness_set.said.clone();
+    assert!(matches!(
+        verify_finalized(&forged, None),
+        Err(AnchorError::SetSaidMismatch { .. }) | Err(AnchorError::CheckpointUnverifiable { .. })
+    ));
+}
+
+/// A cosignature without a member-signed logged inclusion does not count
+/// toward finalization — an unlogged co-sign is not finalization-grade.
+#[test]
+fn cosignature_without_logged_inclusion_is_refused() {
+    let mut f = finalized(2, 2);
+    f.inclusion.pop();
+    assert!(matches!(
+        verify_finalized(&f, None),
+        Err(AnchorError::InclusionMissing { .. })
+    ));
+}
+
+/// A post-dated τ beyond the skew bound is refused at accept —
+/// otherwise one request makes every future withholding gap read fresh.
+#[test]
+fn post_dated_timestamp_is_refused() {
+    let mut anchor = signed_anchor(1, [1u8; 32], 2, "EWitSet");
+    anchor.timestamp = now() + chrono::Duration::seconds(3600);
+    // Re-sign so only the skew (not the signature) is under test.
+    let keys = controller_keys_for(&anchor);
+    assert!(matches!(
+        accept_anchor(&anchor, &keys, None, now()),
+        Err(AnchorError::TimestampInFuture { .. })
+    ));
+}
+
+/// Wire/signed parity: sub-second timestamps are unrepresentable on the wire
+/// (serde truncates) and refused in-process — the signed bytes always commit
+/// to exactly the value everyone compares.
+#[test]
+fn sub_second_timestamps_are_refused_and_unrepresentable() {
+    let mut anchor = signed_anchor(1, [1u8; 32], 2, "EWitSet");
+    anchor.timestamp = now() + chrono::Duration::nanoseconds(1);
+    let keys = controller_keys_for(&anchor);
+    assert!(matches!(
+        accept_anchor(&anchor, &keys, None, now()),
+        Err(AnchorError::SubSecondTimestamp)
+    ));
+
+    // Round-trip through the wire: the sub-second precision cannot survive.
+    let wire = serde_json::to_string(&anchor).unwrap();
+    let rehydrated: auths_anchor::Anchor = serde_json::from_str(&wire).unwrap();
+    assert_eq!(rehydrated.timestamp.timestamp_subsec_nanos(), 0);
 }
 
 /// A tampered anchor tuple invalidates the party signature (the anchor bytes are

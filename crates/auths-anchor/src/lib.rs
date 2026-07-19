@@ -31,15 +31,15 @@ mod store;
 mod types;
 mod verify;
 
-pub use accept::{Acceptance, accept_anchor};
+pub use accept::{Acceptance, MAX_FUTURE_SKEW_SECS, accept_anchor};
 pub use duplicity::DuplicityProof;
 pub use error::{AnchorError, StoreError};
 pub use finalize::{honesty_ceiling_of, quorum_independence, verify_finalized};
 pub use freshness::{Freshness, freshness};
 pub use store::{AnchorStore, CasOutcome};
 pub use types::{
-    Anchor, AnchorReq, ControllerKeys, CurrentKey, FinalizedAnchor, Head, OperatorInfo,
-    PartySignature, SeedId, WitnessRef, WitnessSet, WitnessSetRef,
+    Anchor, AnchorReq, ControllerKeys, CurrentKey, FinalizedAnchor, Head, LoggedInclusion,
+    OperatorInfo, PartySignature, SeedId, WitnessRef, WitnessSet, WitnessSetRef,
 };
 pub use verify::verify_signature;
 
@@ -49,7 +49,7 @@ pub use auths_crypto::CurveType;
 
 /// The shipped transparency types this crate composes over, re-exported so a
 /// consumer building a [`FinalizedAnchor`] needs only one dependency.
-pub use auths_transparency::{InclusionProof, WitnessCosignature};
+pub use auths_transparency::{Checkpoint, InclusionProof, SignedCheckpoint, WitnessCosignature};
 
 #[cfg(test)]
 pub(crate) mod test_support {
@@ -116,17 +116,13 @@ pub(crate) mod test_support {
     }
 
     /// A finalized anchor over `n` witnesses with the given `threshold`.
+    ///
+    /// The declared set is genuinely self-addressing (its SAID is computed from
+    /// content and committed into the party-signed anchor), and every cosigner
+    /// carries a member-signed checkpoint rooting its inclusion proof — the
+    /// same material a real node must produce.
     pub(crate) fn finalized_sample(n: u8, threshold: u32) -> FinalizedAnchor {
-        let mut anchor = sample_anchor(1);
-        anchor.witness_set = WitnessSetRef {
-            said: "EWitSet".into(),
-            threshold,
-        };
-        let sk = party_sk();
-        let message = anchor.party_signing_bytes().unwrap();
-        anchor.sig_party.signature = sk.sign(&message).to_bytes().to_vec();
-
-        let members = (0..n)
+        let members: Vec<WitnessRef> = (0..n)
             .map(|i| WitnessRef {
                 name: format!("witness-{i}"),
                 public_key: witness_sk(i).verifying_key().as_bytes().to_vec(),
@@ -138,43 +134,84 @@ pub(crate) mod test_support {
                 }),
             })
             .collect();
-        let witness_set = WitnessSet {
-            said: "EWitSet".into(),
+        let mut witness_set = WitnessSet {
+            said: String::new(),
             threshold,
             members,
         };
+        witness_set.said = witness_set.computed_said().unwrap();
+
+        let mut anchor = sample_anchor(1);
+        anchor.witness_set = WitnessSetRef {
+            said: witness_set.said.clone(),
+            threshold,
+        };
+        let sk = party_sk();
+        let message = anchor.party_signing_bytes().unwrap();
+        anchor.sig_party.signature = sk.sign(&message).to_bytes().to_vec();
 
         let cosign_message = anchor.cosign_bytes().unwrap();
-        let cosignatures = (0..n)
-            .map(|i| {
-                let sk = witness_sk(i);
-                let sig = sk.sign(&cosign_message);
-                auths_transparency::WitnessCosignature {
-                    witness_name: format!("witness-{i}"),
-                    witness_public_key: auths_verifier::Ed25519PublicKey::from_bytes(
-                        sk.verifying_key().to_bytes(),
-                    ),
-                    signature: auths_verifier::Ed25519Signature::from_bytes(sig.to_bytes()),
-                    timestamp: ts(1),
-                }
-            })
-            .collect();
-
         let leaf = auths_transparency::hash_leaf(&cosign_message);
-        let hashes = auths_transparency::prove_inclusion(&[leaf], 0).unwrap();
-        let root = auths_transparency::compute_root(&[leaf]);
-        let inclusion = vec![auths_transparency::InclusionProof {
-            index: 0,
-            size: 1,
-            root,
-            hashes,
-        }];
+        let mut cosignatures = Vec::new();
+        let mut inclusion = Vec::new();
+        for i in 0..n {
+            let wsk = witness_sk(i);
+            let sig = wsk.sign(&cosign_message);
+            cosignatures.push(auths_transparency::WitnessCosignature {
+                witness_name: format!("witness-{i}"),
+                witness_public_key: auths_verifier::Ed25519PublicKey::from_bytes(
+                    wsk.verifying_key().to_bytes(),
+                ),
+                signature: auths_verifier::Ed25519Signature::from_bytes(sig.to_bytes()),
+                timestamp: ts(1),
+            });
+            inclusion.push(logged_inclusion_for(&format!("witness-{i}"), &wsk, leaf));
+        }
 
         FinalizedAnchor {
             anchor,
             witness_set,
             cosignatures,
             inclusion,
+        }
+    }
+
+    /// A member-signed checkpoint over a one-leaf log containing `leaf`, with
+    /// the inclusion proof rooted in it.
+    pub(crate) fn logged_inclusion_for(
+        name: &str,
+        witness_key: &SigningKey,
+        leaf: auths_transparency::MerkleHash,
+    ) -> crate::types::LoggedInclusion {
+        let hashes = auths_transparency::prove_inclusion(&[leaf], 0).unwrap();
+        let root = auths_transparency::compute_root(&[leaf]);
+        let checkpoint = auths_transparency::Checkpoint {
+            origin: auths_transparency::LogOrigin::new(&format!("awn/{name}")).unwrap(),
+            size: 1,
+            root,
+            timestamp: ts(1),
+        };
+        let log_signature = witness_key.sign(checkpoint.to_note_body().as_bytes());
+        crate::types::LoggedInclusion {
+            witness_name: name.to_string(),
+            checkpoint: auths_transparency::SignedCheckpoint {
+                checkpoint,
+                log_signature: auths_verifier::Ed25519Signature::from_bytes(
+                    log_signature.to_bytes(),
+                ),
+                log_public_key: auths_verifier::Ed25519PublicKey::from_bytes(
+                    witness_key.verifying_key().to_bytes(),
+                ),
+                witnesses: vec![],
+                ecdsa_checkpoint_signature: None,
+                ecdsa_checkpoint_key: None,
+            },
+            proof: auths_transparency::InclusionProof {
+                index: 0,
+                size: 1,
+                root,
+                hashes,
+            },
         }
     }
 

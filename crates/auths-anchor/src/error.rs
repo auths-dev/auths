@@ -87,6 +87,55 @@ pub enum AnchorError {
     #[error("invalid duplicity proof: {0}")]
     InvalidDuplicityProof(String),
 
+    /// An anchor's timestamp is beyond the witness's acceptable future skew —
+    /// a post-dated τ would make every later withholding gap (`now − τ_latest`)
+    /// read as fresh, so it is refused at the door.
+    #[error("anchor timestamp is {ahead_secs}s in the future (max skew {max_secs}s)")]
+    TimestampInFuture {
+        /// How far ahead of the witness clock the timestamp is.
+        ahead_secs: i64,
+        /// The maximum tolerated forward skew.
+        max_secs: i64,
+    },
+
+    /// An anchor timestamp carries sub-second precision. Signing bytes commit
+    /// to whole seconds, so sub-second wire values would be malleable without
+    /// invalidating the signature — refused instead of silently truncated.
+    #[error("anchor timestamp carries sub-second precision")]
+    SubSecondTimestamp,
+
+    /// The resolved witness set is structurally invalid (duplicate member
+    /// names/keys, zero threshold, or a threshold above the member count).
+    #[error("invalid witness set: {0}")]
+    SetInvalid(String),
+
+    /// The resolved set's content does not hash to the SAID it claims — the
+    /// set is not self-addressing, so nothing it declares can be trusted.
+    #[error("witness-set content does not match its SAID: claimed {claimed}, computed {computed}")]
+    SetSaidMismatch {
+        /// The SAID the resolved set claims for itself.
+        claimed: String,
+        /// The SAID recomputed from the set's canonical content.
+        computed: String,
+    },
+
+    /// A cosigner's log checkpoint did not verify under the declared member key.
+    #[error("log checkpoint unverifiable for witness {name}: {detail}")]
+    CheckpointUnverifiable {
+        /// The witness whose checkpoint failed.
+        name: String,
+        /// What failed.
+        detail: String,
+    },
+
+    /// A counted cosigner supplied no valid log inclusion for the anchor —
+    /// a co-signature without a logged anchor is not finalization-grade.
+    #[error("no valid log inclusion for cosigner {name}")]
+    InclusionMissing {
+        /// The cosigner lacking a logged inclusion.
+        name: String,
+    },
+
     /// A byte string that must be exactly 32 bytes (a head or a seed id) was
     /// the wrong length.
     #[error("expected 32 bytes, got {got}")]

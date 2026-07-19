@@ -159,7 +159,11 @@ pub fn build_bundle(
         Settlement::Unmetered => "none".to_string(),
     };
     let amount_cents = fact.signed_cents.map(|c| c.get()).unwrap_or(0);
-    let freshness = Some(crate::anchor::anchor_freshness_of(&anchor));
+    // Freshness is a RELYING PARTY's judgment against an independently-known
+    // anchor index — a bundle never labels itself fresh. The
+    // field stays `None` at build; verifiers fill their own copy via
+    // `auths_anchor::freshness(anchored_index_of(&as_of), own_best_index)`.
+    let freshness = None;
 
     let mut bundle = EvidenceBundle {
         version: RECEIPTS_VERSION.to_string(),
@@ -422,9 +426,15 @@ pub async fn verify_offline(bundle: &EvidenceBundle) -> OfflineVerdict {
             .map(|f| f.settled_cents_before.get() + f.signed_cents.map(|c| c.get()).unwrap_or(0))
             .unwrap_or(0),
     };
-    if let AnchorCheck::Invalid { code, detail } =
-        verify_anchor(&bundle.verdicts.as_of, rederived_settled)
-    {
+    let witness_binding = crate::anchor::WitnessBinding {
+        binding_head: log_head.clone(),
+        record_count: bundle.proof.spend_log.len() as u64,
+    };
+    if let AnchorCheck::Invalid { code, detail } = verify_anchor(
+        &bundle.verdicts.as_of,
+        rederived_settled,
+        Some(&witness_binding),
+    ) {
         return OfflineVerdict::fail(bundle, code, detail);
     }
 

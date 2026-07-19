@@ -28,8 +28,8 @@ pub mod types;
 pub mod verify_spend;
 
 pub use anchor::{
-    AnchorCheck, TreasuryAnchorProof, WitnessAnchorProof, anchor_freshness_of, check_trail,
-    composite_head, kel_digest, spend_binding_head, verify_anchor, witness_anchor,
+    AnchorCheck, TreasuryAnchorProof, WitnessAnchorProof, WitnessBinding, anchored_index_of,
+    check_trail, composite_head, kel_digest, spend_binding_head, verify_anchor, witness_anchor,
 };
 // The AWN protocol core, re-exported so evidence consumers reach freshness and
 // the finalized-anchor proof through one crate.

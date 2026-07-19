@@ -60,7 +60,7 @@ fn valid_trail_verifies_and_anchors() {
         &last,
     )
     .unwrap();
-    assert_eq!(verify_anchor(&anchor, 250), AnchorCheck::Valid);
+    assert_eq!(verify_anchor(&anchor, 250, None), AnchorCheck::Valid);
 }
 
 /// Row 10 — a trail signed by the WRONG key must not verify against the pinned
@@ -83,7 +83,7 @@ fn forged_committer_is_rejected() {
     .unwrap();
     // The bundle pins the REAL coordinator; the embedded trail is the forger's.
     anchor.committer = Some(real.pubkey_hex.clone());
-    match verify_anchor(&anchor, 100) {
+    match verify_anchor(&anchor, 100, None) {
         AnchorCheck::Invalid { code, .. } => assert_eq!(code, "anchor-unverifiable"),
         AnchorCheck::Valid => panic!("forged committer verified"),
     }
@@ -106,7 +106,7 @@ fn stale_checkpoint_cannot_cover_later_spend() {
     )
     .unwrap();
     // The embedded log actually re-derives 300c settled — the stale trail says 100c.
-    match verify_anchor(&anchor, 300) {
+    match verify_anchor(&anchor, 300, None) {
         AnchorCheck::Invalid { code, .. } => assert_eq!(code, "head-mismatch"),
         AnchorCheck::Valid => panic!("stale trail accepted"),
     }

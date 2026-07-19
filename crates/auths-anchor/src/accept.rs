@@ -26,14 +26,23 @@ pub enum Acceptance {
     Duplicity(Box<DuplicityProof>),
 }
 
+/// The maximum tolerated forward clock skew on a submitted `τ`.
+///
+/// Without this bound a party could post-date one anchor far into the future,
+/// after which every withholding-gap check (`now − τ_latest`) reads
+/// permanently fresh while its honest future anchors are refused as
+/// regressions — a detection-defeating state reachable in one request.
+pub const MAX_FUTURE_SKEW_SECS: i64 = 300;
+
 /// Decide one [`AnchorReq`] against this witness's prior state for the seed.
 ///
 /// Args:
 /// * `req`: the incoming anchor request.
 /// * `keys`: the party's KEL-derived current keys at `req.timestamp`.
 /// * `prior`: this witness's last co-signed anchor for the seed, if any.
-/// * `now`: injected clock (reserved for skew policy; phase-0 ordering derives
-///   from the anchors themselves, never wall-clock).
+/// * `now`: injected clock — bounds forward skew on `req.timestamp`
+///   ([`MAX_FUTURE_SKEW_SECS`]); ordering still derives from the anchors
+///   themselves, never wall-clock.
 ///
 /// Usage:
 /// ```ignore
@@ -48,7 +57,16 @@ pub fn accept_anchor(
     prior: Option<&Anchor>,
     now: DateTime<Utc>,
 ) -> Result<Acceptance, AnchorError> {
-    let _ = now;
+    if req.timestamp.timestamp_subsec_nanos() != 0 {
+        return Err(AnchorError::SubSecondTimestamp);
+    }
+    let ahead_secs = (req.timestamp - now).num_seconds();
+    if ahead_secs > MAX_FUTURE_SKEW_SECS {
+        return Err(AnchorError::TimestampInFuture {
+            ahead_secs,
+            max_secs: MAX_FUTURE_SKEW_SECS,
+        });
+    }
     verify_party_signature(req, keys)?;
     if let Some(last) = prior {
         if req.index == last.index && req.head != last.head {
