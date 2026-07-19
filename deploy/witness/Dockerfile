@@ -14,4 +14,4 @@ USER witness
 VOLUME ["/data"]
 EXPOSE 3333
 ENTRYPOINT ["/usr/local/bin/witness-node"]
-CMD ["serve", "--roles", "anchor", "--bind", "0.0.0.0:3333", "--data-dir", "/data", "--registry", "/registry", "--witness-name", "witness"]
+CMD ["serve", "--roles", "anchor,kel,cosign", "--bind", "0.0.0.0:3333", "--data-dir", "/data", "--registry", "/registry", "--witness-name", "witness"]

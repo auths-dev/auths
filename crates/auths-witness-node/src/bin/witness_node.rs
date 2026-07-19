@@ -5,12 +5,12 @@
 
 //! The witness node binary: one artifact an operator runs.
 //!
-//! `serve` hosts the requested roles behind one hardened HTTP surface. A role
-//! whose required adapters are not configured refuses at startup with a named
-//! error — a partially-configured witness never serves cosignatures. The
-//! anchor role is served in-process; the KEL-receipt and checkpoint-cosign
-//! roles are still separate binaries and are refused here until they fold in,
-//! rather than silently ignored.
+//! `serve` hosts the requested roles behind one hardened HTTP surface: spend
+//! anchors, KERI receipt witnessing, and checkpoint cosigning — one operator
+//! artifact, one identity, one durable data dir. A role whose required
+//! adapters are not configured refuses at startup with a named error — a
+//! partially-configured witness never serves cosignatures. Role logic lives in
+//! the platform crates; this binary only composes it.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -88,9 +88,10 @@ fn probe_health(url: &str) -> Result<(), String> {
 
 #[derive(Parser)]
 struct ServeArgs {
-    /// Roles to serve (comma-separated). `anchor` is served in-process;
-    /// `kel` and `cosign` are refused until their binaries fold in.
-    #[arg(long, value_delimiter = ',', default_value = "anchor")]
+    /// Roles to serve (comma-separated): `anchor` (spend anchors), `kel`
+    /// (KERI receipt witnessing), `cosign` (checkpoint cosigning). All three
+    /// share one identity seed, one data dir, and one hardening envelope.
+    #[arg(long, value_delimiter = ',', default_value = "anchor,kel,cosign")]
     roles: Vec<String>,
 
     /// Bind address, e.g. `0.0.0.0:3333`.
@@ -122,6 +123,7 @@ struct AppState {
     service: AnchorService<FileSigner, SqliteAnchorStore, auths_transparency::FsTileStore>,
     registry: PathBuf,
     witness_name: String,
+    roles: Vec<String>,
 }
 
 /// One anchor submission: the anchor plus the party naming the witness resolves
@@ -195,7 +197,7 @@ async fn latest_anchor(
 async fn health(State(state): State<Arc<AppState>>) -> Response {
     Json(serde_json::json!({
         "up": true,
-        "roles": ["anchor"],
+        "roles": state.roles,
         "witness_name": state.witness_name,
     }))
     .into_response()
@@ -205,6 +207,49 @@ fn parse_seed(hex_seed: &str) -> Result<[u8; 32], String> {
     let raw = hex::decode(hex_seed.trim()).map_err(|e| format!("seed is not hex: {e}"))?;
     raw.try_into()
         .map_err(|_| "seed must be exactly 32 bytes of hex".to_string())
+}
+
+/// The KEL-receipt role: the shared hardened witness server, keyed by the
+/// node's identity seed, persisting receipts under the data dir. Absorbed from
+/// the standalone server binary — same state, same routes, no forked logic.
+fn build_kel_router(args: &ServeArgs) -> Result<Router, String> {
+    use auths_core::witness::{
+        WitnessServerConfig, WitnessServerState, witness_signer_from_seed_hex,
+    };
+    std::fs::create_dir_all(&args.data_dir)
+        .map_err(|e| format!("data dir {}: {e}", args.data_dir.display()))?;
+    let signer = witness_signer_from_seed_hex(auths_crypto::CurveType::Ed25519, args.seed.trim())
+        .map_err(|e| format!("witness signer: {e}"))?;
+    let config = WitnessServerConfig::from_signer(args.data_dir.join("receipts.db"), signer)
+        .map_err(|e| format!("witness config: {e}"))?;
+    let state = WitnessServerState::new(config).map_err(|e| format!("witness state: {e}"))?;
+    eprintln!("witness-node: kel role up as {}", state.witness_did());
+    Ok(auths_core::witness::witness_router(state))
+}
+
+/// The checkpoint-cosign role: the shared transparency-log cosigner, signing
+/// with the node's one identity, persisting its last-seen checkpoint under the
+/// data dir. Absorbed from the standalone server binary.
+fn build_cosign_router(args: &ServeArgs) -> Result<Router, String> {
+    std::fs::create_dir_all(&args.data_dir)
+        .map_err(|e| format!("data dir {}: {e}", args.data_dir.display()))?;
+    let seed = parse_seed(&args.seed)?;
+    let log_key = auths_transparency::LogSigningKey::from_seed(seed)
+        .map_err(|e| format!("cosign key: {e}"))?;
+    let pkcs8_hex = hex::encode(
+        log_key
+            .to_pkcs8_der()
+            .map_err(|e| format!("cosign key encoding: {e}"))?,
+    );
+    let config = auths_checkpoint_cosigner::WitnessConfig {
+        signing_key_hex: pkcs8_hex,
+        witness_name: args.witness_name.clone(),
+        checkpoint_path: args.data_dir.join("cosign-checkpoint.json"),
+        bind_addr: args.bind.clone(),
+    };
+    let state = auths_checkpoint_cosigner::WitnessState::new(&config)
+        .map_err(|e| format!("cosign state: {e}"))?;
+    Ok(auths_checkpoint_cosigner::build_router(state))
 }
 
 fn build_state(args: &ServeArgs) -> Result<Arc<AppState>, String> {
@@ -240,6 +285,7 @@ fn build_state(args: &ServeArgs) -> Result<Arc<AppState>, String> {
         service: AnchorService::new(signer, store, log),
         registry: args.registry.clone(),
         witness_name: args.witness_name.clone(),
+        roles: args.roles.clone(),
     }))
 }
 
@@ -257,35 +303,63 @@ async fn main() -> std::process::ExitCode {
         Command::Serve(args) => {
             for role in &args.roles {
                 match role.as_str() {
-                    "anchor" => {}
-                    "kel" | "cosign" => {
-                        eprintln!(
-                            "witness-node: role `{role}` is not served by this binary yet — \
-                             run its dedicated server, or drop it from --roles"
-                        );
-                        return std::process::ExitCode::FAILURE;
-                    }
+                    "anchor" | "kel" | "cosign" => {}
                     other => {
                         eprintln!("witness-node: unknown role `{other}`");
                         return std::process::ExitCode::FAILURE;
                     }
                 }
             }
-            let state = match build_state(&args) {
-                Ok(state) => state,
-                Err(e) => {
-                    eprintln!("witness-node: {e}");
-                    return std::process::ExitCode::FAILURE;
+            let has = |role: &str| args.roles.iter().any(|r| r == role);
+            let mut app = Router::new();
+
+            if has("anchor") {
+                let state = match build_state(&args) {
+                    Ok(state) => state,
+                    Err(e) => {
+                        eprintln!("witness-node: anchor role: {e}");
+                        return std::process::ExitCode::FAILURE;
+                    }
+                };
+                let mut anchor_routes = Router::new()
+                    .route("/v1/anchor", post(submit_anchor))
+                    .route("/v1/anchor/{seed}", get(latest_anchor));
+                // The KEL role's shared router already serves /health; register
+                // the node's own only when that role is off (one route, one owner).
+                if !has("kel") {
+                    anchor_routes = anchor_routes.route("/health", get(health));
                 }
-            };
-            let app = Router::new()
-                .route("/v1/anchor", post(submit_anchor))
-                .route("/v1/anchor/{seed}", get(latest_anchor))
-                .route("/health", get(health))
+                app = app.merge(anchor_routes.with_state(state));
+            }
+
+            if has("kel") {
+                match build_kel_router(&args) {
+                    Ok(router) => app = app.merge(router),
+                    Err(e) => {
+                        eprintln!("witness-node: kel role: {e}");
+                        return std::process::ExitCode::FAILURE;
+                    }
+                }
+            }
+
+            if has("cosign") {
+                match build_cosign_router(&args) {
+                    Ok(router) => app = app.merge(router),
+                    Err(e) => {
+                        eprintln!("witness-node: cosign role: {e}");
+                        return std::process::ExitCode::FAILURE;
+                    }
+                }
+            }
+
+            // One hardening envelope over every role — the same posture the
+            // standalone KEL witness shipped with.
+            let app = app
                 .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-                .layer(ConcurrencyLimitLayer::new(64))
-                .layer(TimeoutLayer::new(std::time::Duration::from_secs(15)))
-                .with_state(state);
+                .layer(ConcurrencyLimitLayer::new(
+                    auths_witness::MAX_CONCURRENT_REQUESTS,
+                ))
+                .layer(TimeoutLayer::new(auths_witness::REQUEST_TIMEOUT));
             let listener = match tokio::net::TcpListener::bind(&args.bind).await {
                 Ok(listener) => listener,
                 Err(e) => {

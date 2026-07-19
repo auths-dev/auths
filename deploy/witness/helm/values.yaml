@@ -6,10 +6,11 @@ image:
   pullPolicy: IfNotPresent
 
 # Roles this node serves. A role with no working adapter fails closed at
-# startup; the anchor role is the one this binary serves today (the KEL and
-# checkpoint-cosign servers remain their own binaries until they fold in).
+# startup.
 roles:
   - anchor
+  - kel
+  - cosign
 
 bind:
   port: 3333

@@ -1209,6 +1209,7 @@ version = "0.1.12"
 dependencies = [
  "anyhow",
  "auths-anchor",
+ "auths-checkpoint-cosigner",
  "auths-crypto",
  "auths-keri",
  "auths-sdk",

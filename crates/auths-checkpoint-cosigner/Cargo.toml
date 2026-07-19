@@ -10,10 +10,6 @@ homepage.workspace = true
 keywords = ["auths", "transparency", "tlog", "witness", "cosignature"]
 categories = ["cryptography", "network-programming"]
 
-[[bin]]
-name = "auths-checkpoint-cosigner"
-path = "src/main.rs"
-
 [lib]
 name = "auths_checkpoint_cosigner"
 path = "src/lib.rs"

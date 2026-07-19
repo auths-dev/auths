@@ -1,4 +1,4 @@
-# One witness node serving the anchor role, from the published image.
+# One witness node serving all three roles, from the published image.
 # Pin `image` to a digest in production — the tag is here for local quickstart.
 services:
   witness:
@@ -8,7 +8,7 @@ services:
     command:
       - serve
       - --roles
-      - anchor
+      - anchor,kel,cosign
       - --bind
       - 0.0.0.0:3333
       - --data-dir

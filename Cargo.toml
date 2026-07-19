@@ -108,6 +108,7 @@ auths-storage = { path = "crates/auths-storage", version = "0.1.12" }
 auths-transparency = { path = "crates/auths-transparency", version = "0.1.12", default-features = false }
 auths-utils = { path = "crates/auths-utils", version = "0.1.12" }
 auths-witness = { path = "crates/auths-witness", version = "0.1.12" }
+auths-checkpoint-cosigner = { path = "crates/auths-checkpoint-cosigner", version = "0.1.12" }
 auths-evidence = { path = "crates/auths-evidence", version = "0.1.12" }
 auths-witness-node = { path = "crates/auths-witness-node", version = "0.1.12" }
 auths-anchor = { path = "crates/auths-anchor", version = "0.1.12", default-features = false }
