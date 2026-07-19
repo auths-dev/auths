@@ -79,6 +79,9 @@ jobs:
           pnpm exec napi build --platform --release --target ${{ matrix.target }}
           node scripts/sync-conformance.mjs
 
+      # The container reuses the host-installed node_modules from the mounted
+      # workspace — running pnpm inside the image trips corepack's stale
+      # registry-key verification, and `set -e` keeps any failure loud.
       - name: Build native module (docker, old-glibc baseline)
         if: ${{ matrix.docker }}
         uses: addnab/docker-run-action@v3
@@ -86,10 +89,11 @@ jobs:
           image: ${{ matrix.docker }}
           options: --user 0:0 -v ${{ github.workspace }}:/build -w /build/packages/auths-node
           run: |
-            npm install -g pnpm@10.27.0
-            pnpm install --frozen-lockfile
-            pnpm exec napi build --platform --release --target ${{ matrix.target }}
+            set -e
+            rustc --version
+            node_modules/.bin/napi build --platform --release --target ${{ matrix.target }}
             node scripts/sync-conformance.mjs
+            ls auths.*.node
 
       - uses: actions/upload-artifact@v4
         with:
