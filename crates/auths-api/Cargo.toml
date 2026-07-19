@@ -21,7 +21,7 @@ auths-core = { workspace = true }
 auths-policy = { workspace = true }
 auths-storage = { workspace = true }
 auths-verifier = { workspace = true }
-auths-rp = { path = "../auths-rp", version = "0.1.11" }
+auths-rp = { path = "../auths-rp", version = "0.1.12" }
 
 # HTTP & async
 axum = "0.8"
