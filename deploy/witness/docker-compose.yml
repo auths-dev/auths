@@ -1,4 +1,4 @@
-# One witness node, all three roles, from the published image.
+# One witness node serving the anchor role, from the published image.
 # Pin `image` to a digest in production — the tag is here for local quickstart.
 services:
   witness:
@@ -8,24 +8,36 @@ services:
     command:
       - serve
       - --roles
-      - kel,cosign,anchor
+      - anchor
       - --bind
       - 0.0.0.0:3333
-      - --anchor-store
-      - /data/anchors.db
-    read_only: true
+      - --data-dir
+      - /data
+      - --registry
+      - /registry
+      - --witness-name
+      - "${WITNESS_NAME:-witness}"
     ports:
       - "3333:3333"
     environment:
-      # First-boot identity: a 32-byte hex seed. Generate once and keep stable
-      # across restarts (`openssl rand -hex 32`). The node mints its witness
-      # identity from this on first boot.
+      # The witness identity seed (64 hex chars). Generate once and keep stable
+      # across restarts (`openssl rand -hex 32`) — cosignatures and the log
+      # checkpoint key both derive from it, so a changed seed is a new witness.
       WITNESS_SEED: "${WITNESS_SEED}"
-    tmpfs:
-      - /data
+    volumes:
+      # DURABLE, never tmpfs: the per-seed anchor store is the node's
+      # anti-equivocation memory — an amnesiac witness will co-sign a fork
+      # after a restart.
+      - witness-data:/data
+      # The operator-synced local copy of the parties' public identity
+      # registry, used to resolve current keys for party signatures.
+      - ${WITNESS_REGISTRY:?set WITNESS_REGISTRY to the local registry path}:/registry:ro
     healthcheck:
       test: ["CMD", "/usr/local/bin/witness-node", "healthcheck", "--url", "http://127.0.0.1:3333/health"]
       interval: 30s
       timeout: 5s
       retries: 3
     restart: unless-stopped
+
+volumes:
+  witness-data:

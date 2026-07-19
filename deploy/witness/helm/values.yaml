@@ -5,10 +5,10 @@ image:
   digest: ""            # e.g. sha256:... — takes precedence over tag when set
   pullPolicy: IfNotPresent
 
-# Roles this node serves. A role with no working adapter fails closed at startup.
+# Roles this node serves. A role with no working adapter fails closed at
+# startup; the anchor role is the one this binary serves today (the KEL and
+# checkpoint-cosign servers remain their own binaries until they fold in).
 roles:
-  - kel
-  - cosign
   - anchor
 
 bind:

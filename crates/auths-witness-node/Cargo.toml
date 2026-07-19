@@ -13,14 +13,25 @@ categories = ["cryptography", "network-programming"]
 name = "auths_witness_node"
 path = "src/lib.rs"
 
+[[bin]]
+name = "witness-node"
+path = "src/bin/witness_node.rs"
+
 [dependencies]
 # Composition over the platform's PUBLIC crate APIs — depending on these IS the
 # integration. The node crate orchestrates operator standup around the hardened
 # witness server; it reimplements no receipt / key-state / CESR / SAID logic.
 auths-witness.workspace = true
 auths-anchor.workspace = true
+auths-crypto.workspace = true
 auths-keri.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
+# The witness's own append-only log (tile store + signed checkpoints) — the
+# logged half of every finalization-grade cosignature.
+auths-transparency = { workspace = true, features = ["native"] }
+# Party key resolution from a local registry copy (delegator check + current
+# keys), through the SDK's public storage surface.
+auths-sdk = { workspace = true, features = ["backend-git"] }
 
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -33,6 +44,15 @@ thiserror.workspace = true
 # Only the OS-backed `OsRng` is used (the workspace bans `thread_rng`/`random`).
 rand = { workspace = true }
 hex = "0.4"
+# The serve surface: hardened HTTP ingest for the anchor role (body cap,
+# concurrency limit, timeout — the same posture as the KEL witness server).
+axum = { version = "0.8" }
+clap = { version = "4", features = ["derive", "env"] }
+tower = { version = "0.5", features = ["limit"] }
+tower-http = { version = "0.6", features = ["timeout"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal"] }
+# Durable per-seed anchor state — the workspace's single `links = sqlite3` owner.
+sqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"

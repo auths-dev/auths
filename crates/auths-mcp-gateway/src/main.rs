@@ -137,6 +137,25 @@ struct ExportAttestationArgs {
     /// countersignature tier.
     #[arg(long = "anchor", value_name = "FILE")]
     anchor: Option<std::path::PathBuf>,
+
+    /// Witness endpoints to anchor this aggregate with (repeatable). When set,
+    /// the signed attestation is submitted to each witness, cosignatures are
+    /// collected to the declared threshold, and the finalized anchor is
+    /// embedded in `activity.json`.
+    #[arg(long = "anchor-to", value_name = "URL")]
+    anchor_to: Vec<String>,
+
+    /// A declared witness-set member as `name=<key>` (repeatable), where the
+    /// key is a CESR-qualified verkey or a `did:key:` — both carry the curve
+    /// tag in-band, so it is never inferred from length or documentation. The
+    /// declared set is what verifiers hold the quorum to; every cosigner must
+    /// be one of these.
+    #[arg(long = "witness", value_name = "NAME=KEY")]
+    witness: Vec<String>,
+
+    /// The finalization threshold `t` of the declared set.
+    #[arg(long = "witness-threshold", value_name = "T", default_value_t = 1)]
+    witness_threshold: u32,
 }
 
 #[derive(Parser)]
@@ -478,14 +497,19 @@ async fn run_export_attestation(args: ExportAttestationArgs) -> ExitCode {
             anchor,
         },
         signature: String::new(),
+        anchor: None,
     };
-    let result = (|| -> anyhow::Result<()> {
+    let result = async {
         let message = auths_evidence::activity_signing_bytes(&doc)
             .map_err(|e| anyhow::anyhow!("canonicalize: {e}"))?;
         let signature =
             auths_crypto::typed_sign(&seed, &message).map_err(|e| anyhow::anyhow!("sign: {e}"))?;
         use base64::Engine as _;
         doc.signature = base64::engine::general_purpose::STANDARD.encode(signature);
+        if !args.anchor_to.is_empty() {
+            let finalized = anchor_with_witnesses(&args, &doc, &seed, curve).await?;
+            doc.anchor = Some(finalized);
+        }
         if let Some(dir) = args.out.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -503,8 +527,9 @@ async fn run_export_attestation(args: ExportAttestationArgs) -> ExitCode {
                 .join("audit.json");
             std::fs::write(sibling, serde_json::to_vec_pretty(&manifest)?)?;
         }
-        Ok(())
-    })();
+        anyhow::Ok(())
+    }
+    .await;
     match result {
         Ok(()) => {
             println!(
@@ -521,6 +546,134 @@ async fn run_export_attestation(args: ExportAttestationArgs) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Parse `name=<cesr-verkey>` witness declarations into a validated,
+/// self-addressed declared set. The key is CESR-qualified (`D…` Ed25519,
+/// `1AAI…` P-256) so its curve tag is in-band from the very first ingestion —
+/// never inferred from length or a flag's documentation.
+fn declared_witness_set(
+    specs: &[String],
+    threshold: u32,
+) -> anyhow::Result<auths_anchor::WitnessSet> {
+    let mut members = Vec::new();
+    for spec in specs {
+        let (name, cesr) = spec
+            .split_once('=')
+            .ok_or_else(|| anyhow::anyhow!("--witness must be `name=<cesr-verkey>`"))?;
+        let key = cesr.trim();
+        let (curve, public_key) = if let Ok(parsed) = auths_keri::KeriPublicKey::parse(key) {
+            (parsed.curve(), parsed.raw_bytes().to_vec())
+        } else if key.starts_with("did:key:") {
+            let decoded = auths_crypto::did_key_decode(key)
+                .map_err(|e| anyhow::anyhow!("witness `{name}` key: {e}"))?;
+            (decoded.curve(), decoded.bytes().to_vec())
+        } else {
+            anyhow::bail!(
+                "witness `{name}` key must be a CESR verkey or a did:key — \
+                 both carry the curve tag in-band"
+            );
+        };
+        members.push(auths_anchor::WitnessRef {
+            name: name.to_string(),
+            curve,
+            public_key,
+            operator: None,
+        });
+    }
+    let mut set = auths_anchor::WitnessSet {
+        said: String::new(),
+        threshold,
+        members,
+    };
+    set.validate()
+        .map_err(|e| anyhow::anyhow!("witness set: {e}"))?;
+    set.said = set
+        .computed_said()
+        .map_err(|e| anyhow::anyhow!("witness set said: {e}"))?;
+    Ok(set)
+}
+
+/// One witness's acceptance response: its cosignature plus the logged
+/// inclusion that makes it finalization-grade.
+#[derive(serde::Deserialize)]
+struct WitnessAcceptance {
+    cosignature: auths_anchor::WitnessCosignature,
+    inclusion: auths_anchor::LoggedInclusion,
+}
+
+/// Submit the aggregate to the declared witnesses, collect cosignatures to the
+/// threshold, and return the finalized anchor — re-verified locally before it
+/// is ever embedded, so the gateway never publishes an anchor a stranger would
+/// refuse.
+async fn anchor_with_witnesses(
+    args: &ExportAttestationArgs,
+    doc: &auths_evidence::ActivityV1,
+    seed: &auths_crypto::TypedSeed,
+    curve: auths_crypto::CurveType,
+) -> anyhow::Result<auths_anchor::FinalizedAnchor> {
+    let set = declared_witness_set(&args.witness, args.witness_threshold)?;
+    let set_ref = auths_anchor::WitnessSetRef {
+        said: set.said.clone(),
+        threshold: set.threshold,
+    };
+    let public_key = auths_crypto::typed_public_key(seed)
+        .map_err(|e| anyhow::anyhow!("party public key: {e}"))?;
+    let mut anchor = auths_evidence::unsigned_activity_anchor(doc, set_ref, curve, public_key)
+        .map_err(|e| anyhow::anyhow!("anchor tuple: {e}"))?;
+    let message = anchor
+        .party_signing_bytes()
+        .map_err(|e| anyhow::anyhow!("anchor signing bytes: {e}"))?;
+    anchor.sig_party.signature = auths_crypto::typed_sign(seed, &message)
+        .map_err(|e| anyhow::anyhow!("anchor sign: {e}"))?;
+
+    let client = reqwest::Client::new();
+    let mut cosignatures = Vec::new();
+    let mut inclusion = Vec::new();
+    for url in &args.anchor_to {
+        let endpoint = format!("{}/v1/anchor", url.trim_end_matches('/'));
+        let sent = client
+            .post(&endpoint)
+            .timeout(std::time::Duration::from_secs(20))
+            .json(&serde_json::json!({
+                "anchor": anchor,
+                "party": { "root": doc.subject.root, "agent": doc.subject.agent },
+            }))
+            .send()
+            .await;
+        match sent {
+            Ok(resp) if resp.status().is_success() => {
+                match resp.json::<WitnessAcceptance>().await {
+                    Ok(acceptance) => {
+                        cosignatures.push(acceptance.cosignature);
+                        inclusion.push(acceptance.inclusion);
+                    }
+                    Err(e) => eprintln!("auths-mcp-gateway: witness {endpoint}: bad response: {e}"),
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                eprintln!("auths-mcp-gateway: witness {endpoint} refused ({status}): {body}");
+            }
+            Err(e) => eprintln!("auths-mcp-gateway: witness {endpoint} unreachable: {e}"),
+        }
+    }
+
+    let finalized = auths_anchor::FinalizedAnchor {
+        anchor,
+        witness_set: set,
+        cosignatures,
+        inclusion,
+    };
+    auths_anchor::verify_finalized(&finalized, Some(&finalized.anchor.witness_set.said))
+        .map_err(|e| anyhow::anyhow!("finalization did not reach the declared threshold: {e}"))?;
+    println!(
+        "export-attestation: anchored — {} cosignature(s), threshold {}",
+        finalized.cosignatures.len(),
+        finalized.anchor.witness_set.threshold,
+    );
+    Ok(finalized)
 }
 
 /// Flatten the (possibly rotated) spend log, emit the audit manifest, and commit

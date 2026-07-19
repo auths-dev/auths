@@ -125,6 +125,7 @@ pub(crate) mod test_support {
         let members: Vec<WitnessRef> = (0..n)
             .map(|i| WitnessRef {
                 name: format!("witness-{i}"),
+                curve: auths_crypto::CurveType::Ed25519,
                 public_key: witness_sk(i).verifying_key().as_bytes().to_vec(),
                 operator: Some(OperatorInfo {
                     operator: format!("op-{i}"),

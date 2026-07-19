@@ -27,6 +27,14 @@ auths-sdk = { workspace = true, features = ["backend-git"] }
 # The treasury coordinator signs its {fleet, count, cumulative} checkpoints with a
 # P-256 key and verify-spend re-verifies them — same primitives as the rest of the stack.
 auths-crypto = { workspace = true }
+# The anchor tuple + declared-set + finalization types the export leg submits to
+# witnesses and re-verifies before embedding.
+auths-anchor = { workspace = true }
+# CESR verkey parsing for the in-band-tagged --witness flag.
+auths-keri = { workspace = true }
+# Submitting anchors to witness endpoints (rustls — no system TLS dependency).
+reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "json"] }
+hex = "0.4"
 
 # Real MCP transport (PRD §5 Build item 2 / D1): the official Rust MCP SDK. The
 # `wrap` proxy speaks MCP JSON-RPC up to the agent (server) and down to the wrapped

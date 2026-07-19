@@ -210,7 +210,12 @@ pub struct OperatorInfo {
 pub struct WitnessRef {
     /// Human-readable witness name (matches the cosignature's `witness_name`).
     pub name: String,
-    /// The witness Ed25519 verifying key (witnesses cosign with Ed25519).
+    /// The member key's curve — the in-band tag every on-wire key must carry.
+    /// Cosignatures and log checkpoints are Ed25519 today (the signed-note
+    /// format pins the curve); a member tagged otherwise is refused as a
+    /// routing error at validation, never mis-verified as a bad signature.
+    pub curve: CurveType,
+    /// The witness verifying key bytes, interpreted under `curve`.
     #[serde(with = "hex_bytes")]
     pub public_key: Vec<u8>,
     /// Optional operator metadata, present when a diversity floor is enforced.
@@ -304,6 +309,10 @@ impl WitnessSet {
             .map(|m| {
                 let mut obj = serde_json::Map::new();
                 obj.insert("name".into(), serde_json::Value::String(m.name.clone()));
+                obj.insert(
+                    "curve".into(),
+                    serde_json::Value::String(m.curve.to_string()),
+                );
                 obj.insert(
                     "publicKey".into(),
                     serde_json::Value::String(hex::encode(&m.public_key)),

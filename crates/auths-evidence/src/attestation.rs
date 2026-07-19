@@ -52,21 +52,133 @@ pub struct ActivityV1 {
     pub cumulative_cents: u64,
     /// When, and under which anchor.
     pub as_of: ActivityAsOf,
-    /// Agent signature over `canon(doc minus signature)`, chaining to the root
-    /// through the public registry KEL.
+    /// Agent signature over `canon(doc minus signature minus anchor)`, chaining
+    /// to the root through the public registry KEL.
     pub signature: String,
+    /// A quorum-finalized anchor over this same aggregate, when the seller
+    /// anchored it. Collected AFTER the document is signed (the cosignatures
+    /// cover the anchor tuple, which restates the aggregate), so it rides
+    /// outside the document signature and is verified on its own: the tuple
+    /// must equal the document's aggregate and the finalization must re-check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<auths_anchor::FinalizedAnchor>,
 }
 
-/// The canonical signing bytes: RFC-8785 over the document minus `signature`.
+/// The canonical signing bytes: RFC-8785 over the document minus `signature`
+/// and minus `anchor` (the anchor is collected after signing and carries its
+/// own signatures).
 pub fn activity_signing_bytes(doc: &ActivityV1) -> Result<Vec<u8>, EvidenceError> {
     let mut value =
         serde_json::to_value(doc).map_err(|e| EvidenceError::Canonical(e.to_string()))?;
     if let Some(map) = value.as_object_mut() {
         map.remove("signature");
+        map.remove("anchor");
     }
     json_canon::to_string(&value)
         .map(String::into_bytes)
         .map_err(|e| EvidenceError::Canonical(e.to_string()))
+}
+
+/// The seed identifier of this attestation's spend chain: derived from the
+/// public delegation triple `(root, agent, agent prefix)` — one spend chain
+/// per delegated agent. Producers and verifiers must derive it identically;
+/// this function is the single place the derivation inputs are named.
+///
+/// Args:
+/// * `doc`: the attestation naming the subject.
+///
+/// Usage:
+/// ```ignore
+/// let seed = activity_seed_id(&doc);
+/// ```
+pub fn activity_seed_id(doc: &ActivityV1) -> auths_anchor::SeedId {
+    let agent_tail = doc
+        .subject
+        .agent
+        .strip_prefix("did:keri:")
+        .unwrap_or(&doc.subject.agent);
+    auths_anchor::SeedId::derive(&doc.subject.root, &doc.subject.agent, agent_tail)
+}
+
+/// Build the unsigned anchor tuple this attestation submits to its witnesses:
+/// the same aggregate under protocol names, with the party signature left for
+/// the caller to fill (it holds the agent key; this crate never signs).
+///
+/// Args:
+/// * `doc`: the signed attestation being anchored.
+/// * `witness_set`: the committed declared-set reference (content-SAID + threshold).
+/// * `party_curve` / `party_public_key`: the agent signing key the caller will
+///   sign the party message with.
+///
+/// Usage:
+/// ```ignore
+/// let mut anchor = unsigned_activity_anchor(&doc, set_ref, curve, pubkey)?;
+/// anchor.sig_party.signature = sign(&anchor.party_signing_bytes()?);
+/// ```
+pub fn unsigned_activity_anchor(
+    doc: &ActivityV1,
+    witness_set: auths_anchor::WitnessSetRef,
+    party_curve: auths_crypto::CurveType,
+    party_public_key: Vec<u8>,
+) -> Result<auths_anchor::Anchor, EvidenceError> {
+    let head = auths_anchor::Head::from_hex(&doc.head)
+        .map_err(|e| EvidenceError::Input(format!("attestation head: {e}")))?;
+    let ts_secs = doc.as_of.ts.timestamp();
+    let timestamp = chrono::DateTime::<Utc>::from_timestamp(ts_secs, 0)
+        .ok_or_else(|| EvidenceError::Input("attestation timestamp out of range".to_string()))?;
+    Ok(auths_anchor::Anchor {
+        seed_id: activity_seed_id(doc),
+        index: doc.count,
+        head,
+        cumulative: u128::from(doc.cumulative_cents),
+        timestamp,
+        witness_set,
+        sig_party: auths_anchor::PartySignature {
+            curve: party_curve,
+            public_key: party_public_key,
+            signature: Vec::new(),
+        },
+    })
+}
+
+/// Verify an attestation's embedded finalized anchor against the document it
+/// rides in: the finalization re-checks offline, the tuple restates exactly
+/// this document's aggregate, and the party key that signed the anchor is one
+/// of the agent's current keys. A document without an anchor passes — the
+/// anchor is an additive assurance tier, never a gate.
+fn verify_embedded_anchor(
+    doc: &ActivityV1,
+    current_keys: &[KeriPublicKey],
+) -> Result<(), EvidenceError> {
+    let Some(finalized) = &doc.anchor else {
+        return Ok(());
+    };
+    auths_anchor::verify_finalized(finalized, None)
+        .map_err(|e| EvidenceError::Input(format!("embedded anchor: {e}")))?;
+
+    let anchor = &finalized.anchor;
+    if anchor.seed_id != activity_seed_id(doc) {
+        return Err(EvidenceError::Input(
+            "embedded anchor is for a different spend chain".to_string(),
+        ));
+    }
+    if anchor.head.to_hex() != doc.head
+        || anchor.index != doc.count
+        || anchor.cumulative != u128::from(doc.cumulative_cents)
+    {
+        return Err(EvidenceError::Input(
+            "embedded anchor does not restate this document's aggregate".to_string(),
+        ));
+    }
+    let party_is_current = current_keys.iter().any(|key| {
+        key.curve() == anchor.sig_party.curve && key.raw_bytes() == anchor.sig_party.public_key
+    });
+    if !party_is_current {
+        return Err(EvidenceError::Input(
+            "embedded anchor's party key is not a current agent key".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// Verify an attestation's signature against the agent's CURRENT signing keys
@@ -97,7 +209,7 @@ pub fn verify_activity(
         .map_err(|e| EvidenceError::Input(format!("signature b64: {e}")))?;
     for key in current_keys {
         if auths_crypto::typed_verify(key.curve(), key.raw_bytes(), &message, &signature).is_ok() {
-            return Ok(());
+            return verify_embedded_anchor(doc, current_keys);
         }
     }
     Err(EvidenceError::Input(

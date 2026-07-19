@@ -40,7 +40,9 @@ pub mod anchor_store;
 pub mod build;
 pub mod engine;
 pub mod receipt;
+pub mod registry;
 pub mod signer;
+pub mod sqlite_store;
 pub mod standup;
 pub mod vocabulary;
 
@@ -49,7 +51,9 @@ pub use anchor_store::InMemoryAnchorStore;
 pub use build::{BuildAttestation, NodeBuildVerdict};
 pub use engine::{DockerEngine, SocketHealthCheck, SocketHttpFetch};
 pub use receipt::ReceiptBundle;
+pub use registry::controller_keys_for_party;
 pub use signer::{FileSigner, Signer};
+pub use sqlite_store::SqliteAnchorStore;
 pub use standup::{
     ContainerEngine, HealthCheck, HttpFetch, HttpResponse, StandupError, StandupOutcome, stand_up,
     tear_down,

@@ -89,8 +89,10 @@ pub fn verify_finalized(
 
         // Verify under the *declared* member key, never the self-reported key in
         // the cosignature: the trust anchor is the self-addressed declared set.
+        // Dispatch on the member's own in-band curve tag (validation already
+        // refused any curve the cosignature format cannot carry).
         let valid = verify_signature(
-            CurveType::Ed25519,
+            member.curve,
             &member.public_key,
             &cosign_message,
             cosig.signature.as_bytes(),

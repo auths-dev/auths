@@ -66,6 +66,25 @@ impl LogSigningKey {
         Self::from_signer(signer)
     }
 
+    /// Build a signing key from a raw 32-byte Ed25519 seed.
+    ///
+    /// A witness node uses ONE Ed25519 identity for both its cosignatures and
+    /// its log checkpoints — verifiers pin a single member key — so the node
+    /// derives both signers from the same stable seed.
+    ///
+    /// Args:
+    /// * `seed` — The 32-byte Ed25519 seed.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let key = LogSigningKey::from_seed(node_seed)?;
+    /// ```
+    pub fn from_seed(seed: [u8; 32]) -> Result<Self, TransparencyError> {
+        let signer = TypedSignerKey::from_seed(TypedSeed::Ed25519(seed))
+            .map_err(|e| TransparencyError::SigningKey(e.to_string()))?;
+        Self::from_signer(signer)
+    }
+
     fn from_signer(signer: TypedSignerKey) -> Result<Self, TransparencyError> {
         if signer.curve() != CurveType::Ed25519 {
             return Err(TransparencyError::SigningKey(
