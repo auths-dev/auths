@@ -90,6 +90,9 @@ jobs:
           options: --user 0:0 -v ${{ github.workspace }}:/build -w /build/packages/auths-node
           run: |
             set -e
+            rustup toolchain install 1.93 --profile minimal
+            rustup default 1.93
+            rustup target add ${{ matrix.target }}
             rustc --version
             node_modules/.bin/napi build --platform --release --target ${{ matrix.target }}
             node scripts/sync-conformance.mjs
