@@ -61,6 +61,7 @@ auths-core = { workspace = true }
 tempfile = "3"
 # Router-level tests drive the roles' apps in-process.
 tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
 # The build-attestation verdict composes the async platform verifier; its tests
 # need a runtime to drive it.
 tokio = { workspace = true, features = ["rt", "macros"] }
