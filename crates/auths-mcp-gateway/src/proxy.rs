@@ -473,7 +473,14 @@ impl ServerHandler for GatewayProxy {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         // Link this call to the prior persisted record (the genesis sentinel for the first) via the
         // signed `Auths-Prev` trailer, so the audit can verify the spend log is a complete chain.
-        let prev_binding = self.prev_binding.lock().await.clone();
+        //
+        // Hold the chain head across the ENTIRE call so read-of-prev → sign → append → advance is
+        // one atomic critical section. A spend-log hash chain is inherently sequential: without
+        // this, two concurrent (pipelined, or multi-in-flight) calls both read the same head and
+        // both link to it, forking the log so the offline audit can no longer re-derive it. Calls
+        // on different chains (different agents) hold different locks and still run concurrently.
+        let mut chain_head = self.prev_binding.lock().await;
+        let prev_binding = chain_head.clone();
         let sign_t = std::time::Instant::now();
         let (proof_bytes, proof_sha) = self
             .chain
@@ -681,8 +688,11 @@ impl ServerHandler for GatewayProxy {
             ));
         }
         crate::metrics_http::record_stage("spend_log", log_t.elapsed());
-        // Advance the chain head so the next brokered call links to this record.
-        *self.prev_binding.lock().await = new_binding;
+        // Advance the chain head so the next brokered call links to this record — written through
+        // the guard held since the read above, closing the atomic critical section. An earlier
+        // fail-closed return drops the guard without advancing, so a call that never persisted a
+        // record leaves the head untouched and the next call links to the same prev (correct).
+        *chain_head = new_binding;
 
         // Record the call's total latency + verdict (no-ops unless the recorder is installed).
         metrics::histogram!(crate::metrics_http::CALL_LATENCY)
