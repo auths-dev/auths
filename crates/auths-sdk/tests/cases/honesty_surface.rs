@@ -133,7 +133,7 @@ fn honesty_no_utc_now_in_pack_generation() {
 fn honesty_no_unconstrained_fallback_bypass() {
     for rel in [
         "auths-monitor/src/main.rs",
-        "auths-checkpoint-cosigner/src/lib.rs",
+        "auths-witness-node/src/cosign_role.rs",
         "auths-sdk/src/domains/compliance/query.rs",
         "auths-sdk/src/domains/compliance/frameworks.rs",
     ] {

@@ -241,15 +241,14 @@ fn build_cosign_router(args: &ServeArgs) -> Result<Router, String> {
             .to_pkcs8_der()
             .map_err(|e| format!("cosign key encoding: {e}"))?,
     );
-    let config = auths_checkpoint_cosigner::WitnessConfig {
+    let config = auths_witness_node::cosign_role::WitnessConfig {
         signing_key_hex: pkcs8_hex,
         witness_name: args.witness_name.clone(),
         checkpoint_path: args.data_dir.join("cosign-checkpoint.json"),
-        bind_addr: args.bind.clone(),
     };
-    let state = auths_checkpoint_cosigner::WitnessState::new(&config)
+    let state = auths_witness_node::cosign_role::WitnessState::new(&config)
         .map_err(|e| format!("cosign state: {e}"))?;
-    Ok(auths_checkpoint_cosigner::build_router(state))
+    Ok(auths_witness_node::cosign_role::build_router(state))
 }
 
 fn build_state(args: &ServeArgs) -> Result<Arc<AppState>, String> {
@@ -357,9 +356,9 @@ async fn main() -> std::process::ExitCode {
             let app = app
                 .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
                 .layer(ConcurrencyLimitLayer::new(
-                    auths_witness::MAX_CONCURRENT_REQUESTS,
+                    auths_witness_node::MAX_CONCURRENT_REQUESTS,
                 ))
-                .layer(TimeoutLayer::new(auths_witness::REQUEST_TIMEOUT));
+                .layer(TimeoutLayer::new(auths_witness_node::REQUEST_TIMEOUT));
             let listener = match tokio::net::TcpListener::bind(&args.bind).await {
                 Ok(listener) => listener,
                 Err(e) => {

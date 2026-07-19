@@ -1,10 +1,10 @@
-# auths-witness deployment kit
+# witness-node deployment kit (KEL-receipt role)
 
 A slim, hardened KERI **rct-witness** server. It does exactly four things:
 receive a key event → validate it → sign a receipt → store it. Nothing else.
 
 It runs the **same** `auths-core` witness library as `auths witness start` (no
-forked logic), packaged as a standalone `auths-witness` binary so an
+forked logic), packaged as a standalone `witness-node` binary so an
 internet-facing deployment carries a minimal attack surface.
 
 > This is the KERI-`rct` witness (key-event receipting). The CT-checkpoint
@@ -32,7 +32,7 @@ below), gossip with other witnesses, or run the CT-checkpoint cosigner.
   Secure Enclave) — all behind `keychain-*` features that stay off;
 - the `auths` CLI subcommands, ssh-agent, and the pairing daemon/protocol crates.
 
-Audit with `cargo tree -p auths-witness -e normal` before each release; the kit
+Audit with `cargo tree -p witness-node-node -e normal` before each release; the kit
 intentionally has no `secret-service`, `windows`, `cryptoki`, or
 `auths-pairing-*` nodes.
 
@@ -77,25 +77,25 @@ limits (nginx / Caddy / Envoy):
 
 **Binary**
 ```bash
-auths-witness --identity ./witness.key --generate \
+witness-node serve --roles kel --data-dir ./data --registry ./registry \
   --bind 127.0.0.1:3333 --persist ./receipts.db
 # subsequent starts (no --generate) load the same key → same /health AID
-auths-witness --identity ./witness.key --bind 127.0.0.1:3333 --persist ./receipts.db
+witness-node serve --roles kel --data-dir ./data --registry ./registry --witness-name witness --bind 127.0.0.1:3333
 ```
 
 **Docker** (`Dockerfile` in this directory — distroless-static, non-root)
 ```bash
-docker build -f docs/deployment/witness/Dockerfile -t auths-witness .
+docker build -f docs/deployment/witness/Dockerfile -t witness-node .
 docker run --read-only --cap-drop ALL \
-  -v auths_witness_data:/data -p 3333:3333 auths-witness
+  -v auths_witness_data:/data -p 3333:3333 witness-node
 ```
 
-**systemd** (`auths-witness.service` in this directory)
+**systemd** (`witness-node.service` in this directory)
 ```bash
-install -m0755 target/release/auths-witness /usr/local/bin/auths-witness
-cp docs/deployment/witness/auths-witness.service /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now auths-witness
-systemd-analyze security auths-witness.service   # exposure target < 3.0
+install -m0755 target/release/witness-node /usr/local/bin/witness-node
+cp docs/deployment/witness/witness-node.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now witness-node
+systemd-analyze security witness-node.service   # exposure target < 3.0
 ```
 
 The unit runs `DynamicUser=yes`, `NoNewPrivileges`, `ProtectSystem=strict`,

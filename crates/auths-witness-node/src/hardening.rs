@@ -1,10 +1,11 @@
-//! Slim, hardened KERI rct-witness server over the shared `auths-core` library.
+//! The KEL-receipt role's hardening envelope.
 //!
 //! No forked logic: the routes, handlers, receipt signing, duplicity detection,
-//! and the W.1.1 stable identity all live in `auths-core`. This crate adds only
-//! the binary entrypoint and the application-level DoS hardening an
-//! internet-facing event ingest needs (the endpoint accepts untrusted POST
-//! bodies, so OS sandboxing alone is not enough).
+//! and the stable identity all live in `auths-core`. This module adds only the
+//! application-level DoS hardening an internet-facing event ingest needs (the
+//! endpoint accepts untrusted POST bodies, so OS sandboxing alone is not
+//! enough). Absorbed from the standalone witness server when it folded into
+//! this node.
 
 use std::time::Duration;
 

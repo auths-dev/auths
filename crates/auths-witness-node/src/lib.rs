@@ -18,9 +18,9 @@
 //! format, the key-state notice, signature checking — comes from the platform's
 //! public crate APIs, which this crate composes:
 //!
-//! * [`auths_witness`] — the hardened receipt server this node runs, and the
-//!   request-hardening constants ([`auths_witness::MAX_BODY_BYTES`] et al.) the
-//!   standup manifest is configured against.
+//! * [`hardening`] — the receipt server's hardened app and the
+//!   request-hardening constants ([`MAX_BODY_BYTES`] et al.) the standup
+//!   manifest is configured against (over `auths-core`'s witness router).
 //! * [`auths_keri`] — the key-state notice ([`auths_keri::KeyStateNotice`]) and
 //!   its wire version the node serves at its stable endpoint.
 //! * [`auths_verifier`] — the witness-quorum policy
@@ -38,7 +38,9 @@ use serde::{Deserialize, Serialize};
 pub mod anchor_role;
 pub mod anchor_store;
 pub mod build;
+pub mod cosign_role;
 pub mod engine;
+pub mod hardening;
 pub mod receipt;
 pub mod registry;
 pub mod signer;
@@ -68,7 +70,9 @@ pub use auths_verifier::{
     OfflineBuildVerdict, OfflineReceiptVerdict, SignedReceipt, WitnessQuorum, WitnessReceiptResult,
     verify_build_attestation_offline, verify_receipt_offline,
 };
-pub use auths_witness::{MAX_BODY_BYTES, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT};
+pub use hardening::{
+    MAX_BODY_BYTES, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT, hardened_witness_app,
+};
 
 /// The released, attested witness image a node runs.
 ///
@@ -159,7 +163,7 @@ impl StandupRequest {
     /// The witness service is the platform's released image — the manifest
     /// declares it `image:`, never `build:`, so standup is never a source
     /// build. The body-size cap the server enforces
-    /// ([`auths_witness::MAX_BODY_BYTES`]) is surfaced here as the front-proxy
+    /// ([`MAX_BODY_BYTES`]) is surfaced here as the front-proxy
     /// hint so the two limits cannot drift.
     ///
     /// The node's stable signing identity is injected at first boot (the

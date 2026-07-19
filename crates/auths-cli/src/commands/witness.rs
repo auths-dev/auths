@@ -589,7 +589,7 @@ mod node {
         Err(anyhow!(
             "`auths witness {verb}` needs the witness build; install it with \
              `cargo install auths --features witness-node` (or use the \
-             auths-witness release binary)"
+             witness-node release binary)"
         ))
     }
 

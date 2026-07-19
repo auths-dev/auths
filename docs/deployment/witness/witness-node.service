@@ -1,7 +1,7 @@
-# Hardened systemd unit for the auths-witness rct server.
+# Hardened systemd unit for the witness-node (KEL-receipt role).
 #
-# Target: `systemd-analyze security auths-witness.service` exposure < 3.0.
-# The signing key + receipts DB live under StateDirectory (/var/lib/auths-witness),
+# Target: `systemd-analyze security witness-node.service` exposure < 3.0.
+# The signing key + receipts DB live under StateDirectory (/var/lib/witness-node),
 # the only writable path. TLS terminates at a reverse proxy in front of :3333.
 
 [Unit]
@@ -13,11 +13,11 @@ Wants=network-online.target
 [Service]
 Type=exec
 DynamicUser=yes
-StateDirectory=auths-witness
-ExecStart=/usr/local/bin/auths-witness \
+StateDirectory=witness-node
+ExecStart=/usr/local/bin/witness-node serve \
     --bind 127.0.0.1:3333 \
-    --identity %S/auths-witness/witness.key \
-    --persist %S/auths-witness/receipts.db
+    --identity %S/witness-node/witness.key \
+    --persist %S/witness-node/receipts.db
 Restart=on-failure
 RestartSec=2
 
@@ -45,7 +45,7 @@ SystemCallErrorNumber=EPERM
 SystemCallArchitectures=native
 CapabilityBoundingSet=
 # Only writable path is the state dir (StateDirectory already grants it).
-ReadWritePaths=%S/auths-witness
+ReadWritePaths=%S/witness-node
 UMask=0077
 
 [Install]

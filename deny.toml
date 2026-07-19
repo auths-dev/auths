@@ -52,11 +52,9 @@ deny = [
     "auths-mcp-server",
     "auths-pairing-daemon",
     "auths-scim-server",
-    "auths-checkpoint-cosigner",
-    "auths-witness",
     "auths-witness-node",
     "murmur-relay",
-  ], reason = "HTTP framework confined to adapter/server crates (scim-server is the SCIM provisioning server; auth-server is the OAuth/OIDC server; checkpoint-cosigner, witness, and witness-node are HTTP service binaries)" },
+  ], reason = "HTTP framework confined to adapter/server crates (scim-server is the SCIM provisioning server; auth-server is the OAuth/OIDC server; witness-node is the consolidated witness HTTP service binary)" },
 
   # git2 must not be a production dependency of auths-sdk or auths-core
   { crate = "git2", wrappers = [

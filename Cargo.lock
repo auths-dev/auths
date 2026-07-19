@@ -376,28 +376,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "auths-checkpoint-cosigner"
-version = "0.1.12"
-dependencies = [
- "anyhow",
- "auths-transparency",
- "auths-verifier",
- "axum",
- "chrono",
- "hex",
- "http-body-util",
- "ring",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tower",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "auths-cli"
 version = "0.1.12"
 dependencies = [
@@ -1186,36 +1164,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "auths-witness"
-version = "0.1.12"
-dependencies = [
- "anyhow",
- "auths-core",
- "auths-crypto",
- "axum",
- "clap",
- "http-body-util",
- "serde_json",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "auths-witness-node"
 version = "0.1.12"
 dependencies = [
  "anyhow",
  "auths-anchor",
- "auths-checkpoint-cosigner",
+ "auths-core",
  "auths-crypto",
  "auths-keri",
  "auths-sdk",
  "auths-transparency",
  "auths-verifier",
- "auths-witness",
  "axum",
  "chrono",
  "clap",
@@ -1223,6 +1182,7 @@ dependencies = [
  "hex",
  "parking_lot",
  "rand 0.8.6",
+ "ring",
  "serde",
  "serde_json",
  "sqlite",

@@ -1,11 +1,12 @@
-//! Standalone witness server for the auths transparency log.
+//! The checkpoint-cosign role: the C2SP tlog-witness cosignature protocol.
 //!
-//! Implements the C2SP tlog-witness cosignature protocol. Receives checkpoints
-//! from the log operator, verifies consistency with the last-seen checkpoint,
-//! and returns timestamped Ed25519 cosignatures.
+//! Receives checkpoints from a log operator, verifies consistency with the
+//! last-seen checkpoint, and returns timestamped cosignatures. Absorbed from
+//! the standalone cosigner server when it folded into this node.
 
-// CT cosignatures are Ed25519-only per the C2SP tlog-witness spec; `ring` is the
-// signing/verification primitive here (as in `auths-transparency`), not curve drift.
+// CT cosignatures pin their curve by the signed-note spec; `ring` is the
+// signing/verification primitive here (as in `auths-transparency`), not curve
+// drift.
 #![allow(clippy::disallowed_methods)]
 
 use std::path::{Path, PathBuf};
@@ -23,21 +24,19 @@ use ring::signature::KeyPair;
 use serde::Serialize;
 use tokio::sync::RwLock;
 
-/// Witness server configuration.
+/// Cosign-role configuration. Binding is the node's job, not the role's.
 ///
 /// Args:
-/// * `signing_key_hex` — Hex-encoded PKCS#8 Ed25519 private key.
+/// * `signing_key_hex` — Hex-encoded PKCS#8 signing key (the node identity).
 /// * `witness_name` — Human-readable witness name (used in cosignature lines).
 /// * `checkpoint_path` — Path to persist the last-seen checkpoint JSON.
-/// * `bind_addr` — Socket address to listen on.
 ///
 /// Usage:
 /// ```ignore
 /// let config = WitnessConfig {
-///     signing_key_hex: std::env::var("AUTHS_WITNESS_SIGNING_KEY")?,
+///     signing_key_hex,
 ///     witness_name: "witness-1".into(),
-///     checkpoint_path: PathBuf::from("/data/last_checkpoint.json"),
-///     bind_addr: "0.0.0.0:8080".into(),
+///     checkpoint_path: data_dir.join("cosign-checkpoint.json"),
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -48,8 +47,6 @@ pub struct WitnessConfig {
     pub witness_name: String,
     /// Filesystem path for persisting the last-seen checkpoint.
     pub checkpoint_path: PathBuf,
-    /// Socket address to bind to.
-    pub bind_addr: String,
 }
 
 /// Shared witness state behind Arc<RwLock<...>>.
@@ -111,7 +108,7 @@ impl WitnessState {
     }
 }
 
-/// Build the Axum router for the witness server.
+/// Build the Axum router for the cosign role.
 ///
 /// Args:
 /// * `state` — Shared witness state.
@@ -286,15 +283,13 @@ mod tests {
     use tower::ServiceExt;
 
     #[allow(clippy::disallowed_methods)]
-    fn test_config() -> WitnessConfig {
+    fn test_config(dir: &std::path::Path) -> WitnessConfig {
         let rng = ring::rand::SystemRandom::new();
         let pkcs8 = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         WitnessConfig {
             signing_key_hex: hex::encode(pkcs8.as_ref()),
             witness_name: "test-witness".into(),
-            checkpoint_path: std::env::temp_dir()
-                .join(format!("witness-test-{}", uuid::Uuid::new_v4())),
-            bind_addr: "127.0.0.1:0".into(),
+            checkpoint_path: dir.join("last_checkpoint.json"),
         }
     }
 
@@ -331,7 +326,8 @@ mod tests {
 
     #[tokio::test]
     async fn tofu_accepts_first_checkpoint() {
-        let config = test_config();
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = test_config(dir.path());
         let state = WitnessState::new(&config).unwrap();
         let app = build_router(state);
 
@@ -358,7 +354,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_equivocation() {
-        let config = test_config();
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = test_config(dir.path());
         let state = WitnessState::new(&config).unwrap();
         let app = build_router(state.clone());
 
@@ -407,7 +404,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_smaller_size() {
-        let config = test_config();
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = test_config(dir.path());
         let state = WitnessState::new(&config).unwrap();
 
         let cp1 = make_checkpoint(10, [0xaa; 32]);
@@ -456,7 +454,8 @@ mod tests {
 
     #[tokio::test]
     async fn requires_consistency_proof_for_growth() {
-        let config = test_config();
+        let dir = tempfile::TempDir::new().unwrap();
+        let config = test_config(dir.path());
         let state = WitnessState::new(&config).unwrap();
 
         let cp1 = make_checkpoint(10, [0xaa; 32]);

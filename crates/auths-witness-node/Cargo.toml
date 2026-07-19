@@ -21,8 +21,6 @@ path = "src/bin/witness_node.rs"
 # Composition over the platform's PUBLIC crate APIs — depending on these IS the
 # integration. The node crate orchestrates operator standup around the hardened
 # witness server; it reimplements no receipt / key-state / CESR / SAID logic.
-auths-witness.workspace = true
-auths-checkpoint-cosigner.workspace = true
 auths-anchor.workspace = true
 auths-crypto.workspace = true
 auths-keri.workspace = true
@@ -51,12 +49,18 @@ axum = { version = "0.8" }
 clap = { version = "4", features = ["derive", "env"] }
 tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["timeout"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
 # Durable per-seed anchor state — the workspace's single `links = sqlite3` owner.
 sqlite = { version = "0.32", features = ["bundled"] }
+# The cosign role's signed-note signing primitive (as in auths-transparency).
+ring = { workspace = true }
+# The KEL role's shared router + state (composed, never forked).
+auths-core = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+# Router-level tests drive the roles' apps in-process.
+tower = { version = "0.5", features = ["util"] }
 # The build-attestation verdict composes the async platform verifier; its tests
 # need a runtime to drive it.
 tokio = { workspace = true, features = ["rt", "macros"] }
