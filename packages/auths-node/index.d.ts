@@ -12,6 +12,24 @@ export declare function addOrgMember(orgDid: string, memberLabel: string, role: 
 export declare function addWitness(urlStr: string, aid: string, repoPath: string, label?: string | undefined | null): NapiWitnessResult
 
 /**
+ * The monotonicity check between a stored attestation checkpoint and a freshly
+ * fetched one. Returns the named violation, or null when acceptable.
+ *
+ * Args:
+ * * `prev_head` / `prev_count` / `prev_cents` / `prev_ts_iso`: the stored checkpoint.
+ * * `next_json`: the freshly fetched `activity/v1` document.
+ *
+ * Usage:
+ * ```ignore
+ * const violation = attestationMonotonicityViolation(head, count, cents, ts, doc);
+ * ```
+ */
+export declare function attestationMonotonicityViolation(prevHead: string, prevCount: number, prevCents: number, prevTsIso: string, nextJson: string): string | null
+
+/** The embedded JSON schema for the `audit/v1` report. */
+export declare function auditV1Schema(): string
+
+/**
  * Authenticate a presentation request end-to-end.
  *
  * The caller has already consumed the single-use nonce (via
@@ -103,6 +121,26 @@ export declare function delegateAgent(agentName: string, capabilities: Array<str
 export declare function evaluatePolicy(policyJson: string, issuer: string, subject: string, capabilities?: Array<string> | undefined | null, role?: string | undefined | null, revoked?: boolean | undefined | null, expiresAt?: string | undefined | null, repo?: string | undefined | null, environment?: string | undefined | null, signerType?: string | undefined | null, delegatedBy?: string | undefined | null, chainDepth?: number | undefined | null): NapiPolicyDecision
 
 export declare function extendDeviceAuthorization(deviceDid: string, identityKeyAlias: string, expiresIn: number, repoPath: string, passphrase?: string | undefined | null): NapiExtensionResult
+
+/**
+ * Fetch a public identity registry into a local directory, fully in-process
+ * (libgit2 with its own HTTPS transport — no `git` binary on the host, so it
+ * works inside serverless functions). Fetches identity refs and heads only —
+ * this is key resolution; no spend data exists at a registry URL — and
+ * materializes the first fetched branch's working files, matching the layout
+ * the CLI writes.
+ *
+ * Args:
+ * * `url`: the public registry's git URL (`registry_git_url` from `audit.json`).
+ * * `dest`: an empty local directory to fetch into.
+ *
+ * Usage:
+ * ```ignore
+ * fetchRegistry(manifest.registry_git_url, registryDir);
+ * const check = JSON.parse(verifyActivityAttestation(doc, registryDir));
+ * ```
+ */
+export declare function fetchRegistry(url: string, dest: string): void
 
 export declare function generateAuditReport(targetRepoPath: string, authsRepoPath: string, since?: string | undefined | null, until?: string | undefined | null, author?: string | undefined | null, limit?: number | undefined | null): string
 
@@ -428,6 +466,9 @@ export declare const enum PresentationStatus {
   Unknown = 'Unknown'
 }
 
+/** The embedded JSON schema for the `receipts/v1` wire contract. */
+export declare function receiptsV1Schema(): string
+
 export declare function removePinnedIdentity(did: string, repoPath: string): void
 
 export declare function removeWitness(urlStr: string, repoPath: string): void
@@ -529,6 +570,22 @@ export declare function signCommit(data: Buffer, identityKeyAlias: string, repoP
  */
 export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex: string, curve?: string | undefined | null): NapiVerificationResult
 
+/**
+ * Verify a published `activity/v1` attestation against a fetched registry copy:
+ * resolve the agent's current keys from the KEL (identity resolution ONLY —
+ * never a spend log), require its delegator to be the claimed root, verify the
+ * signature. Returns `{ok, reason?, head, count, cumulativeCents, asOfTs,
+ * subjectRoot, subjectAgent}` as JSON — everything the market's receipts worker
+ * needs, as verdict fields (the report is the only API).
+ *
+ * Usage:
+ * ```ignore
+ * const check = JSON.parse(verifyActivityAttestation(doc, registryDir));
+ * if (!check.ok) markStale(check.reason);
+ * ```
+ */
+export declare function verifyActivityAttestation(attestationJson: string, registryPath: string): string
+
 export declare function verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
 
 export declare function verifyAtTime(attestationJson: string, issuerPkHex: string, atRfc3339: string): Promise<NapiVerificationResult>
@@ -555,6 +612,20 @@ export declare function verifyCredential(requestJson: string): CredentialReport
 export declare function verifyDeviceAuthorization(identityDid: string, deviceDid: string, attestationsJson: Array<string>, identityPkHex: string): Promise<NapiVerificationReport>
 
 /**
+ * Fully-offline verification of a `receipts/v1` EvidenceBundle: signature →
+ * proof replay → head recompute → anchor tier → verdict recompute → the S4
+ * binding echo. Returns the OfflineVerdict as JSON; the CALLER must assert the
+ * echoed subject/tx/callIndex match its own payment ref.
+ *
+ * Usage:
+ * ```ignore
+ * const v = JSON.parse(await verifyOffline(bundleJson));
+ * if (!v.ok || v.tx !== myDisputedTx) deny();
+ * ```
+ */
+export declare function verifyOffline(bundleJson: string): Promise<string>
+
+/**
  * Verify a credential **presentation** from a bundled JSON request, returning a typed report.
  *
  * The request is the fn-153.3 `VerifyPresentationRequest` bundle (keys CESR-tagged inside).
@@ -571,5 +642,29 @@ export declare function verifyDeviceAuthorization(identityDid: string, deviceDid
  * ```
  */
 export declare function verifyPresentation(requestJson: string): PresentationReport
+
+/**
+ * Verify a `reversal/v1` determination against the bundle it cites: signature,
+ * direction, and that amount + parties + basis re-derive from the signed
+ * evidence. Returns `{ok, reason?}` as JSON.
+ */
+export declare function verifyReversalDetermination(determinationJson: string, bundleJson: string): Promise<string>
+
+/**
+ * Re-derive an agent's spend from its signed log — the same single
+ * implementation behind `verify-spend` and `receipt_build`. Returns the
+ * `audit/v1` report as JSON.
+ *
+ * Args:
+ * * `log_path`: the spend log (JSONL file or rotated directory).
+ * * `registry_path`: the issuer's registry.
+ * * `agent` / `root`: the delegation to audit.
+ *
+ * Usage:
+ * ```ignore
+ * const report = JSON.parse(await verifySpend(log, registry, agent, root));
+ * ```
+ */
+export declare function verifySpend(logPath: string, registryPath: string, agent: string, root: string): Promise<string>
 
 export declare function version(): string

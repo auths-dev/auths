@@ -155,6 +155,61 @@ pub async fn verify_reversal_determination(
     serde_json::to_string(&body).map_err(|e| Error::from_reason(e.to_string()))
 }
 
+/// Fetch a public identity registry into a local directory, fully in-process
+/// (libgit2 with its own HTTPS transport — no `git` binary on the host, so it
+/// works inside serverless functions). Fetches identity refs and heads only —
+/// this is key resolution; no spend data exists at a registry URL — and
+/// materializes the first fetched branch's working files, matching the layout
+/// the CLI writes.
+///
+/// Args:
+/// * `url`: the public registry's git URL (`registry_git_url` from `audit.json`).
+/// * `dest`: an empty local directory to fetch into.
+///
+/// Usage:
+/// ```ignore
+/// fetchRegistry(manifest.registry_git_url, registryDir);
+/// const check = JSON.parse(verifyActivityAttestation(doc, registryDir));
+/// ```
+#[napi]
+pub fn fetch_registry(url: String, dest: String) -> Result<()> {
+    let map =
+        |stage: &'static str| move |e: git2::Error| Error::from_reason(format!("{stage}: {e}"));
+    // An unused initial head name, so fetching the remote's `refs/heads/main`
+    // never collides with the checked-out branch.
+    let mut init = git2::RepositoryInitOptions::new();
+    init.initial_head("_verifier");
+    let repo = git2::Repository::init_opts(std::path::Path::new(&dest), &init)
+        .map_err(map("init registry dir"))?;
+    let mut remote = repo.remote_anonymous(&url).map_err(map("remote"))?;
+    remote
+        .fetch(
+            &["+refs/auths/*:refs/auths/*", "+refs/heads/*:refs/heads/*"],
+            None,
+            None,
+        )
+        .map_err(map("fetch registry"))?;
+    drop(remote);
+
+    let mut branch: Option<String> = None;
+    for reference in repo.references_glob("refs/heads/*").map_err(map("list heads"))? {
+        let reference = reference.map_err(map("read head"))?;
+        let name = reference.name().map_err(map("head name"))?;
+        if name != "refs/heads/_verifier" {
+            branch = Some(name.to_string());
+            break;
+        }
+    }
+    if let Some(name) = branch {
+        repo.set_head(&name).map_err(map("set head"))?;
+        let mut checkout = git2::build::CheckoutBuilder::new();
+        checkout.force();
+        repo.checkout_head(Some(&mut checkout))
+            .map_err(map("materialize working tree"))?;
+    }
+    Ok(())
+}
+
 /// The embedded JSON schema for the `receipts/v1` wire contract.
 #[napi]
 pub fn receipts_v1_schema() -> String {

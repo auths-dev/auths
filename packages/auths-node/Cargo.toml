@@ -29,6 +29,11 @@ auths-policy = { path = "../../crates/auths-policy" }
 auths-pairing-daemon = { path = "../../crates/auths-pairing-daemon" }
 auths-infra-git = { path = "../../crates/auths-infra-git" }
 
+# In-process registry fetch for git-less hosts (serverless functions): the
+# workspace's git2 is deliberately transportless; the binding opts into HTTPS
+# (vendored TLS where the target needs it) so fetchRegistry works everywhere.
+git2 = { version = "0.21.0", default-features = false, features = ["vendored-libgit2", "https", "vendored-openssl"] }
+
 # Utilities
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
