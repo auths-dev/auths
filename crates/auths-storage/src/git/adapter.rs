@@ -507,17 +507,26 @@ impl GitRegistryBackend {
                 state.apply_interaction(seq, ixn.d.clone());
                 Ok(state)
             }
-            Event::Dip(dip) => Ok(KeyState::from_inception(
-                dip.i.clone(),
-                dip.k.clone(),
-                dip.n.clone(),
-                dip.kt.clone(),
-                dip.nt.clone(),
-                dip.d.clone(),
-                dip.b.clone(),
-                dip.bt.clone(),
-                dip.c.clone(),
-            )),
+            Event::Dip(dip) => {
+                let mut state = KeyState::from_inception(
+                    dip.i.clone(),
+                    dip.k.clone(),
+                    dip.n.clone(),
+                    dip.kt.clone(),
+                    dip.nt.clone(),
+                    dip.d.clone(),
+                    dip.b.clone(),
+                    dip.bt.clone(),
+                    dip.c.clone(),
+                );
+                // A delegated inception CARRIES its delegator; dropping `di` here
+                // left both the cached state.json and the replay path reporting
+                // `delegator: null` for every dip — breaking any consumer that
+                // proves the chain-to-root off the key state (the market's
+                // attestation verifier being the first to hit it).
+                state.delegator = Some(dip.di.clone());
+                Ok(state)
+            }
             Event::Drt(drt) => {
                 let mut state = current_state.cloned().ok_or_else(|| {
                     RegistryError::Internal("Delegated rotation without prior state".into())
@@ -2665,7 +2674,7 @@ mod tests {
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::{compute_event_said, finalize_icp_event};
     use auths_keri::compute_next_commitment;
-    use auths_keri::{CesrKey, Threshold, VersionString};
+    use auths_keri::{CesrKey, DipEvent, Threshold, VersionString};
     use auths_verifier::AttestationBuilder;
     use auths_verifier::core::{Ed25519PublicKey, Role};
 
@@ -3058,6 +3067,41 @@ mod tests {
         let state = backend.get_key_state(&prefix).unwrap();
         assert_eq!(state.prefix, prefix);
         assert_eq!(state.sequence, 0);
+    }
+
+    #[test]
+    fn dip_state_carries_the_delegator() {
+        // A delegated inception's computed state must carry `di` — both the
+        // cached state.json and the replay path build state through
+        // compute_state_after_event, so dropping it here reported
+        // `delegator: null` for every dip and broke chain-to-root proofs off
+        // the key state.
+        let (_dir, backend) = setup_test_repo();
+        let (icp_event, _prefix, _kp, _nkp) = create_signed_icp();
+        let Event::Icp(icp) = icp_event else {
+            panic!("helper returns an icp");
+        };
+        let delegator = Prefix::new_unchecked("EDELEGATORDELEGATORDELEGATORDELEGATORDELEG_A".into());
+        let dip = DipEvent {
+            v: icp.v.clone(),
+            d: icp.d.clone(),
+            i: icp.i.clone(),
+            s: icp.s.clone(),
+            kt: icp.kt.clone(),
+            k: icp.k.clone(),
+            nt: icp.nt.clone(),
+            n: icp.n.clone(),
+            bt: icp.bt.clone(),
+            b: icp.b.clone(),
+            c: icp.c.clone(),
+            a: icp.a.clone(),
+            di: delegator.clone(),
+            source_seal: None,
+        };
+        let state = backend
+            .compute_state_after_event(None, &Event::Dip(dip))
+            .unwrap();
+        assert_eq!(state.delegator, Some(delegator));
     }
 
     #[test]
@@ -4221,7 +4265,7 @@ mod index_consistency_tests {
     use auths_id::keri::validate::finalize_icp_event;
     use auths_id::storage::registry::org_member::MemberFilter;
     use auths_keri::compute_next_commitment;
-    use auths_keri::{CesrKey, Threshold, VersionString};
+    use auths_keri::{CesrKey, DipEvent, Threshold, VersionString};
     use auths_verifier::core::{Ed25519PublicKey, Ed25519Signature, ResourceId};
     use auths_verifier::types::CanonicalDid;
 
@@ -4473,7 +4517,7 @@ mod tenant_isolation_tests {
     use auths_id::keri::types::{Prefix, Said};
     use auths_id::keri::validate::finalize_icp_event;
     use auths_keri::compute_next_commitment;
-    use auths_keri::{CesrKey, Threshold, VersionString};
+    use auths_keri::{CesrKey, DipEvent, Threshold, VersionString};
 
     use super::*;
     use auths_id::storage::registry::backend::TenantIdError;
