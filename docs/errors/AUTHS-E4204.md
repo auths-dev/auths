@@ -7,3 +7,7 @@
 ## Message
 
 {0}
+
+## Suggestion
+
+Identity data is malformed; try re-initializing with `auths init`

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use walkdir::WalkDir;
@@ -316,11 +316,7 @@ fn extract_variant_name(line: &str) -> Option<String> {
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn count_char(s: &str, ch: char) -> usize {
@@ -354,25 +350,26 @@ fn parse_error_info_impls(lines: &[&str]) -> Vec<ImplInfo> {
     while i < lines.len() {
         let trimmed = lines[i].trim();
 
-        if trimmed.contains("AuthsErrorInfo for ") && trimmed.contains("impl") {
-            if let Some(type_name) = extract_impl_type_name(trimmed) {
-                let impl_end = find_block_end(lines, i);
-                let impl_lines = &lines[i..impl_end];
+        if trimmed.contains("AuthsErrorInfo for ")
+            && trimmed.contains("impl")
+            && let Some(type_name) = extract_impl_type_name(trimmed)
+        {
+            let impl_end = find_block_end(lines, i);
+            let impl_lines = &lines[i..impl_end];
 
-                let codes = parse_error_code_method(impl_lines);
-                let suggestions = parse_suggestion_method(impl_lines);
+            let codes = parse_error_code_method(impl_lines);
+            let suggestions = parse_suggestion_method(impl_lines);
 
-                if !codes.is_empty() {
-                    results.push(ImplInfo {
-                        type_name,
-                        codes,
-                        suggestions,
-                    });
-                }
-
-                i = impl_end;
-                continue;
+            if !codes.is_empty() {
+                results.push(ImplInfo {
+                    type_name,
+                    codes,
+                    suggestions,
+                });
             }
+
+            i = impl_end;
+            continue;
         }
         i += 1;
     }
@@ -386,11 +383,7 @@ fn extract_impl_type_name(line: &str) -> Option<String> {
         .chars()
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn find_block_end(lines: &[&str], start: usize) -> usize {
@@ -429,10 +422,11 @@ fn parse_error_code_method(impl_lines: &[&str]) -> Vec<CodeMapping> {
             brace_depth += count_char(trimmed, '{') as i32;
             brace_depth -= count_char(trimmed, '}') as i32;
 
-            if trimmed.contains("Self::") && trimmed.contains("\"AUTHS-E") {
-                if let Some(mapping) = parse_code_arm(trimmed) {
-                    results.push(mapping);
-                }
+            if trimmed.contains("Self::")
+                && trimmed.contains("\"AUTHS-E")
+                && let Some(mapping) = parse_code_arm(trimmed)
+            {
+                results.push(mapping);
             }
 
             if brace_depth <= 0 && !results.is_empty()
@@ -469,6 +463,10 @@ fn parse_suggestion_method(impl_lines: &[&str]) -> Vec<SuggestionMapping> {
     let mut results = Vec::new();
     let mut in_method = false;
     let mut brace_depth = 0i32;
+    // Accumulate each match arm into one logical line so rustfmt-wrapped arms
+    // (`=> Some(\n  "…",\n)`) and block arms (`=> { Some("…") }`) parse as a unit,
+    // not just the single-line `=> Some("…"),` shape.
+    let mut arm = String::new();
 
     for line in impl_lines {
         let trimmed = line.trim();
@@ -476,23 +474,44 @@ fn parse_suggestion_method(impl_lines: &[&str]) -> Vec<SuggestionMapping> {
         if trimmed.contains("fn suggestion") {
             in_method = true;
             brace_depth = 0;
+            arm.clear();
         }
 
-        if in_method {
-            brace_depth += count_char(trimmed, '{') as i32;
-            brace_depth -= count_char(trimmed, '}') as i32;
+        if !in_method {
+            continue;
+        }
 
-            if trimmed.contains("Self::") && trimmed.contains("Some(\"") {
-                if let Some(mapping) = parse_suggestion_arm(trimmed) {
-                    results.push(mapping);
-                }
+        brace_depth += count_char(trimmed, '{') as i32;
+        brace_depth -= count_char(trimmed, '}') as i32;
+
+        // A new arm begins: drop any half-collected non-string arm (`None`, or a
+        // delegating `e.suggestion()`) and start fresh.
+        if trimmed.contains("Self::") {
+            arm.clear();
+        }
+
+        if !arm.is_empty() || trimmed.contains("Self::") {
+            // Rust `\`-newline continuation: strip the trailing backslash and join
+            // the next line directly (its indentation is already trimmed off),
+            // reconstructing the single logical string literal.
+            if arm.ends_with('\\') {
+                arm.pop();
             }
+            arm.push_str(trimmed);
 
-            if brace_depth <= 0 && !results.is_empty()
-                || trimmed.starts_with("fn ") && in_method && !trimmed.contains("fn suggestion")
+            // Parse only a fully-closed arm — never one paused mid string-continuation.
+            if !arm.ends_with('\\')
+                && let Some(mapping) = parse_suggestion_arm(&arm)
             {
-                break;
+                results.push(mapping);
+                arm.clear();
             }
+        }
+
+        if (brace_depth <= 0 && !results.is_empty())
+            || (trimmed.starts_with("fn ") && !trimmed.contains("fn suggestion"))
+        {
+            break;
         }
     }
     results
@@ -506,11 +525,16 @@ fn parse_suggestion_arm(line: &str) -> Option<SuggestionMapping> {
         .take_while(|c| c.is_alphanumeric() || *c == '_')
         .collect();
 
-    let some_idx = line.find("Some(\"")?;
-    let text_start = some_idx + 6;
-    let text_rest = &line[text_start..];
-    let text_end = text_rest.rfind("\")")?;
-    let text = text_rest[..text_end].to_string();
+    // The payload is `Some("<text>")`; rustfmt may separate `Some(` from the opening
+    // quote (a newline that arm-joining collapsed into the buffer), so locate the
+    // quote after `Some(` rather than requiring them adjacent. The text runs to the
+    // literal's closing quote — the last `"` in this single-arm buffer.
+    let some_idx = line.find("Some(")?;
+    let after_some = &line[some_idx + 5..];
+    let quote_start = after_some.find('"')?;
+    let text_region = &after_some[quote_start + 1..];
+    let text_end = text_region.rfind('"')?;
+    let text = text_region[..text_end].to_string();
 
     if variant.is_empty() {
         return None;
@@ -779,7 +803,9 @@ fn update_mkdocs_nav(
                 println!("  updated  mkdocs.yml (inserted error codes nav)");
             }
         } else {
-            bail!("Cannot find insertion point in mkdocs.yml — add markers manually:\n  {marker_start}\n  {marker_end}");
+            bail!(
+                "Cannot find insertion point in mkdocs.yml — add markers manually:\n  {marker_start}\n  {marker_end}"
+            );
         }
     }
 
@@ -915,4 +941,99 @@ fn generate_registry(entries: &[ErrorEntry]) -> String {
     out.push_str("}\n");
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_suggestion_arm_joins_wrapped() {
+        // A rustfmt-wrapped arm (open paren, string on the next line, close on a
+        // third) must recover the full suggestion, not be dropped.
+        let lines = [
+            "impl AuthsErrorInfo for SetupError {",
+            "    fn suggestion(&self) -> Option<&'static str> {",
+            "        match self {",
+            "            Self::WeakPassphrase { .. } => Some(",
+            "                \"Use at least 12 characters with 3 of 4 character classes (lowercase, uppercase, digit, symbol)\",",
+            "            ),",
+            "        }",
+            "    }",
+            "}",
+        ];
+        let got = parse_suggestion_method(&lines);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].variant, "WeakPassphrase");
+        assert!(
+            got[0].text.contains("Use at least 12 characters"),
+            "text was: {}",
+            got[0].text
+        );
+        assert!(
+            got[0].text.ends_with("symbol)"),
+            "text was: {}",
+            got[0].text
+        );
+    }
+
+    #[test]
+    fn parse_suggestion_arm_handles_block_and_single_line() {
+        let lines = [
+            "    fn suggestion(&self) -> Option<&'static str> {",
+            "        match self {",
+            "            Self::Io(_) => Some(\"Check file permissions and disk space\"),",
+            "            Self::Deserialization(_) => {",
+            "                Some(\"The freeze state file may be corrupted; try deleting it\")",
+            "            }",
+            "            Self::CryptoError(e) => e.suggestion(),",
+            "            Self::Nothing => None,",
+            "        }",
+            "    }",
+        ];
+        let got = parse_suggestion_method(&lines);
+        let by_variant: std::collections::BTreeMap<_, _> = got
+            .iter()
+            .map(|m| (m.variant.as_str(), m.text.as_str()))
+            .collect();
+        assert_eq!(
+            by_variant.get("Io"),
+            Some(&"Check file permissions and disk space")
+        );
+        assert_eq!(
+            by_variant.get("Deserialization"),
+            Some(&"The freeze state file may be corrupted; try deleting it")
+        );
+        // Delegating (`e.suggestion()`) and `None` arms carry no literal text.
+        assert!(!by_variant.contains_key("CryptoError"));
+        assert!(!by_variant.contains_key("Nothing"));
+    }
+
+    #[test]
+    fn parse_suggestion_arm_reconstructs_backslash_continuation() {
+        // Rust `\`-newline continuation must be collapsed so the doc text matches the
+        // real runtime string (backslash + indentation removed).
+        let lines = [
+            "    fn suggestion(&self) -> Option<&'static str> {",
+            "        match self {",
+            "            Self::Key(_) => Some(",
+            "                \"Set AUTHS_KEYCHAIN_BACKEND=file for headless \\",
+            "                 runs, or run `auths init --profile ci`.\",",
+            "            ),",
+            "        }",
+            "    }",
+        ];
+        let got = parse_suggestion_method(&lines);
+        assert_eq!(got.len(), 1);
+        assert!(
+            got[0].text.contains("headless runs"),
+            "continuation not collapsed: {}",
+            got[0].text
+        );
+        assert!(
+            !got[0].text.contains('\\'),
+            "backslash leaked: {}",
+            got[0].text
+        );
+    }
 }

@@ -27,7 +27,7 @@ pub use auths_core::ports::transparency_log::{
 
 // Re-exports from auths-id ports
 pub use auths_id::identity::helpers::ManagedIdentity;
-pub use auths_id::ports::registry::RegistryBackend;
+pub use auths_id::ports::registry::{RegistryBackend, RegistryError};
 pub use auths_id::storage::attestation::AttestationSource;
 pub use auths_id::storage::git_refs::AttestationMetadata;
 pub use auths_id::storage::identity::IdentityStorage;

@@ -7,3 +7,7 @@
 ## Message
 
 capability schema unknown or uncomputable
+
+## Suggestion
+
+The compiled-in capability schema is unavailable; this is a build defect

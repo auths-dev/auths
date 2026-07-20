@@ -1,4 +1,4 @@
-//! Threat-model rows that are pure judge arithmetic (plan RC-E5.2 rows 6, 16,
+//! Threat-model rows that are pure judge arithmetic (rows 6, 16,
 //! 17, 20, 21 + the revocation/expiry legs): total functions over proven facts,
 //! exercised over synthetic facts — no crypto here by design, the walk already
 //! proved them.
@@ -70,6 +70,7 @@ fn fact(index: usize, verdict: Verdict, before: u64, signed: Option<u64>) -> Rec
         binding: format!("binding-{index}"),
         settled_cents_before: Cents::new(before),
         signed_cents: signed.map(Cents::new),
+        counterparty: None,
     }
 }
 
@@ -287,6 +288,7 @@ fn out_of_window_call_is_expired() {
 fn tampered_walk_grounds_no_call() {
     let mut fx = clean_fixture();
     fx.audit = AuditVerdict::TamperedProof {
+        at: 0,
         proof_ref: "deadbeef".to_string(),
     };
     assert_eq!(

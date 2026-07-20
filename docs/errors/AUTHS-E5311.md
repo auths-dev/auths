@@ -7,3 +7,7 @@
 ## Message
 
 identity not found: {did}
+
+## Suggestion
+
+Run `auths init` to create a root identity first

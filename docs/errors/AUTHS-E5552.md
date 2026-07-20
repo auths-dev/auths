@@ -7,3 +7,7 @@
 ## Message
 
 Failed to resolve public key for identity {did}
+
+## Suggestion
+
+Verify the identity exists and has a valid public key registered

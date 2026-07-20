@@ -7,3 +7,7 @@
 ## Message
 
 Concurrent modification: {0}
+
+## Suggestion
+
+Retry the operation; another process modified the registry

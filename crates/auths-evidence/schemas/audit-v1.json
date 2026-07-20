@@ -13,18 +13,26 @@
       "properties": {
         "verdict": {
           "type": "string",
-          "enum": ["consistent", "tampered-proof", "cost-mismatch", "budget-mismatch", "dropped-call", "revoked"]
+          "enum": ["consistent", "tampered-proof", "cost-mismatch", "counterparty-mismatch", "budget-mismatch", "chain-break", "revoked"]
         }
       },
-      "description": "The typed audit verdict (internally tagged, kebab-case), carrying the failing check's own fields."
+      "description": "The typed audit verdict (internally tagged, kebab-case), carrying the failing check's own fields. Note: the Consistent variant's internal tag is 'consistent' while its stable machine code (below) is 'self-consistent' — an offline audit proves self-consistency, not completeness."
     },
     "code": {
       "type": "string",
-      "enum": ["consistent", "tampered-proof", "cost-mismatch", "budget-mismatch", "dropped-call", "revoked"]
+      "enum": ["self-consistent", "tampered-proof", "cost-mismatch", "counterparty-mismatch", "budget-mismatch", "chain-break", "revoked"]
     },
     "consistent": { "type": "boolean" },
     "records": { "type": "integer", "minimum": 0 },
     "settled_cents": { "type": "integer", "minimum": 0 },
+    "counterparty": {
+      "type": "string",
+      "description": "The verified counterparty the last metered call settled with (Auths-Settle-Ref, cross-checked against the rail response) — a proven field consumers act on, never receipt.charge_ref. Absent when nothing metered settled."
+    },
+    "completeness": {
+      "type": "string",
+      "description": "Whether completeness was proven. An offline audit re-derives self-consistency but cannot prove the log is complete (a $0/refused tail truncation is invisible) — 'unproven-offline' for a consistent offline audit; absent otherwise."
+    },
     "checkpoint": {
       "type": "object",
       "required": ["records", "settled_cents", "binding"],

@@ -56,15 +56,15 @@ impl AuthsErrorInfo for PairingError {
             Self::LanTimeout => Some("Check your network and try again"),
             Self::RelayError(_) => Some("Check your internet connection"),
             Self::Protocol(_) => Some("Ensure both devices are running compatible auths versions"),
-            Self::QrCodeFailed(_) => {
-                Some("QR code generation failed; try `auths device pair --mode relay` instead")
-            }
+            Self::QrCodeFailed(_) => Some(
+                "QR code generation failed; try relay-based pairing with `auths device pair --registry <url>` instead",
+            ),
             Self::LocalServerError(_) => {
                 Some("The local pairing server failed to start; check that the port is available")
             }
-            Self::MdnsError(_) => {
-                Some("mDNS discovery failed; try `auths device pair --mode relay` instead")
-            }
+            Self::MdnsError(_) => Some(
+                "mDNS discovery failed; try relay-based pairing with `auths device pair --registry <url>` instead",
+            ),
         }
     }
 }

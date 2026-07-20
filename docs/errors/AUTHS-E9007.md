@@ -7,3 +7,7 @@
 ## Message
 
 log unavailable: {0}
+
+## Suggestion
+
+The transparency log is unavailable; retry later or use --allow-unlogged

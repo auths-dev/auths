@@ -275,6 +275,10 @@ struct WrapArgs {
     /// across every rail and tool by pre-authorization (reserve before the rail is
     /// touched, settle the actual after), so the live wire cannot allow a cross-rail
     /// call the gate refuses (#281).
+    ///
+    /// Boundary: a call that reserves EXACTLY to the cap (cumulative == cap) is allowed; the
+    /// next call — even 1 cent — is refused (`usage-cap-exceeded`). The rule is strictly-over:
+    /// `settled + holds + ceiling > cap` refuses before the rail is touched.
     #[arg(long = "budget", value_name = "BUDGET")]
     budget: Option<String>,
 
@@ -335,6 +339,12 @@ struct WrapArgs {
     #[arg(long = "dispute-ref", value_name = "REF")]
     dispute_ref: Option<String>,
 
+    /// Where the signed spend log + registry are written (default: an ephemeral per-run OS temp
+    /// dir, wiped on reboot). Pass a stable dir to keep receipts across runs; the resolved path is
+    /// announced on startup (`spend-log: <DIR>`) so it is never discoverable only from stderr noise.
+    #[arg(long = "spend-log", value_name = "DIR")]
+    spend_log: Option<std::path::PathBuf>,
+
     /// The downstream MCP server command (everything after `--`).
     #[arg(last = true, value_name = "DOWNSTREAM", required = true)]
     downstream: Vec<String>,
@@ -365,6 +375,12 @@ struct VerifySpendArgs {
     /// The delegator/root `did:keri:…` the grant is anchored to (the pinned trust root).
     #[arg(long = "root", value_name = "DID")]
     root: String,
+
+    /// Print the portable `audit/v1` verdict object as ONE JSON line instead of the human lines —
+    /// so integrating the audit anywhere reads a typed object, never scraped stdout. Exits 0 only
+    /// when the report is consistent.
+    #[arg(long = "json")]
+    json: bool,
 
     /// A treasury checkpoint trail (`checkpoints.jsonl`) to cross-check: every
     /// signature must verify, the trail must be monotonic, and with
@@ -812,6 +828,7 @@ async fn run_wrap(args: WrapArgs) -> ExitCode {
         test_mode: args.test_mode,
         show_mode: args.show_mode,
         dispute_ref: args.dispute_ref,
+        spend_log: args.spend_log,
     };
     match proxy::serve(cfg).await {
         Ok(()) => ExitCode::SUCCESS,
@@ -877,17 +894,31 @@ async fn run_verify_spend(args: VerifySpendArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    println!(
-        "verify-spend: {} — {}",
-        spend.report.code, spend.report.verdict
-    );
+    // `--json`: emit the portable `audit/v1` verdict object as ONE line, so integrating the audit
+    // reads a typed object instead of scraping stdout.
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string(&spend.report)
+                .unwrap_or_else(|e| format!(r#"{{"error":"serialize report: {e}"}}"#))
+        );
+        return if spend.report.consistent {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
+    // The Display already leads with the verdict code, so print it ONCE — not `{code} — {verdict}`,
+    // which doubled the word (`self-consistent — self-consistent — …`).
+    println!("verify-spend: {}", spend.report.verdict);
     if !spend.report.consistent {
         return ExitCode::FAILURE;
     }
-    // The resumable end state a checkpointing caller stores for its next run.
+    // The resumable end state a checkpointing caller stores for its next run — the head to pin
+    // against a witness (the anti-rollback anchor).
     if let Some(cp) = &spend.report.checkpoint {
         println!(
-            "checkpoint: records={} settled_cents={} binding={}",
+            "checkpoint (pin this head against a witness): records={} settled_cents={} binding={}",
             cp.records, cp.settled_cents, cp.binding
         );
     }

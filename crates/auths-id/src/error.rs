@@ -130,7 +130,11 @@ impl AuthsErrorInfo for InitError {
             #[cfg(feature = "git-storage")]
             Self::Git(_) => Some("Check that the Git repository is accessible"),
             Self::Keri(_) => Some("KERI event processing failed; check identity state"),
-            Self::Key(_) => Some("Check keychain access and passphrase"),
+            Self::Key(_) => Some(
+                "Check keychain access and passphrase. Headless/CI (no Touch ID): set \
+                 AUTHS_KEYCHAIN_BACKEND=file AUTHS_KEYCHAIN_FILE=<path> AUTHS_PASSPHRASE=<pass>, \
+                 or run `auths init --profile ci`.",
+            ),
             Self::InvalidData(_) => {
                 Some("Identity data is malformed; try re-initializing with `auths init`")
             }

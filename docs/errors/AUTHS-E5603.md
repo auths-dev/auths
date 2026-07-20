@@ -7,3 +7,7 @@
 ## Message
 
 member '{did}' is already revoked
+
+## Suggestion
+
+This member has already been revoked from the organization

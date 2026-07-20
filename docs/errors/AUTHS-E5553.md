@@ -7,3 +7,7 @@
 ## Message
 
 Invalid trust store: {0}
+
+## Suggestion
+
+Check the format of your trust store (roots.json or ~/.auths/known_identities.json)

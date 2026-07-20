@@ -37,6 +37,10 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+# Exposes auths-anchor's deterministic finalized-anchor fixtures to the
+# attestation test battery (the anchor-forgery cases). Feature-unified with the
+# normal dependency above, so it is enabled ONLY when building this crate's tests.
+auths-anchor = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

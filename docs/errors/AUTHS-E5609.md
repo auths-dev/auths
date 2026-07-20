@@ -7,3 +7,7 @@
 ## Message
 
 key storage error: {0}
+
+## Suggestion
+
+Failed to access key storage; run `auths doctor` to diagnose

@@ -7,3 +7,7 @@
 ## Message
 
 bundle integrity failure for '{id}': {reason}
+
+## Suggestion
+
+The bundle was modified after it was produced; obtain a fresh, untampered bundle

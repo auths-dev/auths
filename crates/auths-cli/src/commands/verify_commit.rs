@@ -1,8 +1,9 @@
+use crate::config::CliConfig;
 use crate::ux::format::is_json_mode;
 use anyhow::{Context, Result, anyhow};
 use auths_keri::Event;
 use auths_keri::witness::{SignedReceipt, WitnessReceiptLookup};
-use auths_sdk::core_config::EnvironmentConfig;
+use auths_sdk::error::AuthsErrorInfo;
 use auths_sdk::ports::RegistryBackend;
 use auths_sdk::storage::{GitRegistryBackend, GitWitnessReceiptLookup, RegistryConfig};
 use auths_verifier::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
@@ -132,16 +133,22 @@ impl VerifyCommitResult {
 /// Handle verify-commit command.
 /// Exit codes: 0=valid, 1=invalid/unsigned, 2=error
 #[allow(clippy::disallowed_methods)]
-pub async fn handle_verify_commit(
-    cmd: VerifyCommitCommand,
-    env_config: &EnvironmentConfig,
-) -> Result<()> {
+pub async fn handle_verify_commit(cmd: VerifyCommitCommand, ctx: &CliConfig) -> Result<()> {
     // KEL-native verification: the trust root is the replayed KEL + the `.auths/roots`
     // pin, not an allowlist. No `ssh-keygen` subprocess, no `allowed_signers`.
-    let auths_home = match auths_sdk::paths::auths_home() {
+    // Resolve the SAME storage root `init`/`sign` wrote to (--repo/AUTHS_REPO), so a
+    // freshly-signed commit verifies instead of dead-ending on `~/.auths`.
+    let auths_home = match auths_sdk::paths::resolve_registry_path(ctx.repo_path.clone()) {
         Ok(h) => h,
-        Err(e) => return handle_error(&cmd, 2, &format!("Could not locate ~/.auths: {e}")),
+        Err(e) => {
+            return handle_error(
+                &cmd,
+                2,
+                &format!("Could not locate the auths registry: {e}"),
+            );
+        }
     };
+    let env_config = &ctx.env_config;
     // Read-only SDK context over the same global registry, for org-policy evaluation
     // (E1.1). No passphrase — loading a policy never decrypts keys.
     let sdk_ctx =
@@ -240,6 +247,48 @@ pub async fn handle_verify_commit(
         );
     }
     output_results(&results)
+}
+
+/// A signer's KEL could not be resolved from the local registry or a bundle
+/// during commit verification. Coded so `auths error show` resolves it and the
+/// message carries the fetch remedy — the common case is verifying a teammate's
+/// commit before their `refs/auths/*` has been fetched.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SignerKelError {
+    /// The signer's KEL is not in the local registry and no bundle supplied it.
+    #[error("signer's KEL for {did} is not available locally: {reason}")]
+    Unavailable {
+        /// The `did:keri:` whose KEL could not be resolved.
+        did: String,
+        /// The underlying resolution error, rendered for display.
+        reason: String,
+    },
+}
+
+impl AuthsErrorInfo for SignerKelError {
+    fn error_code(&self) -> &'static str {
+        match self {
+            Self::Unavailable { .. } => "AUTHS-E6301",
+        }
+    }
+
+    fn suggestion(&self) -> Option<&'static str> {
+        match self {
+            Self::Unavailable { .. } => Some(
+                "Fetch the signer's KEL with `git fetch <remote> 'refs/auths/*:refs/auths/*'`, \
+                 or verify against an evidence bundle with `--identity-bundle`.",
+            ),
+        }
+    }
+}
+
+impl SignerKelError {
+    /// Render this error as a single verify-result line carrying its code and remedy.
+    fn into_message(self) -> String {
+        let code = self.error_code();
+        let suggestion = self.suggestion().unwrap_or_default();
+        format!("[{code}] {self}. {suggestion}")
+    }
 }
 
 /// A bundle's authenticated KEL: the identity DID it self-certifies to plus the
@@ -458,7 +507,11 @@ async fn verify_one_commit(
         Err(e) => {
             return VerifyCommitResult::failure(
                 sha,
-                format!("Device KEL for {device_did} could not be resolved: {e}"),
+                SignerKelError::Unavailable {
+                    did: device_did.clone(),
+                    reason: e,
+                }
+                .into_message(),
             );
         }
     };
@@ -481,7 +534,11 @@ async fn verify_one_commit(
         Err(e) => {
             return VerifyCommitResult::failure(
                 sha,
-                format!("Root KEL for {root_did} could not be resolved: {e}"),
+                SignerKelError::Unavailable {
+                    did: root_did.clone(),
+                    reason: e,
+                }
+                .into_message(),
             );
         }
     };
@@ -734,7 +791,11 @@ fn verdict_to_result(commit: String, verdict: CommitVerdict) -> VerifyCommitResu
             result.error = Some("No signature found".to_string());
         }
         CommitVerdict::GpgUnsupported => {
-            result.error = Some("GPG signatures not supported, use SSH signing".to_string());
+            result.error = Some(
+                "GPG signatures are not verified by Auths — run `auths init` to sign with \
+                 did:keri commit trailers instead."
+                    .to_string(),
+            );
         }
         CommitVerdict::SshSignatureInvalid => {
             result.ssh_valid = Some(false);
@@ -1051,7 +1112,7 @@ fn handle_error(cmd: &VerifyCommitCommand, exit_code: i32, message: &str) -> Res
 impl crate::commands::executable::ExecutableCommand for VerifyCommitCommand {
     fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
         let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(handle_verify_commit(self.clone(), &ctx.env_config))
+        rt.block_on(handle_verify_commit(self.clone(), ctx))
     }
 }
 
@@ -1205,5 +1266,25 @@ mod tests {
         let text = format_result_text(&r);
         assert!(text.contains("INVALID"));
         assert!(text.contains("No signature found"));
+    }
+
+    #[test]
+    fn absent_signer_kel_message_carries_code_and_fetch_remedy() {
+        // A teammate's commit whose KEL is not local must name both the code (so it
+        // is lookupable) and the `git fetch refs/auths/*` remedy that resolves it.
+        let msg = SignerKelError::Unavailable {
+            did: "did:keri:Eteammate".into(),
+            reason: "KEL not found".into(),
+        }
+        .into_message();
+        assert!(
+            msg.contains("AUTHS-E6301"),
+            "message must carry the code: {msg}"
+        );
+        assert!(
+            msg.contains("git fetch"),
+            "message must name the fetch remedy: {msg}"
+        );
+        assert!(msg.contains("refs/auths/*"));
     }
 }

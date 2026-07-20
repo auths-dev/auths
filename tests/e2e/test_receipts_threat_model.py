@@ -1,9 +1,9 @@
-"""E2E: the receipts threat-model gate (plan RC-E5.2) — a frozen transcript
+"""E2E: the receipts threat-model gate — a frozen transcript
 drives the REAL gateway to mint a signed spend log + registry, then the REAL
 `auths-receipts-server` builds EvidenceBundles over it and every attack row is
 asserted against `receipt_verify`'s offline re-derivation. No network, no chain.
 
-Coverage map (RC-E5.2 rows):
+Coverage map:
   1  clean deal → authorized/consistent, as-of head        (here)
   2  byte-flipped KEL event → tampered                     (here)
   3  truncated spend log, same anchor → head-mismatch      (here)
@@ -20,7 +20,7 @@ Coverage map (RC-E5.2 rows):
   11–15, 18 escrow rows                                     (Rust: cases/escrow.rs)
   16 D1 gate-vs-rederivation mismatch → unverifiable        (Rust: cases/judge.rs)
   17 cross-rail budget                                      (Rust: cases/judge.rs)
-  19 wrong-call binding (S4)                                (here)
+  19 wrong-call binding                                     (here)
   20 AllowList injection redirect → out-of-counterparty     (here + Rust)
   21 policy downgrade → still out-of-counterparty           (Rust: cases/judge.rs)
 """
@@ -254,7 +254,7 @@ class TestReceiptsThreatModel:
              "--agent", lab["agent"], "--root", lab["root"]],
             capture_output=True, text=True, env=lab["env"], timeout=120,
         )
-        assert "verify-spend: consistent" in out.stdout + out.stderr
+        assert "verify-spend: self-consistent" in out.stdout + out.stderr
 
     def test_row5_swapped_verdict_is_tampered(self, receipts_bin, lab, clean_bundle):
         import copy
@@ -266,7 +266,7 @@ class TestReceiptsThreatModel:
         # both name the forgery.
         assert v["reason"] in ("invalid-signature", "tampered"), v
 
-    def test_row19_s4_wrong_call_binding_echo(self, receipts_bin, lab, clean_bundle):
+    def test_row19_wrong_call_binding_echo(self, receipts_bin, lab, clean_bundle):
         """A valid bundle for call X must not pass as evidence for call Y: the
         verifier echoes subject/tx/callIndex and the CALLER binds them."""
         v = _verify(receipts_bin, lab, clean_bundle)
@@ -276,7 +276,7 @@ class TestReceiptsThreatModel:
         # The caller's binding assertion — the disputed call here is #1, the
         # bundle is about #0: relevance check fails even though validity holds.
         disputed_index = 1
-        assert v["callIndex"] != disputed_index, "the S4 check must be able to fail"
+        assert v["callIndex"] != disputed_index, "the binding check must be able to fail"
 
     def test_row8b_tel_revocation_before_head_is_unauthorized(self, receipts_bin, lab):
         server = _receipts_server(receipts_bin, lab)
@@ -390,7 +390,7 @@ class TestReceiptsThreatModel:
             # D4 — the build-time online re-check stamp.
             fresh = bundle["verdicts"].get("onlineFreshness")
             assert fresh and "checkedAt" in fresh and "contradicted" in fresh
-            # S3 — the render exists and never re-expands hashed args.
+            # The render exists and never re-expands hashed args.
             assert "args hash" in bundle["rendered"]
             args_hash = bundle["call"]["args_hash"]
             assert args_hash in bundle["rendered"]
@@ -443,3 +443,76 @@ class TestReceiptsThreatModel:
             assert b"VERIFICATION APPENDIX" in pdf or b"AUTHS EVIDENCE" in pdf
         finally:
             server.close()
+
+
+def _mint_metered_lab(gateway_bin, tmp_path: Path):
+    """Replay a METERED transcript (a stripe fixture drives the cost, $3.00 = 300c) and return
+    the audit-cmd args — the material the cost-downgrade row attacks."""
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir(parents=True, exist_ok=True)
+    (fixtures / "stripe-charge.json").write_text(json.dumps({
+        "rail": "stripe",
+        "charge": {"id": "ch_3MmlLrLkdIwHu7ix0snN0B15", "object": "charge",
+                   "amount": 300, "amount_captured": 300, "amount_refunded": 0,
+                   "currency": "usd", "captured": True, "paid": True,
+                   "status": "succeeded", "livemode": False},
+    }))
+    transcript = {
+        "grant": {"scope": ["paid.call"], "budget": "$50.00", "ttl": "30m"},
+        "calls": [{"tool": "paid_call", "rail": "stripe",
+                   "response_fixture": "stripe-charge.json", "expect": "allowed"}],
+    }
+    tpath = tmp_path / "metered.json"
+    tpath.write_text(json.dumps(transcript))
+    env = {**_lab_env(tmp_path),
+           "AUTHS_MCP_RAIL_FIXTURES": str(fixtures), "AUTHS_MCP_TEST_MODE": "1"}
+    out = subprocess.run(
+        [str(gateway_bin), "replay", "--transcript", str(tpath)],
+        capture_output=True, text=True, env=env, timeout=240,
+    )
+    stdout = out.stdout + out.stderr
+    import re
+    m = re.search(
+        r"audit-cmd:\s*--log\s+(\S+)\s+--registry\s+(\S+)\s+--agent\s+(\S+)\s+--root\s+(\S+)",
+        stdout,
+    )
+    if not m:
+        return None
+    return {"log": m.group(1), "registry": m.group(2),
+            "agent": m.group(3), "root": m.group(4), "env": env}
+
+
+@pytest.mark.slow
+@pytest.mark.requires_binary
+class TestReceiptsCostMismatch:
+    def test_row_amount_downgrade_is_cost_mismatch(self, gateway_bin, tmp_path_factory):
+        # Downgrade the rail response 300c → 50c while the SIGNED
+        # Auths-Settle-Cents stays 300 — the audit catches `cost-mismatch`, exit non-zero.
+        tmp_path = tmp_path_factory.mktemp("cost-mismatch")
+        args = _mint_metered_lab(gateway_bin, tmp_path)
+        if args is None:
+            pytest.skip("metered replay produced no audit-cmd")
+        log_file = Path(args["log"])
+        records = [json.loads(ln) for ln in log_file.read_text().splitlines() if ln.strip()]
+        downgraded = False
+        for rec in records:
+            resp = rec.get("settlement", {}).get("rail_response")
+            if resp:
+                text = bytes(resp).decode("utf-8", "replace")
+                if '"amount_captured": 300' in text or '"amount_captured":300' in text:
+                    text = text.replace('"amount_captured": 300', '"amount_captured": 50')
+                    text = text.replace('"amount_captured":300', '"amount_captured":50')
+                    rec["settlement"]["rail_response"] = list(text.encode("utf-8"))
+                    downgraded = True
+        if not downgraded:
+            pytest.skip("metered replay carried no re-writable rail response")
+        log_file.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+
+        out = subprocess.run(
+            [str(gateway_bin), "verify-spend", "--log", str(log_file),
+             "--registry", args["registry"], "--agent", args["agent"], "--root", args["root"]],
+            capture_output=True, text=True, env=args["env"], timeout=120,
+        )
+        text = out.stdout + out.stderr
+        assert out.returncode != 0, text
+        assert "cost-mismatch" in text, text

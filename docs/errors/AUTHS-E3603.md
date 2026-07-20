@@ -7,3 +7,7 @@
 ## Message
 
 resource not found: {resource}
+
+## Suggestion
+
+The requested resource was not found on the server; verify the URL or identifier

@@ -26,7 +26,33 @@ fn i_dup_1_never_two_heads_one_index() {
     match accept_anchor(&fork, &keys, Some(&prior), now()).unwrap() {
         Acceptance::Duplicity(proof) => proof.verify().unwrap(),
         Acceptance::CoSign(_) => panic!("co-signed a fork — I-DUP-1 violated"),
+        Acceptance::AlreadyAnchored(_) => panic!("treated a fork as an idempotent replay"),
     }
+}
+
+/// A duplicity proof survives a JSON round-trip and still verifies, while a
+/// single flipped head byte makes the re-hydrated proof unverifiable — the
+/// valid-then-tampered control a counterparty relies on.
+#[test]
+fn duplicity_proof_round_trips_and_rejects_tampering() {
+    let a = signed_anchor(1, [1u8; 32], 2, "EWitSet");
+    let b = signed_anchor(1, [2u8; 32], 2, "EWitSet");
+    let proof = DuplicityProof::new(&a, &b).unwrap();
+
+    let wire = serde_json::to_string(&proof).unwrap();
+    let rehydrated: DuplicityProof = serde_json::from_str(&wire).unwrap();
+    rehydrated.verify().unwrap();
+
+    let mut tampered: DuplicityProof = serde_json::from_str(&wire).unwrap();
+    let mut head = *tampered.anchor_b.head.as_bytes();
+    head[0] ^= 0xff;
+    tampered.anchor_b.head = auths_anchor::Head::from_bytes(head);
+    let reserialized = serde_json::to_string(&tampered).unwrap();
+    let reloaded: DuplicityProof = serde_json::from_str(&reserialized).unwrap();
+    assert!(matches!(
+        reloaded.verify(),
+        Err(AnchorError::InvalidDuplicityProof(_))
+    ));
 }
 
 /// I-DUP-2: a duplicity proof is self-contained and verifies offline by a

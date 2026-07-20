@@ -7,3 +7,7 @@
 ## Message
 
 invalid verification token: {reason}
+
+## Suggestion
+
+Tokens must start with 'auths-verify-' followed by a hex string

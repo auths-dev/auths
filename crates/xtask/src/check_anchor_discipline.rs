@@ -207,22 +207,18 @@ fn check_swallowed_results(
             .child_by_field_name("pattern")
             .is_some_and(|p| &source[p.byte_range()] == "_");
 
-        if has_wildcard {
-            if let Some(value) = node.child_by_field_name("value") {
-                if let Some(method_name) =
-                    subtree_contains_banned_call(value, source, BANNED_SWALLOW_METHODS)
-                {
-                    let start = node.start_position();
-                    violations.push(Violation {
-                        file: file.to_path_buf(),
-                        line: start.row + 1,
-                        col: start.column + 1,
-                        name: format!(
-                            "let _ = {method_name}(...) — must handle Result, not discard"
-                        ),
-                    });
-                }
-            }
+        if has_wildcard
+            && let Some(value) = node.child_by_field_name("value")
+            && let Some(method_name) =
+                subtree_contains_banned_call(value, source, BANNED_SWALLOW_METHODS)
+        {
+            let start = node.start_position();
+            violations.push(Violation {
+                file: file.to_path_buf(),
+                line: start.row + 1,
+                col: start.column + 1,
+                name: format!("let _ = {method_name}(...) — must handle Result, not discard"),
+            });
         }
     }
 

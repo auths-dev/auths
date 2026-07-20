@@ -7,3 +7,7 @@
 ## Message
 
 Signing error: {0}
+
+## Suggestion
+
+Check that the key alias exists and the passphrase is correct

@@ -21,6 +21,10 @@ pub enum Acceptance {
     /// The request is well-ordered and authorized — the caller should sign,
     /// CAS-store, log, and gossip it.
     CoSign(Box<Anchor>),
+    /// The request exactly matches the last co-signed anchor — accept as a
+    /// no-op; the caller must NOT re-store or re-cosign it. This is an
+    /// idempotent replay, not a rollback and not equivocation.
+    AlreadyAnchored(Box<Anchor>),
     /// The request equivocates against the prior anchor at the same index — the
     /// caller must refuse and publish the proof.
     Duplicity(Box<DuplicityProof>),
@@ -69,13 +73,16 @@ pub fn accept_anchor(
     }
     verify_party_signature(req, keys)?;
     if let Some(last) = prior {
-        if req.index == last.index && req.head != last.head {
+        if req.index == last.index {
+            if req.head == last.head {
+                return Ok(Acceptance::AlreadyAnchored(Box::new(last.clone())));
+            }
             return Ok(Acceptance::Duplicity(Box::new(DuplicityProof::new(
                 last, req,
             )?)));
         }
-        if req.index <= last.index {
-            return Err(AnchorError::NonMonotoneIndex {
+        if req.index < last.index {
+            return Err(AnchorError::IndexRollback {
                 got: req.index,
                 prior: last.index,
             });
@@ -149,19 +156,33 @@ mod tests {
         let fork = sample_anchor_with_head(5, [2u8; 32]);
         match accept_anchor(&fork, &keys, Some(&prior), now()).unwrap() {
             Acceptance::Duplicity(proof) => proof.verify().unwrap(),
-            Acceptance::CoSign(_) => panic!("expected duplicity"),
+            Acceptance::CoSign(_) => panic!("expected duplicity, got a co-sign"),
+            Acceptance::AlreadyAnchored(_) => {
+                panic!("expected duplicity, got an idempotent replay")
+            }
         }
     }
 
     #[test]
-    fn index_regression_is_rejected() {
+    fn lower_index_is_rollback() {
         let prior = sample_anchor(5);
         let keys = controller_keys_for(&prior);
         let stale = sample_anchor(3);
         assert!(matches!(
             accept_anchor(&stale, &keys, Some(&prior), now()),
-            Err(AnchorError::NonMonotoneIndex { got: 3, prior: 5 })
+            Err(AnchorError::IndexRollback { got: 3, prior: 5 })
         ));
+    }
+
+    #[test]
+    fn exact_replay_is_already_anchored_not_error() {
+        let prior = sample_anchor(4);
+        let keys = controller_keys_for(&prior);
+        let replay = prior.clone();
+        match accept_anchor(&replay, &keys, Some(&prior), now()).unwrap() {
+            Acceptance::AlreadyAnchored(anchor) => assert_eq!(anchor.index, 4),
+            other => panic!("expected an idempotent replay, got {other:?}"),
+        }
     }
 
     #[test]

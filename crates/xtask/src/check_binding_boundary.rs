@@ -14,7 +14,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 
 const BINDINGS_SRC: &str = "packages/auths-node/src";
 const DEEP_PREFIXES: &[&str] = &["use auths_id::", "use auths_core::", "use auths_storage::"];

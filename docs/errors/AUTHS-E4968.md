@@ -7,3 +7,7 @@
 ## Message
 
 Witness quorum not met: {0}
+
+## Suggestion
+
+Check witness server connectivity and threshold configuration

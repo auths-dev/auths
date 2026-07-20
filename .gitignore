@@ -133,7 +133,10 @@ RustAgentDemo/*.a
 concat_output.txt
 CLAUDE.md
 AGENTS.md
-.cargo/
+# Ignore local .cargo contents (audit.toml, logs) but track the committed
+# `cargo xtask` alias so a fresh clone resolves the shorthand the docs print.
+.cargo/*
+!.cargo/config.toml
 my-artifact.txt
 my-artifact.txt.auths.json
 

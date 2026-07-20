@@ -7,3 +7,7 @@
 ## Message
 
 canonical JSON serialization failed: {0}
+
+## Suggestion
+
+This is an internal error; please report it as a bug

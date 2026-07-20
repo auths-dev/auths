@@ -570,26 +570,41 @@ export declare function signCommit(data: Buffer, identityKeyAlias: string, repoP
  */
 export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex: string, curve?: string | undefined | null): NapiVerificationResult
 
+/** Options for {@link verifyActivityAttestation}. */
+export interface VerifyActivityOpts {
+  /** Fail the whole document when there is no verified witness anchor. */
+  requireWitness?: boolean
+  /** An independently-known witness tip index; a tip past the document's count marks the anchor stale. */
+  witnessTipIndex?: number
+}
+
 /**
  * Verify a published `activity/v1` attestation against a fetched registry copy:
  * resolve the agent's current keys from the KEL (identity resolution ONLY —
  * never a spend log), require its delegator to be the claimed root, verify the
- * signature — including the embedded quorum anchor when one is present (a
- * document with a bad anchor fails whole). Returns `{ok, reason?, head, count,
- * cumulativeCents, asOfTs, subjectRoot, subjectAgent, anchor}` as JSON —
+ * signature — including the embedded quorum anchor when one is present, or as a
+ * required gate under `opts.requireWitness` (a document with a bad or missing
+ * anchor fails whole). Returns `{ok, reason?, head, count, cumulativeCents,
+ * asOfTs, subjectRoot, subjectAgent, anchor, freshness, headBound}` as JSON —
  * everything the market's receipts worker needs, as verdict fields (the report
  * is the only API). `anchor` is `null` for an unanchored document, else the
  * VERIFIED quorum shape `{tier, threshold, witnesses, cosigners, seedId,
- * witnessSetSaid}` — a relying party never derives a tier from the seller's
- * own claims.
+ * witnessSetSaid, stale}` — a relying party never derives a tier from the
+ * seller's own claims. `freshness` is `"fresh" | "unknown" | "stale"`;
+ * `headBound` is `true` only when a verified witness anchor cosigns the head.
+ *
+ * `cumulativeCents` is a SIGNED CLAIM, not a re-derived fact: the per-call log is
+ * structurally private, so the magnitude is provable only when `anchor` is a
+ * non-stale `witness` summary. A consumer MUST NOT present `cumulativeCents` as
+ * verified earnings unless `anchor?.tier === "witness" && anchor.stale === false`.
  *
  * Usage:
  * ```ignore
- * const check = JSON.parse(verifyActivityAttestation(doc, registryDir));
+ * const check = JSON.parse(verifyActivityAttestation(doc, registryDir, { requireWitness: true }));
  * if (!check.ok) markStale(check.reason);
  * ```
  */
-export declare function verifyActivityAttestation(attestationJson: string, registryPath: string): string
+export declare function verifyActivityAttestation(attestationJson: string, registryPath: string, opts?: VerifyActivityOpts | undefined | null): string
 
 export declare function verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
 

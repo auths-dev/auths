@@ -7,3 +7,7 @@
 ## Message
 
 _(transparent — see inner error)_
+
+## Suggestion
+
+Check file permissions, disk space, and storage backend connectivity

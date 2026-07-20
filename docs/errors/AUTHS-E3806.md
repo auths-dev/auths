@@ -7,3 +7,7 @@
 ## Message
 
 platform error: {message}
+
+## Suggestion
+
+A platform-specific error occurred; run `auths doctor` to diagnose

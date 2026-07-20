@@ -7,3 +7,7 @@
 ## Message
 
 attestation re-signing failed: {0}
+
+## Suggestion
+
+Verify your device key is accessible with `auths status`

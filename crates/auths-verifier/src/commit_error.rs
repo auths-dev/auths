@@ -20,8 +20,8 @@ pub enum CommitVerificationError {
     #[error("commit is unsigned")]
     UnsignedCommit,
 
-    /// The commit uses a GPG signature, which is not supported.
-    #[error("GPG signatures not supported, use SSH signing")]
+    /// The commit uses a GPG signature, which Auths does not verify.
+    #[error("GPG signatures are not verified by Auths — use did:keri trailers via `auths init`")]
     GpgNotSupported,
 
     /// The SSHSIG envelope could not be parsed.
@@ -52,8 +52,8 @@ pub enum CommitVerificationError {
     #[error("signature verification failed")]
     SignatureInvalid,
 
-    /// The signer's public key is not in the allowed keys list.
-    #[error("signer key not in allowed keys")]
+    /// The signer's identity is not trusted (no matching pinned root).
+    #[error("signer identity is not trusted (no matching pinned root)")]
     UnknownSigner,
 
     /// The raw commit object could not be parsed.
@@ -78,12 +78,21 @@ impl AuthsErrorInfo for CommitVerificationError {
 
     fn suggestion(&self) -> Option<&'static str> {
         match self {
-            Self::UnsignedCommit => Some("Sign commits with: git commit -S"),
-            Self::GpgNotSupported => Some("Configure SSH signing: git config gpg.format ssh"),
+            Self::UnsignedCommit => Some(
+                "This commit has no Auths-Id/Auths-Device trailer. Run `auths init` so the \
+                 prepare-commit-msg hook signs future commits, or backfill with `auths sign <ref>`.",
+            ),
+            Self::GpgNotSupported => Some(
+                "Auths verifies its own did:keri commit trailers, not GPG or SSH signatures. \
+                 Run `auths init` to enable Auths signing.",
+            ),
             Self::UnsupportedKeyType { .. } => {
                 Some("Use an Ed25519 or ECDSA P-256 SSH key for signing")
             }
-            Self::UnknownSigner => Some("Add the signer's key to the allowed signers list"),
+            Self::UnknownSigner => Some(
+                "The signer's identity is not trusted here. Pin it with `auths trust pin --did <did>`, \
+                 or add it to .auths/roots.",
+            ),
             Self::SshSigParseFailed(_) => Some(
                 "The SSH signature could not be parsed; verify the commit was signed correctly",
             ),
@@ -99,6 +108,38 @@ impl AuthsErrorInfo for CommitVerificationError {
             Self::CommitParseFailed(_) => Some(
                 "The Git commit object is malformed; check repository integrity with `git fsck`",
             ),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retired_advice_is_gone() {
+        // The pre-KEL SSH/GPG advice would send a user to produce a commit `auths
+        // verify` still rejects. Every commit-verification suggestion must speak the
+        // KEL-native flow (`auths <verb>`) and name none of the retired mechanisms.
+        let retired = ["git commit -S", "gpg.format", "allowed signers"];
+        for err in [
+            CommitVerificationError::UnsignedCommit,
+            CommitVerificationError::GpgNotSupported,
+            CommitVerificationError::UnknownSigner,
+        ] {
+            let suggestion = err.suggestion().expect("headline verdicts carry advice");
+            for phrase in retired {
+                assert!(
+                    !suggestion.contains(phrase),
+                    "{} still advises `{phrase}`: {suggestion}",
+                    err.error_code()
+                );
+            }
+            assert!(
+                suggestion.contains("auths "),
+                "{} must speak the KEL-native flow: {suggestion}",
+                err.error_code()
+            );
         }
     }
 }

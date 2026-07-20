@@ -221,8 +221,8 @@ pub struct BundleGrant {
     pub counterparty_policy: CounterpartyPolicy,
 }
 
-/// The identified call the bundle is about. Arguments travel HASHED only
-/// (security S3) — the plaintext never enters a bundle.
+/// The identified call the bundle is about. Arguments travel HASHED only —
+/// the plaintext never enters a bundle.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BundleCall {
     /// The tool the call targeted.
@@ -351,7 +351,7 @@ pub struct EvidenceBundle {
     /// Optional verified escrow-record summary (dispute bundles).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub escrow: Option<serde_json::Value>,
-    /// Optional minimized compliance cross-link (dispute bundles, security S3).
+    /// Optional minimized compliance cross-link (dispute bundles).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compliance: Option<serde_json::Value>,
     /// Optional human-readable render, built over hashed fields only.
@@ -382,6 +382,17 @@ pub struct AuditV1 {
     pub records: usize,
     /// The re-derived cross-rail settled total (cents).
     pub settled_cents: u64,
+    /// The VERIFIED counterparty the last metered call settled with (`Auths-Settle-Ref`,
+    /// cross-checked against the rail response) — a proven field consumers act on, never
+    /// `receipt.charge_ref`. `None` when nothing metered settled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub counterparty: Option<String>,
+    /// Whether completeness was proven. An offline audit re-derives SELF-consistency but cannot
+    /// prove the log is complete (a $0/refused tail truncation is invisible) — so a consumer
+    /// branches on this field, not on the prose (`"unproven-offline"` for a consistent offline
+    /// audit; `None` otherwise).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completeness: Option<String>,
     /// The resumable end state for a checkpointing caller.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<AuditCheckpoint>,

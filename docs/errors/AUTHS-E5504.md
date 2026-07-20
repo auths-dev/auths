@@ -7,3 +7,7 @@
 ## Message
 
 insufficient capabilities: requested {requested:?}
+
+## Suggestion
+
+Request fewer capabilities or contact your administrator

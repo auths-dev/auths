@@ -10,4 +10,4 @@ commit is unsigned
 
 ## Suggestion
 
-Sign commits with: git commit -S
+This commit has no Auths-Id/Auths-Device trailer. Run `auths init` so the prepare-commit-msg hook signs future commits, or backfill with `auths sign <ref>`.

@@ -148,6 +148,9 @@ pub struct WrapConfig {
     /// writes (`wrap --dispute-ref`) — the index entry pointing at the evidence
     /// surface that adjudicates a later dispute.
     pub dispute_ref: Option<String>,
+    /// Where the signed spend log + registry are written (`wrap --spend-log`). `None` defaults to
+    /// an ephemeral per-run OS temp dir (wiped on reboot); a stable dir keeps receipts across runs.
+    pub spend_log: Option<PathBuf>,
 }
 
 impl WrapConfig {
@@ -162,18 +165,54 @@ impl WrapConfig {
 }
 
 /// The directory the live wire builds its signing chain + registry under (org root, the
-/// delegated agent, the scope seal, and the spend log). Honors `AUTHS_MCP_LIVE_DIR` (then
-/// `LAB_DIR`) so a demo/harness can point the chain + log at a known path it later audits
-/// with `verify-spend`; otherwise a per-process temp dir.
-fn live_chain_dir() -> PathBuf {
+/// delegated agent, the scope seal, and the spend log). Resolution order: `wrap --spend-log`
+/// (explicit, stable), then `AUTHS_MCP_LIVE_DIR`, then `LAB_DIR`, else an ephemeral per-process
+/// temp dir. Returns `(dir, defaulted)` where `defaulted` is true ONLY for the temp-dir fallback,
+/// so the caller can flag the ephemeral case in the startup banner.
+fn live_chain_dir(spend_log: Option<&std::path::Path>) -> (PathBuf, bool) {
+    if let Some(dir) = spend_log {
+        return (dir.to_path_buf(), false);
+    }
     for var in ["AUTHS_MCP_LIVE_DIR", "LAB_DIR"] {
         if let Ok(p) = std::env::var(var)
             && !p.is_empty()
         {
-            return PathBuf::from(p);
+            return (PathBuf::from(p), false);
         }
     }
-    std::env::temp_dir().join(format!("auths-mcp-live-{}", std::process::id()))
+    (
+        std::env::temp_dir().join(format!("auths-mcp-live-{}", std::process::id())),
+        true,
+    )
+}
+
+/// Parse a `--ttl` grant duration (`30m`, `1s`, `2h`, `7d`, or bare seconds) to seconds. A grant
+/// TTL is anchored as the delegation's expiry seal, so a malformed TTL must fail the wrap at parse
+/// time rather than serve an unenforced bound.
+///
+/// Args:
+/// * `ttl`: the raw `--ttl` string (a suffixed duration or bare seconds).
+///
+/// Usage:
+/// ```ignore
+/// assert_eq!(parse_ttl_secs("30m").unwrap(), 1800);
+/// ```
+pub(crate) fn parse_ttl_secs(ttl: &str) -> Result<i64, String> {
+    let t = ttl.trim();
+    let (num, mult) = match t.chars().last() {
+        Some('s') => (&t[..t.len() - 1], 1),
+        Some('m') => (&t[..t.len() - 1], 60),
+        Some('h') => (&t[..t.len() - 1], 3600),
+        Some('d') => (&t[..t.len() - 1], 86_400),
+        _ => (t, 1),
+    };
+    num.trim()
+        .parse::<i64>()
+        .map_err(|e| e.to_string())
+        .and_then(|n| {
+            n.checked_mul(mult)
+                .ok_or_else(|| "ttl overflow".to_string())
+        })
 }
 
 /// The metered shape of one brokered `tools/call`, parsed from the agent's request at the wire
@@ -268,8 +307,16 @@ struct GatewayProxy {
     chain: Arc<crate::chain::Chain>,
     /// The per-call gate resolved over the chain's registry: it authenticates each signed
     /// call (proof + scope ⊆ grant + expiry + revocation) and reserves/settles against the
-    /// budget — the SAME [`auths_mcp_core::PerCallGate`] the hermetic gate drives.
-    gate: Arc<auths_mcp_core::PerCallGate>,
+    /// budget — the SAME [`auths_mcp_core::PerCallGate`] the hermetic gate drives. Behind a
+    /// `Mutex` so the delegator KEL can be re-resolved mid-session (revocation propagation);
+    /// per-agent calls are already serialized by `prev_binding`, so the lock adds no contention.
+    gate: Arc<Mutex<auths_mcp_core::PerCallGate>>,
+    /// How often the delegator KEL is re-resolved so a mid-session revocation propagates within
+    /// this SLA (default 30s, `AUTHS_MCP_REVOCATION_RECHECK_SECS`) instead of only on restart.
+    revocation_recheck: std::time::Duration,
+    /// When the delegator KEL was last resolved — the re-resolution is due once this is older than
+    /// `revocation_recheck`.
+    last_resolved: Arc<Mutex<std::time::Instant>>,
     /// Monotonic per-call index; each call's signing work repo is keyed by it.
     next_call: Arc<std::sync::atomic::AtomicUsize>,
     /// The payment rail the wrapped downstream settles on, set by the operator. When `Some`, every
@@ -458,6 +505,30 @@ impl ServerHandler for GatewayProxy {
         let call_start = std::time::Instant::now();
         let tool = request.name.to_string();
 
+        // Revocation propagation: re-resolve the delegator KEL (which carries the
+        // revocation/expiry seals) on a bounded interval so a mid-session `auths id agent revoke`
+        // is observed within the recheck SLA, not only on process restart. A refresh error fails
+        // the call CLOSED — never a silently-stale snapshot.
+        {
+            let mut last = self.last_resolved.lock().await;
+            if last.elapsed() >= self.revocation_recheck {
+                let registry = GitRegistryBackend::from_config_unchecked(
+                    RegistryConfig::single_tenant(self.chain.org_repo()),
+                );
+                self.gate
+                    .lock()
+                    .await
+                    .refresh_delegator(&registry)
+                    .map_err(|e| {
+                        McpError::internal_error(
+                            format!("re-resolve the delegator KEL for revocation propagation: {e}"),
+                            None,
+                        )
+                    })?;
+                *last = std::time::Instant::now();
+            }
+        }
+
         // Canonicalize the call the way the offline audit re-derives it, and SIGN it as the
         // agent — the per-call proof `verify-spend` re-verifies. The cost/rail are the call's
         // declared metering; extracting a metered rail's actual cost from its response and
@@ -526,9 +597,10 @@ impl ServerHandler for GatewayProxy {
                 }
             }
             CallCost::Free => {
+                // Lock ordering is always gate → budget (the refresh path locks the gate alone).
+                let gate = self.gate.lock().await;
                 let mut budget = self.budget.lock().await;
-                self.gate
-                    .judge(&Meter::Unmetered, &proof_bytes, now, &mut budget)
+                gate.judge(&Meter::Unmetered, &proof_bytes, now, &mut budget)
                     .await
                     .map_err(|e| McpError::internal_error(format!("per-call gate: {e}"), None))?
             }
@@ -540,9 +612,9 @@ impl ServerHandler for GatewayProxy {
                             rail: rail.clone(),
                             ceiling: *ceiling,
                         };
+                        let gate = self.gate.lock().await;
                         let mut budget = self.budget.lock().await;
-                        self.gate
-                            .judge(&meter, &proof_bytes, now, &mut budget)
+                        gate.judge(&meter, &proof_bytes, now, &mut budget)
                             .await
                             .map_err(|e| {
                                 McpError::internal_error(format!("per-call gate: {e}"), None)
@@ -613,9 +685,10 @@ impl ServerHandler for GatewayProxy {
 
             // Settle the ACTUAL cost into the durable counter, releasing the reservation slack.
             if let Some(hold) = decision.hold {
+                // Lock ordering is always gate → budget.
+                let gate = self.gate.lock().await;
                 let mut budget = self.budget.lock().await;
-                let (settle_verdict, new_cumulative) = self
-                    .gate
+                let (settle_verdict, new_cumulative) = gate
                     .settle(&mut budget, hold, Actual::new(actual_cents))
                     .map_err(|e| {
                         McpError::internal_error(
@@ -753,7 +826,16 @@ impl ServerHandler for GatewayProxy {
                         verdict.code()
                     ),
                 };
-                Err(McpError::invalid_request(refusal, None))
+                // Co-deliver a structured verdict the refused caller can KEEP (a re-checkable
+                // artifact, not just a console line) — the same verdict the gate returned.
+                let proof_short = &proof_sha[..proof_sha.len().min(12)];
+                let data = serde_json::json!({
+                    "code": verdict.code(),
+                    "tool": tool,
+                    "refused_before_downstream": true,
+                    "proof_ref": proof_short,
+                });
+                Err(McpError::invalid_request(refusal, Some(data)))
             }
         }
     }
@@ -895,14 +977,35 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
     // The chain is built BEFORE the budget so the durable counter can be keyed to the REAL
     // agent delegation under the chain's own registry — the same place the spend log and the
     // printed verify-spend command point — so the offline audit opens the counter the wire advanced.
-    let lab = live_chain_dir();
+    let (lab, lab_defaulted) = live_chain_dir(cfg.spend_log.as_deref());
     std::fs::create_dir_all(&lab)
         .map_err(|e| anyhow::anyhow!("create the live signing directory {lab:?}: {e}"))?;
+    // Announce the resolved spend-log directory up front, flagging the ephemeral default so
+    // "where did the receipts land" is answered without scraping the compound command.
+    eprintln!(
+        "auths-mcp-gateway: spend-log: {}{}",
+        lab.display(),
+        if lab_defaulted {
+            "  (ephemeral per-run temp dir, wiped on reboot — pass --spend-log <DIR> to keep it)"
+        } else {
+            ""
+        },
+    );
     let mut signing_scope = cfg.scope.clone();
     if !signing_scope.iter().any(|c| c == "settle") {
         signing_scope.push("settle".to_string());
     }
-    let chain = crate::chain::Chain::build(&lab, &signing_scope)
+    // Parse the grant TTL fail-closed and anchor it as the delegation's expiry seal: a
+    // malformed `--ttl` aborts the wrap rather than serving a bound nothing enforces.
+    let ttl_secs = cfg
+        .ttl
+        .as_deref()
+        .map(parse_ttl_secs)
+        .transpose()
+        .map_err(|e| {
+            anyhow::anyhow!("invalid --ttl `{}`: {e}", cfg.ttl.as_deref().unwrap_or(""))
+        })?;
+    let chain = crate::chain::Chain::build(&lab, &signing_scope, ttl_secs)
         .map_err(|e| anyhow::anyhow!("build the agent delegation chain for live signing: {e}"))?;
     let registry =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(chain.org_repo()));
@@ -961,12 +1064,28 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         Err(_) => auths_mcp_core::SPEND_LOG_GENESIS.to_string(),
     };
 
+    // The revocation-propagation SLA: how often the delegator KEL is re-resolved so a mid-session
+    // revoke is observed. Bounded default (30s); a shorter value tightens the window.
+    let revocation_recheck = std::time::Duration::from_secs(
+        std::env::var("AUTHS_MCP_REVOCATION_RECHECK_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(30),
+    );
+    eprintln!(
+        "auths-mcp-gateway: revocation propagation — the delegator KEL is re-resolved every {}s; \
+         a mid-session `auths id agent revoke` stops the next call within that window",
+        revocation_recheck.as_secs(),
+    );
+
     let treasury = crate::treasury::TreasuryClient::from_env(&chain.root_did).map(Arc::new);
     let proxy = GatewayProxy {
         downstream,
         budget: Arc::new(Mutex::new(budget)),
         chain: Arc::new(chain),
-        gate: Arc::new(gate),
+        gate: Arc::new(Mutex::new(gate)),
+        revocation_recheck,
+        last_resolved: Arc::new(Mutex::new(std::time::Instant::now())),
         next_call: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         rail: cfg.rail,
         prev_binding: Arc::new(Mutex::new(prev_binding)),
@@ -991,6 +1110,27 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_ttl_secs_handles_suffixes_and_bare_seconds() {
+        // The grant TTL is anchored as the delegation expiry seal.
+        assert_eq!(parse_ttl_secs("30m").unwrap(), 1800);
+        assert_eq!(parse_ttl_secs("1s").unwrap(), 1);
+        assert_eq!(parse_ttl_secs("2h").unwrap(), 7200);
+        assert_eq!(parse_ttl_secs("7d").unwrap(), 604_800);
+        // Bare seconds with no suffix.
+        assert_eq!(parse_ttl_secs("45").unwrap(), 45);
+        assert_eq!(parse_ttl_secs("  90  ").unwrap(), 90);
+    }
+
+    #[test]
+    fn parse_ttl_secs_fails_closed_on_garbage() {
+        // A malformed TTL must be an error, never a silently-unenforced bound.
+        assert!(parse_ttl_secs("garbage").is_err());
+        assert!(parse_ttl_secs("30x").is_err());
+        assert!(parse_ttl_secs("").is_err());
+        assert!(parse_ttl_secs("m").is_err());
+    }
 
     #[test]
     fn parses_name_equals_value() {

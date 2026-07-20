@@ -65,11 +65,15 @@ pub fn verify_activity(attestation_json: String, registry_path: String) -> PyRes
             .map_err(|e| PyValueError::new_err(e.to_string()));
         }
     };
+    #[allow(clippy::disallowed_methods)] // binding boundary: wall clock injected here
+    let now = chrono::Utc::now();
     let body = match auths_evidence::verify_activity_against_registry(
         &doc,
         std::path::Path::new(&registry_path),
+        now,
+        auths_evidence::VerifyActivityOpts::default(),
     ) {
-        Ok(()) => serde_json::json!({
+        Ok(verdict) => serde_json::json!({
             "ok": true,
             "head": doc.head,
             "count": doc.count,
@@ -77,6 +81,9 @@ pub fn verify_activity(attestation_json: String, registry_path: String) -> PyRes
             "as_of_ts": doc.as_of.ts.to_rfc3339(),
             "subject_root": doc.subject.root,
             "subject_agent": doc.subject.agent,
+            "anchor": verdict.anchor,
+            "freshness": verdict.freshness,
+            "head_bound": verdict.head_bound,
         }),
         Err(e) => serde_json::json!({ "ok": false, "reason": e.to_string() }),
     };

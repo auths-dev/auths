@@ -7,3 +7,7 @@
 ## Message
 
 commit parse failed: {0}
+
+## Suggestion
+
+The Git commit object is malformed; check repository integrity with `git fsck`

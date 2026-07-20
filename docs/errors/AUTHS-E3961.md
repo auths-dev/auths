@@ -7,3 +7,7 @@
 ## Message
 
 unsupported ecosystem: {ecosystem}
+
+## Suggestion
+
+Supported ecosystems: npm, pypi, cargo, docker, go, maven, nuget

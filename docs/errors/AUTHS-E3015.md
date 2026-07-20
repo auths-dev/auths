@@ -7,3 +7,7 @@
 ## Message
 
 Keychain backend unavailable: {backend} - {reason}
+
+## Suggestion
+
+Run `auths doctor` to diagnose keychain issues

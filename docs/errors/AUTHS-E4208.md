@@ -7,3 +7,7 @@
 ## Message
 
 identity error: {0}
+
+## Suggestion
+
+Identity initialization failed; check storage and keychain configuration

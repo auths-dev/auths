@@ -132,7 +132,13 @@ impl Chain {
     /// The sandbox env (HOME, AUTHS_HOME/REPO, keychain, passphrase, git identity)
     /// must already be exported by the caller (the probe harness sets these);
     /// chain construction inherits them.
-    pub fn build(lab: &Path, scope: &[String]) -> anyhow::Result<Self> {
+    ///
+    /// `ttl_secs` is the grant's time-to-live in seconds (from `wrap --ttl`); when `Some`, it is
+    /// anchored as the delegation's `--expires-in` expiry seal so the verifier's expiry check can
+    /// fire — without it the `ttl=` the banner prints enforces nothing. It is applied ONLY
+    /// on a fresh delegation: a resumed agent keeps the expiry fixed at first delegation (a restart
+    /// cannot widen it).
+    pub fn build(lab: &Path, scope: &[String], ttl_secs: Option<i64>) -> anyhow::Result<Self> {
         let auths_bin = locate_auths()?;
         // A fleet gateway names its own delegation label so N wraps can join ONE
         // shared root registry (one label per gateway); the default single-wrap
@@ -227,16 +233,48 @@ impl Chain {
             for cap in scope {
                 add.args(["--scope", &to_auths_capability(cap)]);
             }
-            let added = must(&mut add, "id agent add (scoped agent)")?;
-            let agent_did = first_did(&added.stdout).ok_or_else(|| {
-                anyhow::anyhow!("could not read the agent did:keri from agent add")
-            })?;
-
-            // 3. Materialize the agent's delegate machine: copy the org registry and
-            //    drop the org icp root subtree, leaving only the agent dip so the local
-            //    signer resolves to the agent (tree surgery only — no key moved).
-            materialize_agent_machine(&org_repo, &agent_repo, &root_did)?;
-            agent_did
+            // Anchor the TTL as an expiry seal so the verifier's expiry check (AgentExpired on
+            // `now >= expires_at`) actually fires. Without this the banner's `ttl=` bounds nothing.
+            if let Some(secs) = ttl_secs {
+                add.args(["--expires-in", &secs.to_string()]);
+            }
+            let added = run(&mut add)?;
+            if added.status.success() {
+                let agent_did = first_did(&added.stdout).ok_or_else(|| {
+                    anyhow::anyhow!("could not read the agent did:keri from agent add")
+                })?;
+                // 3. Materialize the agent's delegate machine: copy the org registry and
+                //    drop the org icp root subtree, leaving only the agent dip so the local
+                //    signer resolves to the agent (tree surgery only — no key moved).
+                materialize_agent_machine(&org_repo, &agent_repo, &root_did)?;
+                agent_did
+            } else {
+                // Idempotency: a second wrap on the same keychain hits an EXISTING scoped
+                // agent under this alias. The agent DID must stay stable across restarts anyway, so
+                // RESUME it — re-materialize the delegate machine from the org registry — rather than
+                // failing the wrap with a bare error. If the delegation cannot be resumed from this
+                // registry (e.g. a fresh live dir), emit a coded, actionable remedy.
+                let stderr = String::from_utf8_lossy(&added.stderr);
+                let stdout = String::from_utf8_lossy(&added.stdout);
+                let alias_taken =
+                    stderr.contains("already exists") || stdout.contains("already exists");
+                if alias_taken {
+                    materialize_agent_machine(&org_repo, &agent_repo, &root_did)?;
+                    resume_agent_did(&agent_repo).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "a scoped agent already exists under alias `{agent_alias}`, but its \
+                             delegation could not be resumed from this registry — re-run with a \
+                             fresh `--agent-label` (or `AUTHS_MCP_AGENT_LABEL`) or a fresh \
+                             `AUTHS_KEYCHAIN_FILE`. Underlying: {stderr}"
+                        )
+                    })?
+                } else {
+                    anyhow::bail!(
+                        "id agent add (scoped agent) failed (exit {:?}):\n{stdout}\n{stderr}",
+                        added.status.code(),
+                    );
+                }
+            }
         };
 
         let inproc = crate::inproc_sign::InprocState::new(&agent_alias);
@@ -271,7 +309,7 @@ impl Chain {
     ///
     /// Usage:
     /// ```ignore
-    /// let chain = Chain::build(&lab, &scope)?; // warms internally
+    /// let chain = Chain::build(&lab, &scope, ttl_secs)?; // warms internally
     /// ```
     pub fn warm_signing_templates(&self) {
         // Decrypt the session signing key once now (the Argon2id keychain unlock), so the

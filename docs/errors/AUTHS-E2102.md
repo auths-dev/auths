@@ -6,8 +6,8 @@
 
 ## Message
 
-GPG signatures not supported, use SSH signing
+GPG signatures are not verified by Auths — use did:keri trailers via `auths init`
 
 ## Suggestion
 
-Configure SSH signing: git config gpg.format ssh
+Auths verifies its own did:keri commit trailers, not GPG or SSH signatures. Run `auths init` to enable Auths signing.

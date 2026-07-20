@@ -7,3 +7,7 @@
 ## Message
 
 Invalid input: {0}
+
+## Suggestion
+
+Check the input parameters and ensure they match the expected format

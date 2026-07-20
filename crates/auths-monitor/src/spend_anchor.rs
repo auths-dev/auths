@@ -203,4 +203,25 @@ mod tests {
         assert!(withholding_gap("ab", old, now, 3600).is_some());
         assert!(withholding_gap("ab", now, now, 3600).is_none());
     }
+
+    #[test]
+    fn gap_and_duplicity_produce_pushable_events() {
+        let now = chrono::TimeZone::timestamp_opt(&Utc, 1_700_010_000, 0).unwrap();
+        let old = chrono::TimeZone::timestamp_opt(&Utc, 1_700_000_000, 0).unwrap();
+        let gap = withholding_gap("abc123", old, now, 3600).expect("gap past threshold");
+        let gap_body = serde_json::json!({ "kind": "withholding", "event": gap });
+        assert_eq!(gap_body["kind"], "withholding");
+        assert_eq!(gap_body["event"]["seed_id"], "abc123");
+        assert!(gap_body["event"]["gap_seconds"].as_i64().unwrap() > 3600);
+
+        let obs = vec![
+            observed("w0", signed(5, [1u8; 32])),
+            observed("w1", signed(5, [2u8; 32])),
+        ];
+        let proof = detect_spend_anchor_duplicity(&obs).expect("fork");
+        let proof_body = serde_json::json!({ "kind": "duplicity", "event": proof });
+        assert_eq!(proof_body["kind"], "duplicity");
+        let embedded: DuplicityProof = serde_json::from_value(proof_body["event"].clone()).unwrap();
+        embedded.verify().unwrap();
+    }
 }

@@ -7,3 +7,7 @@
 ## Message
 
 member '{did}' not found in organization '{org}'
+
+## Suggestion
+
+Run `auths org list-members` to see current members

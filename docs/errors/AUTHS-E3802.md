@@ -7,3 +7,7 @@
 ## Message
 
 OAuth slow down
+
+## Suggestion
+
+The authorization server is rate-limiting; the CLI will retry automatically

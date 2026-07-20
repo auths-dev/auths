@@ -39,6 +39,8 @@ chrono = { version = "0.4", features = ["serde"] }
 # The cross-rail budget engine's tests (reserve/settle/release, cross-rail summing,
 # rollback) drive the verifier-held SETTLED counter over a throwaway repo dir.
 tempfile = "3"
+# The audit-walk tests drive the async re-derivation (`audit_spend_log`) to a verdict.
+tokio = { workspace = true }
 
 [lints]
 workspace = true

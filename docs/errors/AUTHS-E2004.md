@@ -7,3 +7,7 @@
 ## Message
 
 Attestation revoked
+
+## Suggestion
+
+This device has been revoked; contact the identity admin

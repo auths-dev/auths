@@ -7,3 +7,7 @@
 ## Message
 
 key resolution failed: {0}
+
+## Suggestion
+
+Run `auths status` to see available device aliases

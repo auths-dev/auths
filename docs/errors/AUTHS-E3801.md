@@ -7,3 +7,7 @@
 ## Message
 
 OAuth authorization pending
+
+## Suggestion
+
+Complete the authorization on the linked device, then the CLI will continue automatically

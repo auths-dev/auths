@@ -51,4 +51,10 @@ describe('top-level exports', () => {
     expect(auths.version).toBeDefined()
     expect(typeof auths.version).toBe('function')
   })
+
+  it('version() matches the package.json version', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pkg = require('../package.json')
+    expect(auths.version()).toBe(pkg.version)
+  })
 })

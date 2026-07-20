@@ -60,27 +60,57 @@ pub async fn verify_offline(bundle_json: String) -> Result<String> {
     serde_json::to_string(&verdict).map_err(|e| Error::from_reason(e.to_string()))
 }
 
+/// Options for [`verify_activity_attestation`].
+#[napi(object)]
+pub struct VerifyActivityOpts {
+    /// Fail the whole document when there is no verified witness anchor — promotes
+    /// the anchor from an additive assurance tier to a required gate.
+    pub require_witness: Option<bool>,
+    /// An independently-known witness tip index for this seed, if the caller has
+    /// one. A tip greater than the document's count marks the anchor `stale`.
+    pub witness_tip_index: Option<i64>,
+}
+
+impl From<VerifyActivityOpts> for auths_evidence::VerifyActivityOpts {
+    fn from(o: VerifyActivityOpts) -> Self {
+        Self {
+            require_witness: o.require_witness.unwrap_or(false),
+            witness_tip_index: o.witness_tip_index.map(|v| v as u64),
+        }
+    }
+}
+
 /// Verify a published `activity/v1` attestation against a fetched registry copy:
 /// resolve the agent's current keys from the KEL (identity resolution ONLY —
 /// never a spend log), require its delegator to be the claimed root, verify the
-/// signature — including the embedded quorum anchor when one is present (a
-/// document with a bad anchor fails whole). Returns `{ok, reason?, head, count,
-/// cumulativeCents, asOfTs, subjectRoot, subjectAgent, anchor}` as JSON —
+/// signature — including the embedded quorum anchor when one is present, or as a
+/// required gate under `opts.requireWitness` (a document with a bad or missing
+/// anchor fails whole). Returns `{ok, reason?, head, count, cumulativeCents,
+/// asOfTs, subjectRoot, subjectAgent, anchor, freshness, headBound}` as JSON —
 /// everything the market's receipts worker needs, as verdict fields (the report
 /// is the only API). `anchor` is `null` for an unanchored document, else the
 /// VERIFIED quorum shape `{tier, threshold, witnesses, cosigners, seedId,
-/// witnessSetSaid}` — a relying party never derives a tier from the seller's
-/// own claims.
+/// witnessSetSaid, stale}` — a relying party never derives a tier from the
+/// seller's own claims. `freshness` is `"fresh" | "unknown" | "stale"`;
+/// `headBound` is `true` only when a verified witness anchor cosigns the head.
+///
+/// `cumulativeCents` is a SIGNED CLAIM, not a re-derived fact: the per-call log
+/// is structurally private, so the magnitude is provable only when `anchor` is a
+/// non-stale `witness` summary. A consumer MUST NOT present `cumulativeCents` as
+/// verified earnings unless `anchor?.tier === "witness" && anchor.stale === false`.
+/// At first-seen (`anchor === null`) the honest label is "seller-claimed,
+/// unwitnessed".
 ///
 /// Usage:
 /// ```ignore
-/// const check = JSON.parse(verifyActivityAttestation(doc, registryDir));
+/// const check = JSON.parse(verifyActivityAttestation(doc, registryDir, { requireWitness: true }));
 /// if (!check.ok) markStale(check.reason);
 /// ```
 #[napi]
 pub fn verify_activity_attestation(
     attestation_json: String,
     registry_path: String,
+    opts: Option<VerifyActivityOpts>,
 ) -> Result<String> {
     let doc: auths_evidence::ActivityV1 = match serde_json::from_str(&attestation_json) {
         Ok(doc) => doc,
@@ -91,12 +121,19 @@ pub fn verify_activity_attestation(
             .map_err(|e| Error::from_reason(e.to_string()));
         }
     };
+    let native_opts = opts
+        .map(auths_evidence::VerifyActivityOpts::from)
+        .unwrap_or_default();
+    #[allow(clippy::disallowed_methods)] // binding boundary: wall clock injected here
+    let now = chrono::Utc::now();
     let outcome = auths_evidence::verify_activity_against_registry(
         &doc,
         std::path::Path::new(&registry_path),
+        now,
+        native_opts,
     );
     let body = match outcome {
-        Ok(()) => serde_json::json!({
+        Ok(verdict) => serde_json::json!({
             "ok": true,
             "head": doc.head,
             "count": doc.count,
@@ -104,16 +141,18 @@ pub fn verify_activity_attestation(
             "asOfTs": doc.as_of.ts.to_rfc3339(),
             "subjectRoot": doc.subject.root,
             "subjectAgent": doc.subject.agent,
-            // Only reachable when verify_embedded_anchor already re-checked the
-            // finalization, so this summary restates proven facts.
-            "anchor": doc.anchor.as_ref().map(|finalized| serde_json::json!({
-                "tier": "witness",
-                "threshold": finalized.witness_set.threshold,
-                "witnesses": finalized.witness_set.members.len(),
-                "cosigners": finalized.cosignatures.len(),
-                "seedId": finalized.anchor.seed_id.to_hex(),
-                "witnessSetSaid": finalized.witness_set.said,
-            })),
+            // Only reachable when verify_activity_with_keys already re-checked the
+            // finalization, so these fields restate proven facts.
+            "anchor": verdict.anchor,
+            "freshness": verdict.freshness,
+            "headBound": verdict.head_bound,
+        }),
+        // A present-but-bad (or required-but-absent) anchor fails whole AND names
+        // the leg the market can gate on.
+        Err(auths_evidence::EvidenceError::AnchorInvalid { code, detail }) => serde_json::json!({
+            "ok": false,
+            "reason": format!("embedded anchor: {detail}"),
+            "anchor": { "status": "invalid", "failedCheck": code },
         }),
         Err(e) => serde_json::json!({ "ok": false, "reason": e.to_string() }),
     };

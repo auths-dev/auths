@@ -7,3 +7,7 @@
 ## Message
 
 org policy blob for hash '{hash}' is missing from storage
+
+## Suggestion
+
+The policy blob is missing; re-anchor it with `auths org policy set`

@@ -101,7 +101,7 @@ pub struct BuildOpts {
     pub online_freshness: Option<OnlineFreshness>,
     /// Verified escrow-record summary (dispute bundles).
     pub escrow: Option<serde_json::Value>,
-    /// Minimized compliance cross-link (dispute bundles, S3).
+    /// Minimized compliance cross-link (dispute bundles).
     pub compliance: Option<serde_json::Value>,
     /// Human-readable render over hashed fields.
     pub rendered: Option<String>,
@@ -315,11 +315,11 @@ pub struct OfflineVerdict {
     /// The (re-checked) verdicts — always restating the anchor, never bare.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verdicts: Option<Verdicts>,
-    /// The subject echoed for caller binding (security S4).
+    /// The subject echoed for caller binding.
     pub subject: Subject,
-    /// The settlement tx echoed for caller binding (S4).
+    /// The settlement tx echoed for caller binding.
     pub tx: String,
-    /// The call index echoed for caller binding (S4).
+    /// The call index echoed for caller binding.
     #[serde(rename = "callIndex")]
     pub call_index: u64,
     /// The proven root (the pinned root the chain re-derivation reached).
@@ -343,7 +343,7 @@ impl OfflineVerdict {
 }
 
 /// Fully-offline verification of a bundle: proof replay → head recompute →
-/// anchor tier → verdict recompute → issuer signature → S4 echo. No network, no
+/// anchor tier → verdict recompute → issuer signature → binding-field echo. No network, no
 /// wall clock — everything is judged as of the embedded anchor instant, so a
 /// bundle verifies identically forever.
 ///
@@ -359,7 +359,7 @@ impl OfflineVerdict {
 /// Usage:
 /// ```ignore
 /// let verdict = verify_offline(&bundle).await;
-/// assert!(verdict.ok && verdict.tx == my_disputed_tx); // the caller's S4 binding
+/// assert!(verdict.ok && verdict.tx == my_disputed_tx); // the caller's binding check
 /// ```
 pub async fn verify_offline(bundle: &EvidenceBundle) -> OfflineVerdict {
     // 1. Replay the embedded proof through the one audit walk, as of the anchor.
@@ -385,7 +385,9 @@ pub async fn verify_offline(bundle: &EvidenceBundle) -> OfflineVerdict {
     .await;
     if matches!(
         verdict,
-        AuditVerdict::TamperedProof { .. } | AuditVerdict::CostMismatch { .. }
+        AuditVerdict::TamperedProof { .. }
+            | AuditVerdict::CostMismatch { .. }
+            | AuditVerdict::CounterpartyMismatch { .. }
     ) {
         return OfflineVerdict::fail(bundle, "tampered", format!("{verdict}"));
     }
@@ -474,7 +476,7 @@ pub async fn verify_offline(bundle: &EvidenceBundle) -> OfflineVerdict {
         return OfflineVerdict::fail(bundle, "invalid-signature", reason);
     }
 
-    // 6. S4 — echo the binding fields; the CALLER must assert they match its own
+    // 6. Echo the binding fields; the CALLER must assert they match its own
     //    payment ref before acting on the verdict.
     OfflineVerdict {
         ok: true,

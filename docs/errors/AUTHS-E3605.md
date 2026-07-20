@@ -7,3 +7,7 @@
 ## Message
 
 invalid response: {detail}
+
+## Suggestion
+
+The server returned an unexpected response; check server compatibility

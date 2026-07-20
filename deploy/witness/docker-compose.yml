@@ -31,7 +31,13 @@ services:
       - witness-data:/data
       # The operator-synced local copy of the parties' public identity
       # registry, used to resolve current keys for party signatures.
-      - ${WITNESS_REGISTRY:?set WITNESS_REGISTRY to the local registry path}:/registry:ro
+      #
+      # First boot has no registry yet: default to ./registry beside this file,
+      # and sync the parties' public registry into it before anchoring —
+      #   git clone <party-registry-url> ./registry
+      # The node's readiness gate refuses to serve until this holds a real git
+      # repo, so an empty default fails loudly instead of 422-ing every request.
+      - ${WITNESS_REGISTRY:-./registry}:/registry:ro
     healthcheck:
       test: ["CMD", "/usr/local/bin/witness-node", "healthcheck", "--url", "http://127.0.0.1:3333/health"]
       interval: 30s

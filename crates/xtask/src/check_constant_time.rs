@@ -203,33 +203,33 @@ fn check_secret_partialeq(
         let name = node
             .child_by_field_name("name")
             .map(|n| source[n.byte_range()].to_string());
-        if let Some(name) = name {
-            if secret_types.contains(&name) {
-                // tree-sitter-rust places attributes as preceding siblings of
-                // struct_item/enum_item, not as children. Walk backwards
-                // through siblings to find derive attributes.
-                let mut prev = node.prev_sibling();
-                while let Some(sib) = prev {
-                    let sk = sib.kind();
-                    if sk == "attribute_item" || sk == "attribute" {
-                        let text = &source[sib.byte_range()];
-                        if text.contains("derive")
-                            && (text.contains("PartialEq") || text.contains("Eq"))
-                        {
-                            let start = sib.start_position();
-                            let ty: &'static str = Box::leak(name.clone().into_boxed_str());
-                            violations.push(Violation {
-                                file: file.to_path_buf(),
-                                line: start.row + 1,
-                                col: start.column + 1,
-                                kind: ViolationKind::SecretPartialEq(ty),
-                            });
-                        }
-                    } else {
-                        break; // stop once we hit a non-attribute sibling
+        if let Some(name) = name
+            && secret_types.contains(&name)
+        {
+            // tree-sitter-rust places attributes as preceding siblings of
+            // struct_item/enum_item, not as children. Walk backwards
+            // through siblings to find derive attributes.
+            let mut prev = node.prev_sibling();
+            while let Some(sib) = prev {
+                let sk = sib.kind();
+                if sk == "attribute_item" || sk == "attribute" {
+                    let text = &source[sib.byte_range()];
+                    if text.contains("derive")
+                        && (text.contains("PartialEq") || text.contains("Eq"))
+                    {
+                        let start = sib.start_position();
+                        let ty: &'static str = Box::leak(name.clone().into_boxed_str());
+                        violations.push(Violation {
+                            file: file.to_path_buf(),
+                            line: start.row + 1,
+                            col: start.column + 1,
+                            kind: ViolationKind::SecretPartialEq(ty),
+                        });
                     }
-                    prev = sib.prev_sibling();
+                } else {
+                    break; // stop once we hit a non-attribute sibling
                 }
+                prev = sib.prev_sibling();
             }
         }
     }

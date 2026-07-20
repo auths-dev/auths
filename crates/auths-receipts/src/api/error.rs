@@ -95,6 +95,9 @@ impl From<auths_evidence::EvidenceError> for ApiError {
             E::SpendLog(m) | E::Registry(m) | E::Counter(m) | E::Treasury(m) => {
                 ApiError::Unprocessable(m)
             }
+            E::AnchorInvalid { code, detail } => {
+                ApiError::Unprocessable(format!("embedded anchor invalid ({code}): {detail}"))
+            }
             E::Canonical(m) | E::Signing(m) => ApiError::Internal(m),
         }
     }

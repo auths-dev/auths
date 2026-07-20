@@ -7,3 +7,7 @@
 ## Message
 
 mDNS error: {0}
+
+## Suggestion
+
+mDNS discovery failed; try relay-based pairing with `auths device pair --registry <url>` instead

@@ -739,6 +739,33 @@ mod tests {
     }
 
     #[test]
+    fn exact_exhaust_allowed_one_over_refused() {
+        // The budget boundary rule is locked here: the rule is strictly-over
+        // (`would_be > cap`), so a call that reserves EXACTLY to the cap is allowed and the next
+        // call — even 1 cent — is refused. This locks `>` against ever drifting to `>=`.
+        let dir = tempfile::tempdir().unwrap();
+        let mut b = budget(dir.path(), 1000);
+        // Reserve+settle exactly to the cap (cumulative == cap): allowed.
+        let h = match b.reserve(Ceiling::new(Cents::new(1000))).unwrap() {
+            ReserveOutcome::Reserved { hold, .. } => hold,
+            o => panic!("the exact-exhaust reserve must be admitted, got {o:?}"),
+        };
+        b.settle(h, Actual::new(Cents::new(1000))).unwrap();
+        assert_eq!(b.settled_cents().unwrap(), Cents::new(1000));
+        // One cent over the exhausted cap: refused BEFORE the rail is touched.
+        match b.reserve(Ceiling::new(Cents::new(1))).unwrap() {
+            ReserveOutcome::Refused {
+                cap_cents,
+                would_be_cents,
+            } => {
+                assert_eq!(cap_cents, Cents::new(1000));
+                assert_eq!(would_be_cents, Cents::new(1001));
+            }
+            o => panic!("one cent over the cap must be refused, got {o:?}"),
+        }
+    }
+
+    #[test]
     fn reserve_settle_releases_slack() {
         // Call reserves a $2.00 ceiling but settles $1.50 — the $0.50 slack must be
         // RELEASED so a later in-budget call is not starved by the over-reservation.

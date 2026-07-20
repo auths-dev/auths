@@ -7,3 +7,7 @@
 ## Message
 
 {0}
+
+## Suggestion
+
+The trust store may be corrupted; delete and re-pin with `auths trust pin`

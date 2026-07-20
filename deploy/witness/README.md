@@ -29,11 +29,25 @@ witness-node serve --roles anchor                # anchor-only witness
 A role whose required ports lack a working adapter refuses to serve **that
 role** at startup with a named error — no half-nodes (I-DEPLOY-6).
 
+### Prefer bare metal?
+
+Install the node binary, then run it directly:
+
+```bash
+# From a release: extract witness-node from the v0.1.x tarball onto PATH, or build it:
+cargo build --release -p auths-witness-node
+./target/release/witness-node serve --roles anchor,kel,cosign \
+  --bind 0.0.0.0:3333 --data-dir ./wdata --registry ./registry --witness-name my-w1
+```
+
 ## Quickstart (Compose)
 
 ```bash
 cd deploy/witness
-WITNESS_SEED=$(openssl rand -hex 32) docker compose up
+# A witness resolves submitter keys against a local copy of the parties' public
+# registry. Sync it first; WITNESS_REGISTRY defaults to ./registry.
+git clone <party-registry-url> ./registry
+WITNESS_SEED=$(openssl rand -hex 32) WITNESS_REGISTRY=$PWD/registry docker compose up
 # health:   http://127.0.0.1:3333/health
 # anchors:  POST http://127.0.0.1:3333/v1/anchor
 ```

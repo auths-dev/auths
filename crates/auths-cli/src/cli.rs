@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 
 use crate::commands::account::AccountCommand;
 use crate::commands::agent::AgentCommand;
+use crate::commands::anchor::AnchorCommand;
 use crate::commands::approval::ApprovalCommand;
 use crate::commands::artifact::ArtifactCommand;
 use crate::commands::audit::AuditCommand;
@@ -163,6 +164,8 @@ pub enum RootCommand {
     Agent(AgentCommand),
     /// Aggregate treasury cap across a manager's sub-delegated agents.
     Treasury(TreasuryCommand),
+    /// Verify witness-network anchor evidence (duplicity proofs) offline.
+    Anchor(AnchorCommand),
     #[command(hide = true)]
     Witness(WitnessCommand),
     #[command(hide = true)]
