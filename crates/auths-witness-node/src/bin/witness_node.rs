@@ -42,6 +42,21 @@ enum Command {
     Serve(ServeArgs),
     /// Probe a node's /health endpoint (container healthcheck entrypoint).
     Healthcheck(HealthcheckArgs),
+    /// Fetch the parties' public registry into `--registry` (the `refs/auths/*`
+    /// namespace the anchor role resolves keys from). Run before `serve`, or as
+    /// an init step — a plain `git clone` does NOT bring these refs.
+    SyncRegistry(SyncRegistryArgs),
+}
+
+#[derive(Parser)]
+struct SyncRegistryArgs {
+    /// Registry git URL to fetch the parties' public KELs from (must expose
+    /// `refs/auths/*`), e.g. the aggregated first-party registry.
+    #[arg(long, value_name = "URL")]
+    from: String,
+    /// Local registry dir to populate — the same path passed to `serve --registry`.
+    #[arg(long, value_name = "DIR")]
+    registry: PathBuf,
 }
 
 #[derive(Parser)]
@@ -208,6 +223,22 @@ async fn main() -> std::process::ExitCode {
                 std::process::ExitCode::FAILURE
             }
         },
+        Command::SyncRegistry(args) => {
+            match auths_witness_node::sync::sync_registry(&args.from, &args.registry) {
+                Ok(()) => {
+                    eprintln!(
+                        "witness-node: synced registry from {} → {}",
+                        args.from,
+                        args.registry.display()
+                    );
+                    std::process::ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("witness-node: sync-registry: {e:#}");
+                    std::process::ExitCode::FAILURE
+                }
+            }
+        }
         Command::Serve(args) => {
             for role in &args.roles {
                 match role.as_str() {

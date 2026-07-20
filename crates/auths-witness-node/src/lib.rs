@@ -46,6 +46,7 @@ pub mod registry;
 pub mod signer;
 pub mod sqlite_store;
 pub mod standup;
+pub mod sync;
 pub mod vocabulary;
 
 pub use anchor_role::{
