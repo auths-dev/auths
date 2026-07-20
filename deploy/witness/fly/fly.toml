@@ -42,6 +42,8 @@ primary_region = 'lhr'
 
 [http_service]
   internal_port = 3333
+  # The single process group defined above; required once [processes] is named.
+  processes = ['app']
   force_https = true
   # A witness must not cold-start away its duty. Keep one machine always up and
   # never auto-stop — auto-stopping drops the live anti-equivocation window.
