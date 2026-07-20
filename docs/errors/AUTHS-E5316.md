@@ -7,3 +7,7 @@
 ## Message
 
 requested capability '{capability}' exceeds the delegator's scope
+
+## Suggestion
+
+Narrow the agent's --scope to a subset of the delegator's own capabilities

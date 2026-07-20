@@ -6,8 +6,8 @@
 
 ## Message
 
-signer key not in allowed keys
+signer identity is not trusted (no matching pinned root)
 
 ## Suggestion
 
-Add the signer's key to the allowed signers list
+The signer's identity is not trusted here. Pin it with `auths trust pin --did <did>`, or add it to .auths/roots.

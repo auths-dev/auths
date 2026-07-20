@@ -5,6 +5,7 @@ use crate::adapters::system_diagnostic::PosixDiagnosticAdapter;
 use crate::ux::format::{JsonResponse, Output, is_json_mode};
 use anyhow::Result;
 use auths_sdk::keychain;
+use auths_sdk::paths::resolve_registry_path;
 use auths_sdk::ports::diagnostics::{
     CheckCategory, CheckResult, ConfigIssue, DiagnosticFix, FixApplied,
 };
@@ -13,6 +14,7 @@ use chrono::{DateTime, Utc};
 use clap::Parser;
 use serde::Serialize;
 use std::io::IsTerminal;
+use std::path::PathBuf;
 
 /// Health check command.
 #[derive(Parser, Debug, Clone)]
@@ -65,8 +67,18 @@ pub struct DoctorReport {
 }
 
 /// Handle the doctor command.
-pub fn handle_doctor(cmd: DoctorCommand) -> Result<()> {
-    let checks = run_checks();
+///
+/// Args:
+/// * `cmd`: the parsed [`DoctorCommand`].
+/// * `repo_override`: the resolved storage-root override (`--repo`/`AUTHS_REPO`/
+///   `AUTHS_HOME`), so every check reports the same root `init`/`sign` wrote to.
+///
+/// Usage:
+/// ```ignore
+/// handle_doctor(cmd, ctx.repo_path.clone())?;
+/// ```
+pub fn handle_doctor(cmd: DoctorCommand, repo_override: Option<PathBuf>) -> Result<()> {
+    let checks = run_checks(repo_override.clone());
     let all_pass = checks.iter().all(|c| c.passed);
 
     let (final_checks, fixes_applied) = if cmd.fix && !all_pass {
@@ -77,7 +89,7 @@ pub fn handle_doctor(cmd: DoctorCommand) -> Result<()> {
         };
         let fixes = apply_fixes(&checks, out.as_ref());
         if !fixes.is_empty() {
-            let rechecked = run_checks();
+            let rechecked = run_checks(repo_override.clone());
             (rechecked, fixes)
         } else {
             (checks, fixes)
@@ -149,7 +161,7 @@ fn compute_exit_code(checks: &[Check]) -> i32 {
 
 /// Run all prerequisite checks.
 #[allow(clippy::disallowed_methods)] // CLI boundary: Utc::now() injected here
-fn run_checks() -> Vec<Check> {
+fn run_checks(repo_override: Option<PathBuf>) -> Vec<Check> {
     let now = Utc::now();
     let adapter = PosixDiagnosticAdapter;
     let workflow = DiagnosticsWorkflow::new(&adapter, &adapter);
@@ -175,12 +187,12 @@ fn run_checks() -> Vec<Check> {
 
     // Domain checks are all Critical
     checks.push(check_keychain_accessible());
-    checks.push(check_identity_home());
-    checks.push(check_auths_repo());
-    checks.push(check_identity_valid(now));
+    checks.push(check_identity_home(repo_override.clone()));
+    checks.push(check_auths_repo(repo_override.clone()));
+    checks.push(check_identity_valid(now, repo_override.clone()));
 
     // Advisory: commit-trailer hook wiring (plain `git commit` verifiability)
-    checks.push(check_commit_hook_installed());
+    checks.push(check_commit_hook_installed(repo_override));
     checks.push(check_repo_hooks_path_override());
 
     // Advisory: network connectivity
@@ -191,8 +203,8 @@ fn run_checks() -> Vec<Check> {
 
 /// Advisory: the prepare-commit-msg hook is installed, current, and wired via
 /// the global `core.hooksPath` — what makes a plain `git commit` verifiable.
-fn check_commit_hook_installed() -> Check {
-    let (passed, detail) = match auths_sdk::paths::auths_home() {
+fn check_commit_hook_installed(repo_override: Option<PathBuf>) -> Check {
+    let (passed, detail) = match resolve_registry_path(repo_override) {
         Ok(home) if !home.join("commit-trailers").exists() => {
             // No identity / pre-hook install — not a failure, just not set up yet.
             (
@@ -437,17 +449,18 @@ fn check_keychain_accessible() -> Check {
     }
 }
 
-/// Advisory: report which identity home directory is in effect and why.
+/// Advisory: report which identity storage root is in effect and why.
 ///
-/// Resolution is `AUTHS_HOME` (env override, when set and non-empty) then the
+/// Resolution is the shared override (`--repo`/`AUTHS_REPO`/`AUTHS_HOME`) then the
 /// `~/.auths` default. Surfacing the winner and its source turns "why can't it
-/// find my identity" into a one-glance answer instead of a guessing game.
-fn check_identity_home() -> Check {
-    let env_home = std::env::var("AUTHS_HOME").ok().filter(|s| !s.is_empty());
-    let (passed, detail, suggestion) = match auths_sdk::paths::auths_home() {
+/// find my identity" into a one-glance answer — and reports the *same* root
+/// `init`/`sign` wrote to, not a default the other commands never used.
+fn check_identity_home(repo_override: Option<PathBuf>) -> Check {
+    let overridden = repo_override.is_some();
+    let (passed, detail, suggestion) = match resolve_registry_path(repo_override) {
         Ok(path) => {
-            let source = if env_home.is_some() {
-                "from AUTHS_HOME"
+            let source = if overridden {
+                "from --repo/AUTHS_REPO"
             } else {
                 "default ~/.auths"
             };
@@ -456,7 +469,7 @@ fn check_identity_home() -> Check {
         Err(e) => (
             false,
             format!("cannot resolve: {e}"),
-            Some("Set AUTHS_HOME, or ensure a home directory is available".to_string()),
+            Some("Set AUTHS_REPO, or ensure a home directory is available".to_string()),
         ),
     };
     Check {
@@ -468,8 +481,8 @@ fn check_identity_home() -> Check {
     }
 }
 
-fn check_auths_repo() -> Check {
-    let (passed, detail, suggestion) = match auths_sdk::paths::auths_home() {
+fn check_auths_repo(repo_override: Option<PathBuf>) -> Check {
+    let (passed, detail, suggestion) = match resolve_registry_path(repo_override) {
         Ok(path) => {
             if !path.exists() {
                 (
@@ -507,7 +520,7 @@ fn check_auths_repo() -> Check {
     }
 }
 
-fn check_identity_valid(now: DateTime<Utc>) -> Check {
+fn check_identity_valid(now: DateTime<Utc>, repo_override: Option<PathBuf>) -> Check {
     let (passed, detail, suggestion) = match keychain::get_platform_keychain() {
         Ok(keychain) => match keychain.list_aliases() {
             Ok(aliases) if aliases.is_empty() => (
@@ -517,7 +530,7 @@ fn check_identity_valid(now: DateTime<Utc>) -> Check {
             ),
             Ok(aliases) => {
                 let key_count = aliases.len();
-                let expiry_info = check_attestation_expiry(now);
+                let expiry_info = check_attestation_expiry(now, repo_override);
                 match expiry_info {
                     ExpiryStatus::AllExpired(msg) => (
                         false,
@@ -560,10 +573,10 @@ enum ExpiryStatus {
     AllExpired(String),
 }
 
-fn check_attestation_expiry(now: DateTime<Utc>) -> ExpiryStatus {
+fn check_attestation_expiry(now: DateTime<Utc>, repo_override: Option<PathBuf>) -> ExpiryStatus {
     use auths_sdk::storage::RegistryAttestationStorage;
 
-    let repo_path = match auths_sdk::paths::auths_home() {
+    let repo_path = match resolve_registry_path(repo_override) {
         Ok(p) if p.exists() => p,
         _ => return ExpiryStatus::NoAttestations,
     };
@@ -713,8 +726,8 @@ fn print_report(report: &DoctorReport) {
 }
 
 impl crate::commands::executable::ExecutableCommand for DoctorCommand {
-    fn execute(&self, _ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
-        handle_doctor(self.clone())
+    fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
+        handle_doctor(self.clone(), ctx.repo_path.clone())
     }
 }
 

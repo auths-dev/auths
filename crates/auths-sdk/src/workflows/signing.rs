@@ -222,6 +222,29 @@ fn try_agent_sign(
         })
 }
 
+/// Map a keychain `load_key` failure onto the right signing error.
+///
+/// A missing alias is not a broken keychain: it gets its own error so the fix
+/// points at `auths key list`, not the keychain subsystem. Every other failure
+/// means the keychain itself could not be accessed.
+///
+/// Args:
+/// * `err`: the error `KeyStorage::load_key` returned.
+/// * `alias`: the alias the caller asked for.
+///
+/// Usage:
+/// ```ignore
+/// let e = classify_load_key_error(AgentError::KeyNotFound, "main");
+/// ```
+fn classify_load_key_error(err: AgentError, alias: &str) -> SigningError {
+    match err {
+        AgentError::KeyNotFound => SigningError::KeyNotFound {
+            alias: alias.to_string(),
+        },
+        other => SigningError::KeychainUnavailable(other.to_string()),
+    }
+}
+
 fn load_key_with_passphrase_retry(
     ctx: &CommitSigningContext,
     params: &CommitSigningParams,
@@ -230,7 +253,7 @@ fn load_key_with_passphrase_retry(
     let (_identity_did, _role, encrypted_data) = ctx
         .key_storage
         .load_key(&alias)
-        .map_err(|e| SigningError::KeychainUnavailable(e.to_string()))?;
+        .map_err(|e| classify_load_key_error(e, &params.key_alias))?;
 
     let prompt = format!("Enter passphrase for '{}':", params.key_alias);
 
@@ -267,4 +290,32 @@ fn direct_sign(
     }
 
     signing::sign_with_seed(seed, &params.data, &params.namespace, curve)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use auths_core::error::AuthsErrorInfo;
+
+    #[test]
+    fn missing_alias_is_key_not_found_not_keychain_unavailable() {
+        // A nonexistent alias must surface as KeyNotFound (AUTHS-E5911) so the fix
+        // names `auths key list` — not the healthy keychain (AUTHS-E5909).
+        let err = classify_load_key_error(AgentError::KeyNotFound, "nonexistent");
+        assert!(matches!(err, SigningError::KeyNotFound { .. }));
+        assert_eq!(err.error_code(), "AUTHS-E5911");
+        assert!(
+            err.suggestion()
+                .unwrap_or_default()
+                .contains("auths key list"),
+            "E5911 must point at `auths key list`"
+        );
+    }
+
+    #[test]
+    fn other_load_failures_stay_keychain_unavailable() {
+        let err = classify_load_key_error(AgentError::StorageLocked, "main");
+        assert!(matches!(err, SigningError::KeychainUnavailable(_)));
+        assert_eq!(err.error_code(), "AUTHS-E5909");
+    }
 }

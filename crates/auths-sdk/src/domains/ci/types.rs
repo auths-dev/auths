@@ -23,7 +23,12 @@ pub fn generate_ci_passphrase() -> String {
     #[allow(clippy::expect_used)]
     // INVARIANT: OS CSPRNG (ring SystemRandom) failure is unrecoverable, like a poisoned mutex.
     rng.fill(&mut bytes).expect("system CSPRNG unavailable");
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    // Hex covers lowercase + digit (two classes); the strength policy requires three
+    // of four. Append an uppercase letter and a symbol so the generated value always
+    // clears `validate_passphrase`, without touching the entropy carried by the hex.
+    let mut out: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    out.push_str("-A9");
+    out
 }
 
 /// CI platform environment.
@@ -103,8 +108,13 @@ mod tests {
     }
 
     #[test]
-    fn ci_passphrase_is_strong() {
+    fn ci_passphrase_passes_policy() {
+        // The generator must satisfy the exact validator the CLI enforces before
+        // inception — otherwise `init --profile ci` rejects its own passphrase.
         let p = generate_ci_passphrase();
-        assert!(p.len() >= 32, "passphrase too short ({} chars)", p.len());
+        assert!(
+            auths_core::crypto::encryption::validate_passphrase(&p).is_ok(),
+            "generated CI passphrase must clear the strength policy: {p:?}"
+        );
     }
 }

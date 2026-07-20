@@ -99,9 +99,9 @@ impl AuthsErrorInfo for AgentError {
             Self::IdentityNotFound { .. } => {
                 Some("Run `auths init` to create a root identity first")
             }
-            Self::AlreadyDelegated { .. } => {
-                Some("Choose a different --label; run `auths id agent list` to see existing agents")
-            }
+            Self::AlreadyDelegated { .. } => Some(
+                "An agent already exists under this alias. Reuse it, rotate it with `auths id agent rotate`, or pass a fresh --label; `auths id agent list` shows existing agents.",
+            ),
             Self::CryptoError(e) => e.suggestion(),
             Self::DelegationError(_) => Some(
                 "The agent delegation could not be authored or anchored; check the root identity",

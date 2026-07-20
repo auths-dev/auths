@@ -7,3 +7,7 @@
 ## Message
 
 submission rejected: {reason}
+
+## Suggestion
+
+Check the attestation format and payload size

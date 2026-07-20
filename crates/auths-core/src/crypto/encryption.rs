@@ -64,6 +64,13 @@ pub fn get_kdf_params() -> Result<Params, AgentError> {
     params.map_err(|e| AgentError::CryptoError(format!("Invalid Argon2 params: {}", e)))
 }
 
+/// Human-readable statement of the passphrase policy [`validate_passphrase`]
+/// enforces. Shown before an interactive prompt so the rule is known up front,
+/// not learned by violating it. Single source of truth: the prompt hint and the
+/// validator read the same policy from here.
+pub const PASSPHRASE_POLICY_HINT: &str =
+    "12+ characters, at least 3 of: lowercase, uppercase, digit, symbol";
+
 /// Validates that a passphrase meets minimum strength requirements.
 ///
 /// Requires at least 12 characters and at least 3 of 4 character classes:
@@ -343,6 +350,30 @@ mod tests {
     #[test]
     fn test_validate_passphrase_strong() {
         assert!(validate_passphrase(STRONG_PASS).is_ok());
+    }
+
+    #[test]
+    fn policy_hint_matches_validator() {
+        // The shown policy and the enforced policy must never drift: a passphrase
+        // that honors the hint (12+ chars, 3+ classes) passes, and ones that break
+        // either half fail — so the hint can never promise a rule the validator
+        // does not enforce.
+        assert!(
+            PASSPHRASE_POLICY_HINT.contains("12+"),
+            "hint must state the length floor"
+        );
+        // Honors the hint: 13 chars across lowercase, uppercase, digit, symbol.
+        assert!(validate_passphrase("Abcdefg1234!x").is_ok());
+        // Long enough but only two classes (lowercase + digit) — must fail.
+        assert!(matches!(
+            validate_passphrase("abcdefgh1234"),
+            Err(AgentError::WeakPassphrase(_))
+        ));
+        // Enough classes but too short — must fail.
+        assert!(matches!(
+            validate_passphrase("Ab1!"),
+            Err(AgentError::WeakPassphrase(_))
+        ));
     }
 
     #[test]

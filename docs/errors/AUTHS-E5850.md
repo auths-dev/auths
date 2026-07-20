@@ -7,3 +7,7 @@
 ## Message
 
 identity not found in configured identity storage
+
+## Suggestion
+
+Run `auths init` to create an identity, or `auths key import` to restore one

@@ -14,10 +14,10 @@
 
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use auths_anchor::{
-    accept_anchor, freshness, Acceptance, Anchor, ControllerKeys, CurrentKey, CurveType, Head,
-    PartySignature, SeedId, WitnessSetRef,
+    Acceptance, Anchor, ControllerKeys, CurrentKey, CurveType, Head, PartySignature, SeedId,
+    WitnessSetRef, accept_anchor, freshness,
 };
 use chrono::{DateTime, TimeZone, Utc};
 use ed25519_dalek::{Signer, SigningKey};

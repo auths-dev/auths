@@ -7,3 +7,7 @@
 ## Message
 
 QR code generation failed: {0}
+
+## Suggestion
+
+QR code generation failed; try `auths device pair --mode relay` instead

@@ -7,3 +7,7 @@
 ## Message
 
 Internal error: {0}
+
+## Suggestion
+
+An unexpected internal error occurred; please report this issue

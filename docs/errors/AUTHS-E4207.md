@@ -7,3 +7,7 @@
 ## Message
 
 crypto operation failed: {0}
+
+## Suggestion
+
+A cryptographic operation during initialization failed; check your keychain access

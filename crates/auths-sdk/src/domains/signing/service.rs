@@ -61,6 +61,12 @@ pub enum SigningError {
     /// The encrypted key material could not be decrypted.
     #[error("key decryption failed: {0}")]
     KeyDecryptionFailed(String),
+    /// No key is stored under the requested alias (the keychain itself is healthy).
+    #[error("no signing key under alias '{alias}'")]
+    KeyNotFound {
+        /// The alias that had no stored key.
+        alias: String,
+    },
 }
 
 impl auths_core::error::AuthsErrorInfo for SigningError {
@@ -76,6 +82,7 @@ impl auths_core::error::AuthsErrorInfo for SigningError {
             Self::PassphraseExhausted { .. } => "AUTHS-E5908",
             Self::KeychainUnavailable(_) => "AUTHS-E5909",
             Self::KeyDecryptionFailed(_) => "AUTHS-E5910",
+            Self::KeyNotFound { .. } => "AUTHS-E5911",
         }
     }
 
@@ -97,6 +104,9 @@ impl auths_core::error::AuthsErrorInfo for SigningError {
             ),
             Self::KeychainUnavailable(_) => Some("Run `auths doctor` to diagnose keychain issues"),
             Self::KeyDecryptionFailed(_) => Some("Check your passphrase and try again"),
+            Self::KeyNotFound { .. } => {
+                Some("Run `auths key list` to see available aliases, or `auths init` to create one")
+            }
         }
     }
 }

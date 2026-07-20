@@ -7,3 +7,7 @@
 ## Message
 
 claim validation failed - {claim}: {reason}
+
+## Suggestion
+
+The token has expired; acquire a new token from the OIDC provider

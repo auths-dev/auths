@@ -7,3 +7,7 @@
 ## Message
 
 attestation error: {0}
+
+## Suggestion
+
+The attestation operation failed; run `auths device list` to check device status

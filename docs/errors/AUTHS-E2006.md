@@ -7,3 +7,7 @@
 ## Message
 
 Missing required capability: required {required:?}, available {available:?}
+
+## Suggestion
+
+Request an attestation with the required capability

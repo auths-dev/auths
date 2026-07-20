@@ -7,3 +7,7 @@
 ## Message
 
 delegation chain cycle detected at '{did}'
+
+## Suggestion
+
+The delegation chain is malformed (a cycle); inspect the identifiers' KELs

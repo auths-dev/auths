@@ -7,3 +7,7 @@
 ## Message
 
 Organizational Attestation expired
+
+## Suggestion
+
+Request a new organizational attestation from the admin

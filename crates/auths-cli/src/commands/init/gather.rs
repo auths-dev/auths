@@ -30,10 +30,20 @@ pub(crate) fn gather_developer_config(
     CreateDeveloperIdentityConfig,
 )> {
     out.print_info("Checking prerequisites...");
-    let keychain = check_keychain_access(out)?;
+    let keychain = check_keychain_access(interactive, out)?;
     check_git_version(out)?;
     out.print_success("Prerequisites OK");
     out.newline();
+
+    // State the passphrase policy up front so an interactive user learns the rule
+    // before the prompt, not by failing it. Sourced from the same constant the
+    // validator and the failure message use, so the three can never drift.
+    if interactive {
+        out.print_info(&format!(
+            "Passphrase requirements: {}",
+            auths_sdk::keychain::PASSPHRASE_POLICY_HINT
+        ));
+    }
 
     let alias = prompt_for_alias(interactive, cmd)?;
     let conflict_policy = prompt_for_conflict_policy(interactive, cmd, registry_path, out)?;
@@ -133,7 +143,7 @@ pub(crate) fn gather_agent_config(
         .collect();
 
     out.print_info("Checking prerequisites...");
-    let keychain = check_keychain_access(out)?;
+    let keychain = check_keychain_access(interactive, out)?;
     out.print_success("Prerequisites OK");
     out.newline();
 
@@ -255,9 +265,97 @@ pub(crate) fn ensure_registry_dir(registry_path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn check_keychain_access(out: &Output) -> Result<Box<dyn KeyStorage + Send + Sync>> {
-    match get_platform_keychain() {
-        Ok(keychain) => {
+/// What to do with a platform-selected keychain for a given run posture.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum KeychainSelection {
+    /// The selected backend is usable as-is.
+    UseSelected,
+    /// A headless run selected a hardware backend, but the file backend is
+    /// configured — switch to it instead of blocking on a Touch ID prompt.
+    SwitchToFile,
+    /// A headless run selected a hardware backend with no file backend
+    /// configured — fail fast with a coded error rather than hang.
+    FailFastHardware,
+}
+
+/// Decide how to treat a platform-default keychain given the run posture.
+///
+/// A hardware backend (Secure Enclave) needs an interactive Touch ID prompt; a
+/// headless run that selects one blocks forever on a prompt that never arrives.
+/// This pure decision keeps that policy testable without touching real key
+/// storage.
+///
+/// Args:
+/// * `interactive`: whether there is a TTY to prompt at.
+/// * `has_backend_override`: whether `AUTHS_KEYCHAIN_BACKEND` was set.
+/// * `is_hardware_backend`: whether the selected backend signs in hardware.
+/// * `file_backend_ready`: whether the encrypted-file backend is fully configured.
+///
+/// Usage:
+/// ```ignore
+/// let choice = select_headless_keychain(false, false, true, false);
+/// ```
+pub(crate) fn select_headless_keychain(
+    interactive: bool,
+    has_backend_override: bool,
+    is_hardware_backend: bool,
+    file_backend_ready: bool,
+) -> KeychainSelection {
+    if interactive || has_backend_override || !is_hardware_backend {
+        return KeychainSelection::UseSelected;
+    }
+    if file_backend_ready {
+        KeychainSelection::SwitchToFile
+    } else {
+        KeychainSelection::FailFastHardware
+    }
+}
+
+/// The typed error a headless run raises when the only usable backend needs an
+/// interactive prompt. Renders as `[AUTHS-E4203]` with the file-backend remedy.
+fn headless_hardware_error() -> anyhow::Error {
+    anyhow::Error::new(auths_sdk::error::InitError::Key(
+        auths_sdk::error::AgentError::BackendUnavailable {
+            backend: "secure-enclave",
+            reason: "Secure Enclave needs an interactive Touch ID prompt, \
+                     unavailable in this headless session"
+                .into(),
+        },
+    ))
+}
+
+pub(crate) fn check_keychain_access(
+    interactive: bool,
+    out: &Output,
+) -> Result<Box<dyn KeyStorage + Send + Sync>> {
+    #[allow(clippy::disallowed_methods)] // CLI boundary: backend override + file env
+    let has_backend_override = std::env::var_os("AUTHS_KEYCHAIN_BACKEND").is_some();
+    let keychain = get_platform_keychain().map_err(|e| anyhow!("Keychain not accessible: {e}"))?;
+
+    #[allow(clippy::disallowed_methods)] // CLI boundary: file-backend env presence
+    let file_backend_ready = std::env::var_os("AUTHS_KEYCHAIN_FILE").is_some()
+        && std::env::var_os("AUTHS_PASSPHRASE").is_some();
+
+    match select_headless_keychain(
+        interactive,
+        has_backend_override,
+        keychain.is_hardware_backend(),
+        file_backend_ready,
+    ) {
+        KeychainSelection::SwitchToFile => {
+            // SAFETY: single-threaded CLI context; the var is read immediately below.
+            unsafe { std::env::set_var("AUTHS_KEYCHAIN_BACKEND", "file") }
+            let keychain =
+                get_platform_keychain().map_err(|e| anyhow!("Keychain not accessible: {e}"))?;
+            out.println(&format!(
+                "  Keychain: {} (headless, file backend)",
+                keychain.backend_name()
+            ));
+            preflight_env_passphrase(&*keychain)?;
+            Ok(keychain)
+        }
+        KeychainSelection::FailFastHardware => Err(headless_hardware_error()),
+        KeychainSelection::UseSelected => {
             out.println(&format!(
                 "  Keychain: {} (accessible)",
                 out.success(keychain.backend_name())
@@ -265,7 +363,6 @@ pub(crate) fn check_keychain_access(out: &Output) -> Result<Box<dyn KeyStorage +
             preflight_env_passphrase(&*keychain)?;
             Ok(keychain)
         }
-        Err(e) => Err(anyhow!("Keychain not accessible: {}", e)),
     }
 }
 
@@ -274,11 +371,12 @@ pub(crate) fn check_keychain_access(out: &Output) -> Result<Box<dyn KeyStorage +
 /// not mid-flow behind a generic storage error.
 pub(crate) fn preflight_passphrase(passphrase: &str, source_name: &str) -> Result<()> {
     auths_sdk::keychain::validate_passphrase(passphrase).map_err(|e| {
-        anyhow!(
-            "The passphrase from {source_name} fails the strength policy: {e}\n  \
-             Use at least 12 characters with 3 of 4 character classes \
-             (lowercase, uppercase, digit, symbol)."
-        )
+        // Route as the typed SetupError so the renderer prints [AUTHS-E5008] with its
+        // fix line — an untyped anyhow string loses the code and the lookup.
+        anyhow::Error::new(auths_sdk::error::SetupError::WeakPassphrase {
+            source_name: source_name.to_string(),
+            reason: e.to_string(),
+        })
     })
 }
 
@@ -300,4 +398,64 @@ fn preflight_env_passphrase(keychain: &(dyn KeyStorage + Send + Sync)) -> Result
 
 pub(crate) fn map_ci_environment(detected: &Option<String>) -> CiEnvironment {
     auths_sdk::domains::ci::map_ci_environment(detected)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use auths_sdk::error::AuthsErrorInfo;
+
+    #[test]
+    fn headless_hardware_without_file_backend_fails_fast() {
+        // A non-interactive run that lands on a hardware backend with no file
+        // backend configured must fail fast, not select the enclave and hang on a
+        // Touch ID prompt that never arrives.
+        assert_eq!(
+            select_headless_keychain(false, false, true, false),
+            KeychainSelection::FailFastHardware
+        );
+    }
+
+    #[test]
+    fn headless_hardware_with_file_backend_switches_to_file() {
+        assert_eq!(
+            select_headless_keychain(false, false, true, true),
+            KeychainSelection::SwitchToFile
+        );
+    }
+
+    #[test]
+    fn interactive_or_override_or_software_uses_selected_backend() {
+        // Interactive runs may prompt; an explicit override is the user's choice;
+        // a software backend never blocks. All three keep the selected backend.
+        assert_eq!(
+            select_headless_keychain(true, false, true, false),
+            KeychainSelection::UseSelected
+        );
+        assert_eq!(
+            select_headless_keychain(false, true, true, false),
+            KeychainSelection::UseSelected
+        );
+        assert_eq!(
+            select_headless_keychain(false, false, false, false),
+            KeychainSelection::UseSelected
+        );
+    }
+
+    #[test]
+    fn headless_hardware_error_carries_the_key_code_and_file_remedy() {
+        // The fail-fast path must surface AUTHS-E4203 with the AUTHS_KEYCHAIN_BACKEND=file
+        // escape hatch — the code and remedy the headless user needs.
+        let err = headless_hardware_error();
+        let init = err
+            .chain()
+            .find_map(|c| c.downcast_ref::<auths_sdk::error::InitError>())
+            .expect("headless hardware failure must be a typed InitError");
+        assert_eq!(init.error_code(), "AUTHS-E4203");
+        let suggestion = init.suggestion().unwrap_or_default();
+        assert!(
+            suggestion.contains("AUTHS_KEYCHAIN_BACKEND=file"),
+            "E4203 must name the file-backend escape hatch, got: {suggestion}"
+        );
+    }
 }

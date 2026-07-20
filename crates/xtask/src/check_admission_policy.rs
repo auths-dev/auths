@@ -36,7 +36,10 @@ impl std::fmt::Display for AdmissionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::SchemaInvalid => {
-                write!(f, "admission policy does not validate against admission-policy.schema.json")
+                write!(
+                    f,
+                    "admission policy does not validate against admission-policy.schema.json"
+                )
             }
             Self::Parse(e) => write!(f, "admission policy is unparseable: {e}"),
             Self::InvalidOperator { name, reason } => {

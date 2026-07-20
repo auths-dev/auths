@@ -7,3 +7,7 @@
 ## Message
 
 invalid response: {0}
+
+## Suggestion
+
+The log returned an unexpected response; check the log version

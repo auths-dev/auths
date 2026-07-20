@@ -7,3 +7,7 @@
 ## Message
 
 JWT decode failed: {0}
+
+## Suggestion
+
+Verify the token format and ensure it is a valid JWT

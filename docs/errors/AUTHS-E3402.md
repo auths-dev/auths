@@ -7,3 +7,7 @@
 ## Message
 
 duplicity detected: {0}
+
+## Suggestion
+
+This identity may be compromised — investigate immediately

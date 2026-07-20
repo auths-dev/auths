@@ -7,3 +7,7 @@
 ## Message
 
 unknown key ID: {0}
+
+## Suggestion
+
+The JWKS cache may be stale; refresh the JWKS from the issuer endpoint

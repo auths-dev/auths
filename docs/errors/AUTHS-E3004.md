@@ -7,3 +7,7 @@
 ## Message
 
 Security error: {0}
+
+## Suggestion
+
+Run `auths doctor` to check system keychain access and security configuration

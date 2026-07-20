@@ -7,3 +7,7 @@
 ## Message
 
 Missing Passphrase
+
+## Suggestion
+
+Provide a passphrase with --passphrase or set AUTHS_PASSPHRASE

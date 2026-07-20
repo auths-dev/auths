@@ -7,3 +7,7 @@
 ## Message
 
 credential already revoked: {said}
+
+## Suggestion
+
+This credential is already revoked; no further action is needed

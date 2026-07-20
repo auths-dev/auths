@@ -7,3 +7,7 @@
 ## Message
 
 Stale attestation: {0}
+
+## Suggestion
+
+The attestation has been superseded by a newer version

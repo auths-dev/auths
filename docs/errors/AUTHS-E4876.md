@@ -7,3 +7,7 @@
 ## Message
 
 Not implemented: {method}
+
+## Suggestion
+
+This operation is not supported by the current backend

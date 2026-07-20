@@ -103,8 +103,10 @@ fn render_text(err: &Error) {
         if let Some(suggestion) = suggestion {
             eprintln!("  fix:  {}", suggestion.blue());
         }
-        if let Some(url) = docs_url(code) {
-            eprintln!("  docs: {url}");
+        // The offline lookup is the real, working next step; the docs site's
+        // /errors/ path 404s, so it is not advertised until it is published.
+        if code.starts_with("AUTHS-E") {
+            eprintln!("  look up: auths error show {code}");
         }
         return;
     }
@@ -154,11 +156,20 @@ fn render_json(err: &Error) {
             &format!("{cli_err}"),
             Some(cli_err.suggestion()),
             cli_err.docs_url().map(|s| s.to_string()),
+            None,
         )
     } else if let Some((code, message, suggestion)) = extract_error_info(err) {
-        build_json(Some(code), message, suggestion, docs_url(code))
+        // Emit the offline lookup, not the 404 docs URL, as the machine-readable
+        // next step (mirrors the text renderer's `look up:` line).
+        build_json(
+            Some(code),
+            message,
+            suggestion,
+            docs_url(code),
+            lookup(code),
+        )
     } else {
-        build_json(None, &format!("{err}"), None, None)
+        build_json(None, &format!("{err}"), None, None, None)
     };
 
     eprintln!("{json}");
@@ -169,6 +180,7 @@ fn build_json(
     message: &str,
     suggestion: Option<&str>,
     docs: Option<String>,
+    lookup: Option<String>,
 ) -> String {
     let mut map = serde_json::Map::new();
     if let Some(c) = code {
@@ -177,6 +189,9 @@ fn build_json(
     map.insert("message".into(), serde_json::Value::String(message.into()));
     if let Some(s) = suggestion {
         map.insert("suggestion".into(), serde_json::Value::String(s.into()));
+    }
+    if let Some(l) = lookup {
+        map.insert("lookup".into(), serde_json::Value::String(l));
     }
     if let Some(d) = docs {
         map.insert("docs".into(), serde_json::Value::String(d));
@@ -187,12 +202,21 @@ fn build_json(
         .unwrap_or_else(|_| format!("{{\"error\":{{\"message\":\"{message}\"}}}}"))
 }
 
-fn docs_url(code: &str) -> Option<String> {
+/// The offline lookup command for an error code — the working next step.
+fn lookup(code: &str) -> Option<String> {
     if code.starts_with("AUTHS-E") {
-        Some(format!("{DOCS_BASE_URL}/errors/#{code}"))
+        Some(format!("auths error show {code}"))
     } else {
         None
     }
+}
+
+/// Deep docs link for an error code. Returns `None` until the docs site publishes
+/// `docs/errors/` — its `/errors/` path 404s today, so `auths error show` (the
+/// renderer's look-up line) is the actionable path instead.
+fn docs_url(code: &str) -> Option<String> {
+    let _ = code;
+    None
 }
 
 #[cfg(test)]
@@ -200,45 +224,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn docs_url_returns_some_for_known_codes() {
-        let url = docs_url("AUTHS-E3001");
-        assert_eq!(url, Some(format!("{DOCS_BASE_URL}/errors/#AUTHS-E3001")));
-    }
-
-    #[test]
-    fn docs_url_returns_none_for_unknown_codes() {
+    fn docs_url_returns_none_until_docs_site_publishes_errors() {
+        // The docs `/errors/` path 404s, so no docs URL is emitted for any code —
+        // `auths error show` is the working next step instead.
+        assert!(docs_url("AUTHS-E3001").is_none());
         assert!(docs_url("UNKNOWN").is_none());
-        assert!(docs_url("SOME_OTHER").is_none());
     }
 
     #[test]
-    fn build_json_with_all_fields() {
+    fn lookup_points_at_offline_command_for_auths_codes() {
+        assert_eq!(
+            lookup("AUTHS-E5909"),
+            Some("auths error show AUTHS-E5909".to_string())
+        );
+        assert!(lookup("UNKNOWN").is_none());
+    }
+
+    #[test]
+    fn json_error_carries_offline_lookup_not_docs_url() {
+        // The machine-readable body advertises `auths error show <CODE>` and drops
+        // the dead docs URL — the same repointing the text renderer does.
         let json = build_json(
-            Some("AUTHS-E3001"),
-            "Key not found",
-            Some("Run `auths key list`"),
-            Some(format!("{DOCS_BASE_URL}/errors/#AUTHS-E3001")),
+            Some("AUTHS-E5909"),
+            "keychain unavailable",
+            Some("Run `auths doctor`"),
+            docs_url("AUTHS-E5909"),
+            lookup("AUTHS-E5909"),
         );
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["error"]["code"], "AUTHS-E3001");
-        assert_eq!(parsed["error"]["message"], "Key not found");
-        assert_eq!(parsed["error"]["suggestion"], "Run `auths key list`");
-        assert!(
-            parsed["error"]["docs"]
-                .as_str()
-                .unwrap()
-                .contains("AUTHS-E3001")
-        );
+        assert_eq!(parsed["error"]["lookup"], "auths error show AUTHS-E5909");
+        assert!(parsed["error"].get("docs").is_none());
+        assert!(!json.contains("docs.auths.dev/errors"));
     }
 
     #[test]
     fn build_json_without_optional_fields() {
-        let json = build_json(None, "Something went wrong", None, None);
+        let json = build_json(None, "Something went wrong", None, None, None);
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["error"]["message"], "Something went wrong");
         assert!(parsed["error"].get("code").is_none());
         assert!(parsed["error"].get("suggestion").is_none());
         assert!(parsed["error"].get("docs").is_none());
+        assert!(parsed["error"].get("lookup").is_none());
     }
 
     #[test]

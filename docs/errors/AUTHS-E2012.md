@@ -7,3 +7,7 @@
 ## Message
 
 Crypto error: {0}
+
+## Suggestion
+
+A cryptographic operation failed; verify key material is valid

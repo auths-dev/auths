@@ -67,8 +67,32 @@ impl ErrorLookupCommand {
     }
 }
 
+/// Normalize a user-typed error code to its canonical `AUTHS-E####` form.
+///
+/// Accepts the fully-qualified form and the shorthands people actually type:
+/// `E4203`, `4203`, `auths-e4203` all resolve to `AUTHS-E4203`. Anything that is
+/// not a bare numeric code is upper-cased and passed through unchanged.
+///
+/// Args:
+/// * `code`: the raw code string from the CLI.
+///
+/// Usage:
+/// ```ignore
+/// assert_eq!(normalize_error_code("E4203"), "AUTHS-E4203");
+/// ```
+pub fn normalize_error_code(code: &str) -> String {
+    let upper = code.trim().to_uppercase();
+    let without_prefix = upper.strip_prefix("AUTHS-").unwrap_or(&upper);
+    let digits = without_prefix.strip_prefix('E').unwrap_or(without_prefix);
+    if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
+        format!("AUTHS-E{digits}")
+    } else {
+        upper
+    }
+}
+
 fn explain_code(code: &str, ctx: &CliConfig) -> anyhow::Result<()> {
-    let normalized = code.to_uppercase();
+    let normalized = normalize_error_code(code);
 
     if ctx.is_json() {
         match registry::explain(&normalized) {
@@ -119,4 +143,32 @@ fn list_codes(ctx: &CliConfig) -> anyhow::Result<()> {
         eprintln!("Run `auths error show CODE` to see details for a specific code.");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_error_code;
+    use crate::errors::registry;
+
+    #[test]
+    fn bare_and_prefixed_codes_resolve_the_same() {
+        // A user who types the short form must reach the same doc as the canonical
+        // one — `E4203`, `4203`, `auths-e4203` all mean AUTHS-E4203.
+        assert_eq!(normalize_error_code("E4203"), "AUTHS-E4203");
+        assert_eq!(normalize_error_code("4203"), "AUTHS-E4203");
+        assert_eq!(normalize_error_code("auths-e4203"), "AUTHS-E4203");
+        assert_eq!(normalize_error_code("AUTHS-E4203"), "AUTHS-E4203");
+        assert_eq!(
+            registry::explain(&normalize_error_code("E4203")),
+            registry::explain("AUTHS-E4203")
+        );
+        assert!(registry::explain(&normalize_error_code("E4203")).is_some());
+    }
+
+    #[test]
+    fn non_numeric_input_passes_through_uppercased() {
+        // The `LIST` shorthand (and any unknown token) must not be mangled into a
+        // fake code.
+        assert_eq!(normalize_error_code("list"), "LIST");
+    }
 }

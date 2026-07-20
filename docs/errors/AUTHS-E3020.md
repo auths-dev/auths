@@ -7,3 +7,7 @@
 ## Message
 
 Passphrase too weak: {0}
+
+## Suggestion
+
+Use at least 12 characters with uppercase, lowercase, and a digit or symbol

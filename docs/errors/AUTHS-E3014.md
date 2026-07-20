@@ -7,3 +7,7 @@
 ## Message
 
 User input cancelled
+
+## Suggestion
+
+Run the command again and provide the required input

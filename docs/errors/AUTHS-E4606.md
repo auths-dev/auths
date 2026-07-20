@@ -7,3 +7,7 @@
 ## Message
 
 Chain integrity error: {0}
+
+## Suggestion
+
+The KEL has non-linear history; this indicates tampering

@@ -43,13 +43,13 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E2021](AUTHS-E2021.md) | `auths-verifier` | `AttestationError::DelegatorRevoked` | Delegator attestation is revoked |
 | [AUTHS-E2022](AUTHS-E2022.md) | `auths-verifier` | `AttestationError::DelegatorUnresolved` | Delegator attestation could not be resolved |
 | [AUTHS-E2101](AUTHS-E2101.md) | `auths-verifier` | `CommitVerificationError::UnsignedCommit` | commit is unsigned |
-| [AUTHS-E2102](AUTHS-E2102.md) | `auths-verifier` | `CommitVerificationError::GpgNotSupported` | GPG signatures not supported, use SSH signing |
+| [AUTHS-E2102](AUTHS-E2102.md) | `auths-verifier` | `CommitVerificationError::GpgNotSupported` | GPG signatures are not verified by Auths — use did:keri trailers via `auths init` |
 | [AUTHS-E2103](AUTHS-E2103.md) | `auths-verifier` | `CommitVerificationError::SshSigParseFailed` | SSHSIG parse failed: {0} |
 | [AUTHS-E2104](AUTHS-E2104.md) | `auths-verifier` | `CommitVerificationError::UnsupportedKeyType` | unsupported SSH key type: {found} |
 | [AUTHS-E2105](AUTHS-E2105.md) | `auths-verifier` | `CommitVerificationError::NamespaceMismatch` | namespace mismatch: expected \"{expected}\", found \"{found}\" |
 | [AUTHS-E2106](AUTHS-E2106.md) | `auths-verifier` | `CommitVerificationError::HashAlgorithmUnsupported` | unsupported hash algorithm: {0} |
 | [AUTHS-E2107](AUTHS-E2107.md) | `auths-verifier` | `CommitVerificationError::SignatureInvalid` | signature verification failed |
-| [AUTHS-E2108](AUTHS-E2108.md) | `auths-verifier` | `CommitVerificationError::UnknownSigner` | signer key not in allowed keys |
+| [AUTHS-E2108](AUTHS-E2108.md) | `auths-verifier` | `CommitVerificationError::UnknownSigner` | signer identity is not trusted (no matching pinned root) |
 | [AUTHS-E2109](AUTHS-E2109.md) | `auths-verifier` | `CommitVerificationError::CommitParseFailed` | commit parse failed: {0} |
 | [AUTHS-E2201](AUTHS-E2201.md) | `auths-verifier` | `OrgBundleError::Integrity` | bundle integrity failure for '{id}': {reason} |
 | [AUTHS-E2202](AUTHS-E2202.md) | `auths-verifier` | `OrgBundleError::MissingMemberKel` | bundle is missing the KEL for delegated member '{member}' |
@@ -351,6 +351,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E5908](AUTHS-E5908.md) | `auths-sdk` | `SigningError::PassphraseExhausted` | passphrase exhausted after {attempts} attempt(s) |
 | [AUTHS-E5909](AUTHS-E5909.md) | `auths-sdk` | `SigningError::KeychainUnavailable` | keychain unavailable: {0} |
 | [AUTHS-E5910](AUTHS-E5910.md) | `auths-sdk` | `SigningError::KeyDecryptionFailed` | key decryption failed: {0} |
+| [AUTHS-E5911](AUTHS-E5911.md) | `auths-sdk` | `SigningError::KeyNotFound` | no signing key under alias '{alias}' |
 | [AUTHS-E6001](AUTHS-E6001.md) | `auths-sdk` | `AuthChallengeError::EmptyNonce` | nonce must not be empty |
 | [AUTHS-E6002](AUTHS-E6002.md) | `auths-sdk` | `AuthChallengeError::EmptyDomain` | domain must not be empty |
 | [AUTHS-E6003](AUTHS-E6003.md) | `auths-sdk` | `AuthChallengeError::Canonicalization` | canonical JSON serialization failed: {0} |
@@ -361,6 +362,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E6105](AUTHS-E6105.md) | `auths-sdk` | `CredentialError::SchemaUnknown` | capability schema unknown or uncomputable |
 | [AUTHS-E6106](AUTHS-E6106.md) | `auths-sdk` | `CredentialError::StaleOrUnresolvable` | credential status is stale or unresolvable: {reason} |
 | [AUTHS-E6107](AUTHS-E6107.md) | `auths-sdk` | `CredentialError::MalformedUsageCap` | malformed quantitative usage cap '{cap}': a calls: capability must carry a non-negative integer bound (e.g. calls:3) |
+| [AUTHS-E6301](AUTHS-E6301.md) | `auths-cli` | `SignerKelError::Unavailable` | signer's KEL for {did} is not available locally: {reason} |
 | [AUTHS-E8001](AUTHS-E8001.md) | `auths-oidc-port` | `OidcError::JwtDecode` | JWT decode failed: {0} |
 | [AUTHS-E8002](AUTHS-E8002.md) | `auths-oidc-port` | `OidcError::SignatureVerificationFailed` | signature verification failed |
 | [AUTHS-E8003](AUTHS-E8003.md) | `auths-oidc-port` | `OidcError::ClaimsValidationFailed` | claim validation failed - {claim}: {reason} |

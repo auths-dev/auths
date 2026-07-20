@@ -7,3 +7,7 @@
 ## Message
 
 Protocol error: {0}
+
+## Suggestion
+
+A protocol error occurred; check that both sides are running compatible versions

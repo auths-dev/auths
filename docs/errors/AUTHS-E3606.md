@@ -7,3 +7,7 @@
 ## Message
 
 internal network error: {0}
+
+## Suggestion
+
+The server encountered an internal error; retry later or contact the server administrator

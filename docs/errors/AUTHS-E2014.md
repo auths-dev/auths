@@ -7,3 +7,7 @@
 ## Message
 
 Organizational Attestation verification failed: {0}
+
+## Suggestion
+
+Verify organizational identity is properly configured

@@ -7,3 +7,7 @@
 ## Message
 
 Agent is locked. Unlock with 'auths agent unlock' or restart the agent.
+
+## Suggestion
+
+Run `auths agent unlock` or restart with `auths agent start`

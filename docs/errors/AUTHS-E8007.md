@@ -7,3 +7,7 @@
 ## Message
 
 token expired (exp: {token_exp}, now: {current_time}, leeway: {leeway}s)
+
+## Suggestion
+
+Synchronize the system clock or increase the configured clock skew tolerance

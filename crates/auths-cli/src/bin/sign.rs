@@ -106,8 +106,7 @@ fn validate_verify_option(opt: &str) -> Result<()> {
 
     bail!(
         "disallowed verify option '-O {opt}'\n  \
-         Only these -O options are permitted: verify-time=<timestamp>, print-pubkey, hashalg=sha256, hashalg=sha512\n  \
-         [AUTHS-E0031]"
+         Only these -O options are permitted: verify-time=<timestamp>, print-pubkey, hashalg=sha256, hashalg=sha512"
     );
 }
 
