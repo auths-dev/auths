@@ -143,7 +143,8 @@ class TestGitSigning:
     def test_unsigned_commit_advice_is_kel_native(self, auths_bin, init_identity, git_repo):
         # Verifying an unsigned commit must speak the KEL-native flow, never the
         # retired SSH/GPG advice that produces a commit auths still rejects.
-        sha = make_commit(git_repo, "unsigned commit", init_identity)
+        # `init_identity` configures global signing, so force a bare commit.
+        sha = make_commit(git_repo, "unsigned commit", init_identity, sign=False)
         result = run_auths(auths_bin, ["verify", sha], cwd=git_repo, env=init_identity)
         combined = (result.stdout + result.stderr).lower()
         assert "git commit -s" not in combined

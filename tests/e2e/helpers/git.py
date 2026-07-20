@@ -1,5 +1,6 @@
 """Git helpers for Auths E2E tests."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -62,8 +63,17 @@ def configure_signing(
     )
 
 
-def make_commit(repo_path: Path, message: str, env: dict[str, str]) -> str:
-    """Create a file, stage it, commit, and return the commit SHA."""
+def make_commit(
+    repo_path: Path, message: str, env: dict[str, str], sign: bool = True
+) -> str:
+    """Create a file, stage it, commit, and return the commit SHA.
+
+    ``auths init`` (via the ``init_identity`` fixture) configures *global* git
+    signing and installs a commit-trailer hook, so a bare ``git commit`` is
+    signed. Pass ``sign=False`` to make a genuinely unsigned commit — it ignores
+    global/system git config (so neither ``commit.gpgsign`` nor the hooks path
+    apply) and adds ``--no-gpg-sign`` — for exercising the unsigned-commit path.
+    """
     import uuid
 
     filename = f"file-{uuid.uuid4().hex[:8]}.txt"
@@ -75,10 +85,19 @@ def make_commit(repo_path: Path, message: str, env: dict[str, str]) -> str:
         check=True,
         capture_output=True,
     )
+    commit_cmd = ["git", "commit", "-m", message]
+    commit_env = env
+    if not sign:
+        commit_cmd = ["git", "commit", "--no-gpg-sign", "-m", message]
+        commit_env = {
+            **env,
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+        }
     subprocess.run(
-        ["git", "commit", "-m", message],
+        commit_cmd,
         cwd=repo_path,
-        env=env,
+        env=commit_env,
         check=True,
         capture_output=True,
     )
