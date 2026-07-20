@@ -10,4 +10,4 @@ QR code generation failed: {0}
 
 ## Suggestion
 
-QR code generation failed; try `auths device pair --mode relay` instead
+QR code generation failed; try relay-based pairing with `auths device pair --registry <url>` instead
