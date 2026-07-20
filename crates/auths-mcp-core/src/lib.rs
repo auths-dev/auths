@@ -45,10 +45,10 @@ pub mod treasury;
 
 pub use attestation::{AttestationError, Attested, RailAttestation};
 pub use audit::{
-    AnnotatedAudit, AuditResume, AuditVerdict, ConsistentProof, RecordFact, SPEND_LOG_GENESIS,
-    Settlement, SpendLogRecord, audit_spend_log, audit_spend_log_annotated,
-    audit_spend_log_resumed, call_commit_binding, read_spend_log, resolve_spend_log, spend_log_dir,
-    spend_log_path, spend_log_period_path,
+    AnnotatedAudit, AuditResume, AuditVerdict, ChainBreakKind, ConsistentProof, LogReadError,
+    RecordFact, SPEND_LOG_GENESIS, Settlement, SpendLogRecord, audit_spend_log,
+    audit_spend_log_annotated, audit_spend_log_resumed, call_commit_binding, read_spend_log,
+    resolve_spend_log, spend_log_dir, spend_log_path, spend_log_period_path,
 };
 pub use budget::{
     BudgetError, CounterKey, CounterRef, CrossRailBudget, FlushPolicy, Hold, ReserveOutcome,
@@ -91,8 +91,24 @@ impl Capability {
     /// an unknown tool fails closed as out-of-scope rather than being waved through.
     pub fn for_tool(tool: &str) -> Self {
         let cap = match tool {
-            "read_file" | "read" | "fs.read" => "fs.read",
-            "write_file" | "write" | "fs.write" => "fs.write",
+            // The read FAMILY (every `readOnlyHint:true` filesystem tool), not just the one
+            // deprecated `read_file` — a modern MCP client told to "read a file" calls
+            // `read_text_file`/`list_directory`/`read_multiple_files`. Every name here is an
+            // EXPLICIT real tool; an unlisted near-miss still falls through to `tool.<name>` below,
+            // so the exact-token boundary the delegator's scope enforces is unchanged.
+            "read_file"
+            | "read_text_file"
+            | "read_media_file"
+            | "read_multiple_files"
+            | "list_directory"
+            | "list_directory_with_sizes"
+            | "directory_tree"
+            | "get_file_info"
+            | "search_files"
+            | "read"
+            | "fs.read" => "fs.read",
+            "write_file" | "edit_file" | "create_directory" | "move_file" | "write"
+            | "fs.write" => "fs.write",
             "create_comment" | "comment" | "github.comment" => "github.comment",
             "paid_call" | "paid.call" => "paid.call",
             other => return Capability(format!("tool.{other}")),
@@ -103,5 +119,69 @@ impl Capability {
     /// The capability as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Capability;
+
+    #[test]
+    fn fs_read_admits_the_read_family() {
+        // A `fs.read` grant covers the whole read family, not just the deprecated `read_file`.
+        for tool in [
+            "read_file",
+            "read_text_file",
+            "read_media_file",
+            "read_multiple_files",
+            "list_directory",
+            "list_directory_with_sizes",
+            "directory_tree",
+            "get_file_info",
+            "search_files",
+        ] {
+            assert_eq!(
+                Capability::for_tool(tool).as_str(),
+                "fs.read",
+                "`{tool}` must map to fs.read"
+            );
+        }
+        // The write family maps to fs.write.
+        for tool in ["write_file", "edit_file", "create_directory", "move_file"] {
+            assert_eq!(
+                Capability::for_tool(tool).as_str(),
+                "fs.write",
+                "`{tool}` must map to fs.write"
+            );
+        }
+        // An unknown tool still fails closed to a synthetic capability the delegator never granted.
+        assert_eq!(Capability::for_tool("rm_rf").as_str(), "tool.rm_rf");
+    }
+
+    #[test]
+    fn capability_for_tool_never_folds_near_misses() {
+        // The tool→capability map is an EXACT-token match — no
+        // case-fold, no substring, no unicode-fold, no traversal. Every near-miss of `read_file`
+        // falls through to a synthetic `tool.*` the delegator never granted, so `--scope fs.read`
+        // refuses it. This MUST survive the read-family widening (which added only real tool names).
+        for near_miss in [
+            "Read_File",        // case
+            "read_file_secret", // suffix
+            "xread_file",       // prefix
+            "reаd_file",        // Cyrillic 'а' (U+0430), not ASCII 'a'
+            "../read_file",     // path traversal
+        ] {
+            let cap = Capability::for_tool(near_miss);
+            assert!(
+                cap.as_str().starts_with("tool."),
+                "`{near_miss}` must fail closed to a synthetic tool.* capability, got {}",
+                cap.as_str()
+            );
+            assert_ne!(
+                cap.as_str(),
+                "fs.read",
+                "`{near_miss}` must NOT fold to fs.read"
+            );
+        }
     }
 }

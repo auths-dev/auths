@@ -80,8 +80,11 @@ pub struct SpendLogRecord {
     /// Raw bytes of the agent's signed `tools/call` proof commit — retained so the audit
     /// re-verifies it offline rather than trusting the receipt's `proof_ref` SHA.
     pub call_commit: Vec<u8>,
-    /// The per-call receipt — the operator's CLAIM. An untrusted hint, cross-checked against the
-    /// signed material; never an input to the audited total.
+    /// UNVERIFIED operator display — a hint, cross-checked against the signed material, never an
+    /// input to the audited total. Serialized as `unverified_display` (not a bare `receipt`) so no
+    /// reader mistakes it for vouched data: rewriting `verdict`/`tool`/`reserved_cents` here —
+    /// every such mutation still audits clean, because the wire never said the block was unverified.
+    #[serde(rename = "unverified_display")]
     pub receipt: Receipt,
     /// The settlement state of this call: [`Settlement::Unmetered`] when it touched no rail, else
     /// [`Settlement::Metered`] carrying the rail and whatever settlement artifacts it reached.
@@ -111,15 +114,31 @@ impl DurableSettled {
 pub struct ConsistentProof {
     calls: usize,
     settled_cents: Cents,
+    /// The final commit binding the log re-derived to — the anti-rollback anchor a caller
+    /// pins against a witness to detect a tail truncation offline. `None` for an empty log.
+    #[serde(default)]
+    head: Option<String>,
+    /// The VERIFIED counterparty the last metered call settled with (the payee signed into
+    /// `Auths-Settle-Ref`, cross-checked against the rail response) — never `receipt.charge_ref`.
+    /// `None` when nothing metered settled.
+    #[serde(default)]
+    counterparty: Option<String>,
 }
 
 impl ConsistentProof {
     /// Mint a proof — `pub(crate)` so ONLY this crate's audit, after every check has passed, can
     /// construct one.
-    pub(crate) fn new(calls: usize, settled_cents: Cents) -> Self {
+    pub(crate) fn new(
+        calls: usize,
+        settled_cents: Cents,
+        head: Option<String>,
+        counterparty: Option<String>,
+    ) -> Self {
         Self {
             calls,
             settled_cents,
+            head,
+            counterparty,
         }
     }
 
@@ -132,6 +151,18 @@ impl ConsistentProof {
     /// counter).
     pub fn settled_cents(&self) -> Cents {
         self.settled_cents
+    }
+
+    /// The final commit binding the log re-derived to — the head a caller pins against a witness
+    /// (offline audit cannot prove completeness; pinning this detects a later rollback).
+    pub fn head(&self) -> Option<&str> {
+        self.head.as_deref()
+    }
+
+    /// The verified counterparty the last metered call settled with (`Auths-Settle-Ref`), or
+    /// `None` when nothing metered settled.
+    pub fn counterparty(&self) -> Option<&str> {
+        self.counterparty.as_deref()
     }
 }
 
@@ -147,19 +178,37 @@ pub enum AuditVerdict {
     /// durable verifier-held counter. Carries the proof of that re-derivation.
     Consistent(ConsistentProof),
     /// A call or settlement proof failed `verify_commit_against_kel_scoped` (forged, altered, or
-    /// signed-after-revocation). `proof_ref` is the offending commit.
+    /// signed-after-revocation). `at` is the record's positional index (an auditor-fixed number a
+    /// tamperer cannot choose); `proof_ref` is the offending commit's operator-forgeable display id,
+    /// kept only as a secondary hint.
     TamperedProof {
-        /// The proof reference (commit SHA) that failed verification.
+        /// The record index that failed verification — the primary, un-forgeable locator.
+        at: usize,
+        /// The proof reference (commit SHA) that failed verification — a secondary hint.
         proof_ref: String,
     },
     /// A settlement commit's SIGNED cost disagrees with the cost re-extracted from the
     /// recorded rail response — the operator signed one number but logged another response.
     CostMismatch {
+        /// The record index at fault — the primary, un-forgeable locator.
+        at: usize,
         /// The cost the agent SIGNED in the settlement commit.
         signed_cents: Cents,
         /// The cost re-extracted from the recorded rail response.
         recomputed_cents: Cents,
-        /// The settlement commit at fault.
+        /// The settlement commit at fault — a secondary hint.
+        proof_ref: String,
+    },
+    /// The rail response's charge id disagrees with the counterparty the agent SIGNED in
+    /// `Auths-Settle-Ref` — the recorded payee was rewritten after signing.
+    CounterpartyMismatch {
+        /// The record index at fault — the primary, un-forgeable locator.
+        at: usize,
+        /// The counterparty the agent SIGNED in `Auths-Settle-Ref`.
+        signed_counterparty: String,
+        /// The counterparty the recorded rail response actually paid.
+        response_counterparty: String,
+        /// The settlement commit at fault — a secondary hint.
         proof_ref: String,
     },
     /// The re-derived cross-rail total (summed from the SIGNED costs) disagrees with the
@@ -170,10 +219,17 @@ pub enum AuditVerdict {
         /// The cumulative the operator's counter/receipt claimed.
         claimed_cents: Cents,
     },
-    /// The signed proof chain has a gap at record index `at` — a call was dropped or reordered.
-    DroppedCall {
+    /// The signed proof chain broke at record index `at` — a record is missing, out of order, or
+    /// duplicated (distinguished by `kind`). `more` counts any further breaks past the first, so a
+    /// combined middle-delete + tail-truncation reports both, not only the first gap.
+    ChainBreak {
         /// The record index where continuity broke.
         at: usize,
+        /// What kind of break it is — missing, reordered, or duplicated.
+        kind: ChainBreakKind,
+        /// How many additional breaks the walk found past this one.
+        #[serde(default)]
+        more: usize,
     },
     /// The agent's delegation was revoked as of record index `at`; calls at/after it are
     /// unauthorized.
@@ -181,6 +237,22 @@ pub enum AuditVerdict {
         /// The record index at/after which the delegation was revoked.
         at: usize,
     },
+}
+
+/// How a spend-log chain broke, decided off the set of commit bindings already seen: a
+/// prev-link into nowhere is [`ChainBreakKind::Missing`], a prev-link back into the log is
+/// [`ChainBreakKind::OutOfOrder`], and a re-seen binding is [`ChainBreakKind::Duplicate`].
+/// A duplicate is an EXTRA record and a reorder drops NOTHING — distinct attacks the old
+/// single `dropped-call` code conflated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChainBreakKind {
+    /// The record's `Auths-Prev` points to a binding the log does not hold — a record was dropped.
+    Missing,
+    /// The record's `Auths-Prev` points BACK into the log — records were reordered.
+    OutOfOrder,
+    /// The record's own binding was already seen earlier — a record was duplicated.
+    Duplicate,
 }
 
 impl AuditVerdict {
@@ -192,11 +264,15 @@ impl AuditVerdict {
     /// A stable kebab-case code (for logs, the CLI, and exit-code mapping).
     pub fn code(&self) -> &'static str {
         match self {
-            AuditVerdict::Consistent(_) => "consistent",
+            // "self-consistent", never a bare "consistent": an offline audit proves the log
+            // agrees with itself, NOT that it is complete (a $0/refused tail truncation is
+            // invisible offline). Completeness needs a witnessed head pin — see Display.
+            AuditVerdict::Consistent(_) => "self-consistent",
             AuditVerdict::TamperedProof { .. } => "tampered-proof",
             AuditVerdict::CostMismatch { .. } => "cost-mismatch",
+            AuditVerdict::CounterpartyMismatch { .. } => "counterparty-mismatch",
             AuditVerdict::BudgetMismatch { .. } => "budget-mismatch",
-            AuditVerdict::DroppedCall { .. } => "dropped-call",
+            AuditVerdict::ChainBreak { .. } => "chain-break",
             AuditVerdict::Revoked { .. } => "revoked",
         }
     }
@@ -207,23 +283,40 @@ impl fmt::Display for AuditVerdict {
         match self {
             AuditVerdict::Consistent(proof) => write!(
                 f,
-                "consistent — {} call(s), ${}.{:02} re-derived from signed costs",
+                "self-consistent — {} call(s), ${}.{:02} re-derived from signed costs \
+                 (completeness unproven offline — pin head {} against a witness to detect rollback)",
                 proof.calls(),
                 proof.settled_cents().get() / 100,
-                proof.settled_cents().get() % 100
+                proof.settled_cents().get() % 100,
+                proof.head().unwrap_or("<empty>"),
             ),
-            AuditVerdict::TamperedProof { proof_ref } => {
-                write!(f, "tampered-proof — {proof_ref} failed verification")
+            AuditVerdict::TamperedProof { at, proof_ref } => {
+                write!(
+                    f,
+                    "tampered-proof — record {at} failed verification (proof_ref hint {proof_ref})"
+                )
             }
             AuditVerdict::CostMismatch {
+                at,
                 signed_cents,
                 recomputed_cents,
                 proof_ref,
             } => write!(
                 f,
-                "cost-mismatch — {proof_ref} signed {}c but the rail response is {}c",
+                "cost-mismatch — record {at} signed {}c but the rail response is {}c \
+                 (proof_ref hint {proof_ref})",
                 signed_cents.get(),
                 recomputed_cents.get()
+            ),
+            AuditVerdict::CounterpartyMismatch {
+                at,
+                signed_counterparty,
+                response_counterparty,
+                proof_ref,
+            } => write!(
+                f,
+                "counterparty-mismatch — record {at} signed payee {signed_counterparty} \
+                 but the rail response paid {response_counterparty} (proof_ref hint {proof_ref})"
             ),
             AuditVerdict::BudgetMismatch {
                 recomputed_cents,
@@ -234,8 +327,17 @@ impl fmt::Display for AuditVerdict {
                 recomputed_cents.get(),
                 claimed_cents.get()
             ),
-            AuditVerdict::DroppedCall { at } => {
-                write!(f, "dropped-call — chain gap at record {at}")
+            AuditVerdict::ChainBreak { at, kind, more } => {
+                let extra = if *more > 0 {
+                    format!(" (plus {more} more)")
+                } else {
+                    String::new()
+                };
+                write!(
+                    f,
+                    "chain-break — record {at}: {kind:?}{extra} \
+                     (re-fetch the canonical log and diff)"
+                )
             }
             AuditVerdict::Revoked { at } => {
                 write!(f, "revoked — delegation revoked as of record {at}")
@@ -330,14 +432,103 @@ pub fn read_spend_log(path: &Path) -> std::io::Result<Vec<SpendLogRecord>> {
     let mut records = Vec::new();
     for file in files {
         let raw = std::fs::read_to_string(&file)?;
-        for line in raw.lines().filter(|l| !l.trim().is_empty()) {
-            records.push(
-                serde_json::from_str::<SpendLogRecord>(line)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
-            );
+        let non_empty: Vec<&str> = raw.lines().filter(|l| !l.trim().is_empty()).collect();
+        for (line_idx, line) in non_empty.iter().enumerate() {
+            match serde_json::from_str::<SpendLogRecord>(line) {
+                Ok(record) => records.push(record),
+                // A bad line is a READ failure, never a `tampered-proof` — the audit must SPEAK
+                // (corrupt / not-JSONL / crash-truncated), not emit raw serde noise.
+                Err(e) => {
+                    let is_last = line_idx + 1 == non_empty.len();
+                    let malformed = LogReadError::classify(records.len() + 1, is_last, &e);
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        malformed.to_string(),
+                    ));
+                }
+            }
         }
     }
     Ok(records)
+}
+
+/// Why a spend log could not be READ — a first-class, non-tamper outcome that SPEAKS the cause so a
+/// naive operator who `jq .`'d their own log (or hit a crash-truncated tail) gets a fix, never raw
+/// serde noise mistaken for fraud. Kept firmly OUT of the `tampered-proof`/`cost-mismatch` family
+/// (corruption is not conflated with tampering).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogReadError {
+    /// A record spans multiple lines — almost always a `jq .` pretty-print. JSONL is one record
+    /// per line.
+    NotOneLineJson {
+        /// The 1-based record position that could not be read as one line.
+        record: usize,
+    },
+    /// The final record is a partial write — the file was cut off (a crash mid-append).
+    TruncatedRecord {
+        /// The 1-based record position that was truncated.
+        record: usize,
+    },
+    /// A record is neither multiline nor a clean truncation — some other corruption.
+    CorruptRecord {
+        /// The 1-based record position that could not be parsed.
+        record: usize,
+        /// The underlying parse detail.
+        detail: String,
+    },
+}
+
+impl LogReadError {
+    /// Classify a failed line parse off the serde error and whether it was the LAST non-empty line:
+    /// an unexpected-end error on a NON-last line is a multiline (`jq .`) record; on the LAST line
+    /// it is a crash-truncated tail; anything else is other corruption.
+    ///
+    /// Args:
+    /// * `record`: the 1-based record position that failed.
+    /// * `is_last`: whether the failing line was the last non-empty line of its file.
+    /// * `err`: the serde parse error.
+    ///
+    /// Usage:
+    /// ```ignore
+    /// let malformed = LogReadError::classify(3, true, &serde_err);
+    /// ```
+    pub fn classify(record: usize, is_last: bool, err: &serde_json::Error) -> LogReadError {
+        if err.is_eof() {
+            if is_last {
+                LogReadError::TruncatedRecord { record }
+            } else {
+                LogReadError::NotOneLineJson { record }
+            }
+        } else {
+            LogReadError::CorruptRecord {
+                record,
+                detail: err.to_string(),
+            }
+        }
+    }
+}
+
+impl fmt::Display for LogReadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogReadError::NotOneLineJson { record } => write!(
+                f,
+                "malformed-log — record {record} is not one-line JSON \
+                 (did you `jq .` this? JSONL is one record per line)"
+            ),
+            LogReadError::TruncatedRecord { record } => write!(
+                f,
+                "malformed-log — the final record ({record}) is truncated; \
+                 the file may have been cut off by a crash"
+            ),
+            LogReadError::CorruptRecord { record, detail } => {
+                write!(
+                    f,
+                    "malformed-log — record {record} could not be parsed: {detail}"
+                )
+            }
+        }
+    }
 }
 
 /// A filesystem-safe single component from a delegation id: strip the `did:keri:` scheme and map
@@ -478,6 +669,10 @@ pub struct RecordFact {
     /// The agent-signed (facilitator-attested when available) settled cost of this
     /// record — `None` for an unmetered or zero-cost call.
     pub signed_cents: Option<Cents>,
+    /// The VERIFIED counterparty this record settled with — the payee signed into
+    /// `Auths-Settle-Ref` and cross-checked against the rail response. `None` for an unmetered
+    /// or zero-cost call. A consumer acts on THIS, never on the operator-controlled display.
+    pub counterparty: Option<String>,
 }
 
 /// An audit verdict together with the per-record [`RecordFact`]s the walk established
@@ -539,9 +734,25 @@ async fn audit_walk(
     // The binding each record's `Auths-Prev` must match — the prior record's commit hash, the
     // resumed prefix's final binding, or the genesis sentinel for a from-the-top audit.
     let mut expected_prev = resume.prior_binding.clone();
+    // Every call binding seen so far — a re-seen OWN binding is a duplicate.
+    let mut seen_bindings: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Every binding the log holds (any position). A broken prev-link that STILL points into this
+    // set is a reorder (the record exists, just not as the immediate predecessor); one that points
+    // NOWHERE in the set is a genuinely missing/dropped record.
+    let all_bindings: std::collections::HashSet<String> = records
+        .iter()
+        .map(|r| call_commit_binding(&r.call_commit))
+        .collect();
+    // Structural breaks are collected (not returned on the first) so a combined middle-delete +
+    // tail-truncation reports both; the first is the verdict, the rest are the `more` count.
+    let mut breaks: Vec<(usize, ChainBreakKind)> = Vec::new();
+    // The last verified counterparty (`Auths-Settle-Ref`) — surfaced on the ConsistentProof so a
+    // consumer acts on the proven payee, never the operator-controlled display.
+    let mut last_counterparty: Option<String> = None;
     for (i, rec) in records.iter().enumerate() {
         let settled_before = settled;
         let mut fact_signed_cents: Option<Cents> = None;
+        let mut fact_counterparty: Option<String> = None;
         // Re-verify the SIGNED proof bytes — the gate's own authenticity check, re-run offline.
         let commit_verdict = auths_verifier::verify_commit_against_kel_scoped(
             &rec.call_commit,
@@ -559,6 +770,7 @@ async fn audit_walk(
         match &verdict {
             crate::gate::Verdict::ProofUnauthentic { .. } => {
                 return AuditVerdict::TamperedProof {
+                    at: i,
                     proof_ref: rec.receipt.proof_ref.clone(),
                 };
             }
@@ -569,14 +781,29 @@ async fn audit_walk(
             _ => {}
         }
         // Continuity: each record's SIGNED `Auths-Prev` links to the prior record's commit (the
-        // first to the genesis sentinel). A DROPPED or reordered record breaks the chain and is
-        // caught here — only an EDITED record was caught before (via its broken signature). The
-        // proof was just verified authentic, so this trailer is signed and trustworthy.
+        // first to the genesis sentinel). A DROPPED, reordered, or DUPLICATED record breaks the
+        // chain — distinguished by whether the prev-link points nowhere (missing), back into the
+        // log (reorder), or the record's own binding was already seen (duplicate). The proof was
+        // just verified authentic, so this trailer is signed and trustworthy.
+        let this_binding = call_commit_binding(&rec.call_commit);
         let claimed_prev = commit_trailer(&rec.call_commit, "Auths-Prev").unwrap_or("");
         if claimed_prev != expected_prev {
-            return AuditVerdict::DroppedCall { at: i };
+            let kind = if seen_bindings.contains(&this_binding) {
+                ChainBreakKind::Duplicate
+            } else if all_bindings.contains(claimed_prev) {
+                ChainBreakKind::OutOfOrder
+            } else {
+                ChainBreakKind::Missing
+            };
+            breaks.push((i, kind));
+            // Resync so the walk continues past the break, counting any further breaks rather than
+            // reporting only the first — still fail-closed (any break blocks `Consistent`).
+            seen_bindings.insert(this_binding.clone());
+            expected_prev = this_binding;
+            continue;
         }
-        expected_prev = call_commit_binding(&rec.call_commit);
+        seen_bindings.insert(this_binding.clone());
+        expected_prev = this_binding;
         // Sum the settled cost for a call that (a) carries an AUTHENTIC, IN-SCOPE proof —
         // `Allowed`/`AgentExpired`, both PROOF-DETERMINED, so the operator cannot relabel a settled
         // call as refused without breaking its signature (`OutsideAgentScope` never settled) — AND
@@ -595,26 +822,29 @@ async fn audit_walk(
         {
             let rail = rail.as_str();
             let resp = resp.as_slice();
-            // The cost the rail's own recorded response reports. The response is operator-held and
-            // unsigned, so it is only a cross-check — the authoritative amount is the one the agent
-            // SIGNED in the settlement below.
-            let recomputed = match crate::rail::extract(rail, resp) {
-                Ok(c) => c.amount_cents,
+            // The cost + reference the rail's own recorded response reports. The response is
+            // operator-held and unsigned, so it is only a cross-check — the authoritative amount
+            // and payee are the ones the agent SIGNED in the settlement below.
+            let extracted = match crate::rail::extract(rail, resp) {
+                Ok(c) => c,
                 // A settled call whose recorded response no longer extracts is a tampered response.
                 Err(_) => {
                     return AuditVerdict::CostMismatch {
+                        at: i,
                         signed_cents: Cents::ZERO,
                         recomputed_cents: Cents::ZERO,
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 }
             };
+            let recomputed = extracted.amount_cents;
             // A non-zero settled cost MUST come from a settlement the agent signed. Requiring it
             // closes the downgrade where an operator strips the settlement and falls back to a rail
             // response it authored. (A zero-cost forwarded call settles nothing and needs none.)
             if !recomputed.is_zero() {
                 let Some(settle_commit) = settlement_commit.as_deref() else {
                     return AuditVerdict::TamperedProof {
+                        at: i,
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 };
@@ -634,6 +864,7 @@ async fn audit_walk(
                     crate::gate::Verdict::Allowed | crate::gate::Verdict::AgentExpired
                 ) {
                     return AuditVerdict::TamperedProof {
+                        at: i,
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 }
@@ -644,10 +875,25 @@ async fn audit_walk(
                     != Some(call_commit_binding(&rec.call_commit).as_str())
                 {
                     return AuditVerdict::TamperedProof {
+                        at: i,
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 }
-                // 3. The agent-signed cost, cross-checked against the rail's own response — a
+                // 3. The COUNTERPARTY: the payee the agent SIGNED in `Auths-Settle-Ref` must equal
+                //    the charge id the rail response actually paid. A disagreement means the recorded
+                //    payee was rewritten after signing — the committed-but-unaudited counterparty.
+                let signed_ref = commit_trailer(settle_commit, "Auths-Settle-Ref").unwrap_or("");
+                if signed_ref != extracted.reference {
+                    return AuditVerdict::CounterpartyMismatch {
+                        at: i,
+                        signed_counterparty: signed_ref.to_string(),
+                        response_counterparty: extracted.reference.clone(),
+                        proof_ref: rec.receipt.proof_ref.clone(),
+                    };
+                }
+                fact_counterparty = Some(signed_ref.to_string());
+                last_counterparty = fact_counterparty.clone();
+                // 4. The agent-signed cost, cross-checked against the rail's own response — a
                 //    disagreement means the operator swapped the response (or the signed amount).
                 // The signed cents trailer is a decimal string — parse to u64 then wrap at this
                 // commit-trailer boundary.
@@ -656,11 +902,13 @@ async fn audit_walk(
                     .map(Cents::new)
                 else {
                     return AuditVerdict::TamperedProof {
+                        at: i,
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 };
                 if signed != recomputed {
                     return AuditVerdict::CostMismatch {
+                        at: i,
                         signed_cents: signed,
                         recomputed_cents: recomputed,
                         proof_ref: rec.receipt.proof_ref.clone(),
@@ -682,12 +930,14 @@ async fn audit_walk(
                             Ok(a) => a,
                             Err(_) => {
                                 return AuditVerdict::TamperedProof {
+                                    at: i,
                                     proof_ref: rec.receipt.proof_ref.clone(),
                                 };
                             }
                         };
                         if attested.amount() != signed {
                             return AuditVerdict::CostMismatch {
+                                at: i,
                                 signed_cents: signed,
                                 recomputed_cents: attested.amount(),
                                 proof_ref: rec.receipt.proof_ref.clone(),
@@ -699,7 +949,7 @@ async fn audit_walk(
                 };
                 settled = settled.saturating_add(summand);
                 fact_signed_cents = Some(summand);
-                // 4. The signed running total ties the cumulative to signed material, so the budget
+                // 5. The signed running total ties the cumulative to signed material, so the budget
                 //    leg does not rest on the operator's own (unsigned) receipt cumulative. The
                 //    trailer is a decimal string — parse to u64 then wrap at this boundary.
                 let Some(signed_cumulative) =
@@ -708,6 +958,7 @@ async fn audit_walk(
                         .map(Cents::new)
                 else {
                     return AuditVerdict::TamperedProof {
+                        at: i,
                         proof_ref: rec.receipt.proof_ref.clone(),
                     };
                 };
@@ -726,8 +977,18 @@ async fn audit_walk(
                 binding: expected_prev.clone(),
                 settled_cents_before: settled_before,
                 signed_cents: fact_signed_cents,
+                counterparty: fact_counterparty,
             });
         }
+    }
+    // A structural break (missing / reordered / duplicated record) blocks a clean verdict — report
+    // the first with a count of any further breaks, BEFORE the budget/counter cross-checks below.
+    if let Some(&(at, kind)) = breaks.first() {
+        return AuditVerdict::ChainBreak {
+            at,
+            kind,
+            more: breaks.len().saturating_sub(1),
+        };
     }
     // The operator's claimed cross-rail total is the last record's cumulative — an UNTRUSTED hint we
     // compare against the cost we re-derived from the rail responses. An EMPTY resumed suffix has
@@ -769,6 +1030,10 @@ async fn audit_walk(
     AuditVerdict::Consistent(ConsistentProof::new(
         resume.prior_records + records.len(),
         settled,
+        // The head the caller pins against a witness to detect a later rollback (offline audit
+        // cannot prove completeness). `None` for an empty log — nothing to be consistent with.
+        records.last().map(|r| call_commit_binding(&r.call_commit)),
+        last_counterparty,
     ))
 }
 
@@ -838,17 +1103,25 @@ mod tests {
 
     #[test]
     fn audit_verdict_code_and_is_consistent() {
-        let ok = AuditVerdict::Consistent(ConsistentProof::new(3, Cents::new(450)));
+        let ok = AuditVerdict::Consistent(ConsistentProof::new(
+            3,
+            Cents::new(450),
+            Some("deadbeefhead".to_string()),
+            None,
+        ));
         assert!(ok.is_consistent());
-        assert_eq!(ok.code(), "consistent");
+        // The offline audit proves self-consistency, never completeness — the code says so.
+        assert_eq!(ok.code(), "self-consistent");
 
         let bad = AuditVerdict::TamperedProof {
+            at: 0,
             proof_ref: "deadbeef".into(),
         };
         assert!(!bad.is_consistent());
         assert_eq!(bad.code(), "tampered-proof");
         assert_eq!(
             AuditVerdict::CostMismatch {
+                at: 1,
                 signed_cents: Cents::new(10),
                 recomputed_cents: Cents::new(5),
                 proof_ref: "s".into()
@@ -856,13 +1129,87 @@ mod tests {
             .code(),
             "cost-mismatch"
         );
-        assert_eq!(AuditVerdict::DroppedCall { at: 2 }.code(), "dropped-call");
+        assert_eq!(
+            AuditVerdict::ChainBreak {
+                at: 2,
+                kind: ChainBreakKind::Missing,
+                more: 0
+            }
+            .code(),
+            "chain-break"
+        );
         assert_eq!(AuditVerdict::Revoked { at: 4 }.code(), "revoked");
+    }
+
+    #[test]
+    fn consistent_display_carries_the_completeness_caveat_and_head() {
+        // The success line must never be a bare `consistent` — it names self-consistency, the
+        // completeness caveat, and the head to pin against a witness.
+        let proof = ConsistentProof::new(7, Cents::new(0), Some("abc123head".to_string()), None);
+        let shown = AuditVerdict::Consistent(proof).to_string();
+        assert!(shown.starts_with("self-consistent"), "{shown}");
+        assert!(shown.contains("completeness unproven"), "{shown}");
+        assert!(shown.contains("abc123head"), "{shown}");
+        // An empty log names `<empty>` as the head — an empty log proves nothing.
+        let empty = ConsistentProof::new(0, Cents::ZERO, None, None);
+        let shown_empty = AuditVerdict::Consistent(empty).to_string();
+        assert!(shown_empty.contains("0 call(s)"), "{shown_empty}");
+        assert!(
+            shown_empty.contains("completeness unproven"),
+            "{shown_empty}"
+        );
+        assert!(shown_empty.contains("<empty>"), "{shown_empty}");
+    }
+
+    #[test]
+    fn counterparty_mismatch_code_and_display() {
+        let v = AuditVerdict::CounterpartyMismatch {
+            at: 3,
+            signed_counterparty: "ch_3Mml".into(),
+            response_counterparty: "ch_ATTACKERxxx".into(),
+            proof_ref: "deadbeef".into(),
+        };
+        assert_eq!(v.code(), "counterparty-mismatch");
+        let shown = v.to_string();
+        assert!(shown.contains("record 3"), "{shown}");
+        assert!(shown.contains("ch_3Mml"), "{shown}");
+        assert!(shown.contains("ch_ATTACKERxxx"), "{shown}");
+    }
+
+    #[test]
+    fn tampered_proof_display_leads_with_the_positional_index() {
+        // A tamperer forges `proof_ref` to any string; the auditor-fixed positional `at` leads the
+        // Display so the record named is not attacker-chosen.
+        let v = AuditVerdict::TamperedProof {
+            at: 5,
+            proof_ref: "deadbeefATTACKER".into(),
+        };
+        let shown = v.to_string();
+        assert!(shown.starts_with("tampered-proof — record 5"), "{shown}");
+    }
+
+    #[test]
+    fn chain_break_kinds_are_distinct_on_the_wire() {
+        for kind in [
+            ChainBreakKind::Missing,
+            ChainBreakKind::OutOfOrder,
+            ChainBreakKind::Duplicate,
+        ] {
+            let v = AuditVerdict::ChainBreak {
+                at: 0,
+                kind,
+                more: 0,
+            };
+            let json = serde_json::to_string(&v).unwrap();
+            assert!(json.contains("\"verdict\":\"chain-break\""), "{json}");
+            assert_eq!(serde_json::from_str::<AuditVerdict>(&json).unwrap(), v);
+        }
     }
 
     #[test]
     fn audit_verdict_serde_roundtrips_tagged_kebab() {
         let v = AuditVerdict::CostMismatch {
+            at: 2,
             signed_cents: Cents::new(60),
             recomputed_cents: Cents::new(50),
             proof_ref: "p".into(),
@@ -892,9 +1239,48 @@ mod tests {
             !line.contains('\n'),
             "a record must serialize to a single JSONL line"
         );
+        // The operator's per-call block is named `unverified_display` on the wire — never a bare
+        // `receipt` — so no reader mistakes it for vouched data.
+        assert!(
+            line.contains("\"unverified_display\""),
+            "the operator block must announce it is unverified: {line}"
+        );
+        assert!(
+            !line.contains("\"receipt\""),
+            "the wire must not carry a bare `receipt` key: {line}"
+        );
         // Round-trips stably (Receipt isn't PartialEq, so compare the canonical serialization).
         let back: SpendLogRecord = serde_json::from_str(&line).unwrap();
         assert_eq!(serde_json::to_string(&back).unwrap(), line);
+    }
+
+    #[tokio::test]
+    async fn empty_log_audits_self_consistent_with_records_zero() {
+        // An empty log is NOT a clean bill of health — it re-derives self-consistent with a
+        // records:0 signal and the completeness caveat, never a bare `consistent — 0 call(s)`.
+        let verdict = audit_spend_log(
+            &[],
+            &[],
+            &[],
+            &["did:keri:Eroot".to_string()],
+            0,
+            None,
+            None,
+        )
+        .await;
+        match &verdict {
+            AuditVerdict::Consistent(proof) => {
+                assert_eq!(proof.calls(), 0);
+                assert!(proof.head().is_none(), "an empty log pins no head");
+            }
+            other => panic!("empty log should be self-consistent, got {other:?}"),
+        }
+        let shown = verdict.to_string();
+        assert!(shown.contains("completeness unproven"), "{shown}");
+        assert!(
+            !shown.starts_with("consistent —"),
+            "no bare consistent: {shown}"
+        );
     }
 
     #[test]
@@ -938,15 +1324,69 @@ mod tests {
         // a corrupted/edited line fails closed, never silently drops a record
         std::fs::write(&path, format!("{line}\nnot json\n")).unwrap();
         assert!(read_spend_log(&path).is_err());
+
+        // A pretty-printed (`jq .`) log — a record split across many lines — SPEAKS as a
+        // not-one-line-JSON malformed-log, never raw serde noise or `tampered-proof`.
+        let record: SpendLogRecord = serde_json::from_str(&line).unwrap();
+        let pretty = serde_json::to_string_pretty(&record).unwrap();
+        std::fs::write(&path, format!("{pretty}\n")).unwrap();
+        let err = read_spend_log(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("malformed-log"), "{msg}");
+        assert!(
+            msg.contains("not one-line JSON") || msg.contains("jq"),
+            "{msg}"
+        );
+        assert!(
+            !msg.contains("tampered"),
+            "a read error must not read as tamper: {msg}"
+        );
+
+        // A crash-truncated final record — the last line cut off mid-object — SPEAKS as truncated.
+        let half = &line[..line.len() / 2];
+        std::fs::write(&path, format!("{line}\n{half}")).unwrap();
+        let err = read_spend_log(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("malformed-log") && msg.contains("truncated"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn log_read_error_classification_distinguishes_the_causes() {
+        // The typed classification: an unexpected-end on a NON-last
+        // line is a multiline `jq .` record; on the LAST line it is a crash-truncated tail; a
+        // value error is other corruption. All three are read errors, never `tampered-proof`.
+        let eof = serde_json::from_str::<SpendLogRecord>("{").unwrap_err();
+        assert!(matches!(
+            LogReadError::classify(1, false, &eof),
+            LogReadError::NotOneLineJson { record: 1 }
+        ));
+        assert!(matches!(
+            LogReadError::classify(2, true, &eof),
+            LogReadError::TruncatedRecord { record: 2 }
+        ));
+        let bad = serde_json::from_str::<SpendLogRecord>("not json").unwrap_err();
+        assert!(matches!(
+            LogReadError::classify(3, true, &bad),
+            LogReadError::CorruptRecord { record: 3, .. }
+        ));
     }
 
     #[test]
     fn commit_trailer_matches_the_token_exactly() {
         let commit =
-            b"tree abc\n\ntools/settle\n\nAuths-Settle-Call:def\nAuths-Settle-Cents: 175\nAuths-Settle-Cumulative:500\n";
+            b"tree abc\n\ntools/settle\n\nAuths-Settle-Call:def\nAuths-Settle-Cents: 175\nAuths-Settle-Ref:ch_3MmlLrLkdIwHu7ix\nAuths-Settle-Cumulative:500\n";
         // Exact token match, with or without a space after the colon.
         assert_eq!(commit_trailer(commit, "Auths-Settle-Cents"), Some("175"));
         assert_eq!(commit_trailer(commit, "Auths-Settle-Call"), Some("def"));
+        // The SIGNED payee reads back exactly — the counterparty the audit cross-checks against
+        // the rail response's charge id.
+        assert_eq!(
+            commit_trailer(commit, "Auths-Settle-Ref"),
+            Some("ch_3MmlLrLkdIwHu7ix")
+        );
         // `Auths-Settle-Cents` must NOT match the longer `Auths-Settle-Cumulative` line.
         assert_eq!(
             commit_trailer(commit, "Auths-Settle-Cumulative"),

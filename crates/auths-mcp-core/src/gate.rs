@@ -249,6 +249,28 @@ impl PerCallGate {
         })
     }
 
+    /// Re-resolve the delegator KEL (which carries the revocation/expiry seals) from the registry,
+    /// so a mid-session revocation propagates to a long-lived gateway within the caller's recheck
+    /// SLA instead of only on process restart. The gate resolves both KELs once at
+    /// construction and judges against that session-fixed snapshot forever; this refreshes the
+    /// delegator half — the one that gains a revocation seal — before the next judge.
+    ///
+    /// Args:
+    /// * `registry`: the issuer registry the delegator KEL is re-read from (the same one
+    ///   [`PerCallGate::resolve`] used).
+    ///
+    /// Usage:
+    /// ```ignore
+    /// gate.refresh_delegator(&registry)?; // then gate.judge(...) sees a fresh revocation
+    /// ```
+    pub fn refresh_delegator(&mut self, registry: &dyn RegistryBackend) -> Result<(), GateError> {
+        let chain = KelResolverChain::local(registry);
+        self.delegator_kel = chain.resolve_kel(&self.delegator_did).map_err(|e| {
+            GateError::GrantUnresolved(format!("delegator KEL refresh {}: {e}", self.delegator_did))
+        })?;
+        Ok(())
+    }
+
     /// Independently re-audit a persisted spend log with THIS gate's resolved KELs — the offline
     /// [`crate::audit::audit_spend_log`] driven by the same agent/delegator KELs + pinned root the
     /// gate judges against. Lets the hermetic gate re-audit its own log end-to-end: after a run,
@@ -555,6 +577,29 @@ mod tests {
             Verdict::from_commit_verdict(&CommitVerdict::SshSignatureInvalid),
             Verdict::ProofUnauthentic { .. }
         ));
+    }
+
+    #[test]
+    fn refresh_delegator_fails_closed_when_unresolvable() {
+        // The mid-session revocation-propagation hook: `refresh_delegator`
+        // re-reads the delegator KEL from the registry. When the registry cannot resolve it, the
+        // refresh returns `GrantUnresolved` — the proxy turns that into a fail-closed call, never a
+        // silently-stale snapshot. (The revoke→Revoked behavior is locked end-to-end in the e2e
+        // `test_revocation_propagates_within_sla`, which needs the real signing toolchain.)
+        use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
+        let dir = tempfile::tempdir().unwrap();
+        let registry =
+            GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(dir.path()));
+        let mut gate = PerCallGate {
+            agent_did: "did:keri:Eagent".to_string(),
+            delegator_did: "did:keri:Eroot".to_string(),
+            agent_kel: Vec::new(),
+            delegator_kel: Vec::new(),
+        };
+        let err = gate
+            .refresh_delegator(&registry)
+            .expect_err("an unresolvable delegator must fail closed");
+        assert!(matches!(err, GateError::GrantUnresolved(_)), "{err:?}");
     }
 
     #[test]

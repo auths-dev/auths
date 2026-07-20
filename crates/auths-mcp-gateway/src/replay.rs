@@ -123,7 +123,16 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
     if !scope.iter().any(|c| c == "settle") {
         scope.push("settle".to_string());
     }
-    let mut chain = Chain::build(&lab, &scope)?;
+    // Anchor the transcript's TTL as the delegation's expiry seal (a malformed one fails the
+    // replay rather than serving an unenforced bound); a transcript with no ttl is unbounded.
+    let ttl_secs = transcript
+        .grant
+        .ttl
+        .as_deref()
+        .map(crate::proxy::parse_ttl_secs)
+        .transpose()
+        .map_err(|e| anyhow::anyhow!("invalid transcript grant ttl: {e}"))?;
+    let mut chain = Chain::build(&lab, &scope, ttl_secs)?;
     println!(
         "▸ chain: identity={} device={}",
         chain.root_did, chain.agent_did
@@ -226,7 +235,9 @@ pub async fn run(transcript_path: &Path) -> anyhow::Result<bool> {
             let verdict = gate
                 .audit_spend_log(&records, Utc::now().timestamp(), Some(&counter), None)
                 .await;
-            println!("▸ audit: {} — {verdict}", verdict.code());
+            // The Display already leads with the verdict code — print it ONCE (no `{code} — …`
+            // doubling).
+            println!("▸ audit: {verdict}");
             // Emit the exact args to re-run the audit as a STANDALONE process (`verify-spend`),
             // so an external party (and the smoke) can re-derive this verdict from disk alone.
             println!(

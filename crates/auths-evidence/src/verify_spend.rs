@@ -152,9 +152,13 @@ pub async fn verify_spend(
 
 /// Build the typed `audit/v1` report from a walk's verdict + the full record set.
 pub fn report_of(verdict: &AuditVerdict, records: &[SpendLogRecord]) -> AuditV1 {
-    let (audited, settled) = match verdict {
-        AuditVerdict::Consistent(proof) => (proof.calls(), proof.settled_cents().get()),
-        _ => (0, 0),
+    let (audited, settled, counterparty) = match verdict {
+        AuditVerdict::Consistent(proof) => (
+            proof.calls(),
+            proof.settled_cents().get(),
+            proof.counterparty().map(str::to_string),
+        ),
+        _ => (0, 0, None),
     };
     let checkpoint = records.last().map(|last| AuditCheckpoint {
         records: records.len(),
@@ -168,8 +172,71 @@ pub fn report_of(verdict: &AuditVerdict, records: &[SpendLogRecord]) -> AuditV1 
         consistent: verdict.is_consistent(),
         records: audited,
         settled_cents: settled,
+        counterparty,
+        // An offline audit never proves completeness — a consumer branches on this field.
+        completeness: verdict
+            .is_consistent()
+            .then(|| "unproven-offline".to_string()),
         checkpoint,
         treasury: None,
         freshness: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Mint a `Consistent` verdict through serde — the typed proof's constructor is deliberately
+    /// private to production code, so tests build it from its wire shape (as the judge tests do).
+    fn consistent(calls: usize, settled: u64, head: &str, counterparty: &str) -> AuditVerdict {
+        serde_json::from_value(serde_json::json!({
+            "verdict": "consistent",
+            "calls": calls,
+            "settled_cents": settled,
+            "head": head,
+            "counterparty": counterparty,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn report_of_a_consistent_verdict_round_trips_as_a_portable_object() {
+        // The `--json` verdict object serializes to one portable line carrying the honest
+        // `self-consistent` code.
+        let verdict = consistent(2, 300, "abc123head", "ch_3MmlLrLkdIwHu7ix");
+        let report = report_of(&verdict, &[]);
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(json.contains("\"code\":\"self-consistent\""), "{json}");
+        assert!(json.contains("\"version\":\"audit/v1\""), "{json}");
+        assert!(
+            json.contains("\"counterparty\":\"ch_3MmlLrLkdIwHu7ix\""),
+            "{json}"
+        );
+        assert!(
+            json.contains("\"completeness\":\"unproven-offline\""),
+            "{json}"
+        );
+        // Round-trips.
+        let back: AuditV1 = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.code, "self-consistent");
+        assert!(back.consistent);
+    }
+
+    #[test]
+    fn report_of_a_counterparty_mismatch_is_inconsistent() {
+        let verdict = AuditVerdict::CounterpartyMismatch {
+            at: 0,
+            signed_counterparty: "ch_3Mml".to_string(),
+            response_counterparty: "ch_ATTACKERxxx".to_string(),
+            proof_ref: "deadbeef".to_string(),
+        };
+        let report = report_of(&verdict, &[]);
+        let json = serde_json::to_string(&report).unwrap();
+        assert!(
+            json.contains("\"code\":\"counterparty-mismatch\""),
+            "{json}"
+        );
+        assert!(!report.consistent);
     }
 }
