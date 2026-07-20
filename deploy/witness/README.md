@@ -36,6 +36,8 @@ Install the node binary, then run it directly:
 ```bash
 # From a release: extract witness-node from the v0.1.x tarball onto PATH, or build it:
 cargo build --release -p auths-witness-node
+# Populate the registry with the parties' public KELs (fetches `refs/auths/*`):
+./target/release/witness-node sync-registry --from <party-registry-url> --registry ./registry
 ./target/release/witness-node serve --roles anchor,kel,cosign \
   --bind 0.0.0.0:3333 --data-dir ./wdata --registry ./registry --witness-name my-w1
 ```
@@ -45,8 +47,13 @@ cargo build --release -p auths-witness-node
 ```bash
 cd deploy/witness
 # A witness resolves submitter keys against a local copy of the parties' public
-# registry. Sync it first; WITNESS_REGISTRY defaults to ./registry.
-git clone <party-registry-url> ./registry
+# registry. Sync it first (WITNESS_REGISTRY defaults to ./registry) using the
+# same image — this fetches the `refs/auths/*` namespace the anchor role reads
+# keys from. A plain `git clone` brings only `refs/heads/*`, so the party KELs
+# never arrive and every anchor 422s.
+WITNESS_REGISTRY=$PWD/registry docker compose run --rm witness \
+  sync-registry --from <party-registry-url> --registry /registry
+# Re-run the sync to pick up new or rotated parties.
 WITNESS_SEED=$(openssl rand -hex 32) WITNESS_REGISTRY=$PWD/registry docker compose up
 # health:   http://127.0.0.1:3333/health
 # anchors:  POST http://127.0.0.1:3333/v1/anchor

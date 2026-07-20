@@ -7,9 +7,28 @@ install -m 600 /dev/stdin /etc/auths-witness.env <<EOF
 WITNESS_SEED=${witness_seed}
 EOF
 
+# Durable host dirs on the instance's root volume. The anchor store is the
+# node's anti-equivocation memory and MUST survive restarts — never tmpfs, or
+# the witness co-signs a fork after a reboot. The registry is derived data,
+# re-fetched on every boot below.
+install -d -m 700 /var/lib/auths-witness/data
+install -d -m 700 /var/lib/auths-witness/registry
+
+# Fetch the parties' public registry (the `refs/auths/*` namespace the anchor
+# role resolves keys from) before serving. A plain `git clone` brings only
+# `refs/heads/*`, so the party KELs never arrive and every anchor 422s.
+docker run --rm \
+  --read-only --tmpfs /tmp \
+  -v /var/lib/auths-witness/registry:/registry \
+  ${image} \
+  sync-registry --from ${registry_url} --registry /registry
+
 docker run -d --name auths-witness --restart unless-stopped \
-  --read-only --tmpfs /data \
+  --read-only --tmpfs /tmp \
+  -v /var/lib/auths-witness/data:/data \
+  -v /var/lib/auths-witness/registry:/registry:ro \
   -p ${port}:${port} \
   --env-file /etc/auths-witness.env \
   ${image} \
-  serve --roles ${roles} --bind 0.0.0.0:${port} --anchor-store /data/anchors.db
+  serve --roles ${roles} --bind 0.0.0.0:${port} \
+    --data-dir /data --registry /registry --witness-name ${witness_name}
