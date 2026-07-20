@@ -12,6 +12,15 @@ roles:
   - kel
   - cosign
 
+# The witness's public name, carried in cosignatures and checkpoints.
+witnessName: witness
+
+# The parties' public registry. An init container fetches `refs/auths/*` from
+# this URL into an ephemeral volume before the node serves, so the anchor role
+# can resolve submitter keys. Required — the node fails closed without it.
+registry:
+  url: ""
+
 bind:
   port: 3333
 

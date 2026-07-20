@@ -22,8 +22,12 @@ fn compose_default_registry_interpolates_without_env() {
         std::fs::read_to_string(workspace_root.join("deploy/witness/docker-compose.yml")).unwrap();
     let registry_line = compose
         .lines()
-        .find(|line| line.contains(":/registry:ro"))
+        .find(|line| line.contains("${WITNESS_REGISTRY"))
         .expect("registry volume line present");
+    assert!(
+        registry_line.contains(":/registry"),
+        "registry must mount at /registry, got: {registry_line}"
+    );
     assert!(
         registry_line.contains("${WITNESS_REGISTRY:-"),
         "registry mount must interpolate a default, got: {registry_line}"

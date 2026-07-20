@@ -21,6 +21,7 @@ mod check_error_docs_published;
 mod check_paste_integrity;
 mod check_rfc6979;
 mod check_verify_path_completeness;
+mod gen_contracts;
 mod gen_docs;
 mod gen_error_docs;
 mod gen_schema;
@@ -54,6 +55,13 @@ enum Command {
     GenerateSchemas,
     /// Validate test fixture JSON files against committed schemas
     ValidateSchemas,
+    /// Regenerate the verdict-code manifest (schemas/contracts-v1.json) from the
+    /// verifiers' `code()` methods. Pass `--check` to fail if it is stale.
+    GenContracts {
+        /// Fail instead of writing if the manifest is stale (CI mode).
+        #[arg(long)]
+        check: bool,
+    },
     /// Regenerate error code docs and CLI registry from `AuthsErrorInfo` impls.
     /// Pass `--check` to fail if any output is stale (CI gate).
     GenErrorDocs {
@@ -140,6 +148,7 @@ fn main() -> anyhow::Result<()> {
         Command::GenDocs { check } => gen_docs::run(workspace_root(), check),
         Command::GenerateSchemas => schemas::generate(workspace_root()),
         Command::ValidateSchemas => schemas::validate(workspace_root()),
+        Command::GenContracts { check } => gen_contracts::run(workspace_root(), check),
         Command::GenErrorDocs { check } => gen_error_docs::run(workspace_root(), check),
         Command::TestIntegration { filter } => test_integration::run(filter.as_deref()),
         Command::CheckClippySync => check_clippy_sync::run(workspace_root()),
