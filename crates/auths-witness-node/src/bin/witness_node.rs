@@ -258,11 +258,11 @@ async fn main() -> std::process::ExitCode {
             // party registry need it to be an openable repo. Ensure it exists —
             // an empty registry is a valid new-witness state, and this lets the
             // first node in a network (no peer to sync from) bootstrap cleanly.
-            if has("anchor") || has("registry") {
-                if let Err(e) = auths_witness_node::sync::ensure_registry(&args.registry) {
-                    eprintln!("witness-node: registry init: {e:#}");
-                    return std::process::ExitCode::FAILURE;
-                }
+            if (has("anchor") || has("registry"))
+                && let Err(e) = auths_witness_node::sync::ensure_registry(&args.registry)
+            {
+                eprintln!("witness-node: registry init: {e:#}");
+                return std::process::ExitCode::FAILURE;
             }
 
             let mut app = Router::new();
