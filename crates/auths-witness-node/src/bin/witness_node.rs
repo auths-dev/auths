@@ -218,6 +218,16 @@ fn build_state(args: &ServeArgs) -> Result<Arc<AppState>, String> {
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
+
+    // libgit2 refuses to touch a repo dir owned by a different user (the
+    // "dubious ownership" mitigation, CVE-2022-24765). In a single-tenant
+    // container the data volume's owner legitimately differs from the process
+    // — the node owns its data and the container/VM is the boundary — so opt
+    // out here, exactly as `safe.directory = *` does for the git CLI.
+    unsafe {
+        git2::opts::set_verify_owner_validation(false).ok();
+    }
+
     match cli.command {
         Command::Healthcheck(args) => match probe_health(&args.url) {
             Ok(()) => std::process::ExitCode::SUCCESS,
@@ -315,15 +325,12 @@ async fn main() -> std::process::ExitCode {
             // The registry role serves git transfers — legitimately larger
             // bodies over longer timeouts than an anchor POST — so it gets its
             // own envelope, merged after `core` is sealed so the two never mix.
-            // Fail closed (I-DEPLOY-6) if its repo or the `git` binary is absent.
             let app = if has("registry") {
-                if let Err(e) = registry_ready(&args.registry) {
-                    eprintln!(
-                        "witness-node: registry role: {e} (registry path: {})",
-                        args.registry.display()
-                    );
-                    return std::process::ExitCode::FAILURE;
-                }
+                // The serve surface only needs an initialized repo (guaranteed by
+                // ensure_registry, above) and the `git` binary — NOT a populated
+                // party registry. It serves an empty refs/auths/* until members
+                // exist, which is the correct first-witness state (unlike the
+                // anchor role, which fails closed without parties to resolve).
                 if !auths_witness_node::serve_registry::git_available().await {
                     eprintln!(
                         "witness-node: registry role: the `git` binary is required to serve \

@@ -28,12 +28,13 @@ primary_region = 'lhr'
   # root — run `fly deploy` from there.
   dockerfile = '../Dockerfile'
 
-# One witness, four roles: witness members (kel receipting, spend anchoring,
-# checkpoint cosigning) AND serve the held refs/auths/* read-only (registry) so
-# the node is its own resolution surface. This overrides the image's default
-# CMD to add the `registry` role and our witness name.
+# Bootstrap roles: KEL receipting, checkpoint cosigning, and serving the held
+# refs/auths/* read-only (registry). The `anchor` role is intentionally omitted
+# until members exist — it fails closed without a populated party registry to
+# resolve against (the RT-2 discipline), whereas the registry role happily
+# serves an empty namespace. Add `anchor` once the registry has parties.
 [processes]
-  app = 'serve --roles anchor,kel,cosign,registry --bind 0.0.0.0:3333 --data-dir /data --registry /data/registry --witness-name auths-network'
+  app = 'serve --roles kel,cosign,registry --bind 0.0.0.0:3333 --data-dir /data --registry /data/registry --witness-name auths-network'
 
 [[mounts]]
   # DURABLE, never tmpfs: the per-seed anchor store is the node's
