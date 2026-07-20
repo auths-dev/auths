@@ -133,10 +133,10 @@ pub fn explain(code: &str) -> Option<&'static str> {
 
         // --- auths-core (PairingError) ---
         "AUTHS-E3201" => Some("# AUTHS-E3201\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::Protocol`\n\n## Message\n\n_(transparent — see inner error)_\n\n## Suggestion\n\nEnsure both devices are running compatible auths versions\n"),
-        "AUTHS-E3202" => Some("# AUTHS-E3202\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::QrCodeFailed`\n\n## Message\n\nQR code generation failed: {0}\n\n## Suggestion\n\nQR code generation failed; try `auths device pair --mode relay` instead\n"),
+        "AUTHS-E3202" => Some("# AUTHS-E3202\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::QrCodeFailed`\n\n## Message\n\nQR code generation failed: {0}\n\n## Suggestion\n\nQR code generation failed; try relay-based pairing with `auths device pair --registry <url>` instead\n"),
         "AUTHS-E3203" => Some("# AUTHS-E3203\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::RelayError`\n\n## Message\n\nRelay error: {0}\n\n## Suggestion\n\nCheck your internet connection\n"),
         "AUTHS-E3204" => Some("# AUTHS-E3204\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::LocalServerError`\n\n## Message\n\nLocal server error: {0}\n\n## Suggestion\n\nThe local pairing server failed to start; check that the port is available\n"),
-        "AUTHS-E3205" => Some("# AUTHS-E3205\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::MdnsError`\n\n## Message\n\nmDNS error: {0}\n\n## Suggestion\n\nmDNS discovery failed; try `auths device pair --mode relay` instead\n"),
+        "AUTHS-E3205" => Some("# AUTHS-E3205\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::MdnsError`\n\n## Message\n\nmDNS error: {0}\n\n## Suggestion\n\nmDNS discovery failed; try relay-based pairing with `auths device pair --registry <url>` instead\n"),
         "AUTHS-E3206" => Some("# AUTHS-E3206\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::NoPeerFound`\n\n## Message\n\nNo peer found on local network\n\n## Suggestion\n\nEnsure both devices are on the same network\n"),
         "AUTHS-E3207" => Some("# AUTHS-E3207\n\n**Crate:** `auths-core`\n\n**Type:** `PairingError::LanTimeout`\n\n## Message\n\nLAN pairing timed out\n\n## Suggestion\n\nCheck your network and try again\n"),
 
@@ -408,7 +408,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E5551" => Some("# AUTHS-E5551\n\n**Crate:** `auths-sdk`\n\n**Type:** `TrustError::UnknownIdentity`\n\n## Message\n\nUnknown identity '{did}' and trust policy is '{policy}'\n\n## Suggestion\n\nRun `auths trust pin --did <did>` or add the identity to .auths/roots.json\n"),
         "AUTHS-E5552" => Some("# AUTHS-E5552\n\n**Crate:** `auths-sdk`\n\n**Type:** `TrustError::KeyResolutionFailed`\n\n## Message\n\nFailed to resolve public key for identity {did}\n\n## Suggestion\n\nVerify the identity exists and has a valid public key registered\n"),
         "AUTHS-E5553" => Some("# AUTHS-E5553\n\n**Crate:** `auths-sdk`\n\n**Type:** `TrustError::InvalidTrustStore`\n\n## Message\n\nInvalid trust store: {0}\n\n## Suggestion\n\nCheck the format of your trust store (roots.json or ~/.auths/known_identities.json)\n"),
-        "AUTHS-E5554" => Some("# AUTHS-E5554\n\n**Crate:** `auths-sdk`\n\n**Type:** `TrustError::TofuRequiresInteraction`\n\n## Message\n\nTOFU trust decision required but running in non-interactive mode\n\n## Suggestion\n\nRun interactively (on a TTY) or use `auths verify --trust explicit`\n"),
+        "AUTHS-E5554" => Some("# AUTHS-E5554\n\n**Crate:** `auths-sdk`\n\n**Type:** `TrustError::TofuRequiresInteraction`\n\n## Message\n\nTOFU trust decision required but running in non-interactive mode\n\n## Suggestion\n\nRun interactively (on a TTY), or pre-pin the identity with `auths trust pin` so no interactive decision is needed\n"),
 
         // --- auths-sdk (OrgError) ---
         "AUTHS-E5601" => Some("# AUTHS-E5601\n\n**Crate:** `auths-sdk`\n\n**Type:** `OrgError::AdminNotFound`\n\n## Message\n\nno admin with the given public key found in organization '{org}'\n\n## Suggestion\n\nVerify you are using the correct admin key for this organization\n"),
