@@ -67,7 +67,8 @@ deny = [
     "auths-test-utils",
     "auths-api",
     "auths-rp",
-  ], reason = "git2 must stay in storage/adapter layer; auths-sdk and auths-api git2 are dev-deps only; auth-server uses git2 via the local-git identity resolver; auths-rp's git2 is the optional git-sync registry-fetch adapter (feature-gated off by default)" },
+    "auths-witness-node",
+  ], reason = "git2 must stay in storage/adapter layer; auths-sdk and auths-api git2 are dev-deps only; auth-server uses git2 via the local-git identity resolver; auths-rp's git2 is the optional git-sync registry-fetch adapter (feature-gated off by default); witness-node uses git2 to sync the party registry (refs/auths/*) it fail-closes on" },
 ]
 
 [advisories]
