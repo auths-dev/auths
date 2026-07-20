@@ -84,6 +84,41 @@ without harm. If you must re-cut, bump to the next patch instead.
 `release.yml` builds `--locked`, so the root `Cargo.lock` **must** already be
 stamped to X.Y.Z — `0_versions.py --set` does that (gotcha #1); don't skip it.
 
+## Re-running ONE failed channel (surgical — do NOT re-tag)
+
+The tag usually publishes most channels and one fails on its own (a flaky
+step, a version-sync miss, etc.). **Do not re-push the tag to retry.** A
+re-tag re-fires *every* workflow, and the channels that already succeeded
+collide: crates.io is unyankable, and npm/PyPI reject republishing an existing
+version — you get harmless-but-alarming red X's and no clean signal. Re-run
+only the channel that failed.
+
+Every `publish-*` workflow has a `workflow_dispatch` trigger with a `target`
+input (default is a **dry run**; pass the live value to actually publish). Fix
+the root cause on `main` first (commit + agent-sign + push — same as steps 2–4
+of *Cutting a release*), then dispatch **on `--ref main`**, never on the tag:
+
+```bash
+gh workflow run publish-node.yml   --ref main -f target=npm     # @auths-dev/sdk → npm
+gh workflow run publish-crates.yml --ref main -f target=<live>  # crates.io
+gh workflow run publish-python.yml --ref main -f target=<live>  # PyPI
+# For each, read `on.workflow_dispatch.inputs.target.options` for the live value;
+# node's is `npm`. release.yml (binaries + Homebrew) has NO dispatch — instead:
+gh run rerun <run-id>                                           # re-run the failed run
+```
+
+**Why `--ref main`, not the tag:** the tag is immutable and points at the
+commit that failed. The dispatched job does `actions/checkout` of the ref you
+hand it, so it must be `main` (carrying your fix) to build corrected code. The
+published version still comes from `package.json`, so it lands as the intended
+X.Y.Z regardless of which ref built it.
+
+> Proven on v0.1.13: the Node SDK publish failed the `version()` vs
+> `package.json` test (auths-node's nested-workspace version went unstamped —
+> gotcha #7). Fixed on `main`, then one
+> `gh workflow run publish-node.yml --ref main -f target=npm` finished the
+> release without disturbing the six channels that had already published.
+
 ## Gotchas (each one cost a real session)
 
 1. **`0_versions.py --set` is complete — you do NOT need `cargo update` or
@@ -114,6 +149,14 @@ stamped to X.Y.Z — `0_versions.py --set` does that (gotcha #1); don't skip it.
    (new SHA); if you tag first you'll tag the unsigned commit and have to
    re-point the tag. Order: bump → commit → sign → verify → push main → tag →
    push tag.
+7. **Nested cargo workspaces have their own version — `0_versions.py` must
+   stamp each one.** `packages/auths-node` and `crates/auths-mobile-ffi` each
+   declare their own `[workspace]`, so their `[workspace.package] version`
+   (what `version()` / `CARGO_PKG_VERSION` reports) does NOT follow the root
+   bump. Both are in `0_versions.py`'s `targets()` and gated by `--check`. If
+   you add another nested-workspace crate, add it to `targets()` too, or its
+   version silently sticks and a downstream test (e.g. auths-node's
+   `exports.spec.ts`) fails only after the tag is out.
 
 ## Scripts
 
