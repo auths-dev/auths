@@ -99,8 +99,11 @@ fn probe_health(url: &str) -> Result<(), String> {
 #[derive(Parser)]
 struct ServeArgs {
     /// Roles to serve (comma-separated): `anchor` (spend anchors), `kel`
-    /// (KERI receipt witnessing), `cosign` (checkpoint cosigning). All three
-    /// share one identity seed, one data dir, and one hardening envelope.
+    /// (KERI receipt witnessing), `cosign` (checkpoint cosigning), `registry`
+    /// (serve the held `refs/auths/*` read-only over git smart-HTTP, so the node
+    /// is its own resolution surface). anchor/kel/cosign share one identity seed,
+    /// one data dir, and one tight hardening envelope; `registry` carries its own
+    /// (larger bodies, longer timeout) for git transfers.
     #[arg(long, value_delimiter = ',', default_value = "anchor,kel,cosign")]
     roles: Vec<String>,
 
@@ -242,7 +245,7 @@ async fn main() -> std::process::ExitCode {
         Command::Serve(args) => {
             for role in &args.roles {
                 match role.as_str() {
-                    "anchor" | "kel" | "cosign" => {}
+                    "anchor" | "kel" | "cosign" | "registry" => {}
                     other => {
                         eprintln!("witness-node: unknown role `{other}`");
                         return std::process::ExitCode::FAILURE;
@@ -250,6 +253,18 @@ async fn main() -> std::process::ExitCode {
                 }
             }
             let has = |role: &str| args.roles.iter().any(|r| r == role);
+
+            // Roles that read (anchor: key resolution) or serve (registry) the
+            // party registry need it to be an openable repo. Ensure it exists —
+            // an empty registry is a valid new-witness state, and this lets the
+            // first node in a network (no peer to sync from) bootstrap cleanly.
+            if has("anchor") || has("registry") {
+                if let Err(e) = auths_witness_node::sync::ensure_registry(&args.registry) {
+                    eprintln!("witness-node: registry init: {e:#}");
+                    return std::process::ExitCode::FAILURE;
+                }
+            }
+
             let mut app = Router::new();
 
             if has("anchor") {
@@ -285,9 +300,9 @@ async fn main() -> std::process::ExitCode {
                 }
             }
 
-            // One hardening envelope over every role — the same posture the
-            // standalone KEL witness shipped with.
-            let app = app
+            // The anchor/kel/cosign roles share one tight hardening envelope —
+            // the posture the standalone KEL witness shipped with.
+            let core = app
                 .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
                 .layer(ConcurrencyLimitLayer::new(
                     auths_witness_node::MAX_CONCURRENT_REQUESTS,
@@ -296,6 +311,41 @@ async fn main() -> std::process::ExitCode {
                     axum::http::StatusCode::REQUEST_TIMEOUT,
                     auths_witness_node::REQUEST_TIMEOUT,
                 ));
+
+            // The registry role serves git transfers — legitimately larger
+            // bodies over longer timeouts than an anchor POST — so it gets its
+            // own envelope, merged after `core` is sealed so the two never mix.
+            // Fail closed (I-DEPLOY-6) if its repo or the `git` binary is absent.
+            let app = if has("registry") {
+                if let Err(e) = registry_ready(&args.registry) {
+                    eprintln!(
+                        "witness-node: registry role: {e} (registry path: {})",
+                        args.registry.display()
+                    );
+                    return std::process::ExitCode::FAILURE;
+                }
+                if !auths_witness_node::serve_registry::git_available().await {
+                    eprintln!(
+                        "witness-node: registry role: the `git` binary is required to serve \
+                         refs/auths/* but was not found on PATH"
+                    );
+                    return std::process::ExitCode::FAILURE;
+                }
+                let registry = auths_witness_node::serve_registry::registry_router(&args.registry)
+                    .layer(DefaultBodyLimit::max(
+                        auths_witness_node::serve_registry::REGISTRY_MAX_BODY_BYTES,
+                    ))
+                    .layer(ConcurrencyLimitLayer::new(
+                        auths_witness_node::serve_registry::REGISTRY_MAX_CONCURRENT_REQUESTS,
+                    ))
+                    .layer(TimeoutLayer::with_status_code(
+                        axum::http::StatusCode::REQUEST_TIMEOUT,
+                        auths_witness_node::serve_registry::REGISTRY_TIMEOUT,
+                    ));
+                core.merge(registry)
+            } else {
+                core
+            };
             let listener = match tokio::net::TcpListener::bind(&args.bind).await {
                 Ok(listener) => listener,
                 Err(e) => {

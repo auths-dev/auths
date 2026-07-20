@@ -13,6 +13,24 @@ use std::path::Path;
 
 use crate::registry::registry_ready;
 
+/// Ensure `registry` is an initialized git repo (idempotent).
+///
+/// An empty registry is a valid state — a witness with no members yet — so this
+/// is what lets a fresh node (the first in a network, with no peer to sync from)
+/// bootstrap cleanly: it starts serving/resolving an empty `refs/auths/*` that
+/// receipts, a later peer sync, or a maintainer push then populate. `git init`
+/// on an existing repo is a no-op, so this is safe to call on every start.
+///
+/// Args:
+/// * `registry`: the local dir the node reads/serves with `--registry`.
+pub fn ensure_registry(registry: &Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(registry)
+        .map_err(|e| anyhow::anyhow!("create registry dir {}: {e}", registry.display()))?;
+    git2::Repository::init(registry)
+        .map_err(|e| anyhow::anyhow!("init registry dir {}: {e}", registry.display()))?;
+    Ok(())
+}
+
 /// Fetch or refresh the parties' public registry at `registry` from `url`.
 ///
 /// Idempotent: creates and initializes the repo if absent, then force-fetches
@@ -30,10 +48,9 @@ use crate::registry::registry_ready;
 /// sync_registry("https://github.com/auths-dev/registry", Path::new("/data/registry"))?;
 /// ```
 pub fn sync_registry(url: &str, registry: &Path) -> anyhow::Result<()> {
-    std::fs::create_dir_all(registry)
-        .map_err(|e| anyhow::anyhow!("create registry dir {}: {e}", registry.display()))?;
-    let repo = git2::Repository::init(registry)
-        .map_err(|e| anyhow::anyhow!("init registry dir {}: {e}", registry.display()))?;
+    ensure_registry(registry)?;
+    let repo = git2::Repository::open(registry)
+        .map_err(|e| anyhow::anyhow!("open registry dir {}: {e}", registry.display()))?;
     let mut remote = repo
         .remote_anonymous(url)
         .map_err(|e| anyhow::anyhow!("open remote {url}: {e}"))?;

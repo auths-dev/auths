@@ -53,7 +53,10 @@ axum = { version = "0.8" }
 clap = { version = "4", features = ["derive", "env"] }
 tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["timeout"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "process", "io-util"] }
+# Decompress gzip-encoded git-upload-pack request bodies (the `registry` role's
+# git smart-HTTP surface); standard git clients gzip the fetch negotiation.
+flate2 = "1"
 # Durable per-seed anchor state — the workspace's single `links = sqlite3` owner.
 sqlite = { version = "0.32", features = ["bundled"] }
 # The cosign role's signed-note signing primitive (as in auths-transparency).

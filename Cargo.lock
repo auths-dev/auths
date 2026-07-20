@@ -1181,6 +1181,7 @@ dependencies = [
  "chrono",
  "clap",
  "ed25519-dalek",
+ "flate2",
  "git2",
  "hex",
  "http-body-util",
