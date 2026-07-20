@@ -76,6 +76,7 @@ impl ShellBlock {
     /// ```ignore
     /// let block = ShellBlock::copy("verify.tsx", 1, "npx -y @auths-dev/mcp verify");
     /// ```
+    #[cfg(test)]
     fn copy(file: &str, start_line: usize, body: &str) -> Self {
         Self {
             file: file.to_string(),

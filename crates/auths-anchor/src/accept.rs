@@ -156,7 +156,10 @@ mod tests {
         let fork = sample_anchor_with_head(5, [2u8; 32]);
         match accept_anchor(&fork, &keys, Some(&prior), now()).unwrap() {
             Acceptance::Duplicity(proof) => proof.verify().unwrap(),
-            Acceptance::CoSign(_) => panic!("expected duplicity"),
+            Acceptance::CoSign(_) => panic!("expected duplicity, got a co-sign"),
+            Acceptance::AlreadyAnchored(_) => {
+                panic!("expected duplicity, got an idempotent replay")
+            }
         }
     }
 
