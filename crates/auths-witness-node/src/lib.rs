@@ -43,6 +43,7 @@ pub mod engine;
 pub mod hardening;
 pub mod receipt;
 pub mod registry;
+pub mod serve_registry;
 pub mod signer;
 pub mod sqlite_store;
 pub mod standup;

@@ -1,0 +1,66 @@
+# network.auths.dev — Auths's first-party witness, on Fly.
+#
+# This runs the SAME open `auths-witness-node` image as the rest of
+# deploy/witness (../Dockerfile). Nothing here is network.auths.dev-specific
+# code — only config. A stranger stands up their own witness by copying this
+# file and changing `app`, the region, and the domain.
+#
+# The Dockerfile's build context is the workspace root, so deploy FROM THE
+# REPO ROOT:
+#
+#   # one-time:
+#   fly launch --no-deploy --copy-config --config deploy/witness/fly/fly.toml --name auths-network
+#   fly volumes create witness_data --region lhr --size 1 --app auths-network
+#   fly secrets set WITNESS_SEED="$(openssl rand -hex 32)" --app auths-network
+#
+#   # each deploy (from the repo root):
+#   fly deploy --config deploy/witness/fly/fly.toml
+#
+#   # custom domain (then point DNS at the app):
+#   fly certs add network.auths.dev --app auths-network
+
+app = 'auths-network'
+primary_region = 'lhr'
+
+[build]
+  # Relative to the build context (the repo root — run `fly deploy` from there).
+  dockerfile = 'deploy/witness/Dockerfile'
+
+# One witness, four roles: witness members (kel receipting, spend anchoring,
+# checkpoint cosigning) AND serve the held refs/auths/* read-only (registry) so
+# the node is its own resolution surface. This overrides the image's default
+# CMD to add the `registry` role and our witness name.
+[processes]
+  app = 'serve --roles anchor,kel,cosign,registry --bind 0.0.0.0:3333 --data-dir /data --registry /data/registry --witness-name auths-network'
+
+[[mounts]]
+  # DURABLE, never tmpfs: the per-seed anchor store is the node's
+  # anti-equivocation memory — an amnesiac witness co-signs a fork after a
+  # restart. The served registry (refs/auths/*) lives here too.
+  source = 'witness_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 3333
+  # The single process group defined above; required once [processes] is named.
+  processes = ['app']
+  force_https = true
+  # A witness must not cold-start away its duty. Keep one machine always up and
+  # never auto-stop — auto-stopping drops the live anti-equivocation window.
+  auto_stop_machines = 'off'
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '2s'
+    grace_period = '10s'
+    method = 'get'
+    path = '/health'
+
+[[vm]]
+  # 1 GiB gives git pack operations headroom; a witness's reliability is worth
+  # more than the shared-CPU cost.
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
