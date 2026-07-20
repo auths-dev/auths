@@ -60,7 +60,7 @@ pub enum NamespaceSubcommand {
         #[arg(long)]
         package_name: String,
 
-        /// Registry URL (defaults to the public registry)
+        /// Registry URL (no default)
         #[arg(long)]
         registry_url: Option<String>,
 
@@ -83,7 +83,7 @@ pub enum NamespaceSubcommand {
         #[arg(long)]
         delegate_did: String,
 
-        /// Registry URL (defaults to the public registry)
+        /// Registry URL (no default)
         #[arg(long)]
         registry_url: Option<String>,
 
@@ -106,7 +106,7 @@ pub enum NamespaceSubcommand {
         #[arg(long)]
         new_owner_did: String,
 
-        /// Registry URL (defaults to the public registry)
+        /// Registry URL (no default)
         #[arg(long)]
         registry_url: Option<String>,
 
@@ -125,7 +125,7 @@ pub enum NamespaceSubcommand {
         #[arg(long)]
         package_name: String,
 
-        /// Registry URL (defaults to the public registry)
+        /// Registry URL (no default)
         #[arg(long)]
         registry_url: Option<String>,
     },

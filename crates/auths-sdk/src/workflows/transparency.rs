@@ -105,7 +105,7 @@ fn operator_info_from_wire(w: &TrustRootWitnessResponse) -> Option<WitnessOperat
 ///
 /// Usage:
 /// ```ignore
-/// let trust_root = fetch_trust_root("https://registry.auths.dev", &http_client).await?;
+/// let trust_root = fetch_trust_root("https://network.auths.dev", &http_client).await?;
 /// ```
 pub async fn fetch_trust_root(
     registry_url: &str,

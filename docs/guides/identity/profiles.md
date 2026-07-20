@@ -51,7 +51,7 @@ auths init --profile developer --non-interactive --key-alias my-key
 | `--key-alias` | `main` | Alias for the identity key |
 | `--force` | `false` | Overwrite existing identity |
 | `--non-interactive` | `false` | Skip all prompts, use defaults |
-| `--registry` | `https://registry.auths.dev` | Registry URL for identity registration (registry not yet live) |
+| `--registry` | `—` | Registry URL for identity registration (no default; e.g. `https://network.auths.dev`) |
 | `--register` | `false` | Register identity with the Auths Registry |
 
 ### CI profile
