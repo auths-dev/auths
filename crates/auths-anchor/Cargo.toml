@@ -46,11 +46,16 @@ thiserror.workspace = true
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
-# No features: the whole crate is the pure protocol core. The verification half
-# (freshness, finalized-anchor verification, duplicity-proof verification) is
-# WASM-safe; the acceptance rule is pure but node-facing. Kept flag-free so
-# `cargo check --target wasm32-unknown-unknown` exercises the real surface.
+# No default features: the whole crate is the pure protocol core. The
+# verification half (freshness, finalized-anchor verification, duplicity-proof
+# verification) is WASM-safe; the acceptance rule is pure but node-facing. Kept
+# flag-free so `cargo check --target wasm32-unknown-unknown` exercises the real
+# surface.
 default = []
+# Exposes the deterministic, fixed-seed finalized-anchor fixtures (the same
+# builders the in-crate unit tests use) to downstream test crates such as
+# `auths-evidence`. Never enabled in a production build.
+test-support = []
 
 [dev-dependencies]
 # Deterministic (fixed-seed) key material for tests — no RNG, so vectors are

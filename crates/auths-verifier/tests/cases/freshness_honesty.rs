@@ -153,6 +153,29 @@ fn credential_json_valid_verdict_carries_as_of_and_freshness_on_the_wire() {
 }
 
 #[test]
+fn default_window_stale_beyond_24h() {
+    // The standalone (source-age) path the `activity/v1` verifier uses: the 24h
+    // default window is the boundary. At exactly 24h a source is still Fresh; one
+    // second past it is Stale. Locks the window so a doc served a day later cannot
+    // read as fresh.
+    use auths_verifier::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
+    use std::time::Duration;
+    let policy = FreshnessPolicy::default();
+    assert_eq!(
+        policy.classify(FreshnessEvidence::SourceAge(Duration::from_secs(24 * 3600))),
+        Freshness::Fresh,
+        "a source at exactly the window boundary is still fresh"
+    );
+    assert_eq!(
+        policy.classify(FreshnessEvidence::SourceAge(Duration::from_secs(
+            24 * 3600 + 1
+        ))),
+        Freshness::Stale,
+        "one second past the window is stale"
+    );
+}
+
+#[test]
 fn non_freshness_allowlist_is_explicit() {
     // The allowlist is the only sanctioned way a positive verdict omits freshness; keep it
     // small and named so a new bare-positive verdict cannot hide as "obviously fine".

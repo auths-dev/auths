@@ -1,12 +1,19 @@
 [package]
 name = "auths-node"
-version = "0.1.0"
+# Tracks the published npm package version so `version()` (which reads
+# CARGO_PKG_VERSION) reports the truth. auths-node is its own (nested) Cargo
+# workspace, so the source of truth is the [workspace.package] version below —
+# the release step bumps it in lockstep with package.json.
+version.workspace = true
 edition = "2024"
 description = "Node.js bindings for the Auths decentralized identity SDK"
 license = "Apache-2.0"
 publish = false
 
 [workspace]
+
+[workspace.package]
+version = "0.1.12"
 
 [lib]
 crate-type = ["cdylib"]

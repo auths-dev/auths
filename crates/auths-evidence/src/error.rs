@@ -47,4 +47,18 @@ pub enum EvidenceError {
     /// refused the first-seen fallback.
     #[error("the anchor head does not cover the requested call: {0}")]
     AnchorLagging(String),
+
+    /// An embedded quorum anchor failed a specific verification leg. `code` is a
+    /// stable, machine-readable identifier of which leg failed, so a relying
+    /// party can gate on it (the report is the only API); `detail` is the
+    /// human-readable cause.
+    #[error("embedded anchor invalid ({code}): {detail}")]
+    AnchorInvalid {
+        /// Stable kebab-case identifier of the failed check (e.g.
+        /// `anchor-required`, `chain-mismatch`, `aggregate-mismatch`,
+        /// `cosignature-invalid`, `threshold-not-met`, `party-key-not-current`).
+        code: &'static str,
+        /// The human-readable cause.
+        detail: String,
+    },
 }

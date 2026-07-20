@@ -51,9 +51,14 @@ pub use auths_crypto::CurveType;
 /// consumer building a [`FinalizedAnchor`] needs only one dependency.
 pub use auths_transparency::{Checkpoint, InclusionProof, SignedCheckpoint, WitnessCosignature};
 
-#[cfg(test)]
-pub(crate) mod test_support {
-    //! Deterministic, fixed-seed fixtures for the in-crate unit tests.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    //! Deterministic, fixed-seed fixtures for the in-crate unit tests and, under
+    //! the `test-support` feature, for downstream test crates (`auths-evidence`).
+    // Fixtures are test-only material built from fixed seeds, so these unwraps are
+    // infallible; the `#[cfg(test)]` clippy exemption does not reach the
+    // feature-gated build, so allow them explicitly here. Never in production.
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use crate::types::{
         Anchor, ControllerKeys, CurrentKey, FinalizedAnchor, Head, OperatorInfo, PartySignature,
@@ -76,12 +81,12 @@ pub(crate) mod test_support {
     }
 
     /// An Ed25519-signed anchor at `index` with a deterministic head.
-    pub(crate) fn sample_anchor(index: u64) -> Anchor {
+    pub fn sample_anchor(index: u64) -> Anchor {
         sample_anchor_with_head(index, [index as u8; 32])
     }
 
     /// An Ed25519-signed anchor at `index` with an explicit head.
-    pub(crate) fn sample_anchor_with_head(index: u64, head: [u8; 32]) -> Anchor {
+    pub fn sample_anchor_with_head(index: u64, head: [u8; 32]) -> Anchor {
         let sk = party_sk();
         let vk = sk.verifying_key();
         let mut anchor = Anchor {
@@ -106,7 +111,7 @@ pub(crate) mod test_support {
     }
 
     /// The controller-keys view that authorizes `anchor`'s party signature.
-    pub(crate) fn controller_keys_for(anchor: &Anchor) -> ControllerKeys {
+    pub fn controller_keys_for(anchor: &Anchor) -> ControllerKeys {
         ControllerKeys {
             current: vec![CurrentKey {
                 curve: anchor.sig_party.curve,
@@ -115,13 +120,37 @@ pub(crate) mod test_support {
         }
     }
 
-    /// A finalized anchor over `n` witnesses with the given `threshold`.
+    /// The raw Ed25519 seed the sample / `finalized_*` anchors are party-signed
+    /// with. Hand it to a document signer so the embedded-anchor party-key check
+    /// (party key ∈ the agent's current keys) passes.
+    pub fn party_seed_bytes() -> [u8; 32] {
+        [9u8; 32]
+    }
+
+    /// The Ed25519 verifying-key bytes of [`party_seed_bytes`] — the party key
+    /// every sample anchor is signed under.
+    pub fn party_verifying_key_bytes() -> [u8; 32] {
+        party_sk().verifying_key().to_bytes()
+    }
+
+    /// A finalized anchor over `n` witnesses at `threshold` whose tuple restates
+    /// a CALLER-chosen `(seed_id, index, head, cumulative)`. Everything the
+    /// embedded-anchor check restates against a document is caller-controlled, so
+    /// an `activity/v1` verifier test can build a document this anchor
+    /// legitimately restates. Party-signed by [`party_seed_bytes`].
     ///
     /// The declared set is genuinely self-addressing (its SAID is computed from
     /// content and committed into the party-signed anchor), and every cosigner
-    /// carries a member-signed checkpoint rooting its inclusion proof — the
-    /// same material a real node must produce.
-    pub(crate) fn finalized_sample(n: u8, threshold: u32) -> FinalizedAnchor {
+    /// carries a member-signed checkpoint rooting its inclusion proof — the same
+    /// material a real node must produce.
+    pub fn finalized_matching(
+        seed_id: SeedId,
+        index: u64,
+        head: [u8; 32],
+        cumulative: u128,
+        n: u8,
+        threshold: u32,
+    ) -> FinalizedAnchor {
         let members: Vec<WitnessRef> = (0..n)
             .map(|i| WitnessRef {
                 name: format!("witness-{i}"),
@@ -142,12 +171,23 @@ pub(crate) mod test_support {
         };
         witness_set.said = witness_set.computed_said().unwrap();
 
-        let mut anchor = sample_anchor(1);
-        anchor.witness_set = WitnessSetRef {
-            said: witness_set.said.clone(),
-            threshold,
-        };
         let sk = party_sk();
+        let mut anchor = Anchor {
+            seed_id,
+            index,
+            head: Head::from_bytes(head),
+            cumulative,
+            timestamp: ts(index),
+            witness_set: WitnessSetRef {
+                said: witness_set.said.clone(),
+                threshold,
+            },
+            sig_party: PartySignature {
+                curve: CurveType::Ed25519,
+                public_key: sk.verifying_key().as_bytes().to_vec(),
+                signature: Vec::new(),
+            },
+        };
         let message = anchor.party_signing_bytes().unwrap();
         anchor.sig_party.signature = sk.sign(&message).to_bytes().to_vec();
 
@@ -177,9 +217,22 @@ pub(crate) mod test_support {
         }
     }
 
+    /// A finalized anchor over `n` witnesses with the given `threshold`, on the
+    /// default sample spend chain (`sample_anchor(1)`'s tuple).
+    pub fn finalized_sample(n: u8, threshold: u32) -> FinalizedAnchor {
+        finalized_matching(
+            SeedId::derive("did:keri:root", "did:keri:agent", "ESeal"),
+            1,
+            [1u8; 32],
+            100,
+            n,
+            threshold,
+        )
+    }
+
     /// A member-signed checkpoint over a one-leaf log containing `leaf`, with
     /// the inclusion proof rooted in it.
-    pub(crate) fn logged_inclusion_for(
+    pub fn logged_inclusion_for(
         name: &str,
         witness_key: &SigningKey,
         leaf: auths_transparency::MerkleHash,
@@ -217,7 +270,7 @@ pub(crate) mod test_support {
     }
 
     /// Keep only the first `k` cosignatures (to fall below a threshold).
-    pub(crate) fn with_cosigners(mut finalized: FinalizedAnchor, k: usize) -> FinalizedAnchor {
+    pub fn with_cosigners(mut finalized: FinalizedAnchor, k: usize) -> FinalizedAnchor {
         finalized.cosignatures.truncate(k);
         finalized
     }

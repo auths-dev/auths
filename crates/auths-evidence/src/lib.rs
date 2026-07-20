@@ -34,9 +34,9 @@ pub use anchor::{
 // The AWN protocol core, re-exported so evidence consumers reach freshness and
 // the finalized-anchor proof through one crate.
 pub use attestation::{
-    ACTIVITY_VERSION, ActivityAsOf, ActivityV1, activity_seed_id, activity_signing_bytes,
-    monotonicity_violation, unsigned_activity_anchor, verify_activity,
-    verify_activity_against_registry,
+    ACTIVITY_VERSION, ActivityAsOf, ActivityV1, ActivityVerdict, AnchorSummary, VerifyActivityOpts,
+    activity_seed_id, activity_signing_bytes, monotonicity_violation, unsigned_activity_anchor,
+    verify_activity, verify_activity_against_registry, verify_activity_with_keys,
 };
 pub use auths_anchor::{Freshness, freshness};
 pub use bundle::{

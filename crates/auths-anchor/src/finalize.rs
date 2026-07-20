@@ -315,4 +315,41 @@ mod tests {
             Err(AnchorError::SetInvalid(_))
         ));
     }
+
+    #[test]
+    fn flipped_cosig_byte_rejected() {
+        // A single flipped byte in a cosignature no longer verifies over the
+        // cosign message — the quorum fails whole.
+        let mut finalized = finalized_sample(3, 2);
+        let mut bytes = *finalized.cosignatures[0].signature.as_bytes();
+        bytes[0] ^= 0x01;
+        finalized.cosignatures[0].signature = auths_verifier::Ed25519Signature::from_bytes(bytes);
+        assert!(matches!(
+            verify_finalized(&finalized, None),
+            Err(AnchorError::CosignatureInvalid { .. })
+        ));
+    }
+
+    #[test]
+    fn foreign_witness_cosig_rejected() {
+        // A cosignature attributed to a name outside the declared set is refused
+        // — cosigners must be inside the declared witness set.
+        let mut finalized = finalized_sample(3, 2);
+        finalized.cosignatures[0].witness_name = "outsider".to_string();
+        assert!(matches!(
+            verify_finalized(&finalized, None),
+            Err(AnchorError::CosignerOutsideSet { .. })
+        ));
+    }
+
+    #[test]
+    fn threshold_above_member_count_rejected() {
+        // A threshold above the declared member count is a structurally invalid
+        // set — refused before any key it declares is trusted.
+        let finalized = finalized_sample(3, 5);
+        assert!(matches!(
+            verify_finalized(&finalized, None),
+            Err(AnchorError::SetInvalid(_))
+        ));
+    }
 }

@@ -12,6 +12,7 @@
 //! `args_hash`es.
 
 use auths_keri::{KeriPublicKey, Prefix};
+use auths_verifier::freshness::{Freshness, FreshnessEvidence, FreshnessPolicy};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::{DateTime, Utc};
@@ -141,62 +142,183 @@ pub fn unsigned_activity_anchor(
     })
 }
 
+/// The verified summary of an embedded quorum anchor — the report an RP branches
+/// on, never the raw finalized anchor. Present on a verdict only when a witness
+/// anchor verified whole (finalization re-checked, tuple restates the document's
+/// aggregate, party key current).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnchorSummary {
+    /// The assurance tier this anchor confers. Always `"witness"` today.
+    pub tier: &'static str,
+    /// The finalization threshold `t` of the co-signing witness set.
+    pub threshold: u32,
+    /// Declared members `N` of the witness set.
+    pub witnesses: usize,
+    /// Distinct cosignatures that met the threshold.
+    pub cosigners: usize,
+    /// The spend chain this anchor extends (hex seed id).
+    pub seed_id: String,
+    /// The self-addressing identifier of the co-signing witness set.
+    pub witness_set_said: String,
+    /// True when a supplied witness tip index proves a fresher anchor exists —
+    /// the document is genuinely anchored, but the witness has moved past it.
+    pub stale: bool,
+}
+
+impl AnchorSummary {
+    /// Build the summary from a verified finalized anchor. `stale` defaults to
+    /// `false`; [`verify_activity_with_keys`] sets it from a supplied witness tip.
+    fn witness(finalized: &auths_anchor::FinalizedAnchor) -> Self {
+        Self {
+            tier: "witness",
+            threshold: finalized.witness_set.threshold,
+            witnesses: finalized.witness_set.members.len(),
+            cosigners: finalized.cosignatures.len(),
+            seed_id: finalized.anchor.seed_id.to_hex(),
+            witness_set_said: finalized.witness_set.said.clone(),
+            stale: false,
+        }
+    }
+}
+
+/// The first-class verdict the `activity/v1` verifiers return: the freshness
+/// bound, the verified anchor summary (or `None` when unanchored), and whether
+/// the head is bound by a witness anchor. The report is the only API — a relying
+/// party reads these fields and never re-derives them from evidence.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityVerdict {
+    /// How fresh this positive verdict is, relative to the policy window.
+    pub freshness: Freshness,
+    /// The verified witness-anchor summary, or `None` for an unanchored document.
+    pub anchor: Option<AnchorSummary>,
+    /// True iff a verified witness anchor cosigns `head == doc.head`. A
+    /// self-asserted head is never bound (the verifier never sees the private
+    /// spend chain the head commits to).
+    pub head_bound: bool,
+}
+
+/// Options for `activity/v1` verification. The defaults keep the anchor an
+/// additive assurance tier; `require_witness` promotes it to a required gate.
+#[derive(Debug, Clone, Default)]
+pub struct VerifyActivityOpts {
+    /// Fail the whole document when there is no verified witness anchor — turns
+    /// the anchor from an additive assurance into a gate (a document that simply
+    /// omits its anchor no longer passes).
+    pub require_witness: bool,
+    /// An independently-known witness tip index for this seed, if the relying
+    /// party has one. A tip greater than the document's count proves the witness
+    /// has moved past this anchor (the document is stale).
+    pub witness_tip_index: Option<u64>,
+}
+
+/// Map a finalization failure to a typed anchor-invalid error with a stable,
+/// machine-readable code the relying party can gate on.
+fn anchor_invalid(e: auths_anchor::AnchorError) -> EvidenceError {
+    use auths_anchor::AnchorError as A;
+    let code = match &e {
+        A::CosignatureInvalid { .. } => "cosignature-invalid",
+        A::CosignerOutsideSet { .. } => "cosigner-outside-set",
+        A::ThresholdNotMet { .. } => "threshold-not-met",
+        A::WitnessSetMismatch { .. } | A::SetSaidMismatch { .. } => "set-said-mismatch",
+        A::SetInvalid(_) => "witness-set-invalid",
+        A::PartyKeyNotCurrent | A::PartySignatureInvalid => "party-key-not-current",
+        A::CheckpointUnverifiable { .. } | A::InclusionMissing { .. } | A::InclusionInvalid(_) => {
+            "inclusion-invalid"
+        }
+        _ => "anchor-invalid",
+    };
+    EvidenceError::AnchorInvalid {
+        code,
+        detail: e.to_string(),
+    }
+}
+
 /// Verify an attestation's embedded finalized anchor against the document it
-/// rides in: the finalization re-checks offline, the tuple restates exactly
-/// this document's aggregate, and the party key that signed the anchor is one
-/// of the agent's current keys. A document without an anchor passes — the
-/// anchor is an additive assurance tier, never a gate.
+/// rides in and report its tier: the finalization re-checks offline, the tuple
+/// restates exactly this document's aggregate, and the party key that signed the
+/// anchor is one of the agent's current keys.
+///
+/// `require_witness` turns the anchor from an additive assurance into a gate: an
+/// unanchored document fails whole when a caller demands the witness tier,
+/// instead of passing with `anchor == None`.
+///
+/// Args:
+/// * `doc`: the attestation carrying the optional anchor.
+/// * `current_keys`: the agent's current CESR-parsed verkeys.
+/// * `require_witness`: fail whole when no verified witness anchor is present.
+///
+/// Usage:
+/// ```ignore
+/// let anchor = verify_embedded_anchor(&doc, &keys, false)?;
+/// ```
 fn verify_embedded_anchor(
     doc: &ActivityV1,
     current_keys: &[KeriPublicKey],
-) -> Result<(), EvidenceError> {
+    require_witness: bool,
+) -> Result<Option<AnchorSummary>, EvidenceError> {
     let Some(finalized) = &doc.anchor else {
-        return Ok(());
+        return if require_witness {
+            Err(EvidenceError::AnchorInvalid {
+                code: "anchor-required",
+                detail: "witness tier required but this document carries no anchor".to_string(),
+            })
+        } else {
+            Ok(None)
+        };
     };
-    auths_anchor::verify_finalized(finalized, None)
-        .map_err(|e| EvidenceError::Input(format!("embedded anchor: {e}")))?;
+    auths_anchor::verify_finalized(finalized, None).map_err(anchor_invalid)?;
 
     let anchor = &finalized.anchor;
     if anchor.seed_id != activity_seed_id(doc) {
-        return Err(EvidenceError::Input(
-            "embedded anchor is for a different spend chain".to_string(),
-        ));
+        return Err(EvidenceError::AnchorInvalid {
+            code: "chain-mismatch",
+            detail: "embedded anchor is for a different spend chain".to_string(),
+        });
     }
     if anchor.head.to_hex() != doc.head
         || anchor.index != doc.count
         || anchor.cumulative != u128::from(doc.cumulative_cents)
     {
-        return Err(EvidenceError::Input(
-            "embedded anchor does not restate this document's aggregate".to_string(),
-        ));
+        return Err(EvidenceError::AnchorInvalid {
+            code: "aggregate-mismatch",
+            detail: "embedded anchor does not restate this document's aggregate".to_string(),
+        });
     }
     let party_is_current = current_keys.iter().any(|key| {
         key.curve() == anchor.sig_party.curve && key.raw_bytes() == anchor.sig_party.public_key
     });
     if !party_is_current {
-        return Err(EvidenceError::Input(
-            "embedded anchor's party key is not a current agent key".to_string(),
-        ));
+        return Err(EvidenceError::AnchorInvalid {
+            code: "party-key-not-current",
+            detail: "embedded anchor's party key is not a current agent key".to_string(),
+        });
     }
-    Ok(())
+    Ok(Some(AnchorSummary::witness(finalized)))
 }
 
-/// Verify an attestation's signature against the agent's CURRENT signing keys
-/// (resolved by the caller from the public KEL). Passes if ANY current key
-/// verifies — the default posture is `kt=1`.
+/// Verify an attestation's body signature against the agent's CURRENT signing
+/// keys (resolved by the caller from the public KEL) and, when present, its
+/// embedded quorum anchor. Passes if ANY current key verifies the body signature
+/// — the default posture is `kt=1`. Returns the verified anchor summary, or
+/// `None` for an unanchored document (or an error when `require_witness` demands
+/// a witness tier the document lacks).
 ///
 /// Args:
 /// * `doc`: the attestation.
 /// * `current_keys`: the agent's current CESR-parsed verkeys.
+/// * `require_witness`: fail whole when no verified witness anchor is present.
 ///
 /// Usage:
 /// ```ignore
-/// verify_activity(&doc, &keys)?;
+/// let anchor = verify_activity(&doc, &keys, false)?;
 /// ```
 pub fn verify_activity(
     doc: &ActivityV1,
     current_keys: &[KeriPublicKey],
-) -> Result<(), EvidenceError> {
+    require_witness: bool,
+) -> Result<Option<AnchorSummary>, EvidenceError> {
     if doc.version != ACTIVITY_VERSION {
         return Err(EvidenceError::Input(format!(
             "unknown version {}",
@@ -209,32 +331,120 @@ pub fn verify_activity(
         .map_err(|e| EvidenceError::Input(format!("signature b64: {e}")))?;
     for key in current_keys {
         if auths_crypto::typed_verify(key.curve(), key.raw_bytes(), &message, &signature).is_ok() {
-            return verify_embedded_anchor(doc, current_keys);
+            return verify_embedded_anchor(doc, current_keys, require_witness);
         }
     }
     Err(EvidenceError::Input(
-        "attestation signature verifies under no current agent key".to_string(),
+        "attestation signature does not verify under any current agent key \
+         (the body was edited after signing, or the signing key was rotated out)"
+            .to_string(),
     ))
+}
+
+/// Verify an `activity/v1` attestation against already-resolved agent keys and
+/// return a first-class verdict: the body signature, the embedded quorum anchor
+/// (when present, as a gate under `require_witness`), and a freshness bound. The
+/// clock is INJECTED — this function reads no wall clock and no network.
+///
+/// A future `as_of` is rejected outright (a stale timestamp can only be *more*
+/// stale, never falsely fresh). Freshness is classified against the policy the
+/// options imply: strict (offline-`Unknown` denied) when a witness tier is
+/// required, offline-friendly otherwise. A witness anchor cosigns the `as_of`,
+/// so a recent anchored document reads `Fresh`; a recent, self-asserted
+/// timestamp is unconfirmable and reads `Unknown`; a supplied fresher witness
+/// tip marks the anchor `stale`.
+///
+/// Args:
+/// * `doc`: the attestation.
+/// * `current_keys`: the agent's current CESR-parsed verkeys.
+/// * `now`: the verification instant (injected at the binding boundary).
+/// * `opts`: gating options (`require_witness`, `witness_tip_index`).
+///
+/// Usage:
+/// ```ignore
+/// let verdict = verify_activity_with_keys(&doc, &keys, now, &opts)?;
+/// ```
+pub fn verify_activity_with_keys(
+    doc: &ActivityV1,
+    current_keys: &[KeriPublicKey],
+    now: DateTime<Utc>,
+    opts: &VerifyActivityOpts,
+) -> Result<ActivityVerdict, EvidenceError> {
+    if doc.as_of.ts > now + chrono::Duration::seconds(60) {
+        return Err(EvidenceError::Input(
+            "attestation as_of is in the future".to_string(),
+        ));
+    }
+    let mut anchor = verify_activity(doc, current_keys, opts.require_witness)?;
+
+    let policy = if opts.require_witness {
+        FreshnessPolicy::strict(std::time::Duration::from_secs(24 * 60 * 60))
+    } else {
+        FreshnessPolicy::default()
+    };
+    let evidence = match opts.witness_tip_index {
+        Some(tip) => FreshnessEvidence::FresherTip {
+            latest_seq: u128::from(tip),
+            slice_as_of: u128::from(doc.count),
+        },
+        None => {
+            let age = (now - doc.as_of.ts).to_std().unwrap_or_default();
+            if age > policy.max_age || anchor.is_some() {
+                // A witness anchor cosigns the `as_of`, and an old self-timestamp
+                // can only be MORE stale — both are legible as a witnessed source
+                // age (recent → Fresh, past the window → Stale).
+                FreshnessEvidence::SourceAge(age)
+            } else {
+                // A recent, self-asserted timestamp is unconfirmable → named Unknown.
+                FreshnessEvidence::Offline
+            }
+        }
+    };
+    let freshness = policy.classify(evidence);
+
+    if let Some(summary) = anchor.as_mut()
+        && let Some(tip) = opts.witness_tip_index
+    {
+        summary.stale = tip > doc.count;
+    }
+
+    if opts.require_witness && !policy.trusts(freshness) {
+        return Err(EvidenceError::Input(format!(
+            "freshness not trusted for a witness-tier claim: {freshness:?}"
+        )));
+    }
+
+    let head_bound = anchor.is_some();
+    Ok(ActivityVerdict {
+        freshness,
+        anchor,
+        head_bound,
+    })
 }
 
 /// Verify an attestation against a public registry copy: resolve the agent's
 /// current key state from the KEL (identity resolution ONLY — no spend data is
-/// ever fetched), require its delegator to be the claimed root, and verify the
-/// signature. This is the market's whole verification; it never sees a per-call
-/// row.
+/// ever fetched), require its delegator to be the claimed root, verify the body
+/// signature and (when present, or when `opts.require_witness` demands it) the
+/// embedded quorum anchor, and classify freshness against the injected clock.
+/// This is the market's whole verification; it never sees a per-call row.
 ///
 /// Args:
 /// * `doc`: the attestation.
 /// * `registry`: a fetched copy of the public registry.
+/// * `now`: the verification instant (injected at the binding boundary).
+/// * `opts`: gating options (`require_witness`, `witness_tip_index`).
 ///
 /// Usage:
 /// ```ignore
-/// verify_activity_against_registry(&doc, &registry_dir)?;
+/// let verdict = verify_activity_against_registry(&doc, &registry_dir, now, opts)?;
 /// ```
 pub fn verify_activity_against_registry(
     doc: &ActivityV1,
     registry: &std::path::Path,
-) -> Result<(), EvidenceError> {
+    now: DateTime<Utc>,
+    opts: VerifyActivityOpts,
+) -> Result<ActivityVerdict, EvidenceError> {
     use auths_sdk::ports::RegistryBackend;
     use auths_sdk::storage::{GitRegistryBackend, RegistryConfig};
 
@@ -279,7 +489,7 @@ pub fn verify_activity_against_registry(
                 .map_err(|e| EvidenceError::Input(format!("current key: {e}")))
         })
         .collect::<Result<_, _>>()?;
-    verify_activity(doc, &keys)
+    verify_activity_with_keys(doc, &keys, now, &opts)
 }
 
 /// The monotonicity rules a verifier applies between a stored checkpoint and a
@@ -299,6 +509,10 @@ pub fn monotonicity_violation(
     if next.as_of.ts < prev_ts {
         return Some("as-of-regressed");
     }
+    // A self-asserted head can be freshly minted each publish, so this rule is
+    // cosmetic at first-seen; it is load-bearing only once BOTH checkpoints carry
+    // a verified witness anchor (the anchor cosigns `head == doc.head`, which is
+    // what makes the head un-forgeable — see `ActivityVerdict::head_bound`).
     if next.cumulative_cents > prev_cents && next.head == prev_head {
         return Some("head-unmoved-under-growth");
     }
