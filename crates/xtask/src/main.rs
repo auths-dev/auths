@@ -14,6 +14,7 @@ mod check_command_drift;
 mod check_constant_time;
 mod check_curve_agnostic;
 mod check_error_codes;
+mod check_paste_integrity;
 mod check_rfc6979;
 mod check_verify_path_completeness;
 mod gen_docs;
@@ -84,6 +85,16 @@ enum Command {
     /// Command-drift lint: fail if README.md or auths-cli string literals
     /// reference an `auths` command or long flag that doesn't exist.
     CheckCommandDrift,
+    /// Paste-integrity lint: fail if any copyable shell block (fenced bash/sh/
+    /// console/shell/zsh in *.md/*.mdx/*.mdoc, or `copy="…"`/`<Prompt>`/
+    /// `<BashLines>` in *.ts/*.tsx) carries a `<placeholder>`, a bare unset
+    /// `$VAR`, or a leading `$ ` prompt glyph. Scans `--path` (default `.`),
+    /// so it can be pointed at any checkout.
+    CheckPasteIntegrity {
+        /// Directory tree to scan.
+        #[arg(long, default_value = ".")]
+        path: std::path::PathBuf,
+    },
     /// Error-code lint: every emitted `[AUTHS-E####]` literal is registered and
     /// every registered code's doc carries a `## Suggestion` (minus an allowlist);
     /// the render surface never reaches for panic!/Box<dyn Error>.
@@ -130,6 +141,7 @@ fn main() -> anyhow::Result<()> {
         Command::CheckRfc6979 => check_rfc6979::run(workspace_root()),
         Command::CheckAdmissionPolicy => check_admission_policy::run(workspace_root()),
         Command::CheckCommandDrift => check_command_drift::run(workspace_root()),
+        Command::CheckPasteIntegrity { path } => check_paste_integrity::run(&path),
         Command::CheckErrorCodes => check_error_codes::run(workspace_root()),
         Command::CheckVerifyPathCompleteness => {
             check_verify_path_completeness::run(workspace_root())
