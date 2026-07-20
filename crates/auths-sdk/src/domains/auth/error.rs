@@ -104,7 +104,7 @@ impl AuthsErrorInfo for TrustError {
                 "Check the format of your trust store (roots.json or ~/.auths/known_identities.json)",
             ),
             Self::TofuRequiresInteraction => {
-                Some("Run interactively (on a TTY) or use `auths verify --trust explicit`")
+                Some("Run interactively (on a TTY), or pre-pin the identity with `auths trust pin` so no interactive decision is needed")
             }
         }
     }
