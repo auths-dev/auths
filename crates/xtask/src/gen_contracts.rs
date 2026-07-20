@@ -166,6 +166,12 @@ fn family_codes(text: &str, enum_name: &str) -> Vec<String> {
             collecting = true;
             depth = 0;
         }
+        // A comment line inside the body carries no code and no real brace
+        // scope — skip it, so a `// "self-consistent" …` note above an arm can't
+        // leak a phantom literal (nor its prose braces skew the depth count).
+        if line.trim_start().starts_with("//") {
+            continue;
+        }
         depth += line.matches('{').count() as i32;
         depth -= line.matches('}').count() as i32;
         if let Some(code) = kebab_code(line) {
@@ -193,6 +199,12 @@ mod tests {
         assert_eq!(manifest.verdicts.len(), FAMILIES.len());
         for (key, codes) in &manifest.verdicts {
             assert!(!codes.is_empty(), "no codes for family {key}");
+            let unique: std::collections::BTreeSet<_> = codes.iter().collect();
+            assert_eq!(
+                unique.len(),
+                codes.len(),
+                "duplicate code in family {key} — a comment leak or a repeated arm? {codes:?}"
+            );
             for code in codes {
                 assert!(
                     code.starts_with(|c: char| c.is_ascii_lowercase())
