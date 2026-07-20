@@ -107,6 +107,7 @@ jobs:
           cargo build --release --locked
           --package auths-cli
           --package auths-mcp-gateway
+          --package auths-witness-node
           --target ${{ matrix.target }}
 
       - name: Package (Unix)
@@ -116,6 +117,7 @@ jobs:
           cp target/${{ matrix.target }}/release/auths staging/ || true
           cp target/${{ matrix.target }}/release/auths-sign staging/ || true
           cp target/${{ matrix.target }}/release/auths-verify staging/ || true
+          cp target/${{ matrix.target }}/release/witness-node staging/ || true
           # No `|| true`: a silently absent gateway is how it shipped to nobody.
           cp target/${{ matrix.target }}/release/auths-mcp-gateway staging/
           tar -czf ${{ matrix.asset_name }}${{ matrix.ext }} -C staging .
@@ -128,6 +130,7 @@ jobs:
           Copy-Item target/${{ matrix.target }}/release/auths.exe staging/ -ErrorAction SilentlyContinue
           Copy-Item target/${{ matrix.target }}/release/auths-sign.exe staging/ -ErrorAction SilentlyContinue
           Copy-Item target/${{ matrix.target }}/release/auths-verify.exe staging/ -ErrorAction SilentlyContinue
+          Copy-Item target/${{ matrix.target }}/release/witness-node.exe staging/ -ErrorAction SilentlyContinue
           # No SilentlyContinue: a silently absent gateway is how it shipped to nobody.
           Copy-Item target/${{ matrix.target }}/release/auths-mcp-gateway.exe staging/
           Compress-Archive -Path staging/* -DestinationPath ${{ matrix.asset_name }}${{ matrix.ext }}

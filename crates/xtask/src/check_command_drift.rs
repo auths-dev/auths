@@ -104,6 +104,9 @@ struct Violation {
 /// check_command_drift::run(workspace_root())?;
 /// ```
 pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
+    check_xtask_alias_ships(workspace_root)?;
+    check_release_stages_witness_node(workspace_root)?;
+
     println!("Building auths-cli...");
     let status = Command::new("cargo")
         .args(["build", "--package", "auths-cli"])
@@ -141,6 +144,57 @@ pub fn run(workspace_root: &Path) -> anyhow::Result<()> {
             violations.len()
         )
     }
+}
+
+/// Every doc prints `cargo xtask …`; that shorthand only resolves from a clone
+/// when `.cargo/config.toml` ships the `[alias] xtask` entry. A bare `.cargo/`
+/// ignore once excluded that file entirely, so a fresh clone got `error: no such
+/// command: xtask`. Fail closed if the alias is missing.
+fn check_xtask_alias_ships(workspace_root: &Path) -> anyhow::Result<()> {
+    let path = workspace_root.join(".cargo/config.toml");
+    let text = std::fs::read_to_string(&path).map_err(|e| {
+        anyhow::anyhow!(
+            "{}: {e} — the `cargo xtask` alias must be committed so clones resolve it",
+            path.display()
+        )
+    })?;
+    let defines_xtask = text
+        .lines()
+        .skip_while(|l| l.trim() != "[alias]")
+        .skip(1)
+        .take_while(|l| !l.trim_start().starts_with('['))
+        .any(|l| l.trim_start().starts_with("xtask"));
+    if !defines_xtask {
+        anyhow::bail!(
+            "{} has no `[alias] xtask` entry — `cargo xtask …` in the docs will not resolve \
+             from a clone",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+/// The docs present `witness-node` as an installable binary; the release must
+/// stage it or `brew install` ships an archive without it. Assert the release
+/// workflow copies `witness-node` out of the build directory.
+fn check_release_stages_witness_node(workspace_root: &Path) -> anyhow::Result<()> {
+    let path = workspace_root.join(".github/workflows/release.yml");
+    let text =
+        std::fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+    let stages_it = text.lines().any(|line| {
+        let line = line.trim();
+        (line.starts_with("cp ") || line.contains("Copy-Item"))
+            && line.contains("release/")
+            && line.contains("witness-node")
+    });
+    if !stages_it {
+        anyhow::bail!(
+            "{} does not stage `witness-node` into the release archive — the docs present it \
+             as an installable binary",
+            path.display()
+        );
+    }
+    Ok(())
 }
 
 /// Discover the full two-level command tree (plus per-node long-flag sets)

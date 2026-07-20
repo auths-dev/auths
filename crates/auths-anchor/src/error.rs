@@ -18,9 +18,11 @@ pub enum AnchorError {
     #[error("party key is not a current key of the controller")]
     PartyKeyNotCurrent,
 
-    /// A new anchor's index did not strictly increase over the prior anchor.
-    #[error("non-monotone index: {got} does not exceed prior {prior}")]
-    NonMonotoneIndex {
+    /// A new anchor's index regressed below the prior anchor — a rollback
+    /// attempt. An exact-index, exact-head resubmission is a benign no-op and is
+    /// reported separately, so only a true rewind reaches this variant.
+    #[error("index {got} regresses below prior {prior} — fetch the latest anchor and extend it")]
+    IndexRollback {
         /// The submitted index.
         got: u64,
         /// This witness's last co-signed index for the seed.

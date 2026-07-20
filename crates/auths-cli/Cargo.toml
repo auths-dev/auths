@@ -42,6 +42,9 @@ auths-index.workspace = true
 auths-crypto.workspace = true
 auths-sdk = { workspace = true, features = ["backend-git", "witness-server", "witness-client", "indexed-storage", "keychain-secure-enclave"] }
 auths-transparency = { workspace = true, features = ["native"] }
+# Pure protocol core for `auths anchor verify` — offline duplicity-proof
+# re-verification, no witness contacted, no registry consulted.
+auths-anchor.workspace = true
 auths-pairing-protocol.workspace = true
 auths-telemetry = { workspace = true, features = ["sink-http"] }
 auths-verifier = { workspace = true, features = ["native"] }

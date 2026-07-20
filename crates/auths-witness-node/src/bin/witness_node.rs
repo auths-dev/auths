@@ -15,18 +15,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use auths_anchor::{Anchor, SeedId};
-use auths_witness_node::anchor_role::{AnchorService, ServiceError, SubmitOutcome};
-use auths_witness_node::registry::controller_keys_for_party;
+use auths_witness_node::anchor_role::{AnchorService, AppState, anchor_router};
+use auths_witness_node::registry::registry_ready;
 use auths_witness_node::signer::{FileSigner, Signer as _};
 use auths_witness_node::sqlite_store::SqliteAnchorStore;
-use axum::extract::{DefaultBodyLimit, Path as AxumPath, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use clap::{Parser, Subcommand};
-use serde::Deserialize;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
 
@@ -119,90 +114,6 @@ struct ServeArgs {
     seed: String,
 }
 
-struct AppState {
-    service: AnchorService<FileSigner, SqliteAnchorStore, auths_transparency::FsTileStore>,
-    registry: PathBuf,
-    witness_name: String,
-    roles: Vec<String>,
-}
-
-/// One anchor submission: the anchor plus the party naming the witness resolves
-/// keys for. The party fields identify WHO is anchoring (a witness necessarily
-/// knows its submitters); the anchor itself still carries no per-record data.
-#[derive(Deserialize)]
-struct SubmitBody {
-    anchor: Anchor,
-    party: PartyRef,
-}
-
-#[derive(Deserialize)]
-struct PartyRef {
-    root: String,
-    agent: String,
-}
-
-fn error_body(status: StatusCode, detail: String) -> Response {
-    (status, Json(serde_json::json!({ "error": detail }))).into_response()
-}
-
-async fn submit_anchor(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<SubmitBody>,
-) -> Response {
-    let keys = match controller_keys_for_party(&state.registry, &body.party.root, &body.party.agent)
-    {
-        Ok(keys) => keys,
-        Err(e) => return error_body(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
-    };
-    #[allow(clippy::disallowed_methods)] // service binary boundary: wall clock injected here
-    let now = chrono::Utc::now();
-    match state.service.submit(&body.anchor, &keys, now).await {
-        Ok(SubmitOutcome::CoSigned {
-            cosignature,
-            inclusion,
-            ..
-        }) => Json(serde_json::json!({
-            "cosignature": *cosignature,
-            "inclusion": *inclusion,
-        }))
-        .into_response(),
-        Ok(SubmitOutcome::Duplicity(proof)) => (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({ "duplicity": *proof })),
-        )
-            .into_response(),
-        Err(ServiceError::Anchor(e)) => error_body(StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
-        Err(ServiceError::Contended) => {
-            error_body(StatusCode::CONFLICT, "contended — retry".to_string())
-        }
-        Err(e) => error_body(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-    }
-}
-
-async fn latest_anchor(
-    State(state): State<Arc<AppState>>,
-    AxumPath(seed_hex): AxumPath<String>,
-) -> Response {
-    let seed = match SeedId::from_hex(&seed_hex) {
-        Ok(seed) => seed,
-        Err(e) => return error_body(StatusCode::BAD_REQUEST, e.to_string()),
-    };
-    match state.service.latest(&seed) {
-        Ok(Some(anchor)) => Json(serde_json::json!({ "anchor": anchor })).into_response(),
-        Ok(None) => error_body(StatusCode::NOT_FOUND, "no anchor for this seed".to_string()),
-        Err(e) => error_body(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-    }
-}
-
-async fn health(State(state): State<Arc<AppState>>) -> Response {
-    Json(serde_json::json!({
-        "up": true,
-        "roles": state.roles,
-        "witness_name": state.witness_name,
-    }))
-    .into_response()
-}
-
 fn parse_seed(hex_seed: &str) -> Result<[u8; 32], String> {
     let raw = hex::decode(hex_seed.trim()).map_err(|e| format!("seed is not hex: {e}"))?;
     raw.try_into()
@@ -252,11 +163,8 @@ fn build_cosign_router(args: &ServeArgs) -> Result<Router, String> {
 }
 
 fn build_state(args: &ServeArgs) -> Result<Arc<AppState>, String> {
-    if !args.registry.exists() {
-        return Err(format!(
-            "registry path {} does not exist — the anchor role fails closed without key resolution",
-            args.registry.display()
-        ));
+    if let Err(e) = registry_ready(&args.registry) {
+        return Err(format!("{e} (registry path: {})", args.registry.display()));
     }
     std::fs::create_dir_all(&args.data_dir)
         .map_err(|e| format!("data dir {}: {e}", args.data_dir.display()))?;
@@ -280,12 +188,13 @@ fn build_state(args: &ServeArgs) -> Result<Arc<AppState>, String> {
         "witness-node: anchor role up as `{}` (member key {member_did})",
         args.witness_name,
     );
-    Ok(Arc::new(AppState {
-        service: AnchorService::new(signer, store, log),
-        registry: args.registry.clone(),
-        witness_name: args.witness_name.clone(),
-        roles: args.roles.clone(),
-    }))
+    Ok(Arc::new(AppState::new(
+        AnchorService::new(signer, store, log),
+        args.registry.clone(),
+        args.data_dir.join("duplicity"),
+        args.witness_name.clone(),
+        args.roles.clone(),
+    )))
 }
 
 #[tokio::main]
@@ -320,15 +229,9 @@ async fn main() -> std::process::ExitCode {
                         return std::process::ExitCode::FAILURE;
                     }
                 };
-                let mut anchor_routes = Router::new()
-                    .route("/v1/anchor", post(submit_anchor))
-                    .route("/v1/anchor/{seed}", get(latest_anchor));
                 // The KEL role's shared router already serves /health; register
-                // the node's own only when that role is off (one route, one owner).
-                if !has("kel") {
-                    anchor_routes = anchor_routes.route("/health", get(health));
-                }
-                app = app.merge(anchor_routes.with_state(state));
+                // the anchor role's own only when that role is off (one owner).
+                app = app.merge(anchor_router(state, !has("kel")));
             }
 
             if has("kel") {

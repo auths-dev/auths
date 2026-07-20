@@ -128,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "86400".into())
         .parse()
         .map_err(|e| anyhow::anyhow!("invalid AUTHS_WATCH_GAP_SECS: {e}"))?;
+    let alert_webhook = std::env::var("AUTHS_ALERT_WEBHOOK").ok();
     if !watch_witnesses.is_empty() {
         tracing::info!(
             witnesses = watch_witnesses.len(),
@@ -147,7 +148,10 @@ async fn main() -> anyhow::Result<()> {
                 // The proof is the publishable artifact: emitted whole so any
                 // channel can carry it to strangers for offline re-checking.
                 match serde_json::to_string(&proof) {
-                    Ok(wire) => tracing::error!(proof = %wire, "SPEND-ANCHOR DUPLICITY DETECTED"),
+                    Ok(wire) => {
+                        tracing::error!(proof = %wire, "SPEND-ANCHOR DUPLICITY DETECTED");
+                        push_alert(&client, &alert_webhook, "duplicity", &proof).await;
+                    }
                     Err(e) => tracing::error!(error = %e, "duplicity proof serialization"),
                 }
             }
@@ -167,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
                         gap_seconds = gap.gap_seconds,
                         "withholding gap past tolerance"
                     );
+                    push_alert(&client, &alert_webhook, "withholding", &gap).await;
                 }
             }
         }
@@ -195,5 +200,36 @@ async fn main() -> anyhow::Result<()> {
         }
 
         tokio::time::sleep(tokio::time::Duration::from_secs(config.interval_secs)).await;
+    }
+}
+
+/// POST a small alert to the operator's configured webhook, if any.
+///
+/// The hosted watcher's promise — alerts the moment a fork or a silence appears
+/// — needs a push, not just a log line; this is that push. Absent
+/// `AUTHS_ALERT_WEBHOOK`, tracing stays the only channel (unchanged default), so
+/// behavior without config is identical to before.
+///
+/// Args:
+/// * `client`: the shared HTTP client.
+/// * `webhook`: the operator's alert URL, or `None` to skip the push.
+/// * `kind`: the alert kind (`"duplicity"` or `"withholding"`).
+/// * `event`: the alert payload (the proof, or the gap), embedded inline.
+async fn push_alert<T: serde::Serialize>(
+    client: &reqwest::Client,
+    webhook: &Option<String>,
+    kind: &str,
+    event: &T,
+) {
+    let Some(url) = webhook else { return };
+    let body = serde_json::json!({ "kind": kind, "event": event });
+    if let Err(e) = client
+        .post(url)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+    {
+        tracing::error!(error = %e, webhook = %url, "alert webhook POST failed");
     }
 }

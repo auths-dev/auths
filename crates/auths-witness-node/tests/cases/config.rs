@@ -1,9 +1,38 @@
-//! WitnessState construction and disk-persistence behaviour.
+//! WitnessState construction and disk-persistence behaviour, plus the deploy
+//! manifest's registry-mount default.
 
 use auths_witness_node::cosign_role::WitnessState;
 use axum::http::StatusCode;
 
 use super::support::{make_checkpoint, post_checkpoint, test_config, tofu_request};
+
+/// The deploy Compose file must default the registry mount, not hard-fail on an
+/// unset var: `${WITNESS_REGISTRY:?…}` is evaluated during local YAML
+/// interpolation, so it exits before Docker is even contacted — every first-run
+/// operator's `docker compose up` fails on paste. A `:-` default plus the node's
+/// readiness gate turns an empty default into a loud refusal, not that failure.
+#[test]
+fn compose_default_registry_interpolates_without_env() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("workspace root");
+    let compose =
+        std::fs::read_to_string(workspace_root.join("deploy/witness/docker-compose.yml")).unwrap();
+    let registry_line = compose
+        .lines()
+        .find(|line| line.contains(":/registry:ro"))
+        .expect("registry volume line present");
+    assert!(
+        registry_line.contains("${WITNESS_REGISTRY:-"),
+        "registry mount must interpolate a default, got: {registry_line}"
+    );
+    assert!(
+        !registry_line.contains(":?"),
+        "registry mount must not hard-fail on an unset var, got: {registry_line}"
+    );
+}
 
 #[test]
 fn rejects_invalid_hex_signing_key() {

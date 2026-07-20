@@ -48,7 +48,9 @@ pub mod sqlite_store;
 pub mod standup;
 pub mod vocabulary;
 
-pub use anchor_role::{AnchorService, ServiceError, SubmitOutcome};
+pub use anchor_role::{
+    AnchorService, AppState, NodeAnchorService, ServiceError, SubmitOutcome, anchor_router,
+};
 pub use anchor_store::InMemoryAnchorStore;
 pub use build::{BuildAttestation, NodeBuildVerdict};
 pub use engine::{DockerEngine, SocketHealthCheck, SocketHttpFetch};

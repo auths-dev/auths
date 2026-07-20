@@ -381,6 +381,7 @@ version = "0.1.12"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "auths-anchor",
  "auths-crypto",
  "auths-index",
  "auths-infra-git",
@@ -8757,6 +8758,7 @@ dependencies = [
  "schemars 0.8.22",
  "serde",
  "serde_json",
+ "tempfile",
  "tree-sitter",
  "tree-sitter-rust",
  "walkdir",

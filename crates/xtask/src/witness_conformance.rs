@@ -85,6 +85,7 @@ pub fn drive(url: &str) -> Result<()> {
     if health.status != 200 {
         bail!("health: expected 200, got {}", health.status);
     }
+    let identity = identity_from_health_body(&health.body);
 
     let garbage = http_post_json(&format!("{base}/v1/anchor"), "{\"not\": \"an anchor\"}")?;
     if !(400..500).contains(&garbage.status) {
@@ -115,7 +116,9 @@ pub fn drive(url: &str) -> Result<()> {
         bail!("unknown seed: expected 404, got {}", absent.status);
     }
 
-    println!("witness-conformance: live endpoint {base} passed 4/4 transport checks");
+    println!(
+        "witness-conformance: live endpoint {base} passed 4/4 transport checks — certified {identity}"
+    );
     println!(
         "witness-conformance: acceptance vectors need the node's registry to hold the \
          conformance identity — emit them with --emit and provision the fixture"
@@ -123,8 +126,25 @@ pub fn drive(url: &str) -> Result<()> {
     Ok(())
 }
 
+/// Read the node's own identity from its `/health` body so a pass line names the
+/// node it actually certified — if something else already owns the target port,
+/// the printed identity is not the operator's own, which is the only signal a
+/// success-shaped mis-certification leaves.
+fn identity_from_health_body(body: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| {
+            v.get("witness_did")
+                .and_then(|x| x.as_str())
+                .or_else(|| v.get("witness_name").and_then(|x| x.as_str()))
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unknown (node published no identity at /health)".to_string())
+}
+
 struct HttpAnswer {
     status: u16,
+    body: String,
 }
 
 /// Dependency-free HTTP/1.0 request over a plain socket (conformance targets
@@ -154,7 +174,11 @@ fn http_request(url: &str, method: &str, body: Option<&str>) -> Result<HttpAnswe
         .nth(1)
         .and_then(|s| s.parse().ok())
         .ok_or_else(|| anyhow::anyhow!("unparseable response from {url}"))?;
-    Ok(HttpAnswer { status })
+    let (_head, body) = response.split_once("\r\n\r\n").unwrap_or((&response, ""));
+    Ok(HttpAnswer {
+        status,
+        body: body.to_string(),
+    })
 }
 
 fn http_get(url: &str) -> Result<HttpAnswer> {
@@ -180,17 +204,32 @@ pub fn run(emit_dir: Option<&Path>) -> Result<()> {
     match accept_anchor(&next, &keys(), Some(&prior), now())? {
         Acceptance::CoSign(_) => passed += 1,
         Acceptance::Duplicity(_) => bail!("monotone accept: expected co-sign, got duplicity"),
+        Acceptance::AlreadyAnchored(_) => {
+            bail!("monotone accept: expected co-sign, got idempotent replay")
+        }
     }
 
-    // Duplicity: same index, different head is refused with a verifiable proof.
+    // Duplicity: same index, different head is refused with a verifiable proof —
+    // and a single flipped head byte must make that proof unverifiable, so a
+    // forged proof can never pass the same offline check.
     match accept_anchor(&fork, &keys(), Some(&prior), now())? {
         Acceptance::Duplicity(proof) => {
             proof
                 .verify()
                 .context("duplicity: emitted proof must verify offline")?;
+            let mut tampered = (*proof).clone();
+            let mut head = *tampered.anchor_b.head.as_bytes();
+            head[0] ^= 0xff;
+            tampered.anchor_b.head = Head::from_bytes(head);
+            if tampered.verify().is_ok() {
+                bail!("duplicity: a tampered proof must not verify");
+            }
             passed += 1;
         }
         Acceptance::CoSign(_) => bail!("duplicity: expected refusal, got co-sign"),
+        Acceptance::AlreadyAnchored(_) => {
+            bail!("duplicity: expected refusal, got idempotent replay")
+        }
     }
 
     // Non-monotone index is rejected outright.
@@ -213,6 +252,8 @@ pub fn run(emit_dir: Option<&Path>) -> Result<()> {
     passed += 1;
 
     if let Some(dir) = emit_dir {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("creating emit directory {}", dir.display()))?;
         let path = dir.join("conformance-vectors.json");
         std::fs::write(
             &path,
@@ -238,4 +279,34 @@ fn vector_document(prior: &Anchor, next: &Anchor, fork: &Anchor) -> serde_json::
             { "bundle_index": 5, "anchor_index": null, "expect": "unanchored" }
         ]
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn health_body_yields_identity() {
+        assert_eq!(
+            identity_from_health_body(r#"{"up":true,"witness_name":"acme-w1"}"#),
+            "acme-w1"
+        );
+        assert_eq!(
+            identity_from_health_body(
+                r#"{"witness_did":"did:keri:EWit","witness_name":"acme-w1"}"#
+            ),
+            "did:keri:EWit"
+        );
+        assert!(identity_from_health_body("").contains("unknown"));
+        assert!(identity_from_health_body("{}").contains("unknown"));
+    }
+
+    #[test]
+    fn emit_creates_missing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("vectors");
+        assert!(!target.exists());
+        run(Some(&target)).unwrap();
+        assert!(target.join("conformance-vectors.json").exists());
+    }
 }

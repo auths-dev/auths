@@ -123,6 +123,7 @@ fn run() -> Result<()> {
         RootCommand::Emergency(cmd) => cmd.execute(&ctx),
         RootCommand::Agent(cmd) => cmd.execute(&ctx),
         RootCommand::Treasury(cmd) => cmd.execute(&ctx),
+        RootCommand::Anchor(cmd) => cmd.execute(&ctx),
         RootCommand::Witness(cmd) => cmd.execute(&ctx),
         RootCommand::Scim(cmd) => cmd.execute(&ctx),
         RootCommand::Commit(cmd) => cmd.execute(&ctx),
