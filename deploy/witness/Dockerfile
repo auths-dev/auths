@@ -14,9 +14,11 @@ FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-RUN useradd --system --home /data witness
 COPY --from=build /src/target/release/witness-node /usr/local/bin/witness-node
-USER witness
+# Runs as root: the node's data dir IS the mounted volume (anchor store +
+# registry), and a freshly attached volume mounts root-owned on fly, compose,
+# and k8s alike — a non-root process cannot create its state there. The node
+# exposes only the HTTP surface; the VM/container is the isolation boundary.
 VOLUME ["/data"]
 EXPOSE 3333
 ENTRYPOINT ["/usr/local/bin/witness-node"]

@@ -2,7 +2,7 @@
 #
 # This runs the SAME open `auths-witness-node` image as the rest of
 # deploy/witness (../Dockerfile). Nothing here is network.auths.dev-specific
-# code — only config. A stranger stands up their own witness by copying this
+# code — only config. Your stand up your own witness by copying this
 # file and changing `app`, the region, and the domain.
 #
 # The Dockerfile's build context is the workspace root, so deploy FROM THE
@@ -23,8 +23,10 @@ app = 'auths-network'
 primary_region = 'lhr'
 
 [build]
-  # Relative to the build context (the repo root — run `fly deploy` from there).
-  dockerfile = 'deploy/witness/Dockerfile'
+  # Relative to THIS config file's dir (flyctl resolves the dockerfile path
+  # against the config, not the build context). The context is still the repo
+  # root — run `fly deploy` from there.
+  dockerfile = '../Dockerfile'
 
 # One witness, four roles: witness members (kel receipting, spend anchoring,
 # checkpoint cosigning) AND serve the held refs/auths/* read-only (registry) so

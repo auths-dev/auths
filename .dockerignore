@@ -25,3 +25,12 @@ target/
 **/*.profraw
 coverage/
 dist/
+
+# Large non-source trees that a `cargo build` of a binary never needs — keeping
+# them out drops the build context from ~940 MB to a fraction of that.
+# (.dockerignore has no inline comments; crate-level tests under crates/*/tests
+# are unaffected — only the top-level suite is excluded.)
+tests/
+.recurve/
+.chunkhound/
+site/
