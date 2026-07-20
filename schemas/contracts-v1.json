@@ -1,0 +1,61 @@
+{
+  "version": "contracts/v1",
+  "verdicts": {
+    "audit": [
+      "self-consistent",
+      "tampered-proof",
+      "cost-mismatch",
+      "counterparty-mismatch",
+      "budget-mismatch",
+      "chain-break",
+      "revoked"
+    ],
+    "call": [
+      "authorized",
+      "unauthorized",
+      "expired",
+      "out-of-scope",
+      "out-of-counterparty",
+      "over-budget",
+      "unverifiable"
+    ],
+    "commit": [
+      "valid",
+      "unsigned",
+      "ssh-signature-invalid",
+      "gpg-unsupported",
+      "device-kel-invalid",
+      "root-kel-invalid",
+      "root-not-pinned",
+      "root-abandoned",
+      "not-delegated-by-claimed-root",
+      "delegation-seal-not-found",
+      "device-revoked",
+      "signed-after-revocation",
+      "outside-agent-scope",
+      "agent-expired",
+      "signer-key-mismatch",
+      "signed-by-superseded-key",
+      "witness-quorum-not-met"
+    ],
+    "gate": [
+      "allowed",
+      "outside-agent-scope",
+      "usage-cap-exceeded",
+      "metered-amount-required",
+      "usage-counter-rolled-back",
+      "agent-expired",
+      "revoked",
+      "proof-unauthentic",
+      "stale"
+    ],
+    "log": [
+      "consistent",
+      "inconsistent",
+      "unverifiable"
+    ],
+    "paymode": [
+      "budget-required"
+    ]
+  }
+}
