@@ -14,20 +14,22 @@ use crate::domains::identity::types::RegistrationOutcome;
 
 // There is deliberately no default registry URL.
 //
-// There used to be one — `https://registry.auths.dev` — and it returned HTTP 404
-// (Vercel: DEPLOYMENT_NOT_FOUND). Every registry-touching command therefore shipped
-// with a default pointing at a host that does not exist, which is the worst
-// possible failure shape: it looks configured and fails at the network.
+// We *do* run a first-party public registry — `crate::PUBLIC_REGISTRY_URL`
+// (`https://network.auths.dev`) — but it is offered as one option, never baked
+// in as the implicit fallback. A silent default would make our infrastructure
+// everyone's default and centralize the very network the deploy charts
+// (helm/terraform/compose) exist to let anyone federate — the opposite of the
+// "no central server" headline claim.
 //
-// Nothing needs it. Identity, signing, and verification are entirely local and
-// git-native — a signer's KEL travels to a relying party inside the committed
-// identity bundle (`auths id export-bundle` → `.auths/ci-bundle.json`). "No
-// central server" is the product's headline claim, and a default that
-// contradicts it is worse than no default.
+// Nothing needs a registry anyway. Identity, signing, and verification are
+// entirely local and git-native — a signer's KEL travels to a relying party
+// inside the committed identity bundle (`auths id export-bundle` →
+// `.auths/ci-bundle.json`).
 //
-// A registry is now opt-in and explicit: pass `--registry <url>` or set
-// `AUTHS_REGISTRY_URL`. Callers surface `RegistrationError::NoRegistryConfigured`
-// when a registry-dependent verb is invoked without one.
+// A registry is thus opt-in and explicit: pass `--registry <url>` (ours or your
+// own) or set `AUTHS_REGISTRY_URL`. Callers surface
+// `RegistrationError::NoRegistryConfigured` when a registry-dependent verb is
+// invoked without one.
 
 #[derive(Serialize)]
 struct RegistryOnboardingPayload {
@@ -56,7 +58,7 @@ struct RegistrationResponse {
 /// ```ignore
 /// let outcome = register_identity(
 ///     identity_storage, registry, attestation_source,
-///     "https://registry.auths.dev", None, &http_client,
+///     "https://network.auths.dev", None, &http_client,
 /// ).await?;
 /// ```
 pub async fn register_identity(

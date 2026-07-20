@@ -93,7 +93,7 @@ pub enum PairingError {
 /// ```ignore
 /// let params = PairingSessionParams {
 ///     controller_did: "did:keri:abc123".into(),
-///     registry: "https://registry.auths.dev".into(),
+///     registry: "https://network.auths.dev".into(),
 ///     capabilities: vec![Capability::sign_commit()],
 ///     expiry_secs: 300,
 /// };
@@ -244,7 +244,7 @@ pub fn verify_device_did(
 /// ```ignore
 /// let req = build_pairing_session_request(PairingSessionParams {
 ///     controller_did: "did:keri:abc123".into(),
-///     registry: "https://registry.auths.dev".into(),
+///     registry: "https://network.auths.dev".into(),
 ///     capabilities: vec![Capability::sign_commit()],
 ///     expiry_secs: 300,
 /// })?;

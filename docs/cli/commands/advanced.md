@@ -15,7 +15,7 @@ Publish a signed artifact attestation to the Auths registry.
 |------|---------|-------------|
 | `--signature <PATH>` | — | Path to an existing .auths.json signature file. Defaults to <FILE>.auths.json |
 | `--package <PACKAGE>` | — | Package identifier for registry indexing (e.g., npm:react@18.3.0) |
-| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
+| `--registry <REGISTRY>` | — | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -62,7 +62,7 @@ Sign and publish an artifact attestation to a registry
 |------|---------|-------------|
 | `--signature <PATH>` | — | Path to an existing .auths.json signature file. Defaults to <FILE>.auths.json |
 | `--package <PACKAGE>` | — | Package identifier for registry indexing (e.g., npm:react@18.3.0) |
-| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
+| `--registry <REGISTRY>` | — | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
 | `--key <KEY>` | — | Local alias of the identity key. Omit for device-only CI signing |
 | `--device-key <DEVICE_KEY>` | — | Local alias of the device key. Auto-detected when only one key exists |
 | `--expires-in <N>` | — | Duration in seconds until expiration |
@@ -259,7 +259,7 @@ Publish this identity to a public registry for discovery
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
+| `--registry <REGISTRY>` | — | Registry URL to publish to [env: AUTHS_REGISTRY_URL=] |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -751,7 +751,7 @@ Claim a namespace in a package ecosystem
 |------|---------|-------------|
 | `--ecosystem <ECOSYSTEM>` | — | Package ecosystem (e.g. npm, crates.io, pypi) |
 | `--package-name <PACKAGE_NAME>` | — | Package name to claim |
-| `--registry-url <REGISTRY_URL>` | — | Registry URL (defaults to the public registry) |
+| `--registry-url <REGISTRY_URL>` | — | Registry URL (no default) |
 | `--key <KEY>` | — | Alias of the signing key in keychain |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -772,7 +772,7 @@ Delegate namespace authority to another identity
 | `--ecosystem <ECOSYSTEM>` | — | Package ecosystem (e.g. npm, crates.io, pypi) |
 | `--package-name <PACKAGE_NAME>` | — | Package name |
 | `--delegate-did <DELEGATE_DID>` | — | DID of the identity to delegate to |
-| `--registry-url <REGISTRY_URL>` | — | Registry URL (defaults to the public registry) |
+| `--registry-url <REGISTRY_URL>` | — | Registry URL (no default) |
 | `--key <KEY>` | — | Alias of the signing key in keychain |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -793,7 +793,7 @@ Transfer namespace ownership to another identity
 | `--ecosystem <ECOSYSTEM>` | — | Package ecosystem (e.g. npm, crates.io, pypi) |
 | `--package-name <PACKAGE_NAME>` | — | Package name |
 | `--new-owner-did <NEW_OWNER_DID>` | — | DID of the new owner |
-| `--registry-url <REGISTRY_URL>` | — | Registry URL (defaults to the public registry) |
+| `--registry-url <REGISTRY_URL>` | — | Registry URL (no default) |
 | `--key <KEY>` | — | Alias of the signing key in keychain |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -813,7 +813,7 @@ Look up namespace information
 |------|---------|-------------|
 | `--ecosystem <ECOSYSTEM>` | — | Package ecosystem (e.g. npm, crates.io, pypi) |
 | `--package-name <PACKAGE_NAME>` | — | Package name |
-| `--registry-url <REGISTRY_URL>` | — | Registry URL (defaults to the public registry) |
+| `--registry-url <REGISTRY_URL>` | — | Registry URL (no default) |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1034,7 +1034,7 @@ Join an organization using an invite code
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--code <CODE>` | — | Invite code (e.g. from `auths org join --code C23BD59F`) |
-| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL to contact [env: AUTHS_REGISTRY_URL=] |
+| `--registry <REGISTRY>` | — | Registry URL to contact [env: AUTHS_REGISTRY_URL=] |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |

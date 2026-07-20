@@ -19,7 +19,7 @@ Create your signing identity and configure Git
 | `--key-alias <KEY_ALIAS>` | `main` | Key alias for the identity key (default: main) |
 | `--force` | — | Force overwrite if identity already exists |
 | `--dry-run` | — | Preview agent configuration without creating files or identities |
-| `--registry <REGISTRY>` | `https://registry.auths.dev` | Registry URL for identity registration [env: AUTHS_REGISTRY_URL=] |
+| `--registry <REGISTRY>` | — | Registry URL for identity registration [env: AUTHS_REGISTRY_URL=] |
 | `--register` | — | Register identity with the Auths Registry after creation |
 | `--github-action` | — | Scaffold a GitHub Actions workflow using the auths attest-action |
 | `--device-count <DEVICE_COUNT>` | `1` | Number of device slots for a multi-key KEL (default 1) |

@@ -20,6 +20,18 @@
 //! SDK functions accept typed configs and return structured `Result` types.
 //! They never prompt for input, print to stdout, or call `process::exit()`.
 
+/// The Auths-operated first-party public registry.
+///
+/// This is the canonical home for the URL — reference it instead of re-typing
+/// the literal, so the value lives in exactly one place. It is a *named
+/// reference*, **not** an implicit default: registry-touching commands still
+/// require an explicit `--registry`/`AUTHS_REGISTRY_URL`. Baking it in as a
+/// silent fallback would make our infrastructure everyone's default and
+/// centralize the very network the deploy charts exist to let anyone federate
+/// (and the core verbs — identity, signing, verification — need no registry at
+/// all). It is one option a party may opt into; running your own is another.
+pub const PUBLIC_REGISTRY_URL: &str = "https://network.auths.dev";
+
 // ── Re-export modules: types from auths-core, auths-id, auths-storage ──
 // These allow CLI and API consumers to import through auths-sdk instead of
 // depending on lower-layer crates directly.

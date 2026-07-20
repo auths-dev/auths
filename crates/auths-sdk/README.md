@@ -89,7 +89,7 @@ let config = DeveloperSetupConfig::builder("main".into())
     .with_platform(PlatformVerification::GitHub {
         access_token: "ghp_abc123".into(),
     })
-    .with_registration("https://registry.auths.dev")
+    .with_registration("https://network.auths.dev")
     .build();
 let result = setup_developer(config, &ctx)?;
 

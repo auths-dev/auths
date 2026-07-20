@@ -157,7 +157,7 @@ impl CreateDeveloperIdentityConfigBuilder {
     /// Usage:
     /// ```ignore
     /// let config = CreateDeveloperIdentityConfig::builder("my-key")
-    ///     .with_registration("https://registry.auths.dev")
+    ///     .with_registration("https://network.auths.dev")
     ///     .build();
     /// ```
     pub fn with_registration(mut self, url: impl Into<String>) -> Self {

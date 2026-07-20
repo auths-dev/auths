@@ -88,11 +88,12 @@ pub fn parse_witness_keys(keys: &[String]) -> Result<Vec<(String, Vec<u8>)>> {
 
 /// The registry URL to use, or an actionable error when none is configured.
 ///
-/// There is no default registry: auths is offline-first, and the one that used to
-/// be baked in (`https://registry.auths.dev`) returned HTTP 404 — a default that
-/// looks configured and fails at the network. Registry-dependent verbs resolve
-/// through here so the refusal is stated once, at the CLI boundary, in terms of
-/// what the user can do about it.
+/// There is no default registry: auths is offline-first, and defaulting to our
+/// public one (`auths_sdk::PUBLIC_REGISTRY_URL`, `https://network.auths.dev`)
+/// would quietly centralize a network meant to be federated. It stays opt-in —
+/// pass `--registry <url>` (ours or your own) or set `AUTHS_REGISTRY_URL`.
+/// Registry-dependent verbs resolve through here so the refusal is stated once,
+/// at the CLI boundary, in terms of what the user can do about it.
 ///
 /// Args:
 /// * `configured`: The value of `--registry` / `AUTHS_REGISTRY_URL`, if any.
@@ -104,8 +105,9 @@ pub fn parse_witness_keys(keys: &[String]) -> Result<Vec<(String, Vec<u8>)>> {
 pub fn require_registry(configured: Option<String>) -> Result<String> {
     configured.ok_or_else(|| {
         anyhow!(
-            "{}",
-            auths_sdk::domains::identity::error::RegistrationError::NoRegistryConfigured
+            "{}\nOur public registry is {} — pass it, or point --registry at your own.",
+            auths_sdk::domains::identity::error::RegistrationError::NoRegistryConfigured,
+            auths_sdk::PUBLIC_REGISTRY_URL
         )
     })
 }

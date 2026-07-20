@@ -74,9 +74,10 @@ with GitHub, and publishes a signed proof (a GitHub Gist).
 auths id register
 ```
 
-publishes your identity document to a registry so others can discover it by DID. The
-default registry (`https://registry.auths.dev`) is not yet live — registration is
-**opt-in** (`auths init --register`) and nothing is published during normal setup.
+publishes your identity document to a registry so others can discover it by DID.
+There is no default registry — registration is **opt-in** (`auths init --register`)
+and nothing is published during normal setup. Point `--registry` at our public
+registry (`https://network.auths.dev`) or one you run yourself.
 Until the registry ships, bundles and the committed `.auths/roots` file are the
 supported sharing mechanisms.
 
