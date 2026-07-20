@@ -81,6 +81,11 @@ def targets(workspace_version: str) -> list[tuple[Path, re.Pattern, str]]:
         (REPO_ROOT / "packages/auths-python/pyproject.toml", TOML_VERSION_RE, py_version),
         (REPO_ROOT / "packages/auths-fastapi/pyproject.toml", TOML_VERSION_RE, py_version),
         (REPO_ROOT / "crates/auths-mobile-ffi/Cargo.toml", TOML_VERSION_RE, workspace_version),
+        # auths-node is its own nested cargo workspace; its [workspace.package]
+        # version is what `version()` reports (CARGO_PKG_VERSION) and what
+        # __test__/exports.spec.ts asserts against package.json. Stamp it here so
+        # it moves in lockstep and `--check` catches any drift before release.
+        (REPO_ROOT / "packages/auths-node/Cargo.toml", TOML_VERSION_RE, workspace_version),
     ]
 
 
