@@ -4,7 +4,10 @@
     clippy::print_stdout,
     clippy::print_stderr,
     clippy::unwrap_used,
-    clippy::expect_used
+    clippy::expect_used,
+    // The AST-walking lint checkers nest tree-sitter node guards deliberately;
+    // long let-chains read worse than the nested `if`s here.
+    clippy::collapsible_if
 )]
 mod check_admission_policy;
 mod check_anchor_discipline;
