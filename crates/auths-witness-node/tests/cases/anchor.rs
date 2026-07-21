@@ -138,7 +138,7 @@ async fn unsynced_registry_returns_503_not_422() {
 
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert!(
-        body.contains("no synced registry"),
+        body.contains("no openable registry"),
         "operator-facing 503 body was: {body}"
     );
 }
