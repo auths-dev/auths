@@ -615,12 +615,27 @@ mod node {
     }
 
     pub fn register(endpoint: String) -> Result<()> {
-        println!("opening signed registration for {endpoint}");
+        // Directory admission is a human-reviewed step today — one key decides
+        // who appears (see get-listed.md). There is no automated registration
+        // endpoint yet, so don't pretend: point at the real, self-serve path.
+        println!("Directory listing is not automated yet — it's a reviewed submission.");
+        println!("The self-serve part is proving conformance; do that, then submit:");
+        println!("  1. cargo xtask witness-conformance --url {endpoint}");
+        println!("  2. follow https://docs.auths.dev/witness-network/operators/get-listed");
+        println!();
+        println!("Listing is discovery only — a conformant node is trusted whether or not");
+        println!("it's listed. Nothing here gates correctness.");
         Ok(())
     }
 
-    pub fn logs(data_dir: PathBuf) -> Result<()> {
-        println!("streaming logs for witness node at {}", data_dir.display());
+    pub fn logs(_data_dir: PathBuf) -> Result<()> {
+        // The node logs to stdout/stderr; there is no separate log store to
+        // stream. Route the operator to their runtime's log view.
+        println!("The witness node logs to stdout/stderr — use your runtime's log view:");
+        println!("  docker compose:  docker compose logs -f witness");
+        println!("  fly:             fly logs -a <app>");
+        println!("  kubernetes:      kubectl logs -f deploy/<release>-auths-witness-node");
+        println!("  systemd:         journalctl -u <unit> -f");
         Ok(())
     }
 }

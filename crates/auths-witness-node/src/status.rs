@@ -152,7 +152,7 @@ fn render(state: &StatusState, member_count: usize, base_url: &str) -> String {
 
   <div class="links">
     <a href="https://explorer.auths.dev/w/{name}">Browse it in the explorer ↗</a>
-    <a href="https://auths.dev/network">The witness directory ↗</a>
+    <a href="https://explorer.auths.dev">The witness directory ↗</a>
     <a href="https://docs.auths.dev/witness-network/operators/run-a-node">Run your own ↗</a>
   </div>
 

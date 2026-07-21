@@ -20,12 +20,20 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       securityContext:
-        runAsNonRoot: true
-        readOnlyRootFilesystem: true
+        # The node's data dir IS the mounted PVC, and a freshly-attached volume
+        # mounts root-owned — so the node runs as root to own its state, exactly
+        # as the Dockerfile, compose, and fly do (see fly/README.md). Setting
+        # runAsNonRoot without an fsGroup that owns the PVC CrashLoops the node
+        # the moment it writes /data; the pod is the isolation boundary and the
+        # node exposes only HTTP. If you require non-root, add an fsGroup here
+        # and rebuild the image with a matching user.
+        runAsUser: 0
       initContainers:
-        # Fetch the parties' public registry (`refs/auths/*`) into an ephemeral
-        # volume before the node serves — the anchor role fails closed without
-        # it. Re-runs on every pod start, so a restart always has current keys.
+        # Fetch the parties' public registry (`refs/auths/*`) into the volume
+        # before the node serves. A fresh witness boots fine without this and
+        # grows as it receipts events — but the anchor role can only resolve a
+        # party's keys once that party is in the registry, so sync first if this
+        # node is expected to anchor for them. Re-runs on every pod start.
         - name: sync-registry
           image: "{{ .Values.image.repository }}{{ if .Values.image.digest }}@{{ .Values.image.digest }}{{ else }}:{{ .Values.image.tag }}{{ end }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}

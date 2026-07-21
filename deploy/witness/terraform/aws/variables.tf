@@ -21,7 +21,7 @@ variable "image_repository" {
 
 variable "image_tag" {
   type    = string
-  default = "0.1.12"
+  default = "0.1.16"
 }
 
 variable "image_digest" {
@@ -50,4 +50,15 @@ variable "witness_seed" {
   type        = string
   description = "32-byte hex first-boot seed. Source from a secret store, not version control."
   sensitive   = true
+}
+
+variable "witness_name" {
+  type        = string
+  description = "The witness's public name, carried in its cosignatures and checkpoints."
+}
+
+variable "registry_url" {
+  type        = string
+  description = "The parties' public identity registry to sync refs/auths/* from (a peer witness, or the first-party network.auths.dev). Used by the boot-time sync-registry step."
+  default     = "https://network.auths.dev"
 }

@@ -38,11 +38,13 @@ services:
       #   docker compose run --rm witness \
       #     sync-registry --from <party-registry-url> --registry /registry
       # This fetches `refs/auths/*` (a plain `git clone` brings only
-      # `refs/heads/*`, so the party KELs never arrive and every anchor 422s).
-      # Re-run it to pick up new/rotated parties. The node's readiness gate
-      # refuses to serve until this holds a real registry, so an empty default
-      # fails loudly instead of 422-ing every request. Mounted read-write so the
-      # sync step can populate it in place; `serve` only reads from it.
+      # `refs/heads/*`, so the party KELs never arrive). Re-run it to pick up
+      # new/rotated parties. A fresh witness boots fine on an empty registry and
+      # grows as it receipts events — but the anchor role can only resolve a
+      # party's keys once that party is in here, so sync before you expect to
+      # accept their anchors (an un-synced anchor read just 404s that seed, it
+      # doesn't crash). Mounted read-write so the sync step can populate it in
+      # place; `serve` only reads from it.
       - ${WITNESS_REGISTRY:-./registry}:/registry
     healthcheck:
       test: ["CMD", "/usr/local/bin/witness-node", "healthcheck", "--url", "http://127.0.0.1:3333/health"]

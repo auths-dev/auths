@@ -45,6 +45,8 @@ resource "aws_instance" "witness" {
     roles        = join(",", var.roles)
     port         = var.port
     witness_seed = var.witness_seed
+    witness_name = var.witness_name
+    registry_url = var.registry_url
   })
 
   tags = {
