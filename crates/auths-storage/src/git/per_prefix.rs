@@ -470,7 +470,7 @@ impl PerPrefixKelStore {
             .map_err(RegistryError::storage)?;
         let mut prefixes = Vec::new();
         for reference in refs.flatten() {
-            if let Some(name) = reference.name()
+            if let Ok(name) = reference.name()
                 && let Some(tail) = name.rsplit('/').next()
                 && let Ok(prefix) = Prefix::new(tail.to_string())
             {

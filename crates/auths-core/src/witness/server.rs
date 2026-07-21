@@ -623,6 +623,10 @@ fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
 /// Route an accepted event through the injected [`KelSink`], mapping sink
 /// failures onto wire responses: a conflicting event is 409 duplicity
 /// evidence, a ruleset rejection is 400, a store fault is 500.
+// The Err IS axum's response pair, produced once per refused submission and
+// immediately returned to the framework — boxing it would add indirection on
+// the same cold path the lint is trying to protect.
+#[allow(clippy::result_large_err)]
 fn route_into_kel_sink(
     sink: &dyn KelSink,
     prefix: &Prefix,
