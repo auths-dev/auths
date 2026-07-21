@@ -45,7 +45,7 @@ api = [
 
 [dependencies]
 auths-evidence = { workspace = true }
-auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.13" }
+auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.16" }
 auths-crypto = { workspace = true }
 
 rmcp = { version = "0.9", features = ["server", "transport-io"] }

@@ -18,7 +18,7 @@ path = "src/lib.rs"
 [dependencies]
 # The one audit walk (per-record proof replay + binding-chain continuity + budget
 # re-derivation) lives in auths-mcp-core; this crate orchestrates it and never forks it.
-auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.13" }
+auths-mcp-core = { path = "../auths-mcp-core", version = "0.1.16" }
 auths-anchor = { workspace = true }
 auths-verifier = { workspace = true, features = ["native"] }
 auths-sdk = { workspace = true, features = ["backend-git"] }
