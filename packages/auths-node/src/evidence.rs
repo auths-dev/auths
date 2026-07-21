@@ -267,6 +267,95 @@ pub fn fetch_registry(url: String, dest: String) -> Result<()> {
     Ok(())
 }
 
+/// Read a member's Key Event Log out of a `fetchRegistry` mirror as JSON.
+///
+/// Transport only — this does NOT verify. It emits the member's events plus,
+/// for each event, its CESR attachment **hex-encoded** (controller indexed
+/// signatures, and any delegation source seal), in exactly the shape
+/// `@auths-dev/verifier`'s `validateKelJson(kelJson, attachmentsJson)` consumes:
+/// `attachments[i]` is the hex attachment for `events[i]`, strictly equal
+/// length and order. The caller (a browser) re-verifies; a compromised mirror
+/// can withhold or truncate here, but the client recompute catches that — it
+/// cannot forge.
+///
+/// The registry mirror only carries what rides under `refs/auths/*`, so the
+/// attachments are the per-event controller/delegation groups actually stored;
+/// witness receipts (a derived index) are served separately by the node's
+/// `/witness/{prefix}/receipt/{said}` surface, not here.
+///
+/// Args:
+/// * `registry_dir`: a directory previously populated by `fetchRegistry`.
+/// * `prefix`: the member AID (a bare KERI prefix, no `did:keri:`).
+///
+/// Returns JSON `{ prefix, events, attachments, tip, source }`. Throws when this
+/// registry does not hold the prefix.
+///
+/// Usage:
+/// ```ignore
+/// fetchRegistry(witnessGitUrl, dir);
+/// const { events, attachments } = JSON.parse(readKelJson(dir, prefix));
+/// const keyState = JSON.parse(await validateKelJson(
+///   JSON.stringify(events), JSON.stringify(attachments)));
+/// ```
+#[napi]
+pub fn read_kel_json(registry_dir: String, prefix: String) -> Result<String> {
+    use auths_id::keri::event::Event;
+    use auths_id::keri::types::Prefix;
+    use auths_storage::git::PerPrefixKelStore;
+    use std::ops::ControlFlow;
+
+    #[derive(serde::Serialize)]
+    struct TipJson {
+        sequence: u128,
+        said: String,
+    }
+    #[derive(serde::Serialize)]
+    struct KelReadResult {
+        prefix: String,
+        events: Vec<Event>,
+        attachments: Vec<String>,
+        tip: Option<TipJson>,
+        source: &'static str,
+    }
+
+    let store = PerPrefixKelStore::open(std::path::Path::new(&registry_dir));
+    let pfx = Prefix::new_unchecked(prefix.clone());
+
+    // Events in sequence order.
+    let mut events: Vec<Event> = Vec::new();
+    store
+        .visit_events(&pfx, 0, &mut |e: &Event| {
+            events.push(e.clone());
+            ControlFlow::Continue(())
+        })
+        .map_err(|e| Error::from_reason(format!("read kel for {prefix}: {e}")))?;
+
+    // Pair each event with its hex-encoded CESR attachment (same order/length).
+    let mut attachments: Vec<String> = Vec::with_capacity(events.len());
+    for ev in &events {
+        let seq = ev.sequence().value();
+        let att = store
+            .get_attachment(&pfx, seq)
+            .map_err(|e| Error::from_reason(format!("read attachment {seq} for {prefix}: {e}")))?
+            .unwrap_or_default();
+        attachments.push(hex::encode(att));
+    }
+
+    let tip = store.get_tip(&pfx).ok().map(|t| TipJson {
+        sequence: t.sequence,
+        said: t.said.to_string(),
+    });
+
+    let out = KelReadResult {
+        prefix,
+        events,
+        attachments,
+        tip,
+        source: "per-prefix",
+    };
+    serde_json::to_string(&out).map_err(|e| Error::from_reason(format!("serialize kel: {e}")))
+}
+
 /// The embedded JSON schema for the `receipts/v1` wire contract.
 #[napi]
 pub fn receipts_v1_schema() -> String {

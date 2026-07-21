@@ -21,8 +21,10 @@ use auths_witness_node::signer::{FileSigner, Signer as _};
 use auths_witness_node::sqlite_store::SqliteAnchorStore;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
+use axum::http::Method;
 use clap::{Parser, Subcommand};
 use tower::limit::ConcurrencyLimitLayer;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::timeout::TimeoutLayer;
 
 /// A witness request body is one anchor plus the party naming — a few KiB at
@@ -286,6 +288,22 @@ async fn main() -> std::process::ExitCode {
 
             let mut app = Router::new();
 
+            // W0.1 — the public status page (`GET /`), served regardless of the
+            // role mix. The member key is derived from the seed best-effort: a
+            // registry-only node started without one simply renders "—".
+            let member_did = parse_seed(&args.seed).ok().map(|seed| {
+                let signer = FileSigner::from_seed(args.witness_name.clone(), seed);
+                auths_crypto::did_key_encode(auths_crypto::CurveType::Ed25519, &signer.public_key())
+            });
+            app = app.merge(auths_witness_node::status::status_router(
+                auths_witness_node::status::StatusState {
+                    witness_name: args.witness_name.clone(),
+                    member_did,
+                    roles: args.roles.clone(),
+                    registry: args.registry.clone(),
+                },
+            ));
+
             if has("anchor") {
                 let state = match build_state(&args) {
                     Ok(state) => state,
@@ -362,6 +380,20 @@ async fn main() -> std::process::ExitCode {
             } else {
                 core
             };
+
+            // W0.2 — CORS on the public GET reads, so the explorer's
+            // browser-direct mode (and any third-party lens) can query this
+            // witness straight from a browser without a proxy. Scoped to GET
+            // with no credentials: a cross-origin write is a non-simple request,
+            // so its preflight fails against `allow_methods([GET])` and the
+            // browser blocks it — the wildcard ACAO never enables a cross-site
+            // POST. Mirrors auths-mcp-server's opt-in CORS, tightened to reads.
+            let app = app.layer(
+                CorsLayer::new()
+                    .allow_origin(Any)
+                    .allow_methods([Method::GET])
+                    .allow_headers(Any),
+            );
             // Housekeeping for the write path: appends create loose git
             // objects; a periodic `git gc --auto` keeps the served registry
             // packed (bench-measured ~45 KB/identity unpacked otherwise).

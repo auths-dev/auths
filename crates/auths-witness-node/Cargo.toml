@@ -52,7 +52,7 @@ git2 = { version = "0.21.0", default-features = false, features = ["vendored-lib
 axum = { version = "0.8" }
 clap = { version = "4", features = ["derive", "env"] }
 tower = { version = "0.5", features = ["limit"] }
-tower-http = { version = "0.6", features = ["timeout"] }
+tower-http = { version = "0.6", features = ["timeout", "cors"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal", "sync", "process", "io-util"] }
 # Decompress gzip-encoded git-upload-pack request bodies (the `registry` role's
 # git smart-HTTP surface); standard git clients gzip the fetch negotiation.

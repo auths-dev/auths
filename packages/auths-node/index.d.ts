@@ -466,6 +466,40 @@ export declare const enum PresentationStatus {
   Unknown = 'Unknown'
 }
 
+/**
+ * Read a member's Key Event Log out of a `fetchRegistry` mirror as JSON.
+ *
+ * Transport only — this does NOT verify. It emits the member's events plus,
+ * for each event, its CESR attachment **hex-encoded** (controller indexed
+ * signatures, and any delegation source seal), in exactly the shape
+ * `@auths-dev/verifier`'s `validateKelJson(kelJson, attachmentsJson)` consumes:
+ * `attachments[i]` is the hex attachment for `events[i]`, strictly equal
+ * length and order. The caller (a browser) re-verifies; a compromised mirror
+ * can withhold or truncate here, but the client recompute catches that — it
+ * cannot forge.
+ *
+ * The registry mirror only carries what rides under `refs/auths/*`, so the
+ * attachments are the per-event controller/delegation groups actually stored;
+ * witness receipts (a derived index) are served separately by the node's
+ * `/witness/{prefix}/receipt/{said}` surface, not here.
+ *
+ * Args:
+ * * `registry_dir`: a directory previously populated by `fetchRegistry`.
+ * * `prefix`: the member AID (a bare KERI prefix, no `did:keri:`).
+ *
+ * Returns JSON `{ prefix, events, attachments, tip, source }`. Throws when this
+ * registry does not hold the prefix.
+ *
+ * Usage:
+ * ```ignore
+ * fetchRegistry(witnessGitUrl, dir);
+ * const { events, attachments } = JSON.parse(readKelJson(dir, prefix));
+ * const keyState = JSON.parse(await validateKelJson(
+ *   JSON.stringify(events), JSON.stringify(attachments)));
+ * ```
+ */
+export declare function readKelJson(registryDir: string, prefix: string): string
+
 /** The embedded JSON schema for the `receipts/v1` wire contract. */
 export declare function receiptsV1Schema(): string
 
@@ -570,14 +604,6 @@ export declare function signCommit(data: Buffer, identityKeyAlias: string, repoP
  */
 export declare function verifyActionEnvelope(envelopeJson: string, publicKeyHex: string, curve?: string | undefined | null): NapiVerificationResult
 
-/** Options for {@link verifyActivityAttestation}. */
-export interface VerifyActivityOpts {
-  /** Fail the whole document when there is no verified witness anchor. */
-  requireWitness?: boolean
-  /** An independently-known witness tip index; a tip past the document's count marks the anchor stale. */
-  witnessTipIndex?: number
-}
-
 /**
  * Verify a published `activity/v1` attestation against a fetched registry copy:
  * resolve the agent's current keys from the KEL (identity resolution ONLY —
@@ -593,10 +619,12 @@ export interface VerifyActivityOpts {
  * seller's own claims. `freshness` is `"fresh" | "unknown" | "stale"`;
  * `headBound` is `true` only when a verified witness anchor cosigns the head.
  *
- * `cumulativeCents` is a SIGNED CLAIM, not a re-derived fact: the per-call log is
- * structurally private, so the magnitude is provable only when `anchor` is a
+ * `cumulativeCents` is a SIGNED CLAIM, not a re-derived fact: the per-call log
+ * is structurally private, so the magnitude is provable only when `anchor` is a
  * non-stale `witness` summary. A consumer MUST NOT present `cumulativeCents` as
  * verified earnings unless `anchor?.tier === "witness" && anchor.stale === false`.
+ * At first-seen (`anchor === null`) the honest label is "seller-claimed,
+ * unwitnessed".
  *
  * Usage:
  * ```ignore
@@ -605,6 +633,20 @@ export interface VerifyActivityOpts {
  * ```
  */
 export declare function verifyActivityAttestation(attestationJson: string, registryPath: string, opts?: VerifyActivityOpts | undefined | null): string
+
+/** Options for [`verify_activity_attestation`]. */
+export interface VerifyActivityOpts {
+  /**
+   * Fail the whole document when there is no verified witness anchor — promotes
+   * the anchor from an additive assurance tier to a required gate.
+   */
+  requireWitness?: boolean
+  /**
+   * An independently-known witness tip index for this seed, if the caller has
+   * one. A tip greater than the document's count marks the anchor `stale`.
+   */
+  witnessTipIndex?: number
+}
 
 export declare function verifyAttestation(attestationJson: string, issuerPkHex: string): Promise<NapiVerificationResult>
 

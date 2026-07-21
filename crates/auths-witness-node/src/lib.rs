@@ -49,6 +49,7 @@ pub mod serve_registry;
 pub mod signer;
 pub mod sqlite_store;
 pub mod standup;
+pub mod status;
 pub mod sync;
 pub mod vocabulary;
 
