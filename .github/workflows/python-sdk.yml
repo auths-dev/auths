@@ -30,7 +30,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # cache: false — this build's target dir is packages/auths-python/target, not
+      # the workspace target, so keep the package-scoped cache below and take only
+      # the toolchain + shared sccache from the composite.
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+          cache: "false"
 
       - uses: actions/cache@v4
         with:

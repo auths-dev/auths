@@ -1,9 +1,25 @@
 name: Setup Rust
-description: Install Rust toolchain from rust-toolchain.toml and cache cargo artifacts
+description: Install the pinned Rust toolchain, wire sccache as a shared compiler cache, and cache cargo artifacts.
 
 inputs:
+  toolchain:
+    description: 'Rust toolchain to install (e.g. "1.93", "stable", "nightly").'
+    required: false
+    default: "1.93"
   components:
-    description: Rust components to install (comma-separated)
+    description: Rust components to install (comma-separated).
+    required: false
+    default: ""
+  targets:
+    description: Rust targets to install (comma-separated).
+    required: false
+    default: ""
+  cache:
+    description: 'Cache cargo deps + target with Swatinem/rust-cache. Set "false" for jobs whose build dir is not the workspace target (they keep their own cache).'
+    required: false
+    default: "true"
+  cache-shared-key:
+    description: Swatinem/rust-cache shared-key. Set the same value on two jobs to share one dependency cache; empty keeps the cache per-job.
     required: false
     default: ""
 
@@ -12,14 +28,31 @@ runs:
   steps:
     - uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: "1.93"
+        toolchain: ${{ inputs.toolchain }}
         components: ${{ inputs.components }}
-    - uses: actions/cache@v4
+        targets: ${{ inputs.targets }}
+
+    # Content-addressed compiler cache shared across every job and runner: a crate
+    # compiled once (in any job) is reused everywhere its inputs match. This is what
+    # lets the parallel fmt/clippy/test/build jobs stop recompiling the same
+    # dependency graph — the per-job target cache below cannot cross job boundaries.
+    - uses: mozilla-actions/sccache-action@v0.0.9
+
+    - name: Wire sccache as the rustc wrapper
+      shell: bash
+      run: |
+        {
+          echo "RUSTC_WRAPPER=sccache"
+          echo "SCCACHE_GHA_ENABLED=true"
+          echo "CARGO_INCREMENTAL=0"
+        } >> "$GITHUB_ENV"
+
+    # Restores a warm ~/.cargo (registry + git) and target/ for repeat runs of the
+    # SAME job, caching dependencies only (not the fast-changing workspace crates)
+    # and pruning stale artifacts so the cache does not grow unbounded. Complements
+    # sccache, which is what shares compiled crates ACROSS jobs.
+    - uses: Swatinem/rust-cache@v2
+      if: inputs.cache == 'true'
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          ~/.cargo/bin
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: ${{ runner.os }}-cargo-
+        shared-key: ${{ inputs.cache-shared-key }}
+        cache-on-failure: "true"
