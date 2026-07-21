@@ -198,7 +198,8 @@ pub fn anchor_and_persist<T: serde::Serialize>(
 /// The caller is responsible for calling `backend.commit_batch(batch)` after
 /// this function returns. This separation ensures the caller can always commit
 /// the batch (deterministic) regardless of whether the ixn was successfully
-/// staged.
+/// staged. The returned attachment is the ixn's CESR signature group — what a
+/// witness submission envelope carries.
 #[allow(clippy::too_many_arguments)]
 pub fn try_stage_anchor<T: serde::Serialize>(
     backend: &dyn crate::storage::registry::backend::RegistryBackend,
@@ -208,7 +209,7 @@ pub fn try_stage_anchor<T: serde::Serialize>(
     controller_prefix: &Prefix,
     attestation: &T,
     batch: &mut crate::storage::registry::backend::AtomicWriteBatch,
-) -> Result<(Said, IxnEvent), AnchorError> {
+) -> Result<(Said, IxnEvent, Vec<u8>), AnchorError> {
     let state = backend
         .get_key_state(controller_prefix)
         .map_err(|e| AnchorError::NotFound(e.to_string()))?;
@@ -231,10 +232,10 @@ pub fn try_stage_anchor<T: serde::Serialize>(
     batch.stage_event(
         controller_prefix.clone(),
         Event::Ixn(ixn.clone()),
-        attachment,
+        attachment.clone(),
     );
 
-    Ok((attestation_said, ixn))
+    Ok((attestation_said, ixn, attachment))
 }
 
 /// Stage anchor + collect witness receipts + commit batch.
@@ -254,7 +255,7 @@ pub fn anchor_and_persist_via_backend<T: serde::Serialize>(
     witness_params: &crate::witness_config::WitnessParams<'_>,
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<(Said, IxnEvent), AnchorError> {
-    let result = try_stage_anchor(
+    let (attestation_said, ixn, attachment) = try_stage_anchor(
         backend,
         signer,
         signer_alias,
@@ -264,32 +265,26 @@ pub fn anchor_and_persist_via_backend<T: serde::Serialize>(
         batch,
     )?;
 
-    let (_, ref ixn) = result;
-
     #[cfg(feature = "witness-client")]
-    if let crate::witness_config::WitnessParams::Enabled { config, repo_path } = witness_params {
-        let canonical = serialize_for_signing(&Event::Ixn(ixn.clone()))?;
-        super::witness_integration::collect_and_store_receipts(
-            repo_path,
-            controller_prefix,
-            &ixn.d,
-            &canonical,
-            config,
-            now,
-        )
-        .map_err(|e| AnchorError::WitnessQuorumNotMet(e.to_string()))?;
-    }
+    super::witness_integration::solicit_receipts_for_event(
+        witness_params,
+        controller_prefix,
+        &Event::Ixn(ixn.clone()),
+        &attachment,
+        now,
+    )
+    .map_err(|e| AnchorError::WitnessQuorumNotMet(e.to_string()))?;
 
     #[cfg(not(feature = "witness-client"))]
     {
-        let _ = (witness_params, &ixn, now);
+        let _ = (witness_params, &attachment, now);
     }
 
     backend
         .commit_batch(batch)
         .map_err(|e| AnchorError::Kel(KelError::Serialization(e.to_string())))?;
 
-    Ok(result)
+    Ok((attestation_said, ixn))
 }
 
 // ── KEL walk ─────────────────────────────────────────────────────────────────

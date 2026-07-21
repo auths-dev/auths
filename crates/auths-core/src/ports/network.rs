@@ -2,7 +2,6 @@
 
 use std::future::Future;
 
-use auths_keri::Prefix;
 use auths_verifier::core::Ed25519PublicKey;
 
 /// Domain error for outbound network operations.
@@ -255,55 +254,6 @@ pub trait IdentityResolver: Send + Sync {
         &self,
         did: &str,
     ) -> impl Future<Output = Result<ResolvedIdentity, ResolutionError>> + Send;
-}
-
-/// Submits key events and queries receipts from the witness infrastructure.
-///
-/// Witnesses observe and receipt key events to provide accountability.
-/// Implementations handle the transport details; the domain provides
-/// serialized events and receives receipts as opaque byte arrays.
-///
-/// Usage:
-/// ```ignore
-/// use auths_core::ports::network::WitnessClient;
-///
-/// async fn witness_inception(client: &dyn WitnessClient, endpoint: &str, event: &[u8]) {
-///     let receipt = client.submit_event(endpoint, event).await.unwrap();
-/// }
-/// ```
-pub trait WitnessClient: Send + Sync {
-    /// Submits a serialized key event to a witness and returns the receipt bytes.
-    ///
-    /// Args:
-    /// * `endpoint`: The witness endpoint identifier.
-    /// * `event`: The serialized key event bytes.
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let receipt = client.submit_event("witness-1.example.com", &event_bytes).await?;
-    /// ```
-    fn submit_event(
-        &self,
-        endpoint: &str,
-        event: &[u8],
-    ) -> impl Future<Output = Result<Vec<u8>, NetworkError>> + Send;
-
-    /// Queries all receipts a witness holds for the given KERI prefix.
-    ///
-    /// Args:
-    /// * `endpoint`: The witness endpoint identifier.
-    /// * `prefix`: The KERI prefix to query receipts for.
-    ///
-    /// Usage:
-    /// ```ignore
-    /// let prefix = Prefix::new_unchecked("EAbcdef...".into());
-    /// let receipts = client.query_receipts("witness-1.example.com", &prefix).await?;
-    /// ```
-    fn query_receipts(
-        &self,
-        endpoint: &str,
-        prefix: &Prefix,
-    ) -> impl Future<Output = Result<Vec<Vec<u8>>, NetworkError>> + Send;
 }
 
 /// Rate limit information extracted from HTTP response headers.

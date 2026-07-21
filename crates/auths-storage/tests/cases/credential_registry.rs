@@ -24,6 +24,7 @@ use auths_id::keri::sync::{
 use auths_id::keri::types::Prefix;
 use auths_id::keri::{Event, Said, Seal, Threshold};
 use auths_id::ports::registry::RegistryBackend;
+use auths_id::witness_config::WitnessParams;
 use auths_keri::{Acdc, TelEvent, compute_capability_schema_said, validate_tel};
 use auths_storage::git::{GitRegistryBackend, RegistryConfig};
 
@@ -59,8 +60,9 @@ fn setup_git_issuer() -> GitIssuer {
         &alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     )
     .unwrap();
 
@@ -323,10 +325,11 @@ fn kt2_issuer_registry_rejected_typed_git() {
         &alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         &[CurveType::Ed25519, CurveType::Ed25519],
         Threshold::Simple(2),
         Threshold::Simple(2),
+        chrono::Utc::now(),
     )
     .unwrap();
     let prefix = prefix_of(&did);

@@ -31,3 +31,4 @@ mod setup;
 mod sign_commit_attestation;
 mod signing;
 mod ssh_key_upload;
+mod witness_set;

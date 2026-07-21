@@ -316,7 +316,7 @@ pub fn stage_root_anchor_ixn(
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
     batch: &mut crate::storage::registry::backend::AtomicWriteBatch,
-) -> Result<IxnEvent, InitError> {
+) -> Result<(IxnEvent, Vec<u8>), InitError> {
     let root_state = backend
         .get_key_state(root_prefix)
         .map_err(|e| InitError::Registry(e.to_string()))?;
@@ -359,8 +359,12 @@ pub fn stage_root_anchor_ixn(
         sig,
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
-    batch.stage_event(root_prefix.clone(), Event::Ixn(ixn.clone()), attachment);
-    Ok(ixn)
+    batch.stage_event(
+        root_prefix.clone(),
+        Event::Ixn(ixn.clone()),
+        attachment.clone(),
+    );
+    Ok((ixn, attachment))
 }
 
 /// Author an `ixn` on the root KEL anchoring the given seals, signed by the root's
@@ -380,7 +384,7 @@ pub fn author_root_anchor_ixn(
     keychain: &(dyn KeyStorage + Send + Sync),
 ) -> Result<IxnEvent, InitError> {
     let mut batch = crate::storage::registry::backend::AtomicWriteBatch::new();
-    let ixn = stage_root_anchor_ixn(
+    let (ixn, _attachment) = stage_root_anchor_ixn(
         backend,
         root_prefix,
         root_alias,
@@ -410,6 +414,9 @@ pub struct BulkDelegation {
     pub devices: Vec<DelegatedDevice>,
     /// The single root `ixn` anchoring every dip in the batch.
     pub anchor_ixn: IxnEvent,
+    /// The anchoring `ixn`'s CESR signature attachment — what a caller submits
+    /// to the root's backers for the batch's one receipt round.
+    pub anchor_attachment: Vec<u8>,
 }
 
 /// Incept a batch of agents as delegated identifiers with ONE root anchoring `ixn`
@@ -425,8 +432,10 @@ pub struct BulkDelegation {
 /// `extras` runs once per agent AFTER its keys are stored in the keychain: it may
 /// stage additional writes into the shared batch (e.g. the delegation-attestation
 /// blob) and returns extra seals to carry in the anchoring `ixn` (e.g. the
-/// attestation digest). Witness receipting is the caller's concern — one receipt
-/// round per batch instead of per agent; this function does not contact witnesses.
+/// attestation digest). Witness receipting is ONE round per batch — the shared
+/// anchor `ixn` is published to the backers in `witness` before the atomic
+/// commit (never per agent), so bulk onboarding stays off the quadratic and an
+/// enforced quorum miss leaves the registry untouched.
 #[allow(clippy::too_many_arguments)]
 pub fn incept_delegated_agents_bulk(
     backend: &(dyn RegistryBackend + Send + Sync),
@@ -436,6 +445,8 @@ pub fn incept_delegated_agents_bulk(
     specs: &[BulkAgentSpec],
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
+    witness: &crate::witness_config::WitnessParams<'_>,
+    now: chrono::DateTime<chrono::Utc>,
     mut extras: impl FnMut(
         &DeviceDipBundle,
         &mut crate::storage::registry::backend::AtomicWriteBatch,
@@ -485,7 +496,7 @@ pub fn incept_delegated_agents_bulk(
 
     // One anchoring ixn for the whole batch, staged BEFORE the dips so the dips
     // staged after it see the anchor through the batch's state/tip overlays.
-    let anchor_ixn = stage_root_anchor_ixn(
+    let (anchor_ixn, anchor_attachment) = stage_root_anchor_ixn(
         backend,
         root_prefix,
         root_alias,
@@ -521,6 +532,21 @@ pub fn incept_delegated_agents_bulk(
         });
     }
 
+    // The batch's ONE receipt round: publish the shared anchor `ixn` to the
+    // root's backers before committing, mirroring the per-anchor path's
+    // quorum-blocks-the-write ordering.
+    #[cfg(feature = "witness-client")]
+    super::witness_integration::solicit_receipts_for_event(
+        witness,
+        root_prefix,
+        &Event::Ixn(anchor_ixn.clone()),
+        &anchor_attachment,
+        now,
+    )
+    .map_err(|e| InitError::Witness(e.to_string()))?;
+    #[cfg(not(feature = "witness-client"))]
+    let _ = (witness, now);
+
     backend
         .commit_batch(&batch)
         .map_err(|e| InitError::Registry(e.to_string()))?;
@@ -528,6 +554,7 @@ pub fn incept_delegated_agents_bulk(
     Ok(BulkDelegation {
         devices,
         anchor_ixn,
+        anchor_attachment,
     })
 }
 

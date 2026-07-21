@@ -435,8 +435,9 @@ fn perform_gpg_migration(
         &key_alias,
         &passphrase_provider,
         keychain.as_ref(),
-        None,
+        auths_sdk::witness::WitnessParams::Disabled,
         auths_crypto::CurveType::default(),
+        chrono::Utc::now(),
     ) {
         Ok((controller_did, alias)) => {
             out.print_success(&format!("Created Auths identity: {}", controller_did));
@@ -832,8 +833,9 @@ fn perform_ssh_migration(
         &key_alias,
         &passphrase_provider,
         keychain.as_ref(),
-        None,
+        auths_sdk::witness::WitnessParams::Disabled,
         auths_crypto::CurveType::default(),
+        chrono::Utc::now(),
     ) {
         Ok((controller_did, alias)) => {
             out.print_success(&format!("Created Auths identity: {}", controller_did));

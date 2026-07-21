@@ -79,12 +79,15 @@ mod noop;
 mod provider;
 mod receipt;
 mod verify;
+pub mod wire;
 
 // Feature-gated modules
 #[cfg(feature = "witness-server")]
 mod identity;
 #[cfg(feature = "witness-server")]
 mod server;
+#[cfg(feature = "witness-server")]
+mod sink;
 #[cfg(feature = "witness-server")]
 mod storage;
 
@@ -115,5 +118,7 @@ pub use server::{
     BuildProof, ErrorResponse, HeadResponse, HealthResponse, SaidAtSeqResponse, SubmitEventRequest,
     WitnessServerConfig, WitnessServerState, router as witness_router, run_server,
 };
+#[cfg(feature = "witness-server")]
+pub use sink::{KelSink, KelSinkError, KelSinkOutcome};
 #[cfg(feature = "witness-server")]
 pub use storage::WitnessStorage;

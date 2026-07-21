@@ -245,8 +245,9 @@ pub fn create_org(
         admin_alias,
         ctx.passphrase_provider.as_ref(),
         ctx.key_storage.as_ref(),
-        ctx.witness_config.as_ref(),
+        ctx.witness_params(),
         curve,
+        now,
     )
     .map_err(OrgError::IdentityInit)?;
 

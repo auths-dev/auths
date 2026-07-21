@@ -1,0 +1,50 @@
+# auths-w1 — Auths's second first-party witness, on Fly.
+#
+# Same open image as network.auths.dev (../Dockerfile); differs only in name
+# and in syncing its party registry FROM network.auths.dev at boot, so the
+# keys it resolves submitters against are the real published members — the
+# first witness→witness replication edge of the federation.
+#
+# Deploy FROM THE REPO ROOT:
+#
+#   fly deploy --config deploy/witness/fly/fly-w1.toml
+#
+# The sync is best-effort at boot (`;`, not `&&`): a temporarily unreachable
+# peer must not brick the node — the KEL write path also populates the
+# registry directly as members publish to this witness.
+
+app = 'auths-w1'
+primary_region = 'lhr'
+
+[build]
+  dockerfile = '../Dockerfile'
+
+[experimental]
+  entrypoint = [
+    '/bin/sh',
+    '-c',
+    'mkdir -p /data/registry && /usr/local/bin/witness-node sync-registry --from https://network.auths.dev --registry /data/registry ; exec /usr/local/bin/witness-node serve --roles anchor,kel,cosign --bind 0.0.0.0:3333 --data-dir /data --registry /data/registry --witness-name auths-w1',
+  ]
+
+[[mounts]]
+  source = 'witness_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 3333
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '2s'
+    grace_period = '10s'
+    method = 'get'
+    path = '/health'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

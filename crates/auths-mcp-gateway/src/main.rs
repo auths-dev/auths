@@ -146,10 +146,11 @@ struct ExportAttestationArgs {
     anchor_to: Vec<String>,
 
     /// A declared witness-set member as `name=<key>` (repeatable), where the
-    /// key is a CESR-qualified verkey or a `did:key:` — both carry the curve
-    /// tag in-band, so it is never inferred from length or documentation. The
-    /// declared set is what verifiers hold the quorum to; every cosigner must
-    /// be one of these.
+    /// key is a CESR-qualified verkey, a `did:key:`, or `<curve>:<hex>` — the
+    /// curve tag rides in-band, never inferred from length. The declared set
+    /// must already be anchored in the seller's KEL (`auths witness-set
+    /// declare`); it is what verifiers hold the quorum to, and every cosigner
+    /// must be one of these.
     #[arg(long = "witness", value_name = "NAME=KEY")]
     witness: Vec<String>,
 
@@ -564,50 +565,43 @@ async fn run_export_attestation(args: ExportAttestationArgs) -> ExitCode {
     }
 }
 
-/// Parse `name=<cesr-verkey>` witness declarations into a validated,
-/// self-addressed declared set. The key is CESR-qualified (`D…` Ed25519,
-/// `1AAI…` P-256) so its curve tag is in-band from the very first ingestion —
-/// never inferred from length or a flag's documentation.
-fn declared_witness_set(
-    specs: &[String],
-    threshold: u32,
-) -> anyhow::Result<auths_anchor::WitnessSet> {
-    let mut members = Vec::new();
-    for spec in specs {
-        let (name, cesr) = spec
-            .split_once('=')
-            .ok_or_else(|| anyhow::anyhow!("--witness must be `name=<cesr-verkey>`"))?;
-        let key = cesr.trim();
-        let (curve, public_key) = if let Ok(parsed) = auths_keri::KeriPublicKey::parse(key) {
-            (parsed.curve(), parsed.raw_bytes().to_vec())
-        } else if key.starts_with("did:key:") {
-            let decoded = auths_crypto::did_key_decode(key)
-                .map_err(|e| anyhow::anyhow!("witness `{name}` key: {e}"))?;
-            (decoded.curve(), decoded.bytes().to_vec())
-        } else {
-            anyhow::bail!(
-                "witness `{name}` key must be a CESR verkey or a did:key — \
-                 both carry the curve tag in-band"
-            );
-        };
-        members.push(auths_anchor::WitnessRef {
-            name: name.to_string(),
-            curve,
-            public_key,
-            operator: None,
-        });
-    }
-    let mut set = auths_anchor::WitnessSet {
-        said: String::new(),
-        threshold,
-        members,
-    };
-    set.validate()
-        .map_err(|e| anyhow::anyhow!("witness set: {e}"))?;
-    set.said = set
-        .computed_said()
-        .map_err(|e| anyhow::anyhow!("witness set said: {e}"))?;
-    Ok(set)
+/// Resolve the declared witness-set SAID from the seller's own KEL in the
+/// local registry — the independent source `verify_finalized` holds the
+/// finalized anchor to. Export refuses to embed an anchor whose set the
+/// seller never declared: the declaration is one `ixn` digest seal over the
+/// set's content SAID, authored by `auths witness-set declare`.
+fn kel_declared_witness_set_said(
+    live_dir: &std::path::Path,
+    root: &str,
+    set_said: &str,
+) -> anyhow::Result<String> {
+    use auths_sdk::ports::RegistryBackend;
+    use std::ops::ControlFlow;
+
+    let registry = live_dir.join("registry");
+    let backend = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+        auths_sdk::storage::RegistryConfig::single_tenant(&registry),
+    );
+    let root_tail = root.strip_prefix("did:keri:").unwrap_or(root);
+    let prefix = auths_keri::Prefix::new(root_tail.to_string())
+        .map_err(|e| anyhow::anyhow!("root prefix: {e}"))?;
+    let mut events: Vec<auths_keri::Event> = Vec::new();
+    backend
+        .visit_events(&prefix, 0, &mut |event| {
+            events.push(event.clone());
+            ControlFlow::Continue(())
+        })
+        .map_err(|e| anyhow::anyhow!("seller KEL for {root}: {e}"))?;
+    let seals = auths_anchor::ixn_digest_seals(&events);
+    auths_anchor::find_witness_set_seal(&seals, set_said)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "witness set {set_said} is not anchored in the seller's KEL ({root}) — \
+                 declare it first with `auths witness-set declare --member NAME=KEY \
+                 --threshold T` against this registry, then re-run export-attestation"
+            )
+        })
 }
 
 /// One witness's acceptance response: its cosignature plus the logged
@@ -619,16 +613,22 @@ struct WitnessAcceptance {
 }
 
 /// Submit the aggregate to the declared witnesses, collect cosignatures to the
-/// threshold, and return the finalized anchor — re-verified locally before it
-/// is ever embedded, so the gateway never publishes an anchor a stranger would
-/// refuse.
+/// threshold, and return the finalized anchor — re-verified locally against
+/// the KEL-declared set SAID before it is ever embedded, so the gateway never
+/// publishes an anchor a stranger would refuse.
 async fn anchor_with_witnesses(
     args: &ExportAttestationArgs,
     doc: &auths_evidence::ActivityV1,
     seed: &auths_crypto::TypedSeed,
     curve: auths_crypto::CurveType,
 ) -> anyhow::Result<auths_anchor::FinalizedAnchor> {
-    let set = declared_witness_set(&args.witness, args.witness_threshold)?;
+    let set =
+        auths_sdk::workflows::witness_set::build_witness_set(&args.witness, args.witness_threshold)
+            .map_err(|e| anyhow::anyhow!("--witness: {e}"))?;
+    // Resolve the declaration BEFORE any witness is contacted: an undeclared
+    // set can never finalize, so fail it without a network round-trip.
+    let declared_said =
+        kel_declared_witness_set_said(&args.live_dir, &doc.subject.root, &set.said)?;
     let set_ref = auths_anchor::WitnessSetRef {
         said: set.said.clone(),
         threshold: set.threshold,
@@ -682,7 +682,7 @@ async fn anchor_with_witnesses(
         cosignatures,
         inclusion,
     };
-    auths_anchor::verify_finalized(&finalized, Some(&finalized.anchor.witness_set.said))
+    auths_anchor::verify_finalized(&finalized, Some(&declared_said))
         .map_err(|e| anyhow::anyhow!("finalization did not reach the declared threshold: {e}"))?;
     println!(
         "export-attestation: anchored — {} cosignature(s), threshold {}",

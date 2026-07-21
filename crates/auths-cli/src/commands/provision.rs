@@ -88,6 +88,7 @@ pub fn handle_provision(
         auths_ctx.key_storage.as_ref(),
         Arc::clone(&auths_ctx.registry),
         Arc::clone(&auths_ctx.identity_storage),
+        chrono::Utc::now(),
     )
     .map_err(anyhow::Error::from)?
     {

@@ -17,7 +17,7 @@ use crate::keri::{
 };
 use crate::storage::identity::IdentityStorage;
 use crate::storage::registry::RegistryBackend;
-use crate::witness_config::WitnessConfig;
+use crate::witness_config::WitnessParams;
 
 use auths_core::{
     crypto::said::compute_next_commitment,
@@ -107,29 +107,82 @@ pub fn initialize_keri_identity(
     Ok((controller_did, local_key_alias.clone()))
 }
 
+/// The `bt`/`b` backer designation an inception carries, from the witness
+/// params: an enabled config designates its pinned witness AIDs; anything
+/// else designates none.
+fn backer_designation(witness: &WitnessParams<'_>) -> (Threshold, Vec<Prefix>) {
+    match witness {
+        WitnessParams::Enabled { config, .. } if config.is_enabled() => (
+            Threshold::Simple(config.threshold as u64),
+            config.aids().cloned().collect(),
+        ),
+        _ => (Threshold::Simple(0), vec![]),
+    }
+}
+
+/// Publish a freshly-incepted event to its designated backers and store the
+/// collected receipts. Under `WitnessPolicy::Enforce` a missed quorum is an
+/// error — the caller must not proceed to durable writes.
+#[cfg(feature = "witness-client")]
+fn solicit_inception_receipts(
+    witness: &WitnessParams<'_>,
+    prefix: &Prefix,
+    finalized: &IcpEvent,
+    attachment: &[u8],
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), InitError> {
+    crate::keri::witness_integration::solicit_receipts_for_event(
+        witness,
+        prefix,
+        &Event::Icp(finalized.clone()),
+        attachment,
+        now,
+    )
+    .map_err(|e| InitError::Witness(e.to_string()))
+}
+
+#[cfg(not(feature = "witness-client"))]
+fn solicit_inception_receipts(
+    _witness: &WitnessParams<'_>,
+    _prefix: &Prefix,
+    _finalized: &IcpEvent,
+    _attachment: &[u8],
+    _now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), InitError> {
+    Ok(())
+}
+
 /// Initializes a new KERI identity using the packed registry backend.
 ///
-/// Creates a KERI inception event, appends it to the provided backend, and
-/// stores the encrypted keypairs in the keychain.
+/// Creates a KERI inception event, publishes it to the backers designated in
+/// the witness params (collecting k-of-n receipts before any durable write),
+/// appends it to the provided backend, and stores the encrypted keypairs in
+/// the keychain.
 ///
 /// Args:
 /// * `backend` - The registry backend to store the KERI inception event.
 /// * `local_key_alias` - Alias for storing the key in the keychain.
 /// * `passphrase_provider` - Provider for key encryption passphrase.
 /// * `keychain` - Key storage backend.
-/// * `witness_config` - Optional witness configuration.
+/// * `witness` - Witness config + receipt-storage repo, or Disabled.
+/// * `curve` - Signing curve for the new identity.
+/// * `now` - Injected timestamp for receipt storage.
 ///
 /// Usage:
 /// ```ignore
-/// let (did, alias) = initialize_registry_identity(Arc::new(my_backend), "my-key", &provider, &keychain, None)?;
+/// let (did, alias) = initialize_registry_identity(
+///     Arc::new(my_backend), &alias, &provider, &keychain,
+///     WitnessParams::Disabled, CurveType::P256, now,
+/// )?;
 /// ```
 pub fn initialize_registry_identity(
     backend: Arc<dyn RegistryBackend + Send + Sync>,
     local_key_alias: &KeyAlias,
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
-    witness_config: Option<&WitnessConfig>,
+    witness: WitnessParams<'_>,
     curve: auths_crypto::CurveType,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
     backend
         .init_if_needed()
@@ -141,8 +194,9 @@ pub fn initialize_registry_identity(
             local_key_alias,
             passphrase_provider,
             keychain,
-            witness_config,
+            witness,
             curve,
+            now,
         );
     }
 
@@ -162,13 +216,7 @@ pub fn initialize_registry_identity(
     let current_pub_encoded = current.cesr_encoded.clone();
     let next_commitment = compute_next_commitment(&next.verkey());
 
-    let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (
-            Threshold::Simple(cfg.threshold as u64),
-            cfg.aids().cloned().collect(),
-        ),
-        _ => (Threshold::Simple(0), vec![]),
-    };
+    let (bt, b) = backer_designation(&witness);
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),
@@ -202,6 +250,11 @@ pub fn initialize_registry_identity(
 
     let controller_did =
         IdentityDID::try_from(&prefix).map_err(|e| InitError::Keri(e.to_string()))?;
+
+    // Publish to the designated backers BEFORE any durable write: under
+    // Enforce, a missed quorum aborts with zero side effects, and the backers
+    // named in `b` actually hold the KEL they are declared to witness.
+    solicit_inception_receipts(&witness, &prefix, &finalized, &attachment, now)?;
 
     // Keys land first, then the registry append is the commit point. A failure
     // at any step rolls back the keys already stored, so a failed init leaves
@@ -259,8 +312,9 @@ fn initialize_hardware_registry_identity(
     local_key_alias: &KeyAlias,
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
-    witness_config: Option<&WitnessConfig>,
+    witness: WitnessParams<'_>,
     curve: auths_crypto::CurveType,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
     if curve != auths_crypto::CurveType::P256 {
         return Err(InitError::Crypto(format!(
@@ -289,8 +343,9 @@ fn initialize_hardware_registry_identity(
         local_key_alias,
         &next_alias,
         keychain,
-        witness_config,
+        &witness,
         curve,
+        now,
     );
     if result.is_err() {
         let _ = keychain.delete_key(local_key_alias);
@@ -303,13 +358,15 @@ fn initialize_hardware_registry_identity(
 /// Incept the KEL over already-stored hardware keys and rebind them to the
 /// derived prefix. Split out so the caller can delete the hardware keys when any
 /// step fails (the rollback that prevents orphaned Secure Enclave keys).
+#[allow(clippy::too_many_arguments)]
 fn incept_with_hardware_keys(
     backend: &Arc<dyn RegistryBackend + Send + Sync>,
     local_key_alias: &KeyAlias,
     next_alias: &KeyAlias,
     keychain: &(dyn KeyStorage + Send + Sync),
-    witness_config: Option<&WitnessConfig>,
+    witness: &WitnessParams<'_>,
     curve: auths_crypto::CurveType,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<IdentityDID, InitError> {
     let current_pub = keychain.export_public_key(local_key_alias)?;
     let next_pub = keychain.export_public_key(next_alias)?;
@@ -326,13 +383,7 @@ fn incept_with_hardware_keys(
         .to_qb64()
         .map_err(|e| InitError::Crypto(e.to_string()))?;
 
-    let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (
-            Threshold::Simple(cfg.threshold as u64),
-            cfg.aids().cloned().collect(),
-        ),
-        _ => (Threshold::Simple(0), vec![]),
-    };
+    let (bt, b) = backer_designation(witness);
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),
@@ -362,6 +413,8 @@ fn incept_with_hardware_keys(
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
 
+    solicit_inception_receipts(witness, &prefix, &finalized, &attachment, now)?;
+
     backend
         .append_signed_event(&prefix, &Event::Icp(finalized), &attachment)
         .map_err(|e| InitError::Registry(e.to_string()))?;
@@ -385,11 +438,12 @@ fn incept_with_hardware_keys(
 /// * `local_key_alias` — Base alias for storing keys in the keychain.
 /// * `passphrase_provider` — Provider for key encryption passphrase.
 /// * `keychain` — Key storage backend.
-/// * `witness_config` — Optional witness configuration.
+/// * `witness` — Witness config + receipt-storage repo, or Disabled.
 /// * `curves` — Non-empty slice of curve choices, one per device slot.
 /// * `kt` — Signing threshold. Validated against `curves.len()`.
 /// * `nt` — Rotation threshold. Validated against `curves.len()`.
-// INVARIANT: all eight parameters are load-bearing inputs for multi-device
+/// * `now` — Injected timestamp for receipt storage.
+// INVARIANT: all nine parameters are load-bearing inputs for multi-device
 // inception — grouping them into a config struct would trade argument count
 // for an additional type that adds no safety (every field would still be
 // required). Accept the clippy limit here.
@@ -399,10 +453,11 @@ pub fn initialize_registry_identity_multi(
     local_key_alias: &KeyAlias,
     passphrase_provider: &dyn PassphraseProvider,
     keychain: &(dyn KeyStorage + Send + Sync),
-    witness_config: Option<&WitnessConfig>,
+    witness: WitnessParams<'_>,
     curves: &[auths_crypto::CurveType],
     kt: Threshold,
     nt: Threshold,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<(IdentityDID, KeyAlias), InitError> {
     if curves.is_empty() {
         return Err(InitError::Crypto(
@@ -432,13 +487,7 @@ pub fn initialize_registry_identity_multi(
         .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
-    let (bt, b) = match witness_config {
-        Some(cfg) if cfg.is_enabled() => (
-            Threshold::Simple(cfg.threshold as u64),
-            cfg.aids().cloned().collect(),
-        ),
-        _ => (Threshold::Simple(0), vec![]),
-    };
+    let (bt, b) = backer_designation(&witness);
 
     let icp = IcpEvent {
         v: VersionString::placeholder(),
@@ -477,6 +526,8 @@ pub fn initialize_registry_identity_multi(
 
     let controller_did =
         IdentityDID::try_from(&prefix).map_err(|e| InitError::Keri(e.to_string()))?;
+
+    solicit_inception_receipts(&witness, &prefix, &finalized, &attachment, now)?;
 
     let is_hardware_backend = keychain.is_hardware_backend();
     // One passphrase for every slot — prompt once, not once per device slot.

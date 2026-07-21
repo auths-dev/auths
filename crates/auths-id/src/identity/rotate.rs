@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use crate::storage::layout::StorageLayoutConfig;
 use crate::storage::registry::RegistryBackend;
-use crate::witness_config::WitnessConfig;
+use crate::witness_config::{WitnessConfig, WitnessParams};
 use auths_core::crypto::said::{compute_next_commitment, verify_commitment};
 use auths_core::crypto::signer::{decrypt_keypair, encrypt_keypair};
 use auths_core::signing::PassphraseProvider;
@@ -191,13 +191,17 @@ pub fn rotate_keri_identity(
 /// * `passphrase_provider` - Service to get passphrases for key decryption/re-encryption.
 /// * `_config` - Storage layout configuration (unused but kept for API compatibility).
 /// * `keychain` - Keychain storage implementation.
-/// * `witness_config` - Optional witness configuration.
+/// * `witness` - Witness config + receipt-storage repo, or Disabled.
+/// * `now` - Injected timestamp for receipt storage.
 ///
 /// Usage:
 /// ```ignore
-/// let info = rotate_registry_identity(Arc::new(my_backend), "current", "next", &provider, &config, &keychain, None)?;
+/// let info = rotate_registry_identity(
+///     Arc::new(my_backend), "current", "next", &provider, &config, &keychain,
+///     WitnessParams::Disabled, now,
+/// )?;
 /// ```
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub fn rotate_registry_identity(
     backend: Arc<dyn RegistryBackend + Send + Sync>,
     current_alias: &KeyAlias,
@@ -205,7 +209,8 @@ pub fn rotate_registry_identity(
     passphrase_provider: &dyn PassphraseProvider,
     _config: &StorageLayoutConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
-    witness_config: Option<&WitnessConfig>,
+    witness: WitnessParams<'_>,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<RotationKeyInfo, InitError> {
     let rng = SystemRandom::new();
 
@@ -284,10 +289,7 @@ pub fn rotate_registry_identity(
             .expect("ring Ed25519 public key is 32 bytes");
     let new_next_commitment = compute_next_commitment(&new_next_verkey);
 
-    let bt = match witness_config {
-        Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
-        _ => Threshold::Simple(0),
-    };
+    let bt = rotation_backer_threshold(&witness);
 
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
@@ -321,6 +323,8 @@ pub fn rotate_registry_identity(
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
+
+    solicit_rotation_receipts(&witness, &prefix, &rot, &attachment, now)?;
 
     backend
         .append_signed_event(&prefix, &Event::Rot(rot), &attachment)
@@ -368,8 +372,9 @@ pub fn rotate_registry_identity_multi(
     passphrase_provider: &dyn PassphraseProvider,
     _config: &StorageLayoutConfig,
     keychain: &(dyn KeyStorage + Send + Sync),
-    witness_config: Option<&WitnessConfig>,
+    witness: WitnessParams<'_>,
     shape: RotationShape,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<RotationKeyInfo, InitError> {
     // Load the base DID from the first current slot and verify the registry.
     let first_cur = KeyAlias::new_unchecked(format!("{}--{}", current_alias, 0));
@@ -505,10 +510,7 @@ pub fn rotate_registry_identity_multi(
         .map(|kp| compute_next_commitment(&kp.verkey()))
         .collect();
 
-    let bt = match witness_config {
-        Some(cfg) if cfg.is_enabled() => Threshold::Simple(cfg.threshold as u64),
-        _ => Threshold::Simple(0),
-    };
+    let bt = rotation_backer_threshold(&witness);
 
     let new_sequence = state.sequence + 1;
     let mut rot = RotEvent {
@@ -548,6 +550,8 @@ pub fn rotate_registry_identity_multi(
         sig: sig.as_ref().to_vec(),
     }])
     .map_err(|e| InitError::Keri(format!("attachment serialization: {e}")))?;
+
+    solicit_rotation_receipts(&witness, &prefix, &rot, &attachment, now)?;
 
     backend
         .append_signed_event(&prefix, &Event::Rot(rot), &attachment)
@@ -596,6 +600,49 @@ pub fn rotate_registry_identity_multi(
             .ok_or_else(|| InitError::Crypto("empty current keyset after rotation".to_string()))?,
         new_next_pkcs8: Pkcs8Der::new(new_next_pkcs8_bytes),
     })
+}
+
+/// The `bt` a rotation carries: an enabled witness config keeps its
+/// threshold, anything else designates no backers.
+fn rotation_backer_threshold(witness: &WitnessParams<'_>) -> Threshold {
+    match witness {
+        WitnessParams::Enabled { config, .. } if config.is_enabled() => {
+            Threshold::Simple(config.threshold as u64)
+        }
+        _ => Threshold::Simple(0),
+    }
+}
+
+/// Publish a signed rotation to the identity's backers and store the k-of-n
+/// receipts. Runs BEFORE the registry append so an enforced quorum miss
+/// leaves the KEL untouched.
+#[cfg(feature = "witness-client")]
+fn solicit_rotation_receipts(
+    witness: &WitnessParams<'_>,
+    prefix: &Prefix,
+    rot: &RotEvent,
+    attachment: &[u8],
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), InitError> {
+    crate::keri::witness_integration::solicit_receipts_for_event(
+        witness,
+        prefix,
+        &Event::Rot(rot.clone()),
+        attachment,
+        now,
+    )
+    .map_err(|e| InitError::Witness(e.to_string()))
+}
+
+#[cfg(not(feature = "witness-client"))]
+fn solicit_rotation_receipts(
+    _witness: &WitnessParams<'_>,
+    _prefix: &Prefix,
+    _rot: &RotEvent,
+    _attachment: &[u8],
+    _now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), InitError> {
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

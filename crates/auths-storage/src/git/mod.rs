@@ -5,6 +5,7 @@ mod config;
 mod identity_adapter;
 pub mod oobi;
 pub mod paths;
+pub mod per_prefix;
 pub mod standalone_attestation;
 pub mod standalone_export;
 pub mod standalone_identity;
@@ -20,6 +21,7 @@ pub use oobi::{
     OOBI_KEL_FILE, OOBI_RECEIPTS_FILE, OobiExportError, export_identity_oobi, export_receipts_oobi,
     oobi_receipts_relative_path, oobi_relative_path, parse_oobi_kel, parse_oobi_receipts,
 };
+pub use per_prefix::{KEL_REF_ROOT, KelAppendOutcome, PerPrefixKelStore, kel_ref};
 pub use standalone_attestation::GitAttestationStorage;
 pub use standalone_export::GitRefSink;
 pub use standalone_identity::GitIdentityStorage;

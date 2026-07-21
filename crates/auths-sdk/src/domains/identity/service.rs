@@ -286,15 +286,23 @@ fn derive_keys(
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
-    _now: DateTime<Utc>,
+    now: DateTime<Utc>,
 ) -> Result<(IdentityDID, KeyAlias), SetupError> {
+    let witness = match (config.witness_config.as_ref(), ctx.repo_path.as_deref()) {
+        (Some(cfg), Some(path)) => auths_id::witness_config::WitnessParams::Enabled {
+            config: cfg,
+            repo_path: path,
+        },
+        _ => auths_id::witness_config::WitnessParams::Disabled,
+    };
     let (controller_did, _key_event) = initialize_registry_identity(
         std::sync::Arc::clone(&ctx.registry),
         &config.key_alias,
         passphrase_provider,
         keychain,
-        config.witness_config.as_ref(),
+        witness,
         config.curve,
+        now,
     )
     .map_err(map_init_error)?;
 
@@ -511,7 +519,7 @@ fn initialize_ci_keys(
     ctx: &AuthsContext,
     keychain: &(dyn KeyStorage + Send + Sync),
     passphrase_provider: &dyn PassphraseProvider,
-    _now: DateTime<Utc>,
+    now: DateTime<Utc>,
 ) -> Result<(IdentityDID, KeyAlias), SetupError> {
     let key_alias = KeyAlias::new_unchecked("ci-key");
 
@@ -520,8 +528,9 @@ fn initialize_ci_keys(
         &key_alias,
         passphrase_provider,
         keychain,
-        None,
+        ctx.witness_params(),
         auths_crypto::CurveType::default(),
+        now,
     )
     .map_err(map_init_error)?;
 

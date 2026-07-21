@@ -31,11 +31,16 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
-use auths_keri::{KeriSequence, KeyStateRecord, TrustedKel, VersionString, parse_kel_json};
+use auths_keri::{
+    Event, KeriSequence, KeyState, KeyStateRecord, SignedEvent, TrustedKel, VersionString,
+    parse_delegated_attachment, parse_kel_json, state_after_event, validate_signed_event,
+};
 
 use super::error::{DuplicityEvidence, WitnessError};
 use super::receipt::{Receipt, ReceiptTag, SignedReceipt};
+use super::sink::{KelSink, KelSinkError, KelSinkOutcome};
 use super::storage::WitnessStorage;
+use super::wire::split_submit_body;
 
 /// Shared server state.
 #[derive(Clone)]
@@ -60,6 +65,10 @@ struct WitnessServerInner {
     /// without a build attestation configured, in which case the `/build`
     /// surface 404s — a node that cannot prove its binary says so plainly.
     build_proof: Option<BuildProof>,
+    /// The write bridge: accepted events are routed into the per-prefix KEL
+    /// store the node serves. `None` runs the legacy receipt-only mode (the
+    /// SQLite ledger still retains events, but nothing resolvable is served).
+    kel_sink: Option<Arc<dyn KelSink>>,
 }
 
 /// The proof a node serves of which binary it is running.
@@ -134,6 +143,9 @@ pub struct WitnessServerConfig {
     /// the build surface absent (404) — a node that was not given a build
     /// attestation does not pretend to have one.
     pub build_proof: Option<BuildProof>,
+    /// Write bridge into the served per-prefix KEL store. `None` keeps the
+    /// legacy receipt-only mode.
+    pub kel_sink: Option<Arc<dyn KelSink>>,
 }
 
 impl WitnessServerConfig {
@@ -181,6 +193,7 @@ impl WitnessServerConfig {
             tls_cert_path: None,
             tls_key_path: None,
             build_proof: None,
+            kel_sink: None,
         })
     }
 
@@ -192,6 +205,15 @@ impl WitnessServerConfig {
     /// and the build surface stays absent.
     pub fn with_build_proof(mut self, proof: BuildProof) -> Self {
         self.build_proof = Some(proof);
+        self
+    }
+
+    /// Attach the write bridge into the served per-prefix KEL store.
+    ///
+    /// Accepted events are then persisted to (and validated by) the injected
+    /// sink before a receipt is issued — "serve what you witness".
+    pub fn with_kel_sink(mut self, sink: Arc<dyn KelSink>) -> Self {
+        self.kel_sink = Some(sink);
         self
     }
 }
@@ -303,6 +325,7 @@ impl WitnessServerState {
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
                 build_proof: config.build_proof,
+                kel_sink: config.kel_sink,
             }),
         })
     }
@@ -322,6 +345,7 @@ impl WitnessServerState {
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
                 build_proof: None,
+                kel_sink: None,
             }),
         })
     }
@@ -365,6 +389,7 @@ impl WitnessServerState {
                 storage: Mutex::new(storage),
                 clock: Box::new(Utc::now),
                 build_proof: None,
+                kel_sink: None,
             }),
         })
     }
@@ -507,8 +532,20 @@ fn verify_event_said(event: &serde_json::Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Ceiling on anchored seals per event (the bulk-onboarding batch bound).
+///
+/// One batch anchor `ixn` carries ~3 seals per onboarded agent; 256 seals
+/// keeps the wire body far under the node's request-size envelope while
+/// letting a batch of ~85 agents anchor in one receipt round. Clients chunk
+/// above this (`add_bulk` batch sizing), so the bound is a backstop against
+/// pathological events, not a throughput limit.
+pub const MAX_SEALS_PER_EVENT: usize = 256;
+
 /// Validate the structural requirements of a KERI event.
-fn validate_event_structure(event: &serde_json::Value) -> Result<(), String> {
+///
+/// `has_attachment` selects the signature dialect: envelope submissions carry
+/// detached CESR signatures, so the legacy inline `x` field is not required.
+fn validate_event_structure(event: &serde_json::Value, has_attachment: bool) -> Result<(), String> {
     let obj = event.as_object().ok_or("event must be a JSON object")?;
 
     // Required fields for all event types
@@ -523,16 +560,25 @@ fn validate_event_structure(event: &serde_json::Value) -> Result<(), String> {
         .and_then(|v| v.as_str())
         .ok_or("'t' must be a string")?;
 
+    if let Some(seals) = obj.get("a").and_then(|v| v.as_array())
+        && seals.len() > MAX_SEALS_PER_EVENT
+    {
+        return Err(format!(
+            "event anchors {} seals, exceeding the {} per-event bound — chunk the batch",
+            seals.len(),
+            MAX_SEALS_PER_EVENT
+        ));
+    }
+
     match event_type {
         "icp" => {
-            // Inception events require keys
-            for field in &["k", "x"] {
-                if !obj.contains_key(*field) {
-                    return Err(format!(
-                        "inception event missing required field '{}'",
-                        field
-                    ));
-                }
+            if !obj.contains_key("k") {
+                return Err("inception event missing required field 'k'".to_string());
+            }
+            if !has_attachment && !obj.contains_key("x") {
+                return Err(
+                    "inception event missing 'x' (and no CESR attachment supplied)".to_string(),
+                );
             }
         }
         "rot" | "ixn" => {
@@ -550,6 +596,105 @@ fn validate_event_structure(event: &serde_json::Value) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// A 400 response with the given message.
+fn bad_request(error: String) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(ErrorResponse {
+            error,
+            duplicity: None,
+        }),
+    )
+}
+
+/// A 500 response for a poisoned storage mutex.
+fn lock_error() -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(ErrorResponse {
+            error: "internal lock error".to_string(),
+            duplicity: None,
+        }),
+    )
+}
+
+/// Route an accepted event through the injected [`KelSink`], mapping sink
+/// failures onto wire responses: a conflicting event is 409 duplicity
+/// evidence, a ruleset rejection is 400, a store fault is 500.
+fn route_into_kel_sink(
+    sink: &dyn KelSink,
+    prefix: &Prefix,
+    event: &serde_json::Value,
+    attachment: &[u8],
+    event_s: u128,
+    event_d: &Said,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    match sink.append_signed_event(prefix, event, attachment) {
+        Ok(KelSinkOutcome::Appended) | Ok(KelSinkOutcome::AlreadyStored) => Ok(()),
+        Err(KelSinkError::Conflict { existing_said }) => Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: "duplicity detected".to_string(),
+                duplicity: Some(DuplicityEvidence {
+                    prefix: prefix.clone(),
+                    sequence: event_s,
+                    event_a_said: Said::new_unchecked(existing_said.unwrap_or_default()),
+                    event_b_said: event_d.clone(),
+                    witness_reports: vec![],
+                }),
+            }),
+        )),
+        Err(KelSinkError::Invalid(reason)) => Err(bad_request(format!("event rejected: {reason}"))),
+        Err(KelSinkError::Storage(e)) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: format!("KEL store failure: {e}"),
+                duplicity: None,
+            }),
+        )),
+    }
+}
+
+/// Replay the SQLite-retained KEL into a key state (sink-less servers only).
+fn replay_sqlite_state(
+    storage: &WitnessStorage,
+    prefix: &Prefix,
+) -> Result<Option<KeyState>, String> {
+    let kel = storage
+        .get_kel(prefix)
+        .map_err(|e| format!("stored KEL read failed: {e}"))?;
+    let mut state: Option<KeyState> = None;
+    for event_json in kel {
+        let event: Event = serde_json::from_str(&event_json)
+            .map_err(|e| format!("stored event unparseable: {e}"))?;
+        state = Some(
+            state_after_event(state.as_ref(), &event)
+                .map_err(|e| format!("stored KEL replay failed: {e}"))?,
+        );
+    }
+    Ok(state)
+}
+
+/// Verify an envelope submission's CESR attachment signatures when no sink is
+/// configured, using state replayed from the SQLite event ledger.
+fn verify_wire_attachment(
+    storage: &WitnessStorage,
+    prefix: &Prefix,
+    event_value: &serde_json::Value,
+    attachment: &[u8],
+) -> Result<(), String> {
+    let event: Event = serde_json::from_value(event_value.clone())
+        .map_err(|e| format!("event unparseable as KERI event: {e}"))?;
+    let (signatures, _seals) =
+        parse_delegated_attachment(attachment).map_err(|e| format!("bad CESR attachment: {e}"))?;
+    if signatures.is_empty() {
+        return Err("attachment carries no signatures".to_string());
+    }
+    let state = replay_sqlite_state(storage, prefix)?;
+    let signed = SignedEvent::new(event, signatures);
+    validate_signed_event(&signed, state.as_ref()).map_err(|e| e.to_string())
 }
 
 /// Typed failure from inbound event signature/key validation.
@@ -669,56 +814,47 @@ fn verify_inception_self_signature(event: &serde_json::Value) -> Result<(), Even
 }
 
 /// POST /witness/:prefix/event - Submit an event for witnessing.
+///
+/// Accepts either the envelope dialect (`{"event": …, "attachment_b64": …}`,
+/// detached CESR signatures — what the registry lifecycle emits) or a bare
+/// legacy event with an inline `x` self-signature. When a [`KelSink`] is
+/// configured, accepted events are validated against the full KERI ruleset
+/// and persisted to the served per-prefix KEL store *before* a receipt is
+/// issued — a witness never receipts what it will not serve.
 #[allow(clippy::too_many_lines)]
 async fn submit_event(
     State(state): State<WitnessServerState>,
     AxumPath(prefix_str): AxumPath<String>,
-    Json(event): Json<serde_json::Value>,
+    Json(body): Json<serde_json::Value>,
 ) -> Result<Json<SignedReceipt>, (StatusCode, Json<ErrorResponse>)> {
     let prefix = Prefix::new_unchecked(prefix_str);
 
+    let (event, attachment) = match split_submit_body(body) {
+        Ok(parts) => parts,
+        Err(e) => return Err(bad_request(format!("invalid submit body: {e}"))),
+    };
+    let has_attachment = !attachment.is_empty();
+
     // Validate event structure
-    if let Err(e) = validate_event_structure(&event) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("invalid event structure: {}", e),
-                duplicity: None,
-            }),
-        ));
+    if let Err(e) = validate_event_structure(&event, has_attachment) {
+        return Err(bad_request(format!("invalid event structure: {}", e)));
     }
 
     // Verify SAID
     if let Err(e) = verify_event_said(&event) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("SAID verification failed: {}", e),
-                duplicity: None,
-            }),
-        ));
+        return Err(bad_request(format!("SAID verification failed: {}", e)));
     }
 
     // Validate signature format
     if let Err(e) = validate_signature_format(&event) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("invalid signature format: {}", e),
-                duplicity: None,
-            }),
-        ));
+        return Err(bad_request(format!("invalid signature format: {}", e)));
     }
 
-    // Verify inception self-signature
-    if let Err(e) = verify_inception_self_signature(&event) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("signature verification failed: {}", e),
-                duplicity: None,
-            }),
-        ));
+    // Legacy dialect only: verify the inline `x` inception self-signature.
+    // Envelope submissions carry their proof in the CESR attachment, verified
+    // below (sink path) or against replayed state (sink-less path).
+    if !has_attachment && let Err(e) = verify_inception_self_signature(&event) {
+        return Err(bad_request(format!("signature verification failed: {}", e)));
     }
 
     let event_d = Said::new_unchecked(
@@ -736,70 +872,20 @@ async fn submit_event(
         .and_then(|s| u128::from_str_radix(s, 16).ok())
         .unwrap_or(0);
 
+    // The SQLite mutex is scoped tightly: it is never held across the sink's
+    // git I/O, so requests for distinct prefixes do not serialize on it.
+    //
+    // First-seen ordering: the ledger is CONSULTED here but only RECORDED
+    // after the event passes full validation — an invalid (badly-signed)
+    // submission must never poison the sequence slot the honest event needs.
     let now = (state.inner.clock)();
-    let storage = state.inner.storage.lock().map_err(|_| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "internal lock error".to_string(),
-                duplicity: None,
-            }),
-        )
-    })?;
+    let first_seen = {
+        let storage = state.inner.storage.lock().map_err(|_| lock_error())?;
+        storage.get_first_seen(&prefix, event_s)
+    };
 
-    // Check for duplicity
-    match storage.check_duplicity(now, &prefix, event_s, &event_d) {
-        Ok(None) => {
-            // No duplicity - sign and store the receipt. The wire `rct` body
-            // stays spec-shaped; the witness signature travels detached in the
-            // `SignedReceipt` so the collector can attribute and verify it.
-            let signed = state
-                .create_signed_receipt(&prefix, event_s, &event_d)
-                .map_err(|e| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(ErrorResponse {
-                            error: format!("failed to create receipt: {e}"),
-                            duplicity: None,
-                        }),
-                    )
-                })?;
-
-            if let Err(e) = storage.store_receipt(now, &prefix, &signed.receipt) {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("failed to store receipt: {}", e),
-                        duplicity: None,
-                    }),
-                ));
-            }
-
-            // Retain the verified event body so the witness can later replay this
-            // identity's KEL into the current key-state it serves. The body is
-            // canonical JSON of the event we just SAID- and signature-checked.
-            let event_json = serde_json::to_string(&event).map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("failed to serialize event for retention: {e}"),
-                        duplicity: None,
-                    }),
-                )
-            })?;
-            if let Err(e) = storage.store_event(now, &prefix, event_s, &event_json) {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: format!("failed to store event: {}", e),
-                        duplicity: None,
-                    }),
-                ));
-            }
-
-            Ok(Json(signed))
-        }
-        Ok(Some(existing_said)) => {
+    match first_seen {
+        Ok(Some(existing_said)) if existing_said != event_d => {
             // Duplicity detected!
             Err((
                 StatusCode::CONFLICT,
@@ -814,6 +900,89 @@ async fn submit_event(
                     }),
                 }),
             ))
+        }
+        Ok(_) => {
+            // The write bridge: route the accepted event into the KEL store
+            // the witness serves. The sink re-runs the full KERI ruleset
+            // (chain, pre-rotation, attachment signatures) against git truth;
+            // a rejection means no receipt is issued. Without a sink, verify
+            // envelope signatures here against SQLite-replayed state.
+            if let Some(sink) = &state.inner.kel_sink {
+                route_into_kel_sink(
+                    sink.as_ref(),
+                    &prefix,
+                    &event,
+                    &attachment,
+                    event_s,
+                    &event_d,
+                )?;
+            } else if has_attachment {
+                let storage = state.inner.storage.lock().map_err(|_| lock_error())?;
+                if let Err(e) = verify_wire_attachment(&storage, &prefix, &event, &attachment) {
+                    return Err(bad_request(format!(
+                        "attachment signature verification failed: {e}"
+                    )));
+                }
+            }
+
+            // Validated - sign and store the receipt. The wire `rct` body
+            // stays spec-shaped; the witness signature travels detached in the
+            // `SignedReceipt` so the collector can attribute and verify it.
+            let signed = state
+                .create_signed_receipt(&prefix, event_s, &event_d)
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: format!("failed to create receipt: {e}"),
+                            duplicity: None,
+                        }),
+                    )
+                })?;
+
+            // Retain the verified event body so the witness can later replay this
+            // identity's KEL into the current key-state it serves. The body is
+            // canonical JSON of the event we just SAID- and signature-checked.
+            let event_json = serde_json::to_string(&event).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to serialize event for retention: {e}"),
+                        duplicity: None,
+                    }),
+                )
+            })?;
+
+            let storage = state.inner.storage.lock().map_err(|_| lock_error())?;
+            if let Err(e) = storage.record_first_seen(now, &prefix, event_s, &event_d) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to record first-seen: {}", e),
+                        duplicity: None,
+                    }),
+                ));
+            }
+            if let Err(e) = storage.store_receipt(now, &prefix, &signed.receipt) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to store receipt: {}", e),
+                        duplicity: None,
+                    }),
+                ));
+            }
+            if let Err(e) = storage.store_event(now, &prefix, event_s, &event_json) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse {
+                        error: format!("failed to store event: {}", e),
+                        duplicity: None,
+                    }),
+                ));
+            }
+
+            Ok(Json(signed))
         }
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1765,7 +1934,7 @@ mod tests {
     #[test]
     fn validate_structure_missing_fields() {
         let event = serde_json::json!({"v": "KERI10JSON000000_"});
-        assert!(validate_event_structure(&event).is_err());
+        assert!(validate_event_structure(&event, false).is_err());
     }
 
     #[test]
@@ -1777,7 +1946,38 @@ mod tests {
             "i": "EPrefix",
             "s": 0
         });
-        assert!(validate_event_structure(&event).is_err());
+        assert!(validate_event_structure(&event, false).is_err());
+    }
+
+    #[test]
+    fn validate_structure_icp_attachment_dialect_needs_no_x() {
+        let event = serde_json::json!({
+            "v": "KERI10JSON000000_",
+            "t": "icp",
+            "d": "E123",
+            "i": "EPrefix",
+            "s": "0",
+            "k": ["DKey"]
+        });
+        assert!(validate_event_structure(&event, true).is_ok());
+        assert!(validate_event_structure(&event, false).is_err());
+    }
+
+    #[test]
+    fn validate_structure_seal_bound_enforced() {
+        let seals: Vec<serde_json::Value> = (0..=MAX_SEALS_PER_EVENT)
+            .map(|i| serde_json::json!({"d": format!("E{i}")}))
+            .collect();
+        let event = serde_json::json!({
+            "v": "KERI10JSON000000_",
+            "t": "ixn",
+            "d": "E123",
+            "i": "EPrefix",
+            "s": "1",
+            "p": "E122",
+            "a": seals
+        });
+        assert!(validate_event_structure(&event, true).is_err());
     }
 
     #[test]
@@ -1789,6 +1989,6 @@ mod tests {
             "i": "EPrefix",
             "s": 1
         });
-        assert!(validate_event_structure(&event).is_err());
+        assert!(validate_event_structure(&event, false).is_err());
     }
 }

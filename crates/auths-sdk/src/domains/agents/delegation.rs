@@ -197,7 +197,8 @@ pub fn add_scoped(
 /// the `agent:{prefix}` role marker, and the signed delegation attestation — the
 /// anchors are simply co-located in the shared batch `ixn`. Unscoped only:
 /// scope/expiry seals stay on the per-agent [`add_scoped`] path. Witness receipting
-/// happens per batch, not per agent (none is attempted here).
+/// is one round per batch, never per agent: each chunk's shared anchor `ixn` is
+/// published to the backers in `ctx.witness_params()` before its atomic commit.
 pub fn add_bulk(
     ctx: &AuthsContext,
     root_alias: &KeyAlias,
@@ -255,6 +256,8 @@ pub fn add_bulk(
             &specs,
             ctx.passphrase_provider.as_ref(),
             ctx.key_storage.as_ref(),
+            &ctx.witness_params(),
+            ctx.clock.now(),
             |bundle, batch| {
                 let agent_alias = &chunk[idx];
                 idx += 1;

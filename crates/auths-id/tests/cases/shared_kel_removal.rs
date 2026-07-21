@@ -18,6 +18,7 @@ use auths_id::keri::types::Prefix;
 use auths_id::storage::layout::StorageLayoutConfig;
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
+use auths_id::witness_config::WitnessParams;
 
 const TEST_PASSPHRASE: &str = "Test-passphrase1!";
 
@@ -43,10 +44,11 @@ fn shared_kel_removes_controller_three_to_two() {
         &alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         &[CurveType::Ed25519, CurveType::Ed25519, CurveType::Ed25519],
         Threshold::Simple(1),
         Threshold::Simple(1),
+        chrono::Utc::now(),
     )
     .expect("multi-controller inception");
 
@@ -65,11 +67,12 @@ fn shared_kel_removes_controller_three_to_two() {
         &provider,
         &StorageLayoutConfig::default(),
         &keychain,
-        None,
+        WitnessParams::Disabled,
         RotationShape {
             remove_indices: vec![2],
             ..Default::default()
         },
+        chrono::Utc::now(),
     )
     .expect("pure-removal rotation must author and validate");
 

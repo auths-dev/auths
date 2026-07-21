@@ -431,6 +431,7 @@ pub async fn verify_offline(bundle: &EvidenceBundle) -> OfflineVerdict {
     let witness_binding = crate::anchor::WitnessBinding {
         binding_head: log_head.clone(),
         record_count: bundle.proof.spend_log.len() as u64,
+        delegator_kel_digest_seals: auths_anchor::ixn_digest_seals(&delegator_kel),
     };
     if let AnchorCheck::Invalid { code, detail } = verify_anchor(
         &bundle.verdicts.as_of,

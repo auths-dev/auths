@@ -244,19 +244,28 @@ fn anchor_invalid(e: auths_anchor::AnchorError) -> EvidenceError {
 /// unanchored document fails whole when a caller demands the witness tier,
 /// instead of passing with `anchor == None`.
 ///
+/// `kel_digest_seals` is the root KEL's `ixn`-anchored digest-seal SAIDs when
+/// the caller holds the seller's KEL (the registry path): the anchor's witness
+/// set must be declared there, or verification fails with
+/// `witness-set-not-anchored`. `None` means the caller has NO KEL at all (the
+/// pure keys-injected surface) — the check then stops at self-addressing,
+/// which cannot detect a party declaring different sets to different verifiers.
+///
 /// Args:
 /// * `doc`: the attestation carrying the optional anchor.
 /// * `current_keys`: the agent's current CESR-parsed verkeys.
 /// * `require_witness`: fail whole when no verified witness anchor is present.
+/// * `kel_digest_seals`: the root KEL's `ixn` digest seals, when resolvable.
 ///
 /// Usage:
 /// ```ignore
-/// let anchor = verify_embedded_anchor(&doc, &keys, false)?;
+/// let anchor = verify_embedded_anchor(&doc, &keys, false, Some(&seals))?;
 /// ```
 fn verify_embedded_anchor(
     doc: &ActivityV1,
     current_keys: &[KeriPublicKey],
     require_witness: bool,
+    kel_digest_seals: Option<&[String]>,
 ) -> Result<Option<AnchorSummary>, EvidenceError> {
     let Some(finalized) = &doc.anchor else {
         return if require_witness {
@@ -268,7 +277,21 @@ fn verify_embedded_anchor(
             Ok(None)
         };
     };
-    auths_anchor::verify_finalized(finalized, None).map_err(anchor_invalid)?;
+    let declared_said = match kel_digest_seals {
+        Some(seals) => Some(
+            auths_anchor::find_witness_set_seal(seals, &finalized.anchor.witness_set.said)
+                .ok_or_else(|| EvidenceError::AnchorInvalid {
+                    code: "witness-set-not-anchored",
+                    detail: format!(
+                        "witness set {} is not declared in the seller's KEL — \
+                         the seller must anchor it with `auths witness-set declare`",
+                        finalized.anchor.witness_set.said
+                    ),
+                })?,
+        ),
+        None => None,
+    };
+    auths_anchor::verify_finalized(finalized, declared_said).map_err(anchor_invalid)?;
 
     let anchor = &finalized.anchor;
     if anchor.seed_id != activity_seed_id(doc) {
@@ -305,6 +328,11 @@ fn verify_embedded_anchor(
 /// `None` for an unanchored document (or an error when `require_witness` demands
 /// a witness tier the document lacks).
 ///
+/// This is the pure keys-injected surface: the caller holds no KEL here, so the
+/// embedded witness set is proven self-addressing only — it is NOT checked
+/// against a KEL declaration (there is no KEL to check). Callers that hold the
+/// registry get that enforcement through [`verify_activity_against_registry`].
+///
 /// Args:
 /// * `doc`: the attestation.
 /// * `current_keys`: the agent's current CESR-parsed verkeys.
@@ -319,6 +347,17 @@ pub fn verify_activity(
     current_keys: &[KeriPublicKey],
     require_witness: bool,
 ) -> Result<Option<AnchorSummary>, EvidenceError> {
+    verify_activity_declared(doc, current_keys, require_witness, None)
+}
+
+/// [`verify_activity`] with the root KEL's `ixn` digest seals threaded through
+/// to the embedded-anchor check, for callers that resolved the seller's KEL.
+fn verify_activity_declared(
+    doc: &ActivityV1,
+    current_keys: &[KeriPublicKey],
+    require_witness: bool,
+    kel_digest_seals: Option<&[String]>,
+) -> Result<Option<AnchorSummary>, EvidenceError> {
     if doc.version != ACTIVITY_VERSION {
         return Err(EvidenceError::Input(format!(
             "unknown version {}",
@@ -331,7 +370,7 @@ pub fn verify_activity(
         .map_err(|e| EvidenceError::Input(format!("signature b64: {e}")))?;
     for key in current_keys {
         if auths_crypto::typed_verify(key.curve(), key.raw_bytes(), &message, &signature).is_ok() {
-            return verify_embedded_anchor(doc, current_keys, require_witness);
+            return verify_embedded_anchor(doc, current_keys, require_witness, kel_digest_seals);
         }
     }
     Err(EvidenceError::Input(
@@ -354,6 +393,10 @@ pub fn verify_activity(
 /// timestamp is unconfirmable and reads `Unknown`; a supplied fresher witness
 /// tip marks the anchor `stale`.
 ///
+/// This is the pure keys-injected surface: with no KEL in hand, the embedded
+/// witness set is proven self-addressing only, never against a KEL declaration
+/// — use [`verify_activity_against_registry`] for that enforcement.
+///
 /// Args:
 /// * `doc`: the attestation.
 /// * `current_keys`: the agent's current CESR-parsed verkeys.
@@ -370,12 +413,26 @@ pub fn verify_activity_with_keys(
     now: DateTime<Utc>,
     opts: &VerifyActivityOpts,
 ) -> Result<ActivityVerdict, EvidenceError> {
+    verify_activity_with_keys_declared(doc, current_keys, now, opts, None)
+}
+
+/// [`verify_activity_with_keys`] with the root KEL's `ixn` digest seals
+/// threaded through, so an embedded anchor's witness set must be one the
+/// seller declared on its KEL.
+fn verify_activity_with_keys_declared(
+    doc: &ActivityV1,
+    current_keys: &[KeriPublicKey],
+    now: DateTime<Utc>,
+    opts: &VerifyActivityOpts,
+    kel_digest_seals: Option<&[String]>,
+) -> Result<ActivityVerdict, EvidenceError> {
     if doc.as_of.ts > now + chrono::Duration::seconds(60) {
         return Err(EvidenceError::Input(
             "attestation as_of is in the future".to_string(),
         ));
     }
-    let mut anchor = verify_activity(doc, current_keys, opts.require_witness)?;
+    let mut anchor =
+        verify_activity_declared(doc, current_keys, opts.require_witness, kel_digest_seals)?;
 
     let policy = if opts.require_witness {
         FreshnessPolicy::strict(std::time::Duration::from_secs(24 * 60 * 60))
@@ -428,6 +485,11 @@ pub fn verify_activity_with_keys(
 /// signature and (when present, or when `opts.require_witness` demands it) the
 /// embedded quorum anchor, and classify freshness against the injected clock.
 /// This is the market's whole verification; it never sees a per-call row.
+///
+/// When the document embeds a witness anchor, the anchor's witness set must be
+/// declared on the root's KEL in this registry (an `ixn` digest seal over the
+/// set's content SAID — `auths witness-set declare`): a set the seller never
+/// anchored is refused with `witness-set-not-anchored`.
 ///
 /// Args:
 /// * `doc`: the attestation.
@@ -489,7 +551,37 @@ pub fn verify_activity_against_registry(
                 .map_err(|e| EvidenceError::Input(format!("current key: {e}")))
         })
         .collect::<Result<_, _>>()?;
-    verify_activity_with_keys(doc, &keys, now, &opts)
+
+    // Resolve the root KEL's declaration seals only when an anchor is embedded:
+    // an unanchored document needs no witness-set enforcement, and a registry
+    // that lacks the root KEL entirely must fail an ANCHORED claim, not every
+    // unanchored one.
+    let kel_seals = match doc.anchor {
+        Some(_) => Some(root_ixn_digest_seals(&backend, root_tail)?),
+        None => None,
+    };
+    verify_activity_with_keys_declared(doc, &keys, now, &opts, kel_seals.as_deref())
+}
+
+/// Replay the root's KEL from the registry and collect its `ixn`-anchored
+/// digest-seal SAIDs — the surface a witness-set declaration lives on.
+fn root_ixn_digest_seals(
+    backend: &auths_sdk::storage::GitRegistryBackend,
+    root_tail: &str,
+) -> Result<Vec<String>, EvidenceError> {
+    use auths_sdk::ports::RegistryBackend;
+    use std::ops::ControlFlow;
+
+    let root_prefix = Prefix::new(root_tail.to_string())
+        .map_err(|e| EvidenceError::Input(format!("root prefix: {e}")))?;
+    let mut events: Vec<auths_keri::Event> = Vec::new();
+    backend
+        .visit_events(&root_prefix, 0, &mut |event| {
+            events.push(event.clone());
+            ControlFlow::Continue(())
+        })
+        .map_err(|e| EvidenceError::Registry(format!("root KEL: {e}")))?;
+    Ok(auths_anchor::ixn_digest_seals(&events))
 }
 
 /// The monotonicity rules a verifier applies between a stored checkpoint and a

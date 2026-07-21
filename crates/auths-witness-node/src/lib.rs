@@ -41,6 +41,8 @@ pub mod build;
 pub mod cosign_role;
 pub mod engine;
 pub mod hardening;
+pub mod kel_sink;
+pub mod maintenance;
 pub mod receipt;
 pub mod registry;
 pub mod serve_registry;

@@ -50,6 +50,7 @@ use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::agents::{add, revoke, revoke_batch};
 use auths_sdk::domains::org::metrics::fleet_metrics;
 use auths_sdk::identity::initialize_registry_identity;
+use auths_sdk::witness::WitnessParams;
 use auths_storage::git::{
     GitRegistryBackend, RegistryAttestationStorage, RegistryConfig, RegistryIdentityStorage,
 };
@@ -191,7 +192,10 @@ fn build_context(
     Ok(builder.build())
 }
 
-fn collect_kel(backend: &(dyn RegistryBackend + Send + Sync), prefix: &Prefix) -> Result<Vec<Event>> {
+fn collect_kel(
+    backend: &(dyn RegistryBackend + Send + Sync),
+    prefix: &Prefix,
+) -> Result<Vec<Event>> {
     let mut events = Vec::new();
     backend
         .visit_events(prefix, 0, &mut |e| {
@@ -289,8 +293,9 @@ fn main() -> Result<()> {
         &KeyAlias::new_unchecked("org-key"),
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     )
     .map_err(|e| anyhow::anyhow!("init org identity: {e}"))?;
     let init_root_ms = t.elapsed().as_secs_f64() * 1000.0;
@@ -338,9 +343,14 @@ fn main() -> Result<()> {
             let mut done = 0usize;
             for chunk in aliases.chunks(args.bulk_batch) {
                 let t = Instant::now();
-                let res =
-                    auths_sdk::domains::agents::add_bulk(&ctx, &org_alias, chunk, CurveType::Ed25519, chunk.len())
-                        .map_err(|e| anyhow::anyhow!("add_bulk at {done}: {e}"))?;
+                let res = auths_sdk::domains::agents::add_bulk(
+                    &ctx,
+                    &org_alias,
+                    chunk,
+                    CurveType::Ed25519,
+                    chunk.len(),
+                )
+                .map_err(|e| anyhow::anyhow!("add_bulk at {done}: {e}"))?;
                 // Per-agent share of the batch latency, so percentile fields stay
                 // comparable across modes (noted in meta.provision_mode).
                 let per = t.elapsed() / chunk.len() as u32;

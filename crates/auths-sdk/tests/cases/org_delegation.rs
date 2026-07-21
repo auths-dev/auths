@@ -28,6 +28,7 @@ use auths_sdk::domains::org::{
     resolve_member_authority, revoke_member, verify_offboarding_record,
 };
 use auths_sdk::identity::initialize_registry_identity;
+use auths_sdk::witness::WitnessParams;
 use auths_verifier::AttestationBuilder;
 use auths_verifier::core::{Ed25519PublicKey, Role};
 use auths_verifier::types::CanonicalDid;
@@ -50,8 +51,9 @@ fn setup_org_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKey
         &KeyAlias::new_unchecked("org-key"),
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::default(),
+        chrono::Utc::now(),
     )
     .expect("init bare org identity");
     (org_alias, keychain)

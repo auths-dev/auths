@@ -546,8 +546,9 @@ pub fn handle_id(
                 &local_key_alias,
                 passphrase_provider.as_ref(),
                 &get_platform_keychain()?,
-                None,
+                auths_sdk::witness::WitnessParams::Disabled,
                 auths_crypto::CurveType::default(),
+                chrono::Utc::now(),
             ) {
                 Ok((controller_did_keri, alias)) => {
                     println!("\n✅ Identity created.");

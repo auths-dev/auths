@@ -11,6 +11,7 @@ use auths_sdk::context::AuthsContext;
 use auths_sdk::domains::agents::{add_scoped, revoke};
 use auths_sdk::domains::org::metrics::fleet_metrics;
 use auths_sdk::identity::initialize_registry_identity;
+use auths_sdk::witness::WitnessParams;
 use auths_verifier::Prefix;
 
 const PASS: &str = "Test-passphrase1!";
@@ -27,8 +28,9 @@ fn setup() -> (AuthsContext, KeyAlias, Prefix, tempfile::TempDir) {
         &KeyAlias::new_unchecked("org-key"),
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::default(),
+        chrono::Utc::now(),
     )
     .expect("init bare org identity");
     let arc_provider: Arc<dyn PassphraseProvider + Send + Sync> =

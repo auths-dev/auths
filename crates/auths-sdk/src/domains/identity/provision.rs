@@ -134,14 +134,17 @@ pub enum ProvisionError {
 /// * `keychain`: Platform keychain for key storage.
 /// * `registry`: Pre-initialized registry backend.
 /// * `identity_storage`: Pre-initialized identity storage adapter.
+/// * `now`: Injected timestamp for witness receipt storage.
 ///
 /// Usage:
 /// ```ignore
 /// let result = enforce_identity_state(
-///     &config, false, passphrase_provider.as_ref(), keychain.as_ref(), registry, identity_storage,
+///     &config, false, passphrase_provider.as_ref(), keychain.as_ref(), registry,
+///     identity_storage, now,
 /// )?;
 /// println!("DID: {}", result.controller_did);
 /// ```
+#[allow(clippy::too_many_arguments)]
 pub fn enforce_identity_state(
     config: &NodeConfig,
     force: bool,
@@ -149,12 +152,21 @@ pub fn enforce_identity_state(
     keychain: &(dyn KeyStorage + Send + Sync),
     registry: Arc<dyn RegistryBackend + Send + Sync>,
     identity_storage: Arc<dyn IdentityStorage + Send + Sync>,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> Result<Option<ProvisionResult>, ProvisionError> {
     if identity_storage.load_identity().is_ok() && !force {
         return Ok(None);
     }
 
     let witness_config = build_witness_config(config.witness.as_ref());
+    let repo_path = std::path::PathBuf::from(&config.identity.repo_path);
+    let witness = match witness_config.as_ref() {
+        Some(cfg) => auths_id::witness_config::WitnessParams::Enabled {
+            config: cfg,
+            repo_path: &repo_path,
+        },
+        None => auths_id::witness_config::WitnessParams::Disabled,
+    };
 
     let alias = KeyAlias::new_unchecked(&config.identity.key_alias);
     let (controller_did, key_alias) = initialize_registry_identity(
@@ -162,8 +174,9 @@ pub fn enforce_identity_state(
         &alias,
         passphrase_provider,
         keychain,
-        witness_config.as_ref(),
+        witness,
         auths_crypto::CurveType::default(),
+        now,
     )
     .map_err(|e| ProvisionError::IdentityInit(e.to_string()))?;
 

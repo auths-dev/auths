@@ -54,3 +54,4 @@ pub mod verify_commit;
 pub mod verify_helpers;
 pub mod whoami;
 pub mod witness;
+pub mod witness_set;

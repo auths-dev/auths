@@ -23,6 +23,7 @@ use auths_sdk::domains::compliance::query::{
 use auths_sdk::domains::org::audit::AuthorityAtSigning;
 use auths_sdk::domains::org::{add_member, revoke_member};
 use auths_sdk::identity::initialize_registry_identity;
+use auths_sdk::witness::WitnessParams;
 use auths_verifier::IdentityDID;
 use auths_verifier::core::Role;
 
@@ -44,8 +45,9 @@ fn setup_org_identity(registry_path: &std::path::Path) -> (KeyAlias, IsolatedKey
         &KeyAlias::new_unchecked("org-key"),
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::default(),
+        chrono::Utc::now(),
     )
     .expect("init bare org identity");
     (org_alias, keychain)

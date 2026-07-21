@@ -26,6 +26,7 @@ mod duplicity;
 mod error;
 mod finalize;
 mod freshness;
+mod kel_seal;
 mod keystate;
 mod store;
 mod types;
@@ -36,6 +37,7 @@ pub use duplicity::DuplicityProof;
 pub use error::{AnchorError, StoreError};
 pub use finalize::{honesty_ceiling_of, quorum_independence, verify_finalized};
 pub use freshness::{Freshness, freshness};
+pub use kel_seal::{find_witness_set_seal, ixn_digest_seals};
 pub use store::{AnchorStore, CasOutcome};
 pub use types::{
     Anchor, AnchorReq, ControllerKeys, CurrentKey, FinalizedAnchor, Head, LoggedInclusion,

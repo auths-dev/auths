@@ -24,6 +24,7 @@ use auths_id::keri::types::Prefix;
 use auths_id::keri::{Event, Seal};
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
+use auths_id::witness_config::WitnessParams;
 use auths_keri::{Acdc, TelEvent, compute_capability_schema_said, validate_tel};
 
 const TEST_PASSPHRASE: &str = "Test-passphrase1!";
@@ -57,8 +58,9 @@ fn setup_issuer() -> Issuer {
         &alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     )
     .expect("issuer inception");
     let prefix = prefix_of(&did);
@@ -291,10 +293,11 @@ fn kt2_issuer_registry_rejected_typed() {
         &alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         &[CurveType::Ed25519, CurveType::Ed25519],
         Threshold::Simple(2),
         Threshold::Simple(2),
+        chrono::Utc::now(),
     )
     .expect("multi-sig inception");
     let prefix = prefix_of(&did);

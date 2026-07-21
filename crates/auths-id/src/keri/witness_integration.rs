@@ -60,6 +60,9 @@ pub enum WitnessIntegrationError {
 
     #[error("Tokio runtime error: {0}")]
     Runtime(#[from] std::io::Error),
+
+    #[error("submit-body encoding failed: {0}")]
+    Encoding(String),
 }
 
 impl auths_core::error::AuthsErrorInfo for WitnessIntegrationError {
@@ -69,6 +72,7 @@ impl auths_core::error::AuthsErrorInfo for WitnessIntegrationError {
             Self::Storage(_) => "AUTHS-E4972",
             Self::Runtime(_) => "AUTHS-E4973",
             Self::QuorumNotMet { .. } => "AUTHS-E4974",
+            Self::Encoding(_) => "AUTHS-E4975",
         }
     }
 
@@ -82,6 +86,7 @@ impl auths_core::error::AuthsErrorInfo for WitnessIntegrationError {
             }
             Self::Storage(_) => Some("Check storage backend permissions"),
             Self::Runtime(_) => None,
+            Self::Encoding(_) => Some("The event or its attachment could not be serialized"),
         }
     }
 }
@@ -206,6 +211,87 @@ pub fn collect_and_store_receipts(
             WitnessPolicy::Skip => Ok(vec![]), // unreachable, but safe
         },
     }
+}
+
+/// Solicit and store k-of-n receipts for one finalized, signed event.
+///
+/// The single lifecycle chokepoint: inception, rotation, and batch-anchor
+/// flows all publish through here, so the submit-wire dialect (the envelope
+/// carrying the event plus its CESR attachment) exists exactly once. A
+/// [`WitnessParams::Disabled`] call is a no-op, so callers need no branching.
+///
+/// Args:
+/// * `witness`: The identity's witness config + receipt-storage repo, or Disabled.
+/// * `prefix`: Controller AID whose event is being receipted.
+/// * `event`: The finalized event to publish to the backers.
+/// * `attachment`: The event's CESR signature attachment.
+/// * `now`: Injected timestamp for the receipt-storage commit.
+///
+/// Usage:
+/// ```ignore
+/// solicit_receipts_for_event(&witness, &prefix, &Event::Icp(icp), &attachment, now)?;
+/// ```
+pub fn solicit_receipts_for_event(
+    witness: &crate::witness_config::WitnessParams<'_>,
+    prefix: &Prefix,
+    event: &auths_keri::Event,
+    attachment: &[u8],
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(), WitnessIntegrationError> {
+    let crate::witness_config::WitnessParams::Enabled { config, repo_path } = witness else {
+        return Ok(());
+    };
+    let canonical = auths_keri::serialize_for_signing(event)
+        .map_err(|e| WitnessIntegrationError::Encoding(e.to_string()))?;
+    let body = auths_core::witness::wire::encode_submit_body(&canonical, attachment)
+        .map_err(WitnessIntegrationError::Encoding)?;
+    collect_and_store_receipts(repo_path, prefix, event.said(), &body, config, now).map(|_| ())
+}
+
+/// Publish an identity's FULL stored KEL to its designated backers, event by
+/// event, collecting k-of-n receipts for each.
+///
+/// The backfill half of the write path: identities incepted before their
+/// witness config existed (or before a new witness joined their set) have
+/// events no backer holds. Witness submission is idempotent — an event a
+/// backer already receipted is re-receipted as a no-op — so republishing the
+/// whole KEL is always safe.
+///
+/// Args:
+/// * `backend`: The registry backend holding the identity's KEL.
+/// * `witness`: The identity's witness config + receipt-storage repo.
+/// * `prefix`: The identity to publish.
+/// * `now`: Injected timestamp for receipt storage.
+///
+/// Usage:
+/// ```ignore
+/// let published = publish_kel_to_backers(backend, &witness, &prefix, now)?;
+/// ```
+pub fn publish_kel_to_backers(
+    backend: &dyn crate::storage::registry::backend::RegistryBackend,
+    witness: &crate::witness_config::WitnessParams<'_>,
+    prefix: &Prefix,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<usize, WitnessIntegrationError> {
+    if matches!(witness, crate::witness_config::WitnessParams::Disabled) {
+        return Ok(0);
+    }
+    let tip = backend
+        .get_tip(prefix)
+        .map_err(|e| WitnessIntegrationError::Encoding(format!("KEL tip: {e}")))?;
+    let mut published = 0usize;
+    for seq in 0..=tip.sequence {
+        let event = backend
+            .get_event(prefix, seq)
+            .map_err(|e| WitnessIntegrationError::Encoding(format!("KEL event {seq}: {e}")))?;
+        let attachment = backend
+            .get_attachment(prefix, seq)
+            .map_err(|e| WitnessIntegrationError::Encoding(format!("attachment {seq}: {e}")))?
+            .unwrap_or_default();
+        solicit_receipts_for_event(witness, prefix, &event, &attachment, now)?;
+        published += 1;
+    }
+    Ok(published)
 }
 
 // Receipt verification (signature, pinned-key, wrong-event drops) lives at the

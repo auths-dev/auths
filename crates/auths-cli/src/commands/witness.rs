@@ -154,6 +154,14 @@ pub enum WitnessSubcommand {
 
     /// List configured witnesses for the current identity.
     List,
+
+    /// Publish this identity's full KEL to its configured witnesses,
+    /// collecting receipts for every event.
+    ///
+    /// Witness submission is idempotent, so republishing is always safe — use
+    /// it to backfill a witness added after inception, or to confirm your
+    /// backers hold what your KEL declares they witness.
+    Publish,
 }
 
 /// Parse the `--curve` argument into a `CurveType`.
@@ -365,6 +373,47 @@ pub fn handle_witness(cmd: WitnessCommand, repo_opt: Option<PathBuf>) -> Result<
             if !ceiling.shortfalls.is_empty() {
                 println!("  shortfall: {}", ceiling.shortfalls.join(", "));
             }
+            Ok(())
+        }
+
+        WitnessSubcommand::Publish => {
+            let repo_path = resolve_repo_path(repo_opt)?;
+            let config = load_witness_config(&repo_path)?;
+            if config.witnesses.is_empty() {
+                return Err(anyhow!(
+                    "no witnesses configured — add one first: auths witness add --url <URL>"
+                ));
+            }
+            let storage = RegistryIdentityStorage::new(repo_path.clone());
+            let identity = storage.load_identity()?;
+            let prefix_str = identity
+                .controller_did
+                .as_str()
+                .strip_prefix("did:keri:")
+                .ok_or_else(|| anyhow!("identity is not did:keri: {}", identity.controller_did))?;
+            let prefix = auths_keri::Prefix::new(prefix_str.to_string())
+                .map_err(|e| anyhow!("invalid identity prefix: {e}"))?;
+
+            let backend = auths_sdk::storage::GitRegistryBackend::from_config_unchecked(
+                auths_sdk::storage::RegistryConfig::single_tenant(&repo_path),
+            );
+            let witness = auths_sdk::witness::WitnessParams::Enabled {
+                config: &config,
+                repo_path: &repo_path,
+            };
+            let published = auths_sdk::witness::publish_kel_to_backers(
+                &backend,
+                &witness,
+                &prefix,
+                chrono::Utc::now(),
+            )
+            .map_err(|e| anyhow!("publish failed: {e}"))?;
+            println!(
+                "Published {published} event(s) to {} witness(es) with {}-of-{} receipts each.",
+                config.witnesses.len(),
+                config.threshold,
+                config.witnesses.len(),
+            );
             Ok(())
         }
     }

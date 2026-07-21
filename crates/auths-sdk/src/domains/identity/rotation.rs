@@ -295,7 +295,6 @@ pub fn rotate_identity(
     // across rotations. The rotated-away private key is deleted (it must never
     // sign again; verification replays public keys from the KEL). An explicit
     // `next_key_alias` still overrides for callers that want a new name.
-    let _ = clock;
     let next_alias = config
         .next_key_alias
         .unwrap_or_else(|| current_alias.clone());
@@ -310,7 +309,9 @@ pub fn rotate_identity(
     let (decrypted_next_pkcs8, old_next_alias) =
         retrieve_precommitted_key(&identity.controller_did, &current_alias, &state, ctx)?;
 
-    let (rot, new_next_pkcs8) = generate_rotation_keys(&identity, &state, &decrypted_next_pkcs8)?;
+    let witness_config = witness_config_from_identity(&identity);
+    let (rot, new_next_pkcs8) =
+        generate_rotation_keys(&state, &decrypted_next_pkcs8, witness_config.as_ref())?;
 
     finalize_rotation_storage(
         FinalizeParams {
@@ -322,6 +323,8 @@ pub fn rotate_identity(
             new_next_pkcs8: new_next_pkcs8.as_ref(),
             rot: &rot,
             state: &state,
+            witness_config: witness_config.as_ref(),
+            now: clock.now(),
         },
         ctx,
     )?;
@@ -457,18 +460,21 @@ fn retrieve_precommitted_key(
     Ok((decrypted, target_alias))
 }
 
-/// Generates the new rotation event and the next forward-looking key commitment.
-fn generate_rotation_keys(
-    identity: &ManagedIdentity,
-    state: &KeyState,
-    current_key_pkcs8: &[u8],
-) -> Result<(RotEvent, Pkcs8Der), RotationError> {
-    let witness_config: Option<WitnessConfig> = identity
+/// The identity's pinned witness configuration, from its stored metadata.
+fn witness_config_from_identity(identity: &ManagedIdentity) -> Option<WitnessConfig> {
+    identity
         .metadata
         .as_ref()
         .and_then(|m| m.get("witness_config"))
-        .and_then(|wc| serde_json::from_value(wc.clone()).ok());
+        .and_then(|wc| serde_json::from_value(wc.clone()).ok())
+}
 
+/// Generates the new rotation event and the next forward-looking key commitment.
+fn generate_rotation_keys(
+    state: &KeyState,
+    current_key_pkcs8: &[u8],
+    witness_config: Option<&WitnessConfig>,
+) -> Result<(RotEvent, Pkcs8Der), RotationError> {
     let next_signer = auths_crypto::TypedSignerKey::from_pkcs8(current_key_pkcs8)
         .map_err(|e| RotationError::KeyDecryptionFailed(e.to_string()))?;
 
@@ -480,7 +486,7 @@ fn generate_rotation_keys(
         &next_signer,
         &generated.public_key,
         next_signer.curve(),
-        witness_config.as_ref(),
+        witness_config,
     )?;
 
     Ok((rot, generated.pkcs8))
@@ -495,6 +501,8 @@ struct FinalizeParams<'a> {
     new_next_pkcs8: &'a [u8],
     rot: &'a RotEvent,
     state: &'a KeyState,
+    witness_config: Option<&'a WitnessConfig>,
+    now: chrono::DateTime<chrono::Utc>,
 }
 
 /// Encrypts and persists the new current and next keys to secure storage.
@@ -557,6 +565,31 @@ fn finalize_rotation_storage(
         sig,
     }])
     .map_err(|e| RotationError::RotationFailed(format!("serialize rot attachment: {e}")))?;
+
+    // Publish the signed rotation to the identity's designated backers before
+    // the local append — under Enforce, a missed quorum leaves the KEL
+    // untouched, and the backers hold the rotation they are declared to
+    // witness.
+    #[cfg(feature = "witness-client")]
+    {
+        let witness = match (params.witness_config, ctx.repo_path.as_deref()) {
+            (Some(cfg), Some(path)) => auths_id::witness_config::WitnessParams::Enabled {
+                config: cfg,
+                repo_path: path,
+            },
+            _ => auths_id::witness_config::WitnessParams::Disabled,
+        };
+        auths_id::keri::witness_integration::solicit_receipts_for_event(
+            &witness,
+            params.prefix,
+            &Event::Rot(params.rot.clone()),
+            &rot_attachment,
+            params.now,
+        )
+        .map_err(|e| RotationError::RotationFailed(format!("witness receipting: {e}")))?;
+    }
+    #[cfg(not(feature = "witness-client"))]
+    let _ = params.now;
 
     apply_rotation(
         params.rot,
@@ -807,7 +840,7 @@ mod tests {
         let (decrypted, _) =
             retrieve_precommitted_key(&identity.controller_did, &key_alias, &state, &ctx).unwrap();
 
-        let (rot, new_next_pkcs8) = generate_rotation_keys(&identity, &state, &decrypted).unwrap();
+        let (rot, new_next_pkcs8) = generate_rotation_keys(&state, &decrypted, None).unwrap();
 
         assert_eq!(rot.s, KeriSequence::new(state.sequence + 1));
         assert_eq!(rot.i, prefix);
@@ -832,7 +865,7 @@ mod tests {
         let state = ctx.registry.get_key_state(&prefix).unwrap();
         let (decrypted, old_next_alias) =
             retrieve_precommitted_key(&identity.controller_did, &key_alias, &state, &ctx).unwrap();
-        let (rot, new_next_pkcs8) = generate_rotation_keys(&identity, &state, &decrypted).unwrap();
+        let (rot, new_next_pkcs8) = generate_rotation_keys(&state, &decrypted, None).unwrap();
 
         let rotated_alias = KeyAlias::new_unchecked("rotated-key");
         let result = finalize_rotation_storage(
@@ -845,6 +878,8 @@ mod tests {
                 new_next_pkcs8: new_next_pkcs8.as_ref(),
                 rot: &rot,
                 state: &state,
+                witness_config: None,
+                now: chrono::Utc::now(),
             },
             &ctx,
         );

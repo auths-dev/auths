@@ -468,85 +468,8 @@ impl GitRegistryBackend {
         current_state: Option<&KeyState>,
         event: &Event,
     ) -> Result<KeyState, RegistryError> {
-        match event {
-            Event::Icp(icp) => Ok(KeyState::from_inception(
-                icp.i.clone(),
-                icp.k.clone(),
-                icp.n.clone(),
-                icp.kt.clone(),
-                icp.nt.clone(),
-                icp.d.clone(),
-                icp.b.clone(),
-                icp.bt.clone(),
-                icp.c.clone(),
-            )),
-            Event::Rot(rot) => {
-                let mut state = current_state.cloned().ok_or_else(|| {
-                    RegistryError::Internal("Rotation without prior state".into())
-                })?;
-                let seq = event.sequence().value();
-                state.apply_rotation(
-                    rot.k.clone(),
-                    rot.n.clone(),
-                    rot.kt.clone(),
-                    rot.nt.clone(),
-                    seq,
-                    rot.d.clone(),
-                    &rot.br,
-                    &rot.ba,
-                    rot.bt.clone(),
-                    rot.c.clone(),
-                );
-                Ok(state)
-            }
-            Event::Ixn(ixn) => {
-                let mut state = current_state.cloned().ok_or_else(|| {
-                    RegistryError::Internal("Interaction without prior state".into())
-                })?;
-                let seq = event.sequence().value();
-                state.apply_interaction(seq, ixn.d.clone());
-                Ok(state)
-            }
-            Event::Dip(dip) => {
-                let mut state = KeyState::from_inception(
-                    dip.i.clone(),
-                    dip.k.clone(),
-                    dip.n.clone(),
-                    dip.kt.clone(),
-                    dip.nt.clone(),
-                    dip.d.clone(),
-                    dip.b.clone(),
-                    dip.bt.clone(),
-                    dip.c.clone(),
-                );
-                // A delegated inception CARRIES its delegator; dropping `di` here
-                // left both the cached state.json and the replay path reporting
-                // `delegator: null` for every dip — breaking any consumer that
-                // proves the chain-to-root off the key state (the market's
-                // attestation verifier being the first to hit it).
-                state.delegator = Some(dip.di.clone());
-                Ok(state)
-            }
-            Event::Drt(drt) => {
-                let mut state = current_state.cloned().ok_or_else(|| {
-                    RegistryError::Internal("Delegated rotation without prior state".into())
-                })?;
-                let seq = event.sequence().value();
-                state.apply_rotation(
-                    drt.k.clone(),
-                    drt.n.clone(),
-                    drt.kt.clone(),
-                    drt.nt.clone(),
-                    seq,
-                    drt.d.clone(),
-                    &drt.br,
-                    &drt.ba,
-                    drt.bt.clone(),
-                    drt.c.clone(),
-                );
-                Ok(state)
-            }
-        }
+        auths_keri::state_after_event(current_state, event)
+            .map_err(|e| RegistryError::Internal(e.to_string()))
     }
 
     /// Update the metadata after a mutation.

@@ -12,13 +12,24 @@ description = "Bulk agent-onboarding scale benchmark for the auths org root KEL 
 
 [dependencies]
 auths-sdk = { path = "../../crates/auths-sdk" }
-auths-core = { path = "../../crates/auths-core", features = ["test-utils"] }
+auths-core = { path = "../../crates/auths-core", features = ["test-utils", "witness-server"] }
 auths-id = { path = "../../crates/auths-id" }
 auths-crypto = { path = "../../crates/auths-crypto" }
+auths-keri = { path = "../../crates/auths-keri" }
 auths-storage = { path = "../../crates/auths-storage", features = ["backend-git"] }
 auths-verifier = { path = "../../crates/auths-verifier" }
+auths-witness-node = { path = "../../crates/auths-witness-node" }
 anyhow = "1"
+axum = "0.8"
+chrono = "0.4"
+ed25519-dalek = "2"
 serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tower = { version = "0.5", features = ["util"] }
+
+[[bin]]
+name = "receipt-bench"
+path = "src/bin/receipt_bench.rs"
 
 [features]
 # Enable on branches that ship agents::add_bulk (the KL-9 bulk-onboarding path).

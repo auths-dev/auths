@@ -224,6 +224,11 @@ pub struct WitnessBinding {
     pub binding_head: String,
     /// The number of records in the bundle's embedded log.
     pub record_count: u64,
+    /// Every digest-seal SAID an `ixn` in the bundle's embedded delegator KEL
+    /// anchors ([`auths_anchor::ixn_digest_seals`]). The anchor's committed
+    /// witness-set SAID must appear here — a set the delegator never declared
+    /// on its own KEL is refused, so the anchor cannot vouch for its own set.
+    pub delegator_kel_digest_seals: Vec<String>,
 }
 
 /// Verify an anchor's tier-specific proof against the re-derived settled total.
@@ -232,11 +237,15 @@ pub struct WitnessBinding {
 ///   under single-delegation scope — require the final checkpointed cumulative to
 ///   equal `rederived_settled_cents` (a stale or forged trail fails here).
 /// * `first-seen`: nothing to verify; the tier IS the statement that nobody committed.
-/// * `witness`: re-check the embedded finalized anchor offline (self-addressing
-///   declared set, ≥ t logged cosignatures), then bind it to THIS bundle: its
-///   head must equal the re-derived spend binding head, its index the embedded
-///   record count, its cumulative the re-derived settled total, and its instant
-///   the anchor's `ts`. A caller that cannot supply the binding gets fail-closed.
+/// * `witness`: require the anchor's witness set to be declared on the
+///   delegator's own KEL (its SAID among the binding's `ixn` digest seals —
+///   `witness-set-not-anchored` otherwise), re-check the embedded finalized
+///   anchor offline (self-addressing declared set, ≥ t logged cosignatures)
+///   against that KEL-resolved SAID, then bind it to THIS bundle: its head
+///   must equal the re-derived spend binding head, its index the embedded
+///   record count, its cumulative the re-derived settled total, and its
+///   instant the anchor's `ts`. A caller that cannot supply the binding gets
+///   fail-closed.
 /// * `onchain`: not yet wired — fail closed.
 ///
 /// Args:
@@ -319,18 +328,31 @@ pub fn verify_anchor(
                     };
                 }
             };
-            if let Err(e) = auths_anchor::verify_finalized(&finalized, None) {
-                return AnchorCheck::Invalid {
-                    code: "anchor-unverifiable",
-                    detail: e.to_string(),
-                };
-            }
             let Some(binding) = witness_binding else {
                 return AnchorCheck::Invalid {
                     code: "anchor-unverifiable",
                     detail: "caller supplied no bundle binding for the witness anchor".to_string(),
                 };
             };
+            let committed_set_said = &finalized.anchor.witness_set.said;
+            let Some(declared_said) = auths_anchor::find_witness_set_seal(
+                &binding.delegator_kel_digest_seals,
+                committed_set_said,
+            ) else {
+                return AnchorCheck::Invalid {
+                    code: "witness-set-not-anchored",
+                    detail: format!(
+                        "witness set {committed_set_said} is not declared in the delegator's \
+                         embedded KEL — the seller must anchor it with `auths witness-set declare`"
+                    ),
+                };
+            };
+            if let Err(e) = auths_anchor::verify_finalized(&finalized, Some(declared_said)) {
+                return AnchorCheck::Invalid {
+                    code: "anchor-unverifiable",
+                    detail: e.to_string(),
+                };
+            }
             if finalized.anchor.head.to_hex() != binding.binding_head {
                 return AnchorCheck::Invalid {
                     code: "head-mismatch",

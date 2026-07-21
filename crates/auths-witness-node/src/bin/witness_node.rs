@@ -141,16 +141,24 @@ fn parse_seed(hex_seed: &str) -> Result<[u8; 32], String> {
 /// The KEL-receipt role: the shared hardened witness server, keyed by the
 /// node's identity seed, persisting receipts under the data dir. Absorbed from
 /// the standalone server binary — same state, same routes, no forked logic.
+///
+/// The write bridge is injected here: accepted events persist to the
+/// per-prefix KEL store under `--registry` (the same repo the `registry` role
+/// serves), so the node serves what it witnesses.
 fn build_kel_router(args: &ServeArgs) -> Result<Router, String> {
     use auths_core::witness::{
         WitnessServerConfig, WitnessServerState, witness_signer_from_seed_hex,
     };
+    use auths_sdk::storage::PerPrefixKelStore;
+    use auths_witness_node::kel_sink::KelStoreSink;
     std::fs::create_dir_all(&args.data_dir)
         .map_err(|e| format!("data dir {}: {e}", args.data_dir.display()))?;
     let signer = witness_signer_from_seed_hex(auths_crypto::CurveType::Ed25519, args.seed.trim())
         .map_err(|e| format!("witness signer: {e}"))?;
+    let sink = KelStoreSink::new(PerPrefixKelStore::open(&args.registry));
     let config = WitnessServerConfig::from_signer(args.data_dir.join("receipts.db"), signer)
-        .map_err(|e| format!("witness config: {e}"))?;
+        .map_err(|e| format!("witness config: {e}"))?
+        .with_kel_sink(Arc::new(sink));
     let state = WitnessServerState::new(config).map_err(|e| format!("witness state: {e}"))?;
     eprintln!("witness-node: kel role up as {}", state.witness_did());
     Ok(auths_core::witness::witness_router(state))
@@ -264,11 +272,12 @@ async fn main() -> std::process::ExitCode {
             }
             let has = |role: &str| args.roles.iter().any(|r| r == role);
 
-            // Roles that read (anchor: key resolution) or serve (registry) the
-            // party registry need it to be an openable repo. Ensure it exists —
-            // an empty registry is a valid new-witness state, and this lets the
-            // first node in a network (no peer to sync from) bootstrap cleanly.
-            if (has("anchor") || has("registry"))
+            // Roles that read (anchor: key resolution), write (kel: the
+            // receipting write bridge), or serve (registry) the party registry
+            // need it to be an openable repo. Ensure it exists — an empty
+            // registry is a valid new-witness state, and this lets the first
+            // node in a network (no peer to sync from) bootstrap cleanly.
+            if (has("anchor") || has("kel") || has("registry"))
                 && let Err(e) = auths_witness_node::sync::ensure_registry(&args.registry)
             {
                 eprintln!("witness-node: registry init: {e:#}");
@@ -353,6 +362,15 @@ async fn main() -> std::process::ExitCode {
             } else {
                 core
             };
+            // Housekeeping for the write path: appends create loose git
+            // objects; a periodic `git gc --auto` keeps the served registry
+            // packed (bench-measured ~45 KB/identity unpacked otherwise).
+            if has("kel") || has("registry") {
+                auths_witness_node::maintenance::spawn_repack_task(args.registry.clone(), |e| {
+                    eprintln!("witness-node: {e}");
+                });
+            }
+
             let listener = match tokio::net::TcpListener::bind(&args.bind).await {
                 Ok(listener) => listener,
                 Err(e) => {

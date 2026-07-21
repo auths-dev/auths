@@ -1,11 +1,17 @@
 //! Read-only git smart-HTTP over the witness's held KEL store.
 //!
-//! A witness already holds the party KELs it receipts (under `refs/auths/*` in
-//! the `--registry` repo). Exposing them read-only over git smart-HTTP makes the
-//! node its own resolution surface — a verifier or a peer witness runs a plain
-//! `git fetch +refs/auths/*:refs/auths/*` against it (exactly what
-//! [`crate::sync`] does), with no separate registry server anywhere. This is the
-//! "serve what you witness" leg of `docs/plans/network/network-auths-dev.md`.
+//! A witness holds the party KELs it receipts: the `kel` role's write bridge
+//! ([`crate::kel_sink`]) persists every accepted event under a per-prefix ref
+//! (`refs/auths/kel/<s1>/<prefix>`) in the `--registry` repo, alongside any
+//! aggregated `refs/auths/registry` tree an operator synced. Exposing all of
+//! `refs/auths/*` read-only over git smart-HTTP makes the node its own
+//! resolution surface — a verifier fetches one member
+//! (`git fetch <node> refs/auths/kel/<s1>/<prefix>`) or a peer witness
+//! replicates the namespace (`git fetch +refs/auths/*:refs/auths/*`, exactly
+//! what [`crate::sync`] does), with no separate registry server anywhere. This
+//! is the "serve what you witness" leg of
+//! `docs/plans/network/network-auths-dev.md`, made true by the write path in
+//! `docs/plans/network/witness-receipting-write-path.md`.
 //!
 //! Only `git-upload-pack` (fetch) is ever invoked. There is no `receive-pack`
 //! code path, so the surface is **read-only by construction** — not by config
@@ -62,6 +68,7 @@ pub const REGISTRY_TIMEOUT: Duration = Duration::from_secs(120);
 /// The read-only git-smart-HTTP router over `registry` — the repo whose
 /// `refs/auths/*` this node serves. Mounted at the node root, so the git URL is
 /// simply the node's base (`git fetch <base> +refs/auths/*:refs/auths/*`).
+/// Also exposes the roster: which prefixes this witness holds.
 ///
 /// Args:
 /// * `registry`: path to the local registry repo (the `--registry` dir).
@@ -75,7 +82,50 @@ pub fn registry_router(registry: &Path) -> Router {
     Router::new()
         .route("/info/refs", get(info_refs))
         .route("/git-upload-pack", post(upload_pack))
+        .route("/v1/registry/roster", get(roster))
         .with_state(repo)
+}
+
+/// One roster row: a prefix this witness holds and its KEL tip.
+#[derive(serde::Serialize)]
+struct RosterEntry {
+    /// The member's KERI prefix.
+    prefix: String,
+    /// Latest stored sequence number.
+    sequence: u128,
+    /// SAID of the latest stored event.
+    said: String,
+}
+
+/// `GET /v1/registry/roster` — the prefixes this witness holds, with tips.
+///
+/// Backed by ref enumeration + per-identity `tip.json` reads — an index
+/// lookup, never a KEL walk — so listing stays flat as members grow (the
+/// bulk-onboarding bench showed KEL-walking rosters go superlinear).
+async fn roster(State(repo): State<Arc<PathBuf>>) -> Response {
+    let store = auths_sdk::storage::PerPrefixKelStore::open(repo.as_path());
+    let prefixes = match store.list_prefixes() {
+        Ok(prefixes) => prefixes,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("roster enumeration failed: {e}\n"),
+            )
+                .into_response();
+        }
+    };
+    let entries: Vec<RosterEntry> = prefixes
+        .into_iter()
+        .filter_map(|prefix| {
+            let tip = store.get_tip(&prefix).ok()?;
+            Some(RosterEntry {
+                prefix: prefix.to_string(),
+                sequence: tip.sequence,
+                said: tip.said.to_string(),
+            })
+        })
+        .collect();
+    axum::Json(entries).into_response()
 }
 
 /// Whether the `git` binary is invocable — the registry role's hard dependency.

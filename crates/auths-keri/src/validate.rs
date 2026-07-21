@@ -160,6 +160,14 @@ pub enum ValidationError {
         sequence: u128,
     },
 
+    /// A non-inception event was applied without the prior key state it
+    /// chains from (missing inception or out-of-order application).
+    #[error("Event at sequence {sequence} applied without prior key state")]
+    MissingPriorState {
+        /// Zero-based position of the event that lacked prior state.
+        sequence: u128,
+    },
+
     /// The first event in a KEL must be an Inception event.
     #[error("First event must be inception")]
     NotInception,
@@ -1298,6 +1306,104 @@ pub fn verify_event_crypto(
                 return Err(ValidationError::SignatureFailed { sequence });
             }
             Ok(())
+        }
+    }
+}
+
+/// Compute the key state after applying `event` on top of `current_state`.
+///
+/// The single authoritative event→state transition, shared by every KEL
+/// store (packed registry, per-prefix witness store) and the replay paths so
+/// they cannot drift. Inception events (`icp`/`dip`) require `current_state`
+/// to be `None`-compatible (they ignore it); every other event type requires
+/// the prior state. A `dip` carries its delegator into
+/// [`KeyState::delegator`].
+///
+/// Args:
+/// * `current_state` - The state before this event (`None` before inception).
+/// * `event` - The event to apply.
+///
+/// Usage:
+/// ```ignore
+/// let next = state_after_event(state.as_ref(), &event)?;
+/// ```
+pub fn state_after_event(
+    current_state: Option<&KeyState>,
+    event: &Event,
+) -> Result<KeyState, ValidationError> {
+    let sequence = event.sequence().value();
+    match event {
+        Event::Icp(icp) => Ok(KeyState::from_inception(
+            icp.i.clone(),
+            icp.k.clone(),
+            icp.n.clone(),
+            icp.kt.clone(),
+            icp.nt.clone(),
+            icp.d.clone(),
+            icp.b.clone(),
+            icp.bt.clone(),
+            icp.c.clone(),
+        )),
+        Event::Rot(rot) => {
+            let mut state = current_state
+                .cloned()
+                .ok_or(ValidationError::MissingPriorState { sequence })?;
+            state.apply_rotation(
+                rot.k.clone(),
+                rot.n.clone(),
+                rot.kt.clone(),
+                rot.nt.clone(),
+                sequence,
+                rot.d.clone(),
+                &rot.br,
+                &rot.ba,
+                rot.bt.clone(),
+                rot.c.clone(),
+            );
+            Ok(state)
+        }
+        Event::Ixn(ixn) => {
+            let mut state = current_state
+                .cloned()
+                .ok_or(ValidationError::MissingPriorState { sequence })?;
+            state.apply_interaction(sequence, ixn.d.clone());
+            Ok(state)
+        }
+        Event::Dip(dip) => {
+            let mut state = KeyState::from_inception(
+                dip.i.clone(),
+                dip.k.clone(),
+                dip.n.clone(),
+                dip.kt.clone(),
+                dip.nt.clone(),
+                dip.d.clone(),
+                dip.b.clone(),
+                dip.bt.clone(),
+                dip.c.clone(),
+            );
+            // A delegated inception CARRIES its delegator; dropping `di` here
+            // leaves every downstream key state reporting `delegator: null`,
+            // breaking any consumer that proves the chain-to-root off it.
+            state.delegator = Some(dip.di.clone());
+            Ok(state)
+        }
+        Event::Drt(drt) => {
+            let mut state = current_state
+                .cloned()
+                .ok_or(ValidationError::MissingPriorState { sequence })?;
+            state.apply_rotation(
+                drt.k.clone(),
+                drt.n.clone(),
+                drt.kt.clone(),
+                drt.nt.clone(),
+                sequence,
+                drt.d.clone(),
+                &drt.br,
+                &drt.ba,
+                drt.bt.clone(),
+                drt.c.clone(),
+            );
+            Ok(state)
         }
     }
 }

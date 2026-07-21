@@ -18,6 +18,7 @@ use auths_id::keri::types::Prefix;
 use auths_id::keri::{Event, Seal, serialize_for_signing, validate_delegation};
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
+use auths_id::witness_config::WitnessParams;
 use auths_keri::{SourceSeal, parse_attachment};
 use std::ops::ControlFlow;
 
@@ -74,8 +75,9 @@ fn delegated_device_is_anchored_by_root() {
         &root_alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     )
     .expect("root inception");
     let root_prefix = prefix_of(&root_did);
@@ -136,8 +138,9 @@ fn build_device_dip_is_backend_free_and_anchor_received_dip_delegates() {
         &root_alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     )
     .expect("root inception");
     let root_prefix = prefix_of(&root_did);
@@ -209,8 +212,9 @@ fn dip_carries_source_seal_back_ref() {
         &root_alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     )
     .expect("root inception");
     let root_prefix = prefix_of(&root_did);
@@ -253,8 +257,9 @@ fn drt_carries_source_seal() {
         &root_alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     )
     .expect("root inception");
     let root_prefix = prefix_of(&root_did);

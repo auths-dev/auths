@@ -22,6 +22,7 @@ use auths_id::keri::serialize_for_signing;
 use auths_id::keri::types::Prefix;
 use auths_id::storage::registry::backend::RegistryBackend;
 use auths_id::testing::fakes::FakeRegistryBackend;
+use auths_id::witness_config::WitnessParams;
 use p256::ecdsa::SigningKey;
 use p256::ecdsa::signature::Signer;
 
@@ -177,8 +178,9 @@ fn hardware_inception_uses_the_keychain_key() {
         &alias,
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::P256,
+        chrono::Utc::now(),
     )
     .expect("hardware inception succeeds");
     assert_eq!(returned_alias, alias);
@@ -247,8 +249,9 @@ fn hardware_inception_rejects_non_p256() {
         &KeyAlias::new_unchecked("main"),
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::Ed25519,
+        chrono::Utc::now(),
     );
     assert!(res.is_err(), "hardware inception is P-256 only");
 }

@@ -20,6 +20,8 @@ pub mod service;
 pub mod shared_rot;
 /// Identity types and configuration
 pub mod types;
+/// Witness-set declaration anchored in the identity's KEL
+pub mod witness_set;
 
 pub use error::*;
 pub use types::*;

@@ -18,6 +18,7 @@ use auths_sdk::domains::org::policy::{
 };
 use auths_sdk::domains::org::{add_member, list_members, member_policy_context, revoke_member};
 use auths_sdk::identity::initialize_registry_identity;
+use auths_sdk::witness::WitnessParams;
 use auths_verifier::Prefix;
 use auths_verifier::core::Role;
 
@@ -38,8 +39,9 @@ fn setup() -> (AuthsContext, KeyAlias, Prefix, tempfile::TempDir) {
         &KeyAlias::new_unchecked("org-key"),
         &provider,
         &keychain,
-        None,
+        WitnessParams::Disabled,
         CurveType::default(),
+        chrono::Utc::now(),
     )
     .expect("init bare org identity");
 

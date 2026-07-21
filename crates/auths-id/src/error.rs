@@ -54,6 +54,8 @@ pub enum InitError {
     Crypto(String),
     #[error("identity error: {0}")]
     Identity(#[from] crate::identity::helpers::IdentityError),
+    #[error("witness receipting failed: {0}")]
+    Witness(String),
 }
 
 impl AuthsErrorInfo for FreezeError {
@@ -122,6 +124,7 @@ impl AuthsErrorInfo for InitError {
             Self::Registry(_) => "AUTHS-E4206",
             Self::Crypto(_) => "AUTHS-E4207",
             Self::Identity(_) => "AUTHS-E4208",
+            Self::Witness(_) => "AUTHS-E4209",
         }
     }
 
@@ -146,6 +149,10 @@ impl AuthsErrorInfo for InitError {
             Self::Identity(_) => {
                 Some("Identity initialization failed; check storage and keychain configuration")
             }
+            Self::Witness(_) => Some(
+                "Too few of the identity's designated witnesses returned a valid receipt; \
+                 check witness connectivity and the configured threshold",
+            ),
         }
     }
 }

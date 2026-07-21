@@ -31,3 +31,5 @@ pub mod signing;
 pub mod status;
 pub mod transparency;
 pub mod witness_monitor;
+/// Witness-set declaration: the spend-anchor cosigner set, anchored in the KEL.
+pub mod witness_set;

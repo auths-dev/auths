@@ -148,8 +148,8 @@ pub use validate::{
     DelegatorKelLookup, KelPolicy, KelSealIndex, TrustedKel, ValidationError, WitnessedReplay,
     compute_event_said, finalize_dip_event, finalize_drt_event, finalize_icp_event,
     finalize_ixn_event, finalize_rot_event, find_seal_in_kel, parse_kel_json,
-    serialize_for_signing, validate_delegation, validate_for_append, validate_signed_event,
-    validate_signed_kel, verify_event_crypto, verify_event_said,
+    serialize_for_signing, state_after_event, validate_delegation, validate_for_append,
+    validate_signed_event, validate_signed_kel, verify_event_crypto, verify_event_said,
 };
 
 #[cfg(feature = "cesr")]

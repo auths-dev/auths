@@ -6,7 +6,6 @@
 //! ## Modules
 //!
 //! - [`HttpRegistryClient`] — registry service client for identity and attestation operations
-//! - [`HttpWitnessClient`] — synchronous witness client for KERI event submission
 //! - [`HttpAsyncWitnessClient`] — async witness client with quorum support
 //! - [`HttpIdentityResolver`] — DID resolution over HTTP
 
@@ -30,7 +29,6 @@ mod platform_context;
 mod registry_client;
 mod request;
 mod ssrf;
-mod witness_client;
 
 pub use async_witness_client::HttpAsyncWitnessClient;
 pub use claim_client::HttpRegistryClaimClient;
@@ -47,7 +45,6 @@ pub use oidc_validator::{HttpJwksClient, HttpJwtValidator, OidcTokenClaims, Pinn
 pub use pairing_client::HttpPairingRelayClient;
 pub use platform_context::resolve_verified_platform_context;
 pub use registry_client::HttpRegistryClient;
-pub use witness_client::HttpWitnessClient;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);

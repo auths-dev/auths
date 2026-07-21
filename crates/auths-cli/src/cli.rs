@@ -49,6 +49,7 @@ use crate::commands::trust::TrustCommand;
 use crate::commands::unified_verify::UnifiedVerifyCommand;
 use crate::commands::whoami::WhoamiCommand;
 use crate::commands::witness::WitnessCommand;
+use crate::commands::witness_set::WitnessSetCommand;
 
 fn cli_styles() -> Styles {
     Styles::styled()
@@ -166,6 +167,9 @@ pub enum RootCommand {
     Treasury(TreasuryCommand),
     /// Verify witness-network anchor evidence (duplicity proofs) offline.
     Anchor(AnchorCommand),
+    /// Declare the spend-anchor witness set, anchored in your KEL.
+    #[command(name = "witness-set")]
+    WitnessSet(WitnessSetCommand),
     #[command(hide = true)]
     Witness(WitnessCommand),
     #[command(hide = true)]

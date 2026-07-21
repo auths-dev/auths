@@ -1,13 +1,16 @@
 //! Registry sync: populate the witness's `--registry` with the parties' public
 //! KELs by fetching the custom `refs/auths/*` namespace.
 //!
-//! The anchor role resolves a submitter's keys from the tree at
-//! `refs/auths/registry` (see [`crate::registry`]). A plain `git clone` only
-//! fetches `refs/heads/*` + tags, so it leaves that ref — and therefore every
+//! The anchor role resolves a submitter's keys from the per-prefix KEL refs
+//! (`refs/auths/kel/<s1>/<prefix>`) and the aggregated `refs/auths/registry`
+//! tree (see [`crate::registry`]). A plain `git clone` only fetches
+//! `refs/heads/*` + tags, so it leaves that namespace — and therefore every
 //! identity — absent, which is why an operator who "cloned" the registry still
 //! 422s every submission. This fetches the `refs/auths/*` namespace explicitly,
 //! in-process (git2's own HTTPS transport — no `git` binary needed), mirroring
-//! the SDK's `fetch_registry`.
+//! the SDK's `fetch_registry`. Witness→witness, this is replication: each
+//! node's write bridge populates its own per-prefix refs, and peers pick them
+//! up with the same one fetch.
 
 use std::path::Path;
 
@@ -34,10 +37,11 @@ pub fn ensure_registry(registry: &Path) -> anyhow::Result<()> {
 /// Fetch or refresh the parties' public registry at `registry` from `url`.
 ///
 /// Idempotent: creates and initializes the repo if absent, then force-fetches
-/// `refs/auths/*` (the namespace [`crate::registry`] reads). Confirms the sync
-/// produced a resolvable registry (`refs/auths/registry` present) before
-/// returning, so a wrong URL or an empty remote fails loudly here rather than
-/// as a later 422 on every submission.
+/// `refs/auths/*` (the namespace [`crate::registry`] reads). Confirms the
+/// result is an openable, resolvable registry before returning. An EMPTY
+/// remote namespace is a valid sync (a fresh peer with no members yet — the
+/// write path populates it); only an unopenable repo or a storage fault fails
+/// here.
 ///
 /// Args:
 /// * `url`: the aggregated registry's git URL (must expose `refs/auths/*`).
@@ -62,7 +66,7 @@ pub fn sync_registry(url: &str, registry: &Path) -> anyhow::Result<()> {
     registry_ready(registry).map_err(|e| {
         anyhow::anyhow!(
             "registry synced from {url} but is not resolvable \
-             (does the remote expose refs/auths/registry?): {e}"
+             (does the remote expose refs/auths/*?): {e}"
         )
     })?;
     Ok(())

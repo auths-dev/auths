@@ -28,13 +28,14 @@ primary_region = 'lhr'
   # root — run `fly deploy` from there.
   dockerfile = '../Dockerfile'
 
-# Bootstrap roles: KEL receipting, checkpoint cosigning, and serving the held
-# refs/auths/* read-only (registry). The `anchor` role is intentionally omitted
-# until members exist — it fails closed without a populated party registry to
-# resolve against (the RT-2 discipline), whereas the registry role happily
-# serves an empty namespace. Add `anchor` once the registry has parties.
+# Full roles: spend anchoring, KEL receipting (with the write bridge into the
+# served per-prefix store), checkpoint cosigning, and serving the held
+# refs/auths/* read-only (registry). The anchor role now boots on an
+# empty-but-openable registry: the KEL write path self-populates it as members
+# publish, so "no parties yet" is a valid first-witness state, not a
+# misconfiguration (per-submitter absence is still refused per identity).
 [processes]
-  app = 'serve --roles kel,cosign,registry --bind 0.0.0.0:3333 --data-dir /data --registry /data/registry --witness-name auths-network'
+  app = 'serve --roles anchor,kel,cosign,registry --bind 0.0.0.0:3333 --data-dir /data --registry /data/registry --witness-name auths-network'
 
 [[mounts]]
   # DURABLE, never tmpfs: the per-seed anchor store is the node's
