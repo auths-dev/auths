@@ -220,7 +220,7 @@ pub fn declare_witness_set(
         .identity_storage
         .load_identity()
         .map_err(|e| WitnessSetError::NoIdentity(e.to_string()))?;
-    let root_prefix = parse_did_keri(&managed.controller_did.to_string())
+    let root_prefix = parse_did_keri(managed.controller_did.as_str())
         .map_err(|e| WitnessSetError::NoIdentity(e.to_string()))?;
     let (_public_key, curve) = extract_public_key_bytes(
         ctx.key_storage.as_ref(),

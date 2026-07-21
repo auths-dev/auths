@@ -20,8 +20,7 @@
 use std::path::Path;
 
 use auths_anchor::ControllerKeys;
-use auths_id::keri::state::KeyState;
-use auths_keri::Prefix;
+use auths_keri::{KeyState, Prefix};
 use auths_sdk::ports::{RegistryBackend, RegistryError};
 use auths_sdk::storage::{GitRegistryBackend, PerPrefixKelStore, RegistryConfig};
 
