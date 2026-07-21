@@ -211,6 +211,18 @@ jobs:
         working-directory: packages/auths-node
         run: npx napi prepublish -t npm --no-gh-release
 
+      # `npm publish --ignore-scripts` skips prepublishOnly, so the conformance
+      # sync must run here explicitly — 0.1.14 shipped without verdicts.json
+      # because it did not. Fail closed if the packed tarball misses it.
+      - name: Sync conformance surface into the tarball (fail-closed)
+        if: steps.published.outputs.exists != 'true'
+        working-directory: packages/auths-node
+        run: |
+          set -euo pipefail
+          node scripts/sync-conformance.mjs
+          npm pack --dry-run 2>&1 | grep -q "conformance/verdicts.json" \
+            || { echo "::error::packed tarball is missing conformance/verdicts.json"; exit 1; }
+
       - name: Publish main package
         if: steps.published.outputs.exists != 'true'
         working-directory: packages/auths-node
