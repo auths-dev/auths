@@ -92,8 +92,9 @@ pub fn create_identity(
         &alias,
         &provider,
         keychain.as_ref(),
-        None,
+        auths_id::witness_config::WitnessParams::Disabled,
         auths_crypto::CurveType::default(),
+        chrono::Utc::now(),
     )
     .map_err(|e| {
         format_error(
@@ -149,8 +150,9 @@ pub fn create_agent_identity(
         &alias,
         &provider,
         keychain.as_ref(),
-        None,
+        auths_id::witness_config::WitnessParams::Disabled,
         auths_crypto::CurveType::default(),
+        chrono::Utc::now(),
     )
     .map_err(|e| {
         format_error(

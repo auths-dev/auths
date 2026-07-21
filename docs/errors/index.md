@@ -166,6 +166,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4206](AUTHS-E4206.md) | `auths-id` | `InitError::Registry` | registry error: {0} |
 | [AUTHS-E4207](AUTHS-E4207.md) | `auths-id` | `InitError::Crypto` | crypto operation failed: {0} |
 | [AUTHS-E4208](AUTHS-E4208.md) | `auths-id` | `InitError::Identity` | identity error: {0} |
+| [AUTHS-E4209](AUTHS-E4209.md) | `auths-id` | `InitError::Witness` | witness receipting failed: {0} |
 | [AUTHS-E4401](AUTHS-E4401.md) | `auths-id` | `IdentityError::Keri` | KERI error: {0} |
 | [AUTHS-E4402](AUTHS-E4402.md) | `auths-id` | `IdentityError::Pkcs8EncodeError` | PKCS#8 encoding error: {0} |
 | [AUTHS-E4403](AUTHS-E4403.md) | `auths-id` | `IdentityError::Pkcs8DecodeError` | PKCS#8 decoding error: {0} |
@@ -247,6 +248,7 @@ All error codes emitted by the Auths CLI and libraries. Run `auths error <CODE>`
 | [AUTHS-E4972](AUTHS-E4972.md) | `auths-id` | `WitnessIntegrationError::Storage` | Receipt storage failed: {0} |
 | [AUTHS-E4973](AUTHS-E4973.md) | `auths-id` | `WitnessIntegrationError::Runtime` | Tokio runtime error: {0} |
 | [AUTHS-E4974](AUTHS-E4974.md) | `auths-id` | `WitnessIntegrationError::QuorumNotMet` | witness quorum not met: {valid} valid receipt(s), need {required} |
+| [AUTHS-E4975](AUTHS-E4975.md) | `auths-id` | `WitnessIntegrationError::Encoding` | submit-body encoding failed: {0} |
 | [AUTHS-E4981](AUTHS-E4981.md) | `auths-id` | `CredentialRegistryError::ThresholdUnsupported` | issuer '{issuer}' is multi-signature (kt≥2); credential registry anchoring is single-author only |
 | [AUTHS-E4982](AUTHS-E4982.md) | `auths-id` | `CredentialRegistryError::Tel` | TEL event error: {0} |
 | [AUTHS-E4983](AUTHS-E4983.md) | `auths-id` | `CredentialRegistryError::Anchor` | KEL anchoring failed: {0} |

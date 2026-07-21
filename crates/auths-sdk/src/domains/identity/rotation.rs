@@ -589,7 +589,7 @@ fn finalize_rotation_storage(
         .map_err(|e| RotationError::RotationFailed(format!("witness receipting: {e}")))?;
     }
     #[cfg(not(feature = "witness-client"))]
-    let _ = params.now;
+    let _ = (params.now, params.witness_config);
 
     apply_rotation(
         params.rot,

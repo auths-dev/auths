@@ -50,7 +50,7 @@ fn setup() -> (AuthsContext, KeyAlias, tempfile::TempDir) {
 /// exactly what a verifier resolves a declaration from.
 fn kel_digest_seals(ctx: &AuthsContext) -> Vec<String> {
     let managed = ctx.identity_storage.load_identity().expect("identity");
-    let prefix = parse_did_keri(&managed.controller_did.to_string()).expect("prefix");
+    let prefix = parse_did_keri(managed.controller_did.as_str()).expect("prefix");
     let mut events = Vec::new();
     ctx.registry
         .visit_events(&prefix, 0, &mut |event| {
