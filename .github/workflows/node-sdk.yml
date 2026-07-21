@@ -33,7 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # cache: false — this build's target dir is packages/auths-node/target, not
+      # the workspace target, so keep the package-scoped cache below and take only
+      # the toolchain + shared sccache from the composite.
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+          cache: "false"
 
       - uses: actions/cache@v4
         with:
@@ -85,9 +91,11 @@ jobs:
       # Pin to the repo's toolchain (1.93) so this fmt/clippy gate is
       # reproducible; an unpinned @stable drifts ahead of the pinned formatting
       # and fails spuriously (was red on main for exactly this reason).
-      - uses: dtolnay/rust-toolchain@1.93.0
+      - uses: ./.github/actions/setup-rust
         with:
+          toolchain: "1.93.0"
           components: rustfmt, clippy
+          cache: "false"
 
       - uses: actions/cache@v4
         with:

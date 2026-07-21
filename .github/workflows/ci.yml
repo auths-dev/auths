@@ -49,17 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
         with:
+          toolchain: stable
           components: clippy
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-clippy-
       # `fips`/`cnsa` are mutually exclusive (RT-012 compile_error! in
       # auths-crypto/src/provider.rs), so --all-features can't compile. Lint the
       # bulk workspace minus the five dual-provider crypto crates, then lint those
@@ -77,17 +70,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
         with:
+          toolchain: stable
           components: rustfmt, clippy
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-precommit-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-precommit-
       # Run the same hooks developers run locally, so a commit that passes local
       # hooks cannot fail CI on format/lint/hygiene drift. The workspace
       # cargo-fmt and cargo-clippy hooks run byte-identical commands in the
@@ -124,24 +110,49 @@ jobs:
       - name: Crypto primitive inventory is current
         run: python3 scripts/check_primitive_inventory.py
 
+  build-cli:
+    name: Build CLI binaries (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      # Build the debug binaries once and share them as an artifact so the smoke
+      # and e2e jobs run against a prebuilt CLI instead of each recompiling it.
+      # sccache already dedupes the compiles across jobs; the artifact additionally
+      # lets those downstream jobs drop the Rust toolchain entirely.
+      - name: Build auths CLI + MCP gateway
+        run: cargo build --package auths-cli --package auths-mcp-gateway
+      - name: Stage binaries
+        run: |
+          mkdir -p cli-bins
+          cp target/debug/auths target/debug/auths-sign target/debug/auths-verify target/debug/auths-mcp-gateway cli-bins/
+      - name: Upload CLI binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-bins-${{ matrix.os }}
+          path: cli-bins/
+
   smoke:
     name: Golden-path smoke test
+    needs: build-cli
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
+      - name: Download CLI binaries
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-smoke-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-smoke-
-      - name: Build CLI
-        run: cargo build -p auths-cli
+          name: cli-bins-ubuntu-latest
+          path: cli-bins
+      - name: Make binaries executable
+        run: chmod +x cli-bins/*
       - name: Run golden-path smoke test
         run: python3 docs/smoketests/end_to_end.py
+        env:
+          AUTHS_BIN: ${{ github.workspace }}/cli-bins/auths
       - name: Upload smoke results
         if: always()
         uses: actions/upload-artifact@v4
@@ -154,15 +165,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/setup-rust
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-schemas-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-schemas-
+          toolchain: stable
       - name: Regenerate schemas and check for drift
         run: |
           cargo run -p xtask -- generate-schemas
@@ -186,16 +191,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/setup-rust
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-test-
+          toolchain: stable
 
       - name: Install nextest
         uses: taiki-e/install-action@nextest
@@ -291,15 +289,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/setup-rust
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-pq-hybrid-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-pq-hybrid-
+          toolchain: stable
       - name: Install nextest
         uses: taiki-e/install-action@nextest
       # fn-129.T10: exercise the experimental `pq-hybrid` feature. The
@@ -317,32 +309,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.93
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-msrv-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-msrv-
+      - uses: ./.github/actions/setup-rust
       - run: cargo check --workspace
   wasm:
     name: WASM build (auths-verifier)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-wasm-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-wasm-
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
       - name: Build WASM with wasm-pack
@@ -375,7 +352,13 @@ jobs:
             targets: fuzz_cesr_import fuzz_parse_cesr fuzz_validate_kel fuzz_receipt_couples fuzz_attachment_parse
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      # cache: false — the fuzz build dir is ${{ matrix.dir }}/target, not the
+      # workspace target Swatinem manages, so this job keeps its own matrix-keyed
+      # cache below and only takes the toolchain + shared sccache from the composite.
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: nightly
+          cache: "false"
       - uses: actions/cache@v4
         with:
           path: |
@@ -405,15 +388,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.93
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-conformance-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-conformance-
+      - uses: ./.github/actions/setup-rust
       - uses: astral-sh/setup-uv@v4
       # keripy's crypto (pysodium) loads libsodium via ctypes at runtime.
       - name: Install libsodium (keripy runtime dependency)
@@ -447,7 +422,7 @@ jobs:
 
   e2e-tests:
     name: E2E Tests (${{ matrix.os }})
-    needs: [test]
+    needs: [test, build-cli]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -455,19 +430,18 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.93
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-e2e-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-e2e-
       - uses: astral-sh/setup-uv@v4
 
-      - name: Build auths binaries
-        run: cargo build --package auths-cli --package auths-mcp-gateway
+      # Consume the prebuilt CLI + gateway from build-cli instead of recompiling.
+      # Restoring them into target/debug keeps the AUTHS_*_BIN paths below and the
+      # harness's target/debug fallback (for auths-mcp-gateway) unchanged.
+      - name: Download auths binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: cli-bins-${{ matrix.os }}
+          path: target/debug
+      - name: Make binaries executable
+        run: chmod +x target/debug/auths target/debug/auths-sign target/debug/auths-verify target/debug/auths-mcp-gateway
 
       - name: Configure git
         run: |
