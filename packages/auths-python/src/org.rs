@@ -137,8 +137,9 @@ pub fn create_org(
             &key_alias,
             &provider,
             &*keychain,
-            None,
+            auths_id::witness_config::WitnessParams::Disabled,
             auths_crypto::CurveType::default(),
+            chrono::Utc::now(),
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 

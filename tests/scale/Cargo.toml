@@ -37,3 +37,7 @@ bulk = []
 
 [profile.release]
 debug = "line-tables-only"
+# auths-core's test-utils (weak KDF for fast provisioning) hard-refuses
+# release builds via a debug_assertions-gated compile_error; the bench keeps
+# assertions on in release, exactly the posture the KL-9 runs measured under.
+debug-assertions = true

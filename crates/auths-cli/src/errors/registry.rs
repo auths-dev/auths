@@ -230,6 +230,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E4206" => Some("# AUTHS-E4206\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Registry`\n\n## Message\n\nregistry error: {0}\n\n## Suggestion\n\nCheck registry backend configuration\n"),
         "AUTHS-E4207" => Some("# AUTHS-E4207\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Crypto`\n\n## Message\n\ncrypto operation failed: {0}\n\n## Suggestion\n\nA cryptographic operation during initialization failed; check your keychain access\n"),
         "AUTHS-E4208" => Some("# AUTHS-E4208\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Identity`\n\n## Message\n\nidentity error: {0}\n\n## Suggestion\n\nIdentity initialization failed; check storage and keychain configuration\n"),
+        "AUTHS-E4209" => Some("# AUTHS-E4209\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Witness`\n\n## Message\n\nwitness receipting failed: {0}\n\n## Suggestion\n\nToo few of the identity's designated witnesses returned a valid receipt; check witness connectivity and the configured threshold\n"),
 
         // --- auths-id (IdentityError) ---
         "AUTHS-E4401" => Some("# AUTHS-E4401\n\n**Crate:** `auths-id`\n\n**Type:** `IdentityError::Keri`\n\n## Message\n\nKERI error: {0}\n\n## Suggestion\n\nKERI operation failed; check identity state\n"),
@@ -333,6 +334,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         "AUTHS-E4972" => Some("# AUTHS-E4972\n\n**Crate:** `auths-id`\n\n**Type:** `WitnessIntegrationError::Storage`\n\n## Message\n\nReceipt storage failed: {0}\n\n## Suggestion\n\nCheck storage backend permissions\n"),
         "AUTHS-E4973" => Some("# AUTHS-E4973\n\n**Crate:** `auths-id`\n\n**Type:** `WitnessIntegrationError::Runtime`\n\n## Message\n\nTokio runtime error: {0}\n"),
         "AUTHS-E4974" => Some("# AUTHS-E4974\n\n**Crate:** `auths-id`\n\n**Type:** `WitnessIntegrationError::QuorumNotMet`\n\n## Message\n\nwitness quorum not met: {valid} valid receipt(s), need {required}\n\n## Suggestion\n\nToo few witnesses returned a valid, verifiable receipt for this event\n"),
+        "AUTHS-E4975" => Some("# AUTHS-E4975\n\n**Crate:** `auths-id`\n\n**Type:** `WitnessIntegrationError::Encoding`\n\n## Message\n\nsubmit-body encoding failed: {0}\n\n## Suggestion\n\nThe event or its attachment could not be serialized\n"),
 
         // --- auths-id (CredentialRegistryError) ---
         "AUTHS-E4981" => Some("# AUTHS-E4981\n\n**Crate:** `auths-id`\n\n**Type:** `CredentialRegistryError::ThresholdUnsupported`\n\n## Message\n\nissuer '{issuer}' is multi-signature (kt≥2); credential registry anchoring is single-author only\n\n## Suggestion\n\nCredential issuance currently requires a single-signature (kt=1) issuer\n"),
@@ -674,6 +676,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E4206",
         "AUTHS-E4207",
         "AUTHS-E4208",
+        "AUTHS-E4209",
         "AUTHS-E4401",
         "AUTHS-E4402",
         "AUTHS-E4403",
@@ -755,6 +758,7 @@ pub fn all_codes() -> &'static [&'static str] {
         "AUTHS-E4972",
         "AUTHS-E4973",
         "AUTHS-E4974",
+        "AUTHS-E4975",
         "AUTHS-E4981",
         "AUTHS-E4982",
         "AUTHS-E4983",
@@ -920,6 +924,6 @@ mod tests {
 
     #[test]
     fn all_codes_count_matches_registry() {
-        assert_eq!(all_codes().len(), 373);
+        assert_eq!(all_codes().len(), 375);
     }
 }

@@ -1002,6 +1002,8 @@ mod tests {
                 new_next_pkcs8: pkcs8.as_ref(),
                 rot: &dummy_rot,
                 state: &state,
+                witness_config: None,
+                now: chrono::Utc::now(),
             },
             &ctx,
         );
