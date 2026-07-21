@@ -163,7 +163,7 @@ pub fn attest_release(
 
     let org_signer = StorageSigner::new(Arc::clone(&ctx.key_storage));
     let mut batch = AtomicWriteBatch::new();
-    let (attestation_said, ixn) = try_stage_anchor(
+    let (attestation_said, ixn, _attachment) = try_stage_anchor(
         ctx.registry.as_ref(),
         &org_signer,
         org_alias,
