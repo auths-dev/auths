@@ -153,7 +153,7 @@ fn render(state: &StatusState, member_count: usize, base_url: &str) -> String {
   <div class="links">
     <a href="https://explorer.auths.dev/w/{name}">Browse it in the explorer ↗</a>
     <a href="https://auths.dev/network">The witness directory ↗</a>
-    <a href="https://docs.auths.dev/mcp/witness-network/run-a-witness">Run your own ↗</a>
+    <a href="https://docs.auths.dev/witness-network/operators/run-a-node">Run your own ↗</a>
   </div>
 
   <p class="foot">Everything that proves here is open code: the node, the verifier, the conformance harness. This page is a convenience over evidence anyone can re-check.</p>

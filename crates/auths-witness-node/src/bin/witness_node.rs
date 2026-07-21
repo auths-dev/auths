@@ -130,6 +130,7 @@ struct ServeArgs {
 
     /// 64-hex-char Ed25519 seed for the witness identity (cosignatures AND
     /// log checkpoints — one pinned member key). Keep stable across restarts.
+    /// Mint one with `openssl rand -hex 32`, or set it in the `WITNESS_SEED` env.
     #[arg(long, env = "WITNESS_SEED", value_name = "HEX", hide_env_values = true)]
     seed: String,
 }
@@ -267,7 +268,9 @@ async fn main() -> std::process::ExitCode {
                 match role.as_str() {
                     "anchor" | "kel" | "cosign" | "registry" => {}
                     other => {
-                        eprintln!("witness-node: unknown role `{other}`");
+                        eprintln!(
+                            "witness-node: unknown role `{other}` — valid roles: anchor, kel, cosign, registry"
+                        );
                         return std::process::ExitCode::FAILURE;
                     }
                 }

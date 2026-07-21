@@ -1015,7 +1015,20 @@ async fn get_head(
     })?;
 
     match storage.get_latest_seq(&prefix) {
-        Ok(latest_seq) => Ok(Json(HeadResponse { prefix, latest_seq })),
+        Ok(Some(seq)) => Ok(Json(HeadResponse {
+            prefix,
+            latest_seq: Some(seq),
+        })),
+        // An unheld prefix has no head: 404 (absent), matching `/key-state`,
+        // rather than a 200 with `latest_seq: null` a careless reader could
+        // misread as "sequence 0". (product-findings 20260721-node, N1.)
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!("no head for {prefix} — this witness holds no events for it"),
+                duplicity: None,
+            }),
+        )),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
