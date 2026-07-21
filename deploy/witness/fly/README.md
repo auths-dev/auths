@@ -1,10 +1,17 @@
-# deploy/witness/fly — network.auths.dev on Fly
+# deploy/witness/fly — the first-party Auths witnesses on Fly
 
-The first-party Auths witness, `network.auths.dev`, is a Fly deployment of the
-**open** `auths-witness-node` image built by [`../Dockerfile`](../Dockerfile) —
-the exact artifact anyone else runs. This directory is *only config*; there is
-no `network.auths.dev`-specific code (see
-[`docs/plans/network/network-auths-dev.md`](../../../docs/plans/network/network-auths-dev.md)).
+Two first-party witnesses, `auths-network` (this `fly.toml`, region `lhr`) and
+`auths-network-2` (`fly-network-2.toml`, region `iad` — a distinct failure
+domain), each a Fly deployment of the **open** `auths-witness-node` image built
+by [`../Dockerfile`](../Dockerfile) — the exact artifact anyone else runs. This
+directory is *only config*; there is no first-party-specific code.
+
+> **Naming/URL note.** A node's stable witness host is its own fly host
+> (`auths-network.fly.dev`, `auths-network-2.fly.dev`). `network.auths.dev` is
+> becoming the **explorer's** front door (the browse surface), not a witness — a
+> gated DNS move; see the site's `docs/plans/network/url_intuition.md`. Until
+> that flip, `network.auths.dev` still answers as node 1; after it, resolve node
+> 1 at `auths-network.fly.dev`.
 
 ## What it runs
 

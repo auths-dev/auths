@@ -43,13 +43,28 @@ pub fn status_router(state: StatusState) -> Router {
 }
 
 async fn status_page(State(state): State<StatusState>, headers: HeaderMap) -> Html<String> {
-    // Members held: a flat ref-enumeration index lookup, never a KEL walk.
-    let member_count = auths_sdk::storage::PerPrefixKelStore::open(state.registry.as_path())
+    // Registry entries: a flat ref-enumeration index lookup, never a KEL walk.
+    // This is the count of prefixes in the git registry — which a node may
+    // *mirror* from a peer — not necessarily members it witnessed first-hand.
+    let registry_count = auths_sdk::storage::PerPrefixKelStore::open(state.registry.as_path())
         .list_prefixes()
         .map(|p| p.len())
         .unwrap_or(0);
+    let host = host(&headers);
     let base_url = base_url(&headers);
-    Html(render(&state, member_count, &base_url))
+    Html(render(&state, registry_count, &host, &base_url))
+}
+
+/// The node's own public host (`auths-network.fly.dev`), from the request. Used
+/// to build a browse link that addresses THIS node by host in the explorer — so
+/// the link keeps working across a rename (the host is the stable address; the
+/// directory catches the label up later). See url_intuition.md §5.
+fn host(headers: &HeaderMap) -> String {
+    headers
+        .get("host")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("auths-network.fly.dev")
+        .to_string()
 }
 
 /// Reconstruct the node's own public base URL from the request, so the shown
@@ -57,10 +72,7 @@ async fn status_page(State(state): State<StatusState>, headers: HeaderMap) -> Ht
 /// TLS-terminating proxies in every shipped deploy); falls back to a scheme
 /// inferred from the host.
 fn base_url(headers: &HeaderMap) -> String {
-    let host = headers
-        .get("host")
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("network.auths.dev");
+    let host = host(headers);
     let scheme = headers
         .get("x-forwarded-proto")
         .and_then(|h| h.to_str().ok())
@@ -85,8 +97,9 @@ fn escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn render(state: &StatusState, member_count: usize, base_url: &str) -> String {
+fn render(state: &StatusState, registry_count: usize, host: &str, base_url: &str) -> String {
     let name = escape(&state.witness_name);
+    let host_esc = escape(host);
     let member_key = state.member_did.as_deref().unwrap_or("—");
     let member_key_esc = escape(member_key);
     let roles = state
@@ -137,7 +150,7 @@ fn render(state: &StatusState, member_count: usize, base_url: &str) -> String {
   <div class="card">
     <div class="row"><span class="k">member key</span><span class="v">{member_key_esc}</span></div>
     <div class="row"><span class="k">roles</span><span class="v">{roles}</span></div>
-    <div class="row"><span class="k">members held</span><span class="v">{member_count}</span></div>
+    <div class="row"><span class="k">registry entries</span><span class="v">{registry_count} <span class="comment">— prefixes served (may be mirrored from a peer)</span></span></div>
     <div class="row"><span class="k">liveness</span><span class="v">up · see <a href="/health">/health</a></span></div>
   </div>
 
@@ -151,7 +164,7 @@ fn render(state: &StatusState, member_count: usize, base_url: &str) -> String {
 <span class="comment"># then the principal anchors the set (name + curve + member key) in their own key history</span></pre>
 
   <div class="links">
-    <a href="https://explorer.auths.dev/w/{name}">Browse it in the explorer ↗</a>
+    <a href="https://explorer.auths.dev/node/{host_esc}">Browse it in the network ↗</a>
     <a href="https://explorer.auths.dev">The witness directory ↗</a>
     <a href="https://docs.auths.dev/witness-network/operators/run-a-node">Run your own ↗</a>
   </div>

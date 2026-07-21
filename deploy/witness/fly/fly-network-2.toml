@@ -1,0 +1,68 @@
+# auths-network-2 — Auths's second first-party witness, on Fly.
+#
+# Same open image as auths-network (../Dockerfile); differs only in name,
+# REGION (a distinct failure domain — see docs/plans/network/url_intuition.md
+# §6), and in syncing its party registry FROM auths-network at boot, so the
+# keys it resolves submitters against are the real published members — the
+# first witness→witness replication edge of the federation.
+#
+# It carries its OWN seed (a distinct member key), so it is a genuinely
+# independent witness, not a hot copy of the primary — a real second leg for a
+# t-of-N quorum. Still first-party (same operator); the directory says so
+# plainly. A true second operator/cloud is the terraform/ path.
+#
+# Deploy FROM THE REPO ROOT:
+#
+#   # one-time:
+#   fly launch --no-deploy --copy-config --config deploy/witness/fly/fly-network-2.toml --name auths-network-2
+#   fly volumes create witness_data --region iad --size 1 --app auths-network-2
+#   fly secrets set WITNESS_SEED="$(openssl rand -hex 32)" --app auths-network-2
+#
+#   # each deploy (from the repo root):
+#   fly deploy --config deploy/witness/fly/fly-network-2.toml
+#
+# The sync is best-effort at boot (`;`, not `&&`): a temporarily unreachable
+# peer must not brick the node — the KEL write path also populates the
+# registry directly as members publish to this witness.
+
+app = 'auths-network-2'
+primary_region = 'iad'
+
+[build]
+  dockerfile = '../Dockerfile'
+
+[experimental]
+  # Full roles now (incl. registry), so this node has its OWN roster and the
+  # explorer's node page has something to list — not a bare "unavailable".
+  entrypoint = [
+    '/bin/sh',
+    '-c',
+    'mkdir -p /data/registry && /usr/local/bin/witness-node sync-registry --from https://auths-network.fly.dev --registry /data/registry ; exec /usr/local/bin/witness-node serve --roles anchor,kel,cosign,registry --bind 0.0.0.0:3333 --data-dir /data --registry /data/registry --witness-name auths-network-2',
+  ]
+
+[[mounts]]
+  # DURABLE, never tmpfs: the per-seed anchor store is the node's
+  # anti-equivocation memory — an amnesiac witness co-signs a fork after a
+  # restart. The served registry (refs/auths/*) lives here too.
+  source = 'witness_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 3333
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '2s'
+    grace_period = '10s'
+    method = 'get'
+    path = '/health'
+
+[[vm]]
+  # 1 GiB gives git pack operations headroom now that it serves the registry.
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
