@@ -87,6 +87,8 @@ pub fn create_identity(
     let keychain = get_platform_keychain_with_config(&env_config)
         .map_err(|e| format_error("AUTHS_KEYCHAIN_ERROR", format!("Keychain error: {e}")))?;
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary: binding reads the wall clock
+    let now = chrono::Utc::now();
     let (identity_did, result_alias) = initialize_registry_identity(
         backend,
         &alias,
@@ -94,7 +96,7 @@ pub fn create_identity(
         keychain.as_ref(),
         auths_id::witness_config::WitnessParams::Disabled,
         auths_crypto::CurveType::default(),
-        chrono::Utc::now(),
+        now,
     )
     .map_err(|e| {
         format_error(
@@ -145,6 +147,8 @@ pub fn create_agent_identity(
 
     validate_capabilities(&capabilities)?;
 
+    #[allow(clippy::disallowed_methods)] // Presentation boundary: binding reads the wall clock
+    let now = chrono::Utc::now();
     let (identity_did, result_alias) = initialize_registry_identity(
         backend.clone(),
         &alias,
@@ -152,7 +156,7 @@ pub fn create_agent_identity(
         keychain.as_ref(),
         auths_id::witness_config::WitnessParams::Disabled,
         auths_crypto::CurveType::default(),
-        chrono::Utc::now(),
+        now,
     )
     .map_err(|e| {
         format_error(

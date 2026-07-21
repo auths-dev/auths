@@ -132,6 +132,8 @@ pub fn create_org(
         let keychain = get_keychain(&passphrase_str, &repo_path_str)?;
         let provider = auths_core::signing::PrefilledPassphraseProvider::new(&passphrase_str);
 
+        #[allow(clippy::disallowed_methods)] // Presentation boundary: binding reads the wall clock
+        let now = chrono::Utc::now();
         let (controller_did, alias) = initialize_registry_identity(
             backend.clone(),
             &key_alias,
@@ -139,7 +141,7 @@ pub fn create_org(
             &*keychain,
             auths_id::witness_config::WitnessParams::Disabled,
             auths_crypto::CurveType::default(),
-            chrono::Utc::now(),
+            now,
         )
         .map_err(|e| PyRuntimeError::new_err(format!("[AUTHS_ORG_ERROR] {e}")))?;
 
