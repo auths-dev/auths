@@ -240,9 +240,12 @@ jobs:
       # dual-provider crypto crates, then run those five under FIPS (the provider
       # this job has always exercised — aws-lc-rs needs the Go/CMake toolchain
       # installed above).
+      # postgres_integration is excluded here — it needs a live Postgres and runs
+      # in the dedicated `postgres-tests` job. Without a server it would spend the
+      # sqlx acquire_timeout (30s) per test retrying a dead socket, then skip.
       - name: Run tests (Ubuntu — all features, crypto crates excluded)
         if: matrix.os == 'ubuntu-latest'
-        run: cargo nextest run --workspace --all-features --no-fail-fast --exclude auths-crypto --exclude auths-core --exclude auths-keri --exclude auths-pairing-protocol --exclude auths-pairing-daemon
+        run: cargo nextest run --workspace --all-features --no-fail-fast --exclude auths-crypto --exclude auths-core --exclude auths-keri --exclude auths-pairing-protocol --exclude auths-pairing-daemon -E 'not binary(postgres_integration)'
       - name: Run tests (Ubuntu — crypto crates under FIPS)
         if: matrix.os == 'ubuntu-latest'
         run: cargo nextest run -p auths-crypto -p auths-core -p auths-keri -p auths-pairing-protocol -p auths-pairing-daemon --features fips --no-fail-fast
@@ -260,6 +263,40 @@ jobs:
       - name: Security audit
         if: matrix.os == 'ubuntu-latest'
         run: cargo audit
+
+  postgres-tests:
+    name: Postgres integration tests
+    needs: [fmt, clippy]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # The harness reads these first (overriding its passwordless localhost
+      # default): the admin URL provisions auths_registry_test, the test URL
+      # connects to it. Service containers are Linux-only, so these tests get
+      # their own ubuntu job rather than the cross-OS matrix — the macOS test leg
+      # never enables backend-postgres, so it does not run them anyway.
+      AUTHS_TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      AUTHS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/auths_registry_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-rust
+      - name: Install nextest
+        uses: taiki-e/install-action@nextest
+      - name: Run Postgres integration tests
+        run: cargo nextest run -p auths-storage --features backend-postgres -E 'binary(postgres_integration)'
 
   # capsec-audit:
   #   name: Capability Audit
