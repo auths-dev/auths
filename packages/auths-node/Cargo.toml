@@ -13,7 +13,7 @@ publish = false
 [workspace]
 
 [workspace.package]
-version = "0.1.13"
+version = "0.1.14"
 
 [lib]
 crate-type = ["cdylib"]
