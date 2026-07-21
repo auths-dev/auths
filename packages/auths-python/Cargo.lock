@@ -484,6 +484,7 @@ name = "auths-sdk"
 version = "0.1.13"
 dependencies = [
  "async-trait",
+ "auths-anchor",
  "auths-core",
  "auths-crypto",
  "auths-id",
