@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  # Cancel superseded in-progress runs on the same PR to save runner minutes;
+  # never cancel a main-branch run (each pushed commit must be fully verified).
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
