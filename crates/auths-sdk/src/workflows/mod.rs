@@ -1,3 +1,4 @@
+pub mod agent_guard;
 pub mod approval;
 pub mod artifact;
 pub mod audit;

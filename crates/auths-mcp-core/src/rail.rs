@@ -39,14 +39,16 @@
 //! = 150 cents. Extraction converts atomic-USDC → cents (`atomic * 100 / 1e6`,
 //! exact-division-only — a sub-cent residue is refused, not silently truncated). The
 //! reference is the on-chain settlement tx (`settlement.transaction`, `0x…`) a stranger
-//! re-derives the cost by. The **network must be a testnet** (`base-sepolia`): a mainnet
-//! network is refused rather than mis-metered, mirroring Stripe's USD-only / live-key
-//! guard — and honestly flagging that the LIVE on-chain settle needs a funded testnet
-//! wallet + facilitator (out of hermetic scope), not a key alone. The extracted cost
+//! re-derives the cost by. The **network gate follows the payment mode**
+//! ([`crate::paymode`]): a testnet (`base-sepolia`) is metered in any mode, but a mainnet
+//! (`base`, REAL money) is metered ONLY when the gateway resolved to real mode — under
+//! `--test-mode` a mainnet settle is refused rather than mis-metered, so the sandbox switch
+//! can never move real money (mirrors Stripe's USD-only / live-key guard). The extracted cost
 //! settles into the **same** [`crate::budget::CrossRailBudget`] as Stripe — one cap
 //! across both rails (the moat a per-rail silo cannot express).
 
 use crate::money::{AtomicUsdc, Cents};
+use crate::paymode::PaymentMode;
 use serde::Deserialize;
 
 /// The cost EXTRACTED from a rail's response: the settled amount in cents, the rail it
@@ -130,10 +132,13 @@ pub fn extract_stripe(response_bytes: &[u8]) -> Result<ExtractedCost, RailError>
     })
 }
 
-/// The set of x402 networks this rail meters — **testnets only**. A mainnet network is
-/// refused, not mis-metered (the moat's honesty: the LIVE x402 settle needs a funded
-/// testnet wallet + facilitator, out of hermetic scope — never real-money mainnet here).
+/// The x402 TESTNET networks this rail meters — valueless USDC, metered in any mode.
 const X402_TESTNETS: &[&str] = &["base-sepolia"];
+
+/// The x402 MAINNET networks this rail meters — REAL money. Metered ONLY when the gateway
+/// resolved to [`PaymentMode::Real`] (no `--test-mode`); under the sandbox opt-in a mainnet
+/// settle is refused rather than mis-metered, so the test switch can never move real money.
+const X402_MAINNETS: &[&str] = &["base"];
 
 /// A recorded (or live) **x402 settlement** response, parsed to the documented fields
 /// the cost extraction reads (coinbase/x402 spec v1: `SettlementResponse` +
@@ -176,23 +181,33 @@ struct X402Settlement {
 /// cents (`atomic * 100 / 1e6`, i.e. `atomic / 10_000`) as the authoritative cost, and
 /// `settlement.transaction` (`0x…`) as the receipt reference. The amount comes from the
 /// RESPONSE — an agent that under-declared the cost cannot change what is metered. The
-/// network must be a **testnet** (`base-sepolia`): a mainnet network is refused rather
-/// than mis-metered (mirrors Stripe's USD-only / live-key guard). A sub-cent atomic
-/// residue (an amount not an exact number of cents) is refused, not silently truncated —
-/// the metered cost must equal the settled amount exactly.
-pub fn extract_x402(response_bytes: &[u8]) -> Result<ExtractedCost, RailError> {
+/// network gate follows `mode`: a **testnet** (`base-sepolia`) meters in any mode, but a
+/// **mainnet** (`base`, REAL money) meters ONLY under [`PaymentMode::Real`] — a mainnet
+/// settle under `--test-mode` is refused rather than mis-metered (mirrors Stripe's live-key
+/// guard). A sub-cent atomic residue (an amount not an exact number of cents) is refused,
+/// not silently truncated — the metered cost must equal the settled amount exactly.
+pub fn extract_x402(response_bytes: &[u8], mode: PaymentMode) -> Result<ExtractedCost, RailError> {
     let parsed: X402SettlementResponse = serde_json::from_slice(response_bytes)
         .map_err(|e| RailError::Parse(format!("x402 settlement: {e}")))?;
 
-    // Testnet-only: a mainnet network is refused (the live leg needs a funded testnet
-    // wallet + facilitator, never real-money mainnet here).
+    // Network gate (mode-aware): a testnet is always meterable; a MAINNET (real-money)
+    // network meters ONLY in real mode. Under --test-mode a mainnet settle is refused rather
+    // than mis-metered, so the sandbox switch can never move real money. Unknown → refused.
     let network = parsed.requirements.network.to_ascii_lowercase();
-    if !X402_TESTNETS.contains(&network.as_str()) {
+    let is_testnet = X402_TESTNETS.contains(&network.as_str());
+    let is_mainnet = X402_MAINNETS.contains(&network.as_str());
+    if !is_testnet && !is_mainnet {
         return Err(RailError::MissingField(format!(
-            "x402 network `{network}` is not a supported testnet ({}) — refusing rather than \
-             mis-metering a mainnet (real-money) settle (the LIVE x402 leg needs a funded \
-             testnet wallet + facilitator, out of hermetic scope)",
-            X402_TESTNETS.join(", ")
+            "x402 network `{network}` is not a known USDC network (testnets: {}; mainnets: {})",
+            X402_TESTNETS.join(", "),
+            X402_MAINNETS.join(", "),
+        )));
+    }
+    if is_mainnet && !mode.is_real() {
+        return Err(RailError::MissingField(format!(
+            "x402 network `{network}` is a MAINNET (REAL money) but the gateway is in test mode \
+             — refusing to mis-meter a real-money settle under --test-mode (omit --test-mode for \
+             live)"
         )));
     }
 
@@ -244,10 +259,14 @@ pub fn extract_x402(response_bytes: &[u8]) -> Result<ExtractedCost, RailError> {
 /// Extract the settled cost from a rail's response, dispatching on the rail name. This
 /// is the near-pluggable seam: a new rail adds an extractor here (and only here —
 /// nothing else in the core learns about a rail's response shape).
-pub fn extract(rail: &str, response_bytes: &[u8]) -> Result<ExtractedCost, RailError> {
+pub fn extract(
+    rail: &str,
+    response_bytes: &[u8],
+    mode: PaymentMode,
+) -> Result<ExtractedCost, RailError> {
     match rail {
         "stripe" => extract_stripe(response_bytes),
-        "x402" => extract_x402(response_bytes),
+        "x402" => extract_x402(response_bytes, mode),
         other => Err(RailError::UnknownRail(other.to_string())),
     }
 }
@@ -311,20 +330,20 @@ mod tests {
 
     #[test]
     fn dispatch_by_rail_name() {
-        let cost = extract("stripe", STRIPE_CHARGE_3USD.as_bytes()).unwrap();
+        let cost = extract("stripe", STRIPE_CHARGE_3USD.as_bytes(), PaymentMode::Test).unwrap();
         assert_eq!(cost.amount_cents, Cents::new(300));
         // x402 is now a registered rail (PAY-2): a stripe-shaped body handed to it fails
         // on the missing x402 fields (Parse), NOT UnknownRail.
         assert!(matches!(
-            extract("x402", STRIPE_CHARGE_3USD.as_bytes()),
+            extract("x402", STRIPE_CHARGE_3USD.as_bytes(), PaymentMode::Test),
             Err(RailError::Parse(_))
         ));
-        let x402 = extract("x402", X402_SETTLE_150C.as_bytes()).unwrap();
+        let x402 = extract("x402", X402_SETTLE_150C.as_bytes(), PaymentMode::Test).unwrap();
         assert_eq!(x402.amount_cents, Cents::new(150));
         assert_eq!(x402.rail, "x402");
         // An unknown rail still has no extractor.
         assert!(matches!(
-            extract("paypal", STRIPE_CHARGE_3USD.as_bytes()),
+            extract("paypal", STRIPE_CHARGE_3USD.as_bytes(), PaymentMode::Test),
             Err(RailError::UnknownRail(_))
         ));
     }
@@ -354,7 +373,7 @@ mod tests {
     #[test]
     fn extracts_atomic_usdc_as_cents_and_the_settlement_tx() {
         // 1500000 atomic USDC (6 decimals) → 1.50 USDC → 150 cents; reference is the tx.
-        let cost = extract_x402(X402_SETTLE_150C.as_bytes()).unwrap();
+        let cost = extract_x402(X402_SETTLE_150C.as_bytes(), PaymentMode::Test).unwrap();
         assert_eq!(
             cost.amount_cents,
             Cents::new(150),
@@ -373,7 +392,7 @@ mod tests {
         // The over-cap (cross-rail cap-crosser) fixture: 600000 atomic = $0.60 — read
         // from the RESPONSE, so an agent that under-declared cannot change it.
         let small = X402_SETTLE_150C.replace("\"1500000\"", "\"600000\"");
-        let cost = extract_x402(small.as_bytes()).unwrap();
+        let cost = extract_x402(small.as_bytes(), PaymentMode::Test).unwrap();
         assert_eq!(
             cost.amount_cents,
             Cents::new(60),
@@ -382,13 +401,25 @@ mod tests {
     }
 
     #[test]
-    fn mainnet_network_is_refused_not_mis_metered() {
-        // A mainnet network (real-money USDC) is refused — the live x402 leg needs a
-        // funded TESTNET wallet + facilitator, never real-money mainnet here.
+    fn mainnet_network_meters_only_in_real_mode() {
         let mainnet = X402_SETTLE_150C.replace("\"base-sepolia\"", "\"base\"");
-        assert!(extract_x402(mainnet.as_bytes()).is_err());
+        // Under --test-mode (sandbox), a mainnet (real-money) settle is REFUSED — the sandbox
+        // switch can never mis-meter real money.
+        assert!(
+            extract_x402(mainnet.as_bytes(), PaymentMode::Test).is_err(),
+            "mainnet must be refused in test mode"
+        );
+        // In real mode (no --test-mode, the deliberate default), the same settle METERS.
+        let cost = extract_x402(mainnet.as_bytes(), PaymentMode::Real).unwrap();
+        assert_eq!(
+            cost.amount_cents,
+            Cents::new(150),
+            "real-mode mainnet meters the settled amount exactly"
+        );
+        // An UNKNOWN network is refused in BOTH modes (not a known USDC network).
         let eth = X402_SETTLE_150C.replace("\"base-sepolia\"", "\"ethereum\"");
-        assert!(extract_x402(eth.as_bytes()).is_err());
+        assert!(extract_x402(eth.as_bytes(), PaymentMode::Test).is_err());
+        assert!(extract_x402(eth.as_bytes(), PaymentMode::Real).is_err());
     }
 
     #[test]
@@ -396,22 +427,22 @@ mod tests {
         // 1500050 atomic = 1.50005 USDC = 150.005 cents — a sub-cent residue. Refused
         // rather than silently truncated, so the metered cost equals the settle exactly.
         let residue = X402_SETTLE_150C.replace("\"1500000\"", "\"1500050\"");
-        assert!(extract_x402(residue.as_bytes()).is_err());
+        assert!(extract_x402(residue.as_bytes(), PaymentMode::Test).is_err());
     }
 
     #[test]
     fn failed_or_malformed_settlement_is_refused() {
         // A failed on-chain settle has no metered cost.
         let failed = X402_SETTLE_150C.replace("\"success\": true", "\"success\": false");
-        assert!(extract_x402(failed.as_bytes()).is_err());
+        assert!(extract_x402(failed.as_bytes(), PaymentMode::Test).is_err());
         // A non-0x tx hash is refused.
         let bad_tx = X402_SETTLE_150C.replace(
             "\"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef\"",
             "\"not-a-tx\"",
         );
-        assert!(extract_x402(bad_tx.as_bytes()).is_err());
+        assert!(extract_x402(bad_tx.as_bytes(), PaymentMode::Test).is_err());
         // Missing the requirements/settlement objects entirely.
-        assert!(extract_x402(b"{\"rail\":\"x402\"}").is_err());
-        assert!(extract_x402(b"not json").is_err());
+        assert!(extract_x402(b"{\"rail\":\"x402\"}", PaymentMode::Test).is_err());
+        assert!(extract_x402(b"not json", PaymentMode::Test).is_err());
     }
 }

@@ -9,6 +9,7 @@
 //! - `service.rs` — Business logic and orchestration
 //! - `error.rs` — Domain-specific error types
 
+pub mod agent_guard;
 pub mod agents;
 pub mod auth;
 pub mod ci;
