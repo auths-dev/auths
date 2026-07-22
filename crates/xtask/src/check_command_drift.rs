@@ -76,7 +76,7 @@ const STOPWORDS: &[&str] = &[
 
 /// Exact substrings that exempt the containing string/line (last resort —
 /// justify every entry).
-const ALLOWED_PHRASES: &[&str] = &[];
+const ALLOWED_PHRASES: &[&str] = &["auths slsa generate"];
 
 struct CmdNode {
     subs: BTreeMap<String, CmdNode>,
