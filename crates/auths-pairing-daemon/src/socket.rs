@@ -69,7 +69,7 @@ mod tests {
             if self.should_pass {
                 Ok(payload.to_vec())
             } else {
-                Err(DaemonError::InvalidToken(
+                Err(DaemonError::EntropyCheckFailed(
                     "Biometric prompt canceled".into(),
                 ))
             }

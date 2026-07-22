@@ -299,8 +299,11 @@ pub fn fetch_registry(url: String, dest: String) -> Result<()> {
 /// ```
 #[napi]
 pub fn read_kel_json(registry_dir: String, prefix: String) -> Result<String> {
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
     use auths_id::keri::event::Event;
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
     use auths_id::keri::types::Prefix;
+    // binding-boundary-allow: pre-lint reach; migrate to an auths_sdk workflow
     use auths_storage::git::PerPrefixKelStore;
     use std::ops::ControlFlow;
 
