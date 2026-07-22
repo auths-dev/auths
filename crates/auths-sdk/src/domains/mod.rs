@@ -22,5 +22,6 @@ pub mod federation;
 pub mod identity;
 pub mod namespace;
 pub mod org;
+pub mod producer;
 pub mod signing;
 pub mod treasury;

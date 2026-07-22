@@ -108,7 +108,7 @@ auths-utils = { path = "crates/auths-utils", version = "0.1.16" }
 auths-evidence = { path = "crates/auths-evidence", version = "0.1.16" }
 auths-witness-node = { path = "crates/auths-witness-node", version = "0.1.16" }
 auths-anchor = { path = "crates/auths-anchor", version = "0.1.16", default-features = false }
-capsec = { path = "../capsec/crates/capsec", version = "0.2.2" }
+capsec = { git = "https://github.com/auths-dev/capsec", branch = "main" }
 insta = { version = "1", features = ["json"] }
 
 # Compile crypto-heavy crates with optimizations even in dev/test builds.

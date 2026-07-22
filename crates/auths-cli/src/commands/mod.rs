@@ -44,6 +44,7 @@ pub mod publish;
 pub mod reset;
 pub mod scim;
 pub mod sign;
+pub mod slsa;
 pub mod status;
 pub mod tls_cert;
 pub mod treasury;

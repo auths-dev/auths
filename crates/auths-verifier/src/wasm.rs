@@ -645,3 +645,44 @@ pub fn wasm_verify_evidence_pack_offline(
         pinned_log_key_hex.as_deref(),
     )
 }
+
+/// Resolves the active public key from a JSON KEL events array (Issue #407).
+///
+/// Args:
+/// * `kel_json_str`: JSON string containing KEL event objects.
+/// * `sequence`: Optional sequence number threshold.
+#[wasm_bindgen(js_name = resolveKeriActiveKey)]
+pub fn wasm_resolve_keri_active_key(
+    kel_json_str: &str,
+    sequence: Option<u64>,
+) -> Result<String, JsValue> {
+    let events: Vec<serde_json::Value> = serde_json::from_str(kel_json_str)
+        .map_err(|e| JsValue::from_str(&format!("Invalid KEL JSON: {}", e)))?;
+
+    if events.is_empty() {
+        return Err(JsValue::from_str("Empty KEL event array"));
+    }
+
+    let mut active_key = String::new();
+    for event in &events {
+        if let Some(seq) = sequence {
+            if let Some(event_seq) = event.get("s").and_then(|s| s.as_u64()) {
+                if event_seq > seq {
+                    break;
+                }
+            }
+        }
+
+        if let Some(keys) = event.get("k").and_then(|k| k.as_array()) {
+            if let Some(first_key) = keys.first().and_then(|k| k.as_str()) {
+                active_key = first_key.to_string();
+            }
+        }
+    }
+
+    if active_key.is_empty() {
+        return Err(JsValue::from_str("No active key found in KEL events"));
+    }
+
+    Ok(active_key)
+}

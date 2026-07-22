@@ -791,6 +791,7 @@ dependencies = [
  "auths-verifier",
  "axum",
  "base64",
+ "capsec",
  "chrono",
  "http-body-util",
  "jsonwebtoken",
@@ -1997,6 +1998,42 @@ checksum = "7dafe3a8757b027e2be6e4e5601ed563c55989fcf1546e933c66c8eb3a058d35"
 dependencies = [
  "bytes",
  "either",
+]
+
+[[package]]
+name = "capsec"
+version = "0.2.2"
+source = "git+https://github.com/auths-dev/capsec?branch=main#0d01900ebb8fbe39f745d843b6c5d300fb1e28f8"
+dependencies = [
+ "capsec-core",
+ "capsec-macro",
+ "capsec-std",
+]
+
+[[package]]
+name = "capsec-core"
+version = "0.2.2"
+source = "git+https://github.com/auths-dev/capsec?branch=main#0d01900ebb8fbe39f745d843b6c5d300fb1e28f8"
+dependencies = [
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "capsec-macro"
+version = "0.2.2"
+source = "git+https://github.com/auths-dev/capsec?branch=main#0d01900ebb8fbe39f745d843b6c5d300fb1e28f8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "capsec-std"
+version = "0.2.2"
+source = "git+https://github.com/auths-dev/capsec?branch=main#0d01900ebb8fbe39f745d843b6c5d300fb1e28f8"
+dependencies = [
+ "capsec-core",
 ]
 
 [[package]]
