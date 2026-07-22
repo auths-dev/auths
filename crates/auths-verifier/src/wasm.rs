@@ -665,18 +665,20 @@ pub fn wasm_resolve_keri_active_key(
 
     let mut active_key = String::new();
     for event in &events {
-        if let Some(seq) = sequence {
-            if let Some(event_seq) = event.get("s").and_then(|s| s.as_u64()) {
-                if event_seq > seq {
-                    break;
-                }
+        let event_seq = event.get("s").and_then(|s| s.as_u64());
+        if let (Some(seq), Some(e_seq)) = (sequence, event_seq) {
+            if e_seq > seq {
+                break;
             }
         }
 
-        if let Some(keys) = event.get("k").and_then(|k| k.as_array()) {
-            if let Some(first_key) = keys.first().and_then(|k| k.as_str()) {
-                active_key = first_key.to_string();
-            }
+        if let Some(first_key) = event
+            .get("k")
+            .and_then(|k| k.as_array())
+            .and_then(|keys| keys.first())
+            .and_then(|k| k.as_str())
+        {
+            active_key = first_key.to_string();
         }
     }
 

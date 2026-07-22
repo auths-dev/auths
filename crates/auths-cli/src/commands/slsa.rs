@@ -39,9 +39,18 @@ pub async fn run_slsa_generate(args: SlsaGenerateArgs) -> Result<()> {
         }
     });
 
-    std::fs::write(&args.output, serde_json::to_string_pretty(&provenance)?)
-        .with_context(|| format!("Failed to write SLSA provenance statement to {}", args.output))?;
+    std::fs::write(&args.output, serde_json::to_string_pretty(&provenance)?).with_context(
+        || {
+            format!(
+                "Failed to write SLSA provenance statement to {}",
+                args.output
+            )
+        },
+    )?;
 
-    println!("SLSA Level 3 provenance statement generated: {}", args.output);
+    println!(
+        "SLSA Level 3 provenance statement generated: {}",
+        args.output
+    );
     Ok(())
 }

@@ -25,10 +25,18 @@ pub fn enforce_signer_authority(
 ) -> Result<String, AuthorityError> {
     let identity_did = registry
         .resolve_identity_for_key(signer_key_hex)?
-        .ok_or_else(|| AuthorityError::UnboundKey(format!("Key {} has no associated identity DID", signer_key_hex)))?;
+        .ok_or_else(|| {
+            AuthorityError::UnboundKey(format!(
+                "Key {} has no associated identity DID",
+                signer_key_hex
+            ))
+        })?;
 
     if registry.is_key_revoked(&identity_did, signer_key_hex)? {
-        return Err(AuthorityError::RevokedKey(format!("Signer key {} has been revoked", signer_key_hex)));
+        return Err(AuthorityError::RevokedKey(format!(
+            "Signer key {} has been revoked",
+            signer_key_hex
+        )));
     }
 
     Ok(identity_did)
@@ -44,11 +52,18 @@ mod tests {
     }
 
     impl RegistryBackend for MockRegistry {
-        fn resolve_identity_for_key(&self, _key_hex: &str) -> Result<Option<String>, AuthorityError> {
+        fn resolve_identity_for_key(
+            &self,
+            _key_hex: &str,
+        ) -> Result<Option<String>, AuthorityError> {
             Ok(self.bound_did.clone())
         }
 
-        fn is_key_revoked(&self, _identity_did: &str, _key_hex: &str) -> Result<bool, AuthorityError> {
+        fn is_key_revoked(
+            &self,
+            _identity_did: &str,
+            _key_hex: &str,
+        ) -> Result<bool, AuthorityError> {
             Ok(self.revoked)
         }
     }
