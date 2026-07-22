@@ -666,10 +666,8 @@ pub fn wasm_resolve_keri_active_key(
     let mut active_key = String::new();
     for event in &events {
         let event_seq = event.get("s").and_then(|s| s.as_u64());
-        if let (Some(seq), Some(e_seq)) = (sequence, event_seq) {
-            if e_seq > seq {
-                break;
-            }
+        if matches!((sequence, event_seq), (Some(seq), Some(e_seq)) if e_seq > seq) {
+            break;
         }
 
         if let Some(first_key) = event

@@ -22,7 +22,7 @@ pub const PAM_AUTH_ERR: i32 = 7;
 /// # Safety
 /// This is a C-FFI entrypoint. Unsafe dereferencing of raw pointers must be handled with care.
 /// An internal panic catch boundary (`catch_unwind`) ensures panics never unwind into C code.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pam_sm_authenticate(
     _pamh: *mut std::ffi::c_void,
     _flags: i32,
@@ -49,7 +49,7 @@ pub unsafe extern "C" fn pam_sm_authenticate(
 ///
 /// # Safety
 /// C-FFI boundary protected by `catch_unwind`.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn pam_sm_setcred(
     _pamh: *mut std::ffi::c_void,
     _flags: i32,
