@@ -15,11 +15,11 @@
 
 use std::path::PathBuf;
 
+use axum::Router;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::Html;
 use axum::routing::get;
-use axum::Router;
 
 /// The slice of node identity the status page renders. Cloneable so it can back
 /// a dedicated `/` router independent of any role's typed state.

@@ -828,18 +828,19 @@ async fn audit_walk(
             // Re-derivation of a RECORDED response (a cross-check of the SIGNED amount): its
             // network is a fact already settled, so the mainnet gate is permissive here
             // (PaymentMode::Real) — the sandbox gate guards a live settle, not an offline re-check.
-            let extracted = match crate::rail::extract(rail, resp, crate::paymode::PaymentMode::Real) {
-                Ok(c) => c,
-                // A settled call whose recorded response no longer extracts is a tampered response.
-                Err(_) => {
-                    return AuditVerdict::CostMismatch {
-                        at: i,
-                        signed_cents: Cents::ZERO,
-                        recomputed_cents: Cents::ZERO,
-                        proof_ref: rec.receipt.proof_ref.clone(),
-                    };
-                }
-            };
+            let extracted =
+                match crate::rail::extract(rail, resp, crate::paymode::PaymentMode::Real) {
+                    Ok(c) => c,
+                    // A settled call whose recorded response no longer extracts is a tampered response.
+                    Err(_) => {
+                        return AuditVerdict::CostMismatch {
+                            at: i,
+                            signed_cents: Cents::ZERO,
+                            recomputed_cents: Cents::ZERO,
+                            proof_ref: rec.receipt.proof_ref.clone(),
+                        };
+                    }
+                };
             let recomputed = extracted.amount_cents;
             // A non-zero settled cost MUST come from a settlement the agent signed. Requiring it
             // closes the downgrade where an operator strips the settlement and falls back to a rail
