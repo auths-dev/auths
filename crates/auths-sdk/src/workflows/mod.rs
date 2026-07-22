@@ -1,3 +1,5 @@
+/// Agent Guard execution workflow for budget enforcement and spend receipts.
+pub mod agent_guard;
 pub mod approval;
 pub mod artifact;
 pub mod audit;

@@ -825,7 +825,10 @@ async fn audit_walk(
             // The cost + reference the rail's own recorded response reports. The response is
             // operator-held and unsigned, so it is only a cross-check — the authoritative amount
             // and payee are the ones the agent SIGNED in the settlement below.
-            let extracted = match crate::rail::extract(rail, resp) {
+            // Re-derivation of a RECORDED response (a cross-check of the SIGNED amount): its
+            // network is a fact already settled, so the mainnet gate is permissive here
+            // (PaymentMode::Real) — the sandbox gate guards a live settle, not an offline re-check.
+            let extracted = match crate::rail::extract(rail, resp, crate::paymode::PaymentMode::Real) {
                 Ok(c) => c,
                 // A settled call whose recorded response no longer extracts is a tampered response.
                 Err(_) => {

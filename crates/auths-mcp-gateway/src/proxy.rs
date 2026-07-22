@@ -339,6 +339,11 @@ struct GatewayProxy {
     /// The operator's dispute reference (`wrap --dispute-ref`), stamped into every
     /// settlement receipt this session writes.
     dispute_ref: Option<String>,
+    /// The payment mode (real vs sandbox) this wrap serves under — resolved once at
+    /// construction from `--test-mode` / `AUTHS_MCP_TEST_MODE`. The rail cost extractor
+    /// consults it so a MAINNET (real-money) x402 settle meters only in real mode; under
+    /// `--test-mode` a mainnet settle is refused rather than mis-metered.
+    payment_mode: PaymentMode,
 }
 
 impl GatewayProxy {
@@ -666,12 +671,14 @@ impl ServerHandler for GatewayProxy {
                             )
                         })?;
                     let extracted =
-                        auths_mcp_core::extract_rail_cost(rail, &resp).map_err(|e| {
-                            McpError::internal_error(
-                                format!("extract `{rail}` cost from the rail response: {e}"),
-                                None,
-                            )
-                        })?;
+                        auths_mcp_core::extract_rail_cost(rail, &resp, self.payment_mode).map_err(
+                            |e| {
+                                McpError::internal_error(
+                                    format!("extract `{rail}` cost from the rail response: {e}"),
+                                    None,
+                                )
+                            },
+                        )?;
                     rail_response = Some(resp);
                     settled_charge_ref = Some(extracted.reference);
                     extracted.amount_cents
@@ -1079,6 +1086,11 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
     );
 
     let treasury = crate::treasury::TreasuryClient::from_env(&chain.root_did).map(Arc::new);
+    // Resolve the payment mode from the SAME single opt-in the disclosure used (`--test-mode`
+    // or its env twin) so the per-call cost extractor gates a mainnet x402 settle exactly as the
+    // startup banner disclosed: real money only when real mode is active.
+    let env_test = env_opts_into_test(std::env::var(TEST_MODE_ENV).ok().as_deref());
+    let payment_mode = PaymentMode::resolve(cfg.test_mode || env_test);
     let proxy = GatewayProxy {
         downstream,
         budget: Arc::new(Mutex::new(budget)),
@@ -1092,6 +1104,7 @@ pub async fn serve(cfg: WrapConfig) -> anyhow::Result<()> {
         treasury,
         verbose: std::env::var("AUTHS_MCP_VERBOSE").is_ok(),
         dispute_ref: cfg.dispute_ref,
+        payment_mode,
     };
 
     // 2. Serve MCP UP to the agent over stdio, brokering each tools/call.

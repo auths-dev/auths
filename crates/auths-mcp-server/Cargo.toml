@@ -26,6 +26,7 @@ auths-telemetry.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
 auths-sdk = { workspace = true, features = ["backend-git"] }
 auths-rp = { path = "../auths-rp", version = "0.1.16" }
+capsec.workspace = true
 
 anyhow = "1"
 axum = "0.8"

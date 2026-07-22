@@ -9,6 +9,8 @@
 //! - `service.rs` — Business logic and orchestration
 //! - `error.rs` — Domain-specific error types
 
+/// Domain services for Agent Guard execution and spend verification.
+pub mod agent_guard;
 pub mod agents;
 pub mod auth;
 pub mod ci;

@@ -30,6 +30,7 @@
 //! how the agent authenticated.
 
 pub mod auth;
+pub mod capsec_guard;
 pub mod config;
 pub mod error;
 pub mod jwks;

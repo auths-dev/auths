@@ -76,7 +76,10 @@ fn resolve_call_cost(call: &Call) -> anyhow::Result<CallCost> {
         amount_cents,
         reference,
         rail: extracted_rail,
-    } = auths_mcp_core::extract_rail_cost(rail, &bytes)
+        // Re-derivation verifies a RECORDED settle — its network is a fact already on disk, so
+        // the mainnet gate is permissive here (PaymentMode::Real); the sandbox gate only guards a
+        // LIVE settle at proxy time, never the offline re-check of one that already happened.
+    } = auths_mcp_core::extract_rail_cost(rail, &bytes, auths_mcp_core::PaymentMode::Real)
         .map_err(|e| anyhow::anyhow!("extract cost from {}: {e}", path.display()))?;
     debug_assert_eq!(extracted_rail, rail);
 
