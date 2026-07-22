@@ -32,6 +32,7 @@ pub mod keri_emit;
 pub mod key;
 pub mod key_detect;
 pub mod key_state;
+pub mod kubectl;
 pub mod learn;
 pub mod log;
 pub mod multi_sig;

@@ -1,0 +1,24 @@
+[package]
+name = "auths-pam"
+version.workspace = true
+edition = "2024"
+rust-version = "1.93"
+authors = ["Auths Contributors"]
+description = "Linux and macOS C-FFI PAM module for Auths biometric presentation authentication"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["pam", "ssh", "authentication", "biometric", "passkey"]
+categories = ["authentication"]
+
+[lib]
+name = "pam_auths"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+auths-verifier = { workspace = true, features = ["native"] }
+serde_json = "1"
+tracing = "0.1"
+
+[lints]
+workspace = true

@@ -29,6 +29,7 @@ mod request_limits;
 mod router;
 #[cfg(feature = "server")]
 mod server;
+pub mod socket;
 mod state;
 #[cfg(feature = "tls")]
 pub mod tls;

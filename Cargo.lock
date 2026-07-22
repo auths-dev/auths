@@ -903,6 +903,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "auths-pam"
+version = "0.1.16"
+dependencies = [
+ "auths-verifier",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "auths-policy"
 version = "0.1.16"
 dependencies = [

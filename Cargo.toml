@@ -37,6 +37,7 @@ members = [
   "crates/xtask", "crates/auths-api",
   "crates/auths-witness-node",
   "crates/auths-monitor",
+  "crates/auths-pam",
   "crates/murmur-core",
   "crates/murmur-relay",
 ]
