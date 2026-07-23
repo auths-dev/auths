@@ -154,6 +154,8 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         // a key the KEL already anchored — the delegation would "succeed" with
         // its private key lost.
         if !_encrypted_key_data.is_empty() {
+            // Ensure no leftover hardware handle file collides with this software key
+            let _ = fs::remove_file(self.handle_path(alias));
             let path = self.swkey_path(alias);
             fs::write(&path, _encrypted_key_data).map_err(|e| {
                 AgentError::IO(std::io::Error::other(format!(
@@ -172,6 +174,8 @@ impl KeyStorage for SecureEnclaveKeyStorage {
 
         // EMPTY material is the hardware-creation convention (identity init on
         // this backend passes no blob): generate the key inside the enclave.
+        // Ensure no leftover software key file collides with this hardware key handle
+        let _ = fs::remove_file(self.swkey_path(alias));
         let mut handle_buf = vec![0u8; 512];
         let mut handle_len: usize = 0;
         let mut pubkey_buf = vec![0u8; 65];

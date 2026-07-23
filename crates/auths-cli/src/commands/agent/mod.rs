@@ -800,9 +800,6 @@ fn handle_provision_cmd(
 
     let repo_path = resolve_repo_path(repo)?;
     let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
-    let passphrase_provider = std::sync::Arc::new(CliPassphraseProvider::new());
-    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
-
     let is_interactive = console::user_attended() && !is_json_mode();
 
     let (label_str, key_str, profile_str, destination_dir) = if is_interactive && (label.is_none() || key.is_none() || profile.is_none()) {
@@ -819,7 +816,10 @@ fn handle_provision_cmd(
         let key_input = if let Some(k) = key {
             k
         } else {
-            let aliases = ctx.key_storage.list_aliases().unwrap_or_default();
+            // Build temporary context to list keys for select box
+            let temp_provider = std::sync::Arc::new(CliPassphraseProvider::new());
+            let temp_ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(temp_provider))?;
+            let aliases = temp_ctx.key_storage.list_aliases().unwrap_or_default();
             let key_items: Vec<String> = if aliases.is_empty() {
                 vec!["main".to_string()]
             } else {
@@ -889,18 +889,40 @@ fn handle_provision_cmd(
     let parent_alias = KeyAlias::new_unchecked(&key_str);
     let agent_profile = profile_str.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
 
-    let passphrase = if let Some(p_file) = &passphrase_file {
-        std::fs::read_to_string(p_file)
-            .with_context(|| format!("Failed to read passphrase file {}", p_file.display()))?
-            .trim()
-            .to_string()
-    } else {
-        use rand::Rng;
-        let mut rng = rand::rng();
-        (0..32)
-            .map(|_| rng.sample(rand::distr::Alphanumeric) as char)
-            .collect()
-    };
+    let (passphrase, passphrase_provider): (String, std::sync::Arc<dyn auths_sdk::signing::PassphraseProvider>) =
+        if let Some(p_file) = &passphrase_file {
+            let pass = std::fs::read_to_string(p_file)
+                .with_context(|| format!("Failed to read passphrase file {}", p_file.display()))?
+                .trim()
+                .to_string();
+            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::new(
+                label_str.clone(),
+                zeroize::Zeroizing::new(pass.clone()),
+            ));
+            (pass, provider)
+        } else if is_interactive {
+            eprintln!("Create passphrase for device key '{label_str}':");
+            let pass = rpassword::prompt_password("Enter passphrase: ")
+                .context("Failed to read passphrase from terminal")?;
+            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::new(
+                label_str.clone(),
+                zeroize::Zeroizing::new(pass.clone()),
+            ));
+            (pass, provider)
+        } else {
+            use rand::Rng;
+            let mut rng = rand::rng();
+            let pass: String = (0..32)
+                .map(|_| rng.sample(rand::distr::Alphanumeric) as char)
+                .collect();
+            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::new(
+                label_str.clone(),
+                zeroize::Zeroizing::new(pass.clone()),
+            ));
+            (pass, provider)
+        };
+
+    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
 
     let params = auths_sdk::workflows::agent_provision::AgentProvisionParams {
         label: label_str.clone(),

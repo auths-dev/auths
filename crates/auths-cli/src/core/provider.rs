@@ -69,3 +69,31 @@ impl PassphraseProvider for PrefilledPassphraseProvider {
         Ok(self.passphrase.clone())
     }
 }
+
+/// A PassphraseProvider specifically for agent provisioning that supplies a prefilled
+/// passphrase for the new agent while falling back to CLI/environment prompts for parent keys.
+pub struct AgentProvisionPassphraseProvider {
+    agent_alias: String,
+    agent_passphrase: Zeroizing<String>,
+    fallback: CliPassphraseProvider,
+}
+
+impl AgentProvisionPassphraseProvider {
+    pub fn new(agent_alias: String, agent_passphrase: Zeroizing<String>) -> Self {
+        Self {
+            agent_alias,
+            agent_passphrase,
+            fallback: CliPassphraseProvider::new(),
+        }
+    }
+}
+
+impl PassphraseProvider for AgentProvisionPassphraseProvider {
+    fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
+        if prompt_message.contains(&self.agent_alias) {
+            Ok(self.agent_passphrase.clone())
+        } else {
+            self.fallback.get_passphrase(prompt_message)
+        }
+    }
+}
