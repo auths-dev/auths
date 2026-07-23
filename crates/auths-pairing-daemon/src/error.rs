@@ -176,6 +176,10 @@ pub enum DaemonError {
     /// is a fixed safe template like every other variant.
     #[error("shared-KEL rotation envelope invalid: {reason}")]
     InvalidSharedKelRot { reason: String },
+
+    /// Socket payload failed UTF-8 or JSON decoding (400).
+    #[error("invalid payload encoding")]
+    InvalidPayloadEncoding,
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +237,7 @@ mod http_response {
                 DaemonError::UnsupportedSubkeyChain => "unsupported-subkey-chain",
                 DaemonError::InvalidSubkeyChain { .. } => "invalid-subkey-chain",
                 DaemonError::InvalidSharedKelRot { .. } => "invalid-shared-kel-rot",
+                DaemonError::InvalidPayloadEncoding => "invalid-payload-encoding",
             }
         }
 
@@ -258,7 +263,8 @@ mod http_response {
                 | DaemonError::InvalidPubkeyLength { .. }
                 | DaemonError::UnsupportedSubkeyChain
                 | DaemonError::InvalidSubkeyChain { .. }
-                | DaemonError::InvalidSharedKelRot { .. } => StatusCode::BAD_REQUEST,
+                | DaemonError::InvalidSharedKelRot { .. }
+                | DaemonError::InvalidPayloadEncoding => StatusCode::BAD_REQUEST,
                 DaemonError::SessionExpired => StatusCode::GONE,
             }
         }
@@ -291,6 +297,7 @@ mod http_response {
                 DaemonError::UnsupportedSubkeyChain => "unsupported extension",
                 DaemonError::InvalidSubkeyChain { .. } => "request malformed",
                 DaemonError::InvalidSharedKelRot { .. } => "request malformed",
+                DaemonError::InvalidPayloadEncoding => "invalid payload encoding",
             }
         }
 

@@ -189,6 +189,23 @@ jobs:
             --log sigstore-rekor `
             --note "Release ${{ github.ref_name }}"
 
+      - name: Generate SLSA L3 Provenance (Unix)
+        if: matrix.ext == '.tar.gz'
+        run: |
+          FILE="${{ matrix.asset_name }}${{ matrix.ext }}"
+          ./staging/auths slsa generate \
+            --artifact "$FILE" \
+            --output "$FILE.slsa.json"
+
+      - name: Generate SLSA L3 Provenance (Windows)
+        if: matrix.ext == '.zip'
+        shell: pwsh
+        run: |
+          $file = "${{ matrix.asset_name }}${{ matrix.ext }}"
+          .\staging\auths.exe slsa generate `
+            --artifact $file `
+            --output "$file.slsa.json"
+
       # The ephemeral attestation anchors HEAD, whose trust chain ends at the
       # maintainer's KEL. Resolve that KEL from the committed identity bundle
       # (.auths/ci-bundle.json) — the same stateless bundle the commit-verify
@@ -234,6 +251,7 @@ jobs:
             ${{ matrix.asset_name }}${{ matrix.ext }}
             ${{ matrix.asset_name }}${{ matrix.ext }}.sha256
             ${{ matrix.asset_name }}${{ matrix.ext }}.auths.json
+            ${{ matrix.asset_name }}${{ matrix.ext }}.slsa.json
             auths-mcp-gateway-${{ matrix.node_platform }}${{ matrix.ext }}
             auths-mcp-gateway-${{ matrix.node_platform }}${{ matrix.ext }}.sha256
 

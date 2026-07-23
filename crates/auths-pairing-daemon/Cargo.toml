@@ -49,18 +49,14 @@ mdns-sd = { version = "0.18.0", optional = true }
 # TLS feature deps — self-signed cert + SPKI pinning via QR.
 # `crypto` feature provides KeyPair; `pem` emits PEM-encoded cert + key.
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "aws_lc_rs"], optional = true }
-zeroize = { workspace = true, optional = true }
-# rustls's `ConnectionCommon::export_keying_material` is the RFC 9266 /
-# RFC 5705 exporter the channel-binding adapter reads. `std` only — the
-# adapter calls the exporter on a connection the caller already established,
-# so no crypto provider is forced here.
+zeroize = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["std"], optional = true }
 
 [features]
 default = ["server", "mdns", "subkey-chain-v1"]
 server = ["dep:axum", "dep:tower", "dep:tower-http", "dep:ring", "dep:base64", "dep:subtle", "dep:if-addrs", "dep:serde_json"]
 mdns = ["dep:mdns-sd"]
-tls = ["dep:rcgen", "dep:zeroize", "dep:rustls"]
+tls = ["dep:rcgen", "dep:rustls"]
 # Pass-through to auths-crypto's FIPS / CNSA builds via auths-core (direct dep).
 fips = ["auths-core/fips"]
 cnsa = ["auths-core/cnsa"]

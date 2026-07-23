@@ -43,6 +43,7 @@ thiserror.workspace = true
 # Only the OS-backed `OsRng` is used (the workspace bans `thread_rng`/`random`).
 rand = { workspace = true }
 hex = "0.4"
+zeroize.workspace = true
 # Registry sync: the workspace git2 is deliberately transportless; the node
 # opts into HTTPS to fetch the parties' public `refs/auths/*` registry in-process
 # (same posture as packages/auths-node). A plain `git clone` would miss that ref.

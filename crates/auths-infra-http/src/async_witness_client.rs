@@ -149,6 +149,14 @@ impl HttpAsyncWitnessClient {
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct WitnessNotFoundResponse {
+    pub error: String,
+    pub prefix: String,
+    #[allow(dead_code)]
+    pub code: u32,
+}
+
 #[async_trait]
 impl AsyncWitnessProvider for HttpAsyncWitnessClient {
     async fn submit_event(
@@ -218,7 +226,26 @@ impl AsyncWitnessProvider for HttpAsyncWitnessClient {
         })?;
 
         if response.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(None);
+            let has_witness_header = response.headers().contains_key("X-Auths-Witness-Id");
+            let body_text = response.text().await.unwrap_or_default();
+
+            let is_valid_witness_404 = serde_json::from_str::<WitnessNotFoundResponse>(&body_text)
+                .map(|parsed| {
+                    parsed.error == "identity_not_found"
+                        && parsed.prefix == prefix.as_str()
+                        && parsed.code == 4041
+                })
+                .unwrap_or(false);
+
+            if has_witness_header && is_valid_witness_404 {
+                return Ok(None);
+            } else {
+                return Err(WitnessError::Network(format!(
+                    "Ambiguous 404 response from {} (failed to parse WitnessNotFoundResponse for prefix {}): failing closed to prevent downgrade",
+                    url,
+                    prefix.as_str()
+                )));
+            }
         }
 
         if !response.status().is_success() {

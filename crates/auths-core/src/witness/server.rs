@@ -998,11 +998,21 @@ async fn submit_event(
     }
 }
 
+use axum::response::IntoResponse;
+
+/// Typed 404 response for identity lookups.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WitnessNotFoundResponse {
+    pub error: String,
+    pub prefix: String,
+    pub code: u32,
+}
+
 /// GET /witness/:prefix/head - Get the latest observed sequence.
 async fn get_head(
     State(state): State<WitnessServerState>,
     AxumPath(prefix_str): AxumPath<String>,
-) -> Result<Json<HeadResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<HeadResponse>, axum::response::Response> {
     let prefix = Prefix::new_unchecked(prefix_str);
     let storage = state.inner.storage.lock().map_err(|_| {
         (
@@ -1012,6 +1022,7 @@ async fn get_head(
                 duplicity: None,
             }),
         )
+            .into_response()
     })?;
 
     match storage.get_latest_seq(&prefix) {
@@ -1019,23 +1030,28 @@ async fn get_head(
             prefix,
             latest_seq: Some(seq),
         })),
-        // An unheld prefix has no head: 404 (absent), matching `/key-state`,
-        // rather than a 200 with `latest_seq: null` a careless reader could
-        // misread as "sequence 0". (product-findings 20260721-node, N1.)
-        Ok(None) => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: format!("no head for {prefix} — this witness holds no events for it"),
-                duplicity: None,
-            }),
-        )),
+        // An unheld prefix has no head: 404 (absent), carrying WitnessNotFoundResponse + header
+        Ok(None) => {
+            let witness_id = state.witness_did();
+            let payload = WitnessNotFoundResponse {
+                error: "identity_not_found".to_string(),
+                prefix: prefix.as_str().to_string(),
+                code: 4041,
+            };
+            let mut res = (StatusCode::NOT_FOUND, Json(payload)).into_response();
+            if let Ok(val) = axum::http::HeaderValue::from_str(witness_id) {
+                res.headers_mut().insert("X-Auths-Witness-Id", val);
+            }
+            Err(res)
+        }
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
                 error: format!("storage error: {}", e),
                 duplicity: None,
             }),
-        )),
+        )
+            .into_response()),
     }
 }
 

@@ -397,6 +397,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -516,6 +517,7 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror 2.0.18",
+ "tracing",
  "url",
  "uuid",
  "walkdir",

@@ -3,13 +3,15 @@ use thiserror::Error;
 /// Domain errors for Auths Agent Guard execution and spend verification.
 #[derive(Debug, Error, PartialEq)]
 pub enum AgentGuardError {
-    /// Budget exceeded error variant
-    #[error("Budget exceeded: requested {requested_usd:.2} USD, remaining {remaining_usd:.2} USD")]
+    /// Budget exceeded error variant (in integer cents)
+    #[error(
+        "Budget exceeded: requested {requested_cents} cents, remaining {remaining_cents} cents"
+    )]
     BudgetExceeded {
-        /// Requested cost in USD
-        requested_usd: f64,
-        /// Remaining allocated budget in USD
-        remaining_usd: f64,
+        /// Requested cost in cents
+        requested_cents: u64,
+        /// Remaining allocated budget in cents
+        remaining_cents: u64,
     },
 
     /// Capability scope denied variant

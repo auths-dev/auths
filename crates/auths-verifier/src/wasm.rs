@@ -646,6 +646,12 @@ pub fn wasm_verify_evidence_pack_offline(
     )
 }
 
+#[derive(Debug, Deserialize)]
+struct KeriEvent {
+    s: Option<u64>,
+    k: Option<Vec<String>>,
+}
+
 /// Resolves the active public key from a JSON KEL events array (Issue #407).
 ///
 /// Args:
@@ -656,7 +662,7 @@ pub fn wasm_resolve_keri_active_key(
     kel_json_str: &str,
     sequence: Option<u64>,
 ) -> Result<String, JsValue> {
-    let events: Vec<serde_json::Value> = serde_json::from_str(kel_json_str)
+    let events: Vec<KeriEvent> = serde_json::from_str(kel_json_str)
         .map_err(|e| JsValue::from_str(&format!("Invalid KEL JSON: {}", e)))?;
 
     if events.is_empty() {
@@ -664,19 +670,31 @@ pub fn wasm_resolve_keri_active_key(
     }
 
     let mut active_key = String::new();
+    let mut last_seq: Option<u64> = None;
+
     for event in &events {
-        let event_seq = event.get("s").and_then(|s| s.as_u64());
-        if matches!((sequence, event_seq), (Some(seq), Some(e_seq)) if e_seq > seq) {
-            break;
+        if let Some(e_seq) = event.s {
+            if let Some(prev) = last_seq
+                && e_seq != prev + 1
+                && e_seq != prev
+            {
+                return Err(JsValue::from_str(&format!(
+                    "Invalid KEL sequence jump: expected {}, got {}",
+                    prev + 1,
+                    e_seq
+                )));
+            }
+            last_seq = Some(e_seq);
+
+            if matches!(sequence, Some(threshold) if e_seq > threshold) {
+                break;
+            }
         }
 
-        if let Some(first_key) = event
-            .get("k")
-            .and_then(|k| k.as_array())
-            .and_then(|keys| keys.first())
-            .and_then(|k| k.as_str())
+        if let Some(keys) = &event.k
+            && let Some(first_key) = keys.first()
         {
-            active_key = first_key.to_string();
+            active_key = first_key.clone();
         }
     }
 
