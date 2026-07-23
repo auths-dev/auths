@@ -908,7 +908,10 @@ version = "0.1.16"
 dependencies = [
  "auths-verifier",
  "serde_json",
+ "subtle",
+ "thiserror 2.0.18",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -1045,6 +1048,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "url",
  "uuid",
  "walkdir",
@@ -1207,6 +1211,7 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
+ "zeroize",
 ]
 
 [[package]]
