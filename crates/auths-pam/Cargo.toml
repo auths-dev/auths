@@ -19,6 +19,9 @@ crate-type = ["cdylib", "rlib"]
 auths-verifier = { workspace = true, features = ["native"] }
 serde_json = "1"
 tracing = "0.1"
+subtle.workspace = true
+zeroize.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true
