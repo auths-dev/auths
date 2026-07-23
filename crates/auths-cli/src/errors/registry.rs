@@ -224,7 +224,7 @@ pub fn explain(code: &str) -> Option<&'static str> {
         // --- auths-id (InitError) ---
         "AUTHS-E4201" => Some("# AUTHS-E4201\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Git`\n\n## Message\n\n_(transparent — see inner error)_\n\n## Suggestion\n\nCheck that the Git repository is accessible\n"),
         "AUTHS-E4202" => Some("# AUTHS-E4202\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Keri`\n\n## Message\n\nKERI operation failed: {0}\n\n## Suggestion\n\nKERI event processing failed; check identity state\n"),
-        "AUTHS-E4203" => Some("# AUTHS-E4203\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Key`\n\n## Message\n\nkey operation failed: {0}\n\n## Suggestion\n\nCheck keychain access and passphrase. Headless/CI (no Touch ID): set AUTHS_KEYCHAIN_BACKEND=file AUTHS_KEYCHAIN_FILE=<path> AUTHS_PASSPHRASE=<pass>, or run `auths init --profile ci`.\n"),
+        "AUTHS-E4203" => Some("# AUTHS-E4203\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Key`\n\n## Message\n\nkey operation failed: {0}\n\n## Suggestion\n\nRerun the command using a passphrase that is at least 12 characters long.\n"),
         "AUTHS-E4204" => Some("# AUTHS-E4204\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::InvalidData`\n\n## Message\n\n{0}\n\n## Suggestion\n\nIdentity data is malformed; try re-initializing with `auths init`\n"),
         "AUTHS-E4205" => Some("# AUTHS-E4205\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Storage`\n\n## Message\n\nstorage operation failed: {0}\n\n## Suggestion\n\nCheck storage backend connectivity\n"),
         "AUTHS-E4206" => Some("# AUTHS-E4206\n\n**Crate:** `auths-id`\n\n**Type:** `InitError::Registry`\n\n## Message\n\nregistry error: {0}\n\n## Suggestion\n\nCheck registry backend configuration\n"),
