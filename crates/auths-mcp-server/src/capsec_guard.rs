@@ -1,10 +1,31 @@
 use auths_sdk::domains::agent_guard::error::AgentGuardError;
-#[cfg(debug_assertions)]
-use capsec::test_root;
-#[cfg(not(debug_assertions))]
-use capsec::try_root;
 use capsec::{Ambient, CapSecError, Permission, RuntimeCap, TimedCap};
+use std::sync::OnceLock;
 use std::time::Duration;
+
+struct SyncCapRoot(capsec::CapRoot);
+// INVARIANT: CapRoot is initialized once at startup and used solely to grant child capability tokens
+unsafe impl Send for SyncCapRoot {}
+unsafe impl Sync for SyncCapRoot {}
+
+static CAPSEC_ROOT: OnceLock<Option<SyncCapRoot>> = OnceLock::new();
+
+fn get_or_init_root() -> Result<&'static capsec::CapRoot, AgentGuardError> {
+    let opt = CAPSEC_ROOT.get_or_init(|| {
+        #[cfg(debug_assertions)]
+        {
+            Some(SyncCapRoot(capsec::test_root()))
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            capsec::try_root().map(SyncCapRoot)
+        }
+    });
+
+    opt.as_ref()
+        .map(|s| &s.0)
+        .ok_or_else(|| AgentGuardError::CapsecViolation("Failed to initialize process CapSec root".into()))
+}
 
 /// Holds runtime capability bounds for an active MCP agent tool execution session.
 pub struct McpCapsecGuard<P: Permission = Ambient> {
@@ -45,13 +66,10 @@ impl McpCapsecGuard<Ambient> {
     ///
     /// Usage:
     /// ```ignore
-    /// let guard = McpCapsecGuard::new("did:key:z1", Duration::from_secs(1800))?;
+    /// let guard = McpCapsecGuard::new("did:key:z1".into(), Duration::from_secs(1800))?;
     /// ```
     pub fn new(agent_did: String, ttl: Duration) -> Result<Self, AgentGuardError> {
-        #[cfg(debug_assertions)]
-        let root = test_root();
-        #[cfg(not(debug_assertions))]
-        let root = try_root().unwrap_or_else(|| panic!("capsec root already initialized"));
+        let root = get_or_init_root()?;
 
         let cap1 = root.grant::<Ambient>();
         let cap2 = root.grant::<Ambient>();
