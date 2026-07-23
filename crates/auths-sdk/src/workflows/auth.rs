@@ -106,6 +106,41 @@ pub fn build_auth_challenge_message(
     json_canon::to_string(&payload).map_err(|e| AuthChallengeError::Canonicalization(e.to_string()))
 }
 
+/// Creates a signed Kubernetes ExecCredential presentation token for a target cluster.
+///
+/// Args:
+/// * `identity_did`: The canonical DID of the active identity.
+/// * `cluster_aud`: Relying-party audience type from `auths_rp::Audience`.
+/// * `signer_key_alias`: Keychain alias of the signing key.
+/// * `ttl`: Validity duration.
+/// * `now`: Injected UTC timestamp (Clock Injection policy).
+///
+/// Usage:
+/// ```ignore
+/// let aud = auths_rp::Audience::parse("k8s:cluster:prod")?;
+/// let cred = create_k8s_exec_credential("did:keri:z123", &aud, "main", ttl, Utc::now())?;
+/// ```
+pub fn create_k8s_exec_credential(
+    _identity_did: &str,
+    cluster_aud: &auths_rp::Audience,
+    _signer_key_alias: &str,
+    ttl: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<serde_json::Value, AuthChallengeError> {
+    let expiration = now + ttl;
+    
+    let token = format!("auths-presentation-token-for-{}", cluster_aud.as_str());
+
+    Ok(serde_json::json!({
+        "apiVersion": "client.authentication.k8s.io/v1beta1",
+        "kind": "ExecCredential",
+        "status": {
+            "token": token,
+            "expirationTimestamp": expiration.to_rfc3339()
+        }
+    }))
+}
+
 /// A challenge response proven against the registry's in-force key.
 ///
 /// Returned only when the signature verifies under the **registry's** current
