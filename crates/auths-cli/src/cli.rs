@@ -6,11 +6,11 @@ use clap::{Parser, Subcommand};
 use crate::commands::account::AccountCommand;
 use crate::commands::agent::AgentCommand;
 use crate::commands::anchor::AnchorCommand;
-use crate::commands::daemon::DaemonCommand;
 use crate::commands::approval::ApprovalCommand;
 use crate::commands::artifact::ArtifactCommand;
 use crate::commands::audit::AuditCommand;
 use crate::commands::auth::AuthCommand;
+use crate::commands::daemon::DaemonCommand;
 
 use crate::commands::commit::CommitCmd;
 use crate::commands::completions::CompletionsCommand;

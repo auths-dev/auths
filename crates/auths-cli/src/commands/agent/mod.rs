@@ -114,7 +114,11 @@ pub enum AgentSubcommand {
     Lock,
     #[command(hide = true)]
     Unlock {
-        #[arg(long = "agent-key-alias", visible_alias = "key", default_value = "default")]
+        #[arg(
+            long = "agent-key-alias",
+            visible_alias = "key",
+            default_value = "default"
+        )]
         agent_key_alias: String,
     },
     #[command(hide = true)]
@@ -160,53 +164,109 @@ pub fn handle_agent(cmd: AgentCommand, repo: Option<PathBuf>) -> Result<()> {
         AgentSubcommand::Prompt { label } => handle_prompt_cmd(label),
 
         // ── Forward Deprecated Daemon Commands ──
-        AgentSubcommand::Start { socket, foreground, timeout } => {
-            eprintln!("\x1b[33mWARNING: 'auths agent start' is deprecated for daemon management. Please use 'auths daemon start' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::Start { socket, foreground, timeout }
-            }, repo)
+        AgentSubcommand::Start {
+            socket,
+            foreground,
+            timeout,
+        } => {
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent start' is deprecated for daemon management. Please use 'auths daemon start' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::Start {
+                        socket,
+                        foreground,
+                        timeout,
+                    },
+                },
+                repo,
+            )
         }
         AgentSubcommand::Stop => {
-            eprintln!("\x1b[33mWARNING: 'auths agent stop' is deprecated for daemon management. Please use 'auths daemon stop' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::Stop
-            }, repo)
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent stop' is deprecated for daemon management. Please use 'auths daemon stop' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::Stop,
+                },
+                repo,
+            )
         }
         AgentSubcommand::Status => {
-            eprintln!("\x1b[33mWARNING: 'auths agent status' is deprecated for daemon management. Please use 'auths daemon status' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::Status
-            }, repo)
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent status' is deprecated for daemon management. Please use 'auths daemon status' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::Status,
+                },
+                repo,
+            )
         }
         AgentSubcommand::Env { shell } => {
-            eprintln!("\x1b[33mWARNING: 'auths agent env' is deprecated for daemon management. Please use 'auths daemon env' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::Env { shell }
-            }, repo)
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent env' is deprecated for daemon management. Please use 'auths daemon env' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::Env { shell },
+                },
+                repo,
+            )
         }
         AgentSubcommand::Lock => {
-            eprintln!("\x1b[33mWARNING: 'auths agent lock' is deprecated for daemon management. Please use 'auths daemon lock' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::Lock
-            }, repo)
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent lock' is deprecated for daemon management. Please use 'auths daemon lock' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::Lock,
+                },
+                repo,
+            )
         }
         AgentSubcommand::Unlock { agent_key_alias } => {
-            eprintln!("\x1b[33mWARNING: 'auths agent unlock' is deprecated for daemon management. Please use 'auths daemon unlock' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::Unlock { agent_key_alias }
-            }, repo)
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent unlock' is deprecated for daemon management. Please use 'auths daemon unlock' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::Unlock { agent_key_alias },
+                },
+                repo,
+            )
         }
-        AgentSubcommand::InstallService { dry_run, force, manager } => {
-            eprintln!("\x1b[33mWARNING: 'auths agent install-service' is deprecated for daemon management. Please use 'auths daemon install-service' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::InstallService { dry_run, force, manager }
-            }, repo)
+        AgentSubcommand::InstallService {
+            dry_run,
+            force,
+            manager,
+        } => {
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent install-service' is deprecated for daemon management. Please use 'auths daemon install-service' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::InstallService {
+                        dry_run,
+                        force,
+                        manager,
+                    },
+                },
+                repo,
+            )
         }
         AgentSubcommand::UninstallService => {
-            eprintln!("\x1b[33mWARNING: 'auths agent uninstall-service' is deprecated for daemon management. Please use 'auths daemon uninstall-service' instead.\x1b[0m");
-            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
-                command: crate::commands::daemon::DaemonSubcommand::UninstallService
-            }, repo)
+            eprintln!(
+                "\x1b[33mWARNING: 'auths agent uninstall-service' is deprecated for daemon management. Please use 'auths daemon uninstall-service' instead.\x1b[0m"
+            );
+            crate::commands::daemon::handle_daemon(
+                crate::commands::daemon::DaemonCommand {
+                    command: crate::commands::daemon::DaemonSubcommand::UninstallService,
+                },
+                repo,
+            )
         }
     }
 }
