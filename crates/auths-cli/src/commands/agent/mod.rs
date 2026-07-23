@@ -159,6 +159,13 @@ pub enum AgentSubcommand {
         )]
         key: String,
     },
+
+    /// Generate a structured system prompt for an AI agent
+    Prompt {
+        /// The human-readable label / agent name
+        #[arg(short, long, help = "Label / agent name (e.g., auths-agent)")]
+        label: String,
+    },
 }
 
 /// Shell format for environment output.
@@ -246,7 +253,8 @@ fn daemon_op_name(cmd: &AgentSubcommand) -> Option<&'static str> {
         | AgentSubcommand::Provision { .. }
         | AgentSubcommand::List { .. }
         | AgentSubcommand::Update { .. }
-        | AgentSubcommand::Revoke { .. } => None,
+        | AgentSubcommand::Revoke { .. }
+        | AgentSubcommand::Prompt { .. } => None,
     }
 }
 
@@ -306,6 +314,7 @@ pub fn handle_agent(cmd: AgentCommand, repo: Option<PathBuf>) -> Result<()> {
             extend_expiration,
         } => handle_update_cmd(agent, label, extend_expiration),
         AgentSubcommand::Revoke { agent_did, key } => handle_revoke_cmd(agent_did, key, repo),
+        AgentSubcommand::Prompt { label } => handle_prompt_cmd(label),
     }
 }
 
@@ -1071,6 +1080,39 @@ impl crate::commands::executable::ExecutableCommand for AgentCommand {
     fn execute(&self, ctx: &crate::config::CliConfig) -> anyhow::Result<()> {
         handle_agent(self.clone(), ctx.repo_path.clone())
     }
+}
+
+fn handle_prompt_cmd(label: String) -> Result<()> {
+    use auths_sdk::paths::auths_home;
+    use std::path::Path;
+
+    let agent_dir = auths_home()
+        .unwrap_or_else(|_| PathBuf::from("~/.auths"))
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(".auths-agents")
+        .join(&label);
+
+    let env_file_path = agent_dir.join("env.sh");
+
+    if !agent_dir.exists() || !env_file_path.exists() {
+        anyhow::bail!(
+            "Agent environment for '{}' not found at '{}'. Please provision the agent first.",
+            label,
+            agent_dir.display()
+        );
+    }
+
+    let abs_env_path = env_file_path.canonicalize().unwrap_or(env_file_path);
+
+    let template = include_str!("agent_prompt.md");
+    let prompt = template
+        .replace("{{LABEL}}", &label)
+        .replace("{{ENV_PATH}}", &abs_env_path.display().to_string());
+
+    println!("{}", prompt);
+
+    Ok(())
 }
 
 #[cfg(test)]
