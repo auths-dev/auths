@@ -5,7 +5,10 @@ use chrono::{DateTime, Utc};
 /// Trait abstraction for identity registry backend lookups.
 pub trait RegistryBackend {
     /// Resolves identity DID associated with a hardware or direct public key.
-    fn resolve_identity_for_key(&self, key: &KeriPublicKey) -> Result<Option<String>, AuthorityError>;
+    fn resolve_identity_for_key(
+        &self,
+        key: &KeriPublicKey,
+    ) -> Result<Option<String>, AuthorityError>;
 
     /// Checks whether a given key was revoked in the resolved identity KEL at signed_at timestamp.
     fn is_key_revoked_at(
@@ -35,13 +38,17 @@ pub fn enforce_signer_authority(
     let identity_did = registry
         .resolve_identity_for_key(signer_key)?
         .ok_or_else(|| {
-            let key_str = signer_key.to_qb64().unwrap_or_else(|_| "invalid_key".into());
+            let key_str = signer_key
+                .to_qb64()
+                .unwrap_or_else(|_| "invalid_key".into());
             tracing::warn!(event = "producer_authority_unbound_key", key = %key_str);
             AuthorityError::UnboundKey(format!("Key {} has no associated identity DID", key_str))
         })?;
 
     if registry.is_key_revoked_at(&identity_did, signer_key, signed_at)? {
-        let key_str = signer_key.to_qb64().unwrap_or_else(|_| "invalid_key".into());
+        let key_str = signer_key
+            .to_qb64()
+            .unwrap_or_else(|_| "invalid_key".into());
         tracing::warn!(
             event = "producer_authority_key_revoked",
             identity_did = %identity_did,

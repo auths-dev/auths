@@ -4,7 +4,9 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq)]
 pub enum AgentGuardError {
     /// Budget exceeded error variant (in integer cents)
-    #[error("Budget exceeded: requested {requested_cents} cents, remaining {remaining_cents} cents")]
+    #[error(
+        "Budget exceeded: requested {requested_cents} cents, remaining {remaining_cents} cents"
+    )]
     BudgetExceeded {
         /// Requested cost in cents
         requested_cents: u64,

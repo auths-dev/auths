@@ -22,9 +22,9 @@ fn get_or_init_root() -> Result<&'static capsec::CapRoot, AgentGuardError> {
         }
     });
 
-    opt.as_ref()
-        .map(|s| &s.0)
-        .ok_or_else(|| AgentGuardError::CapsecViolation("Failed to initialize process CapSec root".into()))
+    opt.as_ref().map(|s| &s.0).ok_or_else(|| {
+        AgentGuardError::CapsecViolation("Failed to initialize process CapSec root".into())
+    })
 }
 
 /// Holds runtime capability bounds for an active MCP agent tool execution session.

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
+use auths_sdk::domains::signing::ci_env::{CiEnvironment, CiPlatform, detect_ci_environment};
 use clap::Args;
 use serde_json::json;
-use auths_sdk::domains::signing::ci_env::{detect_ci_environment, CiPlatform, CiEnvironment};
 
 #[derive(Args, Debug)]
 pub struct SlsaGenerateArgs {
@@ -31,7 +31,9 @@ impl SlsaLevel {
 
         match (requested, is_github) {
             (Some(3), false) => {
-                anyhow::bail!("SLSA Level 3 provenance requires a verified isolated CI runner (GitHub Actions with OIDC token)");
+                anyhow::bail!(
+                    "SLSA Level 3 provenance requires a verified isolated CI runner (GitHub Actions with OIDC token)"
+                );
             }
             (Some(3), true) => Ok(SlsaLevel::L3),
             (Some(1), _) => Ok(SlsaLevel::L1),
@@ -61,7 +63,11 @@ pub async fn run_slsa_generate(args: SlsaGenerateArgs) -> Result<()> {
 
     let builder_id = match ci_env.as_ref() {
         Some(env) if env.platform == CiPlatform::GithubActions => {
-            format!("{}/{}", std::env::var("GITHUB_SERVER_URL").unwrap_or_default(), env.repository.as_deref().unwrap_or_default())
+            format!(
+                "{}/{}",
+                std::env::var("GITHUB_SERVER_URL").unwrap_or_default(),
+                env.repository.as_deref().unwrap_or_default()
+            )
         }
         _ => "https://auths.dev/builder/local".to_string(),
     };
@@ -97,8 +103,7 @@ pub async fn run_slsa_generate(args: SlsaGenerateArgs) -> Result<()> {
 
     println!(
         "SLSA Level {:?} provenance statement generated: {}",
-        level,
-        args.output
+        level, args.output
     );
     Ok(())
 }

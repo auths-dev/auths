@@ -54,6 +54,9 @@ mod tests {
 
         let sig = provider.sign_checkpoint(b"test_checkpoint").unwrap();
         assert!(sig.starts_with(b"AWS_KMS_SIG:"));
-        assert_eq!(provider.tagged_public_key().to_qb64().unwrap(), pk.to_qb64().unwrap());
+        assert_eq!(
+            provider.tagged_public_key().to_qb64().unwrap(),
+            pk.to_qb64().unwrap()
+        );
     }
 }

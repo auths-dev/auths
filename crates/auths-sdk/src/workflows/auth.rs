@@ -128,7 +128,7 @@ pub fn create_k8s_exec_credential(
     now: chrono::DateTime<chrono::Utc>,
 ) -> Result<serde_json::Value, AuthChallengeError> {
     let expiration = now + ttl;
-    
+
     let token = format!("auths-presentation-token-for-{}", cluster_aud.as_str());
 
     Ok(serde_json::json!({

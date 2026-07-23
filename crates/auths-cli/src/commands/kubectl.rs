@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
-use clap::Args;
-use chrono::{Duration, Utc};
 use auths_rp::Audience;
 use auths_sdk::workflows::auth::create_k8s_exec_credential;
+use chrono::{Duration, Utc};
+use clap::Args;
 
 #[derive(Args, Debug)]
 pub struct KubectlTokenArgs {
@@ -32,7 +32,8 @@ pub async fn run_kubectl_token(args: KubectlTokenArgs) -> Result<()> {
         key_alias,
         Duration::seconds(args.ttl_seconds),
         now,
-    ).context("Failed to generate Auths Kubernetes ExecCredential token")?;
+    )
+    .context("Failed to generate Auths Kubernetes ExecCredential token")?;
 
     println!("{}", serde_json::to_string_pretty(&response)?);
     Ok(())
