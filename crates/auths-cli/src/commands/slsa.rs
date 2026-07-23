@@ -77,9 +77,9 @@ pub async fn run_slsa_generate(args: SlsaGenerateArgs) -> Result<()> {
         "buildType": level.build_type(),
         "invocation": {
             "configSource": {
-                "uri": match ci_env.as_ref() {
-                    Some(env) if env.repository.is_some() => format!("git+https://github.com/{}", env.repository.as_deref().unwrap()),
-                    _ => "local".into(),
+                "uri": match ci_env.as_ref().and_then(|e| e.repository.as_deref()) {
+                    Some(repo) => format!("git+https://github.com/{}", repo),
+                    None => "local".into(),
                 },
                 "entryPoint": "auths slsa generate"
             }

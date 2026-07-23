@@ -153,6 +153,7 @@ impl HttpAsyncWitnessClient {
 pub struct WitnessNotFoundResponse {
     pub error: String,
     pub prefix: String,
+    #[allow(dead_code)]
     pub code: u32,
 }
 

@@ -674,14 +674,15 @@ pub fn wasm_resolve_keri_active_key(
 
     for event in &events {
         if let Some(e_seq) = event.s {
-            if let Some(prev) = last_seq {
-                if e_seq != prev + 1 && e_seq != prev {
-                    return Err(JsValue::from_str(&format!(
-                        "Invalid KEL sequence jump: expected {}, got {}",
-                        prev + 1,
-                        e_seq
-                    )));
-                }
+            if let Some(prev) = last_seq
+                && e_seq != prev + 1
+                && e_seq != prev
+            {
+                return Err(JsValue::from_str(&format!(
+                    "Invalid KEL sequence jump: expected {}, got {}",
+                    prev + 1,
+                    e_seq
+                )));
             }
             last_seq = Some(e_seq);
 
@@ -690,10 +691,10 @@ pub fn wasm_resolve_keri_active_key(
             }
         }
 
-        if let Some(keys) = &event.k {
-            if let Some(first_key) = keys.first() {
-                active_key = first_key.clone();
-            }
+        if let Some(keys) = &event.k
+            && let Some(first_key) = keys.first()
+        {
+            active_key = first_key.clone();
         }
     }
 
