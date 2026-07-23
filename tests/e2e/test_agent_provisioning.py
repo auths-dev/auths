@@ -15,6 +15,7 @@ def test_agent_provision_manual_flags(auths_bin, isolated_env, tmp_path):
     init_res = run_auths(
         auths_bin,
         ["init", "--profile", "developer", "--non-interactive"],
+        cwd=tmp_path,
         env=isolated_env,
     )
     assert init_res.returncode == 0, f"Init failed: {init_res.stderr}"
@@ -40,6 +41,7 @@ def test_agent_provision_manual_flags(auths_bin, isolated_env, tmp_path):
             "--passphrase-file",
             str(passphrase_file),
         ],
+        cwd=tmp_path,
         env=isolated_env,
     )
     assert prov_res.returncode == 0, f"Provisioning failed: {prov_res.stderr}\n{prov_res.stdout}"
@@ -52,7 +54,7 @@ def test_agent_provision_manual_flags(auths_bin, isolated_env, tmp_path):
     assert (out_dir / "bin" / "auths-agent").exists()
 
     # 4. Verify agent list output
-    list_res = run_auths(auths_bin, ["agent", "list"], env=isolated_env)
+    list_res = run_auths(auths_bin, ["agent", "list"], cwd=tmp_path, env=isolated_env)
     assert list_res.returncode == 0
     assert "agent-builder" in list_res.stdout or "did:keri:" in list_res.stdout
 
@@ -66,6 +68,7 @@ def test_agent_provision_custom_backend(auths_bin, isolated_env, tmp_path):
     init_res = run_auths(
         auths_bin,
         ["init", "--profile", "developer", "--non-interactive"],
+        cwd=tmp_path,
         env=env,
     )
     assert init_res.returncode == 0, f"Init failed: {init_res.stderr}"
@@ -90,6 +93,7 @@ def test_agent_provision_custom_backend(auths_bin, isolated_env, tmp_path):
             "--passphrase-file",
             str(passphrase_file),
         ],
+        cwd=tmp_path,
         env=env,
     )
     assert prov_res.returncode == 0, f"Provisioning failed: {prov_res.stderr}\n{prov_res.stdout}"
@@ -101,6 +105,7 @@ def test_agent_provision_recursive_subagent(auths_bin, isolated_env, tmp_path):
     init_res = run_auths(
         auths_bin,
         ["init", "--profile", "developer", "--non-interactive"],
+        cwd=tmp_path,
         env=isolated_env,
     )
     assert init_res.returncode == 0
@@ -126,6 +131,7 @@ def test_agent_provision_recursive_subagent(auths_bin, isolated_env, tmp_path):
             "--passphrase-file",
             str(passphrase_file),
         ],
+        cwd=tmp_path,
         env=isolated_env,
     )
     assert prov_res.returncode == 0
@@ -157,6 +163,7 @@ def test_agent_provision_recursive_subagent(auths_bin, isolated_env, tmp_path):
             "--passphrase-file",
             str(sub_pass_file),
         ],
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         env=sub_env,
