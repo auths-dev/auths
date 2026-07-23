@@ -416,7 +416,8 @@ impl SecureSigner for SecureEnclaveKeyStorage {
         passphrase_provider: &dyn PassphraseProvider,
         message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
-        let (sig, _pubkey, _curve) = super::keychain::sign_with_key(self, alias, passphrase_provider, message)?;
+        let (sig, _pubkey, _curve) =
+            super::keychain::sign_with_key(self, alias, passphrase_provider, message)?;
         Ok(sig)
     }
 

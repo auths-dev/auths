@@ -275,7 +275,12 @@ impl<S: KeyStorage + Send + Sync + 'static> SecureSigner for StorageSigner<S> {
         passphrase_provider: &dyn PassphraseProvider,
         message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
-        let (sig, _pubkey, _curve) = crate::storage::keychain::sign_with_key(&self.storage, alias, passphrase_provider, message)?;
+        let (sig, _pubkey, _curve) = crate::storage::keychain::sign_with_key(
+            &self.storage,
+            alias,
+            passphrase_provider,
+            message,
+        )?;
         Ok(sig)
     }
 

@@ -796,6 +796,7 @@ impl KeyStorage for Arc<dyn KeyStorage + Send + Sync> {
     fn is_hardware_backend(&self) -> bool {
         self.as_ref().is_hardware_backend()
     }
+    // Forward to inner storage so backends like SecureEnclave can distinguish software vs hardware keys
     fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
         self.as_ref().is_hardware_key(alias)
     }
@@ -857,6 +858,7 @@ impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
     fn is_hardware_backend(&self) -> bool {
         self.as_ref().is_hardware_backend()
     }
+    // Forward to inner storage so backends like SecureEnclave can distinguish software vs hardware keys
     fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
         self.as_ref().is_hardware_key(alias)
     }
@@ -1063,5 +1065,58 @@ mod tests {
             .unwrap();
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0].as_str(), "deploy-agent");
+    }
+
+    struct MockHardwareKeyStorage;
+    impl KeyStorage for MockHardwareKeyStorage {
+        fn store_key(
+            &self,
+            _: &KeyAlias,
+            _: &IdentityDID,
+            _: KeyRole,
+            _: &[u8],
+        ) -> Result<(), AgentError> {
+            Ok(())
+        }
+        fn load_key(&self, _: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
+            Err(AgentError::StorageError("not found".into()))
+        }
+        fn delete_key(&self, _: &KeyAlias) -> Result<(), AgentError> {
+            Ok(())
+        }
+        fn list_aliases(&self) -> Result<Vec<KeyAlias>, AgentError> {
+            Ok(vec![])
+        }
+        fn list_aliases_for_identity(&self, _: &IdentityDID) -> Result<Vec<KeyAlias>, AgentError> {
+            Ok(vec![])
+        }
+        fn get_identity_for_alias(&self, _: &KeyAlias) -> Result<IdentityDID, AgentError> {
+            Err(AgentError::StorageError("not found".into()))
+        }
+        fn backend_name(&self) -> &'static str {
+            "MockHardware"
+        }
+        fn is_hardware_backend(&self) -> bool {
+            true
+        }
+        fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+            // Returns false for software key aliases to simulate software/hardware key differentiation
+            alias.as_str() != "software-key"
+        }
+    }
+
+    #[test]
+    fn test_arc_and_box_forward_is_hardware_key() {
+        let mock = MockHardwareKeyStorage;
+        let hw_alias = KeyAlias::new_unchecked("hardware-key");
+        let sw_alias = KeyAlias::new_unchecked("software-key");
+
+        let arc_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::new(mock);
+        assert!(arc_storage.is_hardware_key(&hw_alias));
+        assert!(!arc_storage.is_hardware_key(&sw_alias));
+
+        let box_storage: Box<dyn KeyStorage + Send + Sync> = Box::new(MockHardwareKeyStorage);
+        assert!(box_storage.is_hardware_key(&hw_alias));
+        assert!(!box_storage.is_hardware_key(&sw_alias));
     }
 }

@@ -23,9 +23,9 @@ use auths_keri::{AgentScope, Capability};
 use auths_verifier::core::SignerType;
 use auths_verifier::types::CanonicalDid;
 
-use crate::signing::PassphraseProvider;
 use crate::context::AuthsContext;
 use crate::domains::agents::error::AgentError;
+use crate::signing::PassphraseProvider;
 
 /// Result of adding a delegated agent.
 #[derive(Debug, Clone)]
@@ -370,12 +370,9 @@ pub fn record_delegation_attestation_with_provider(
     agent_did: &IdentityDID,
     expires_at: Option<i64>,
 ) -> Result<(), AgentError> {
-    let (agent_pk, agent_pk_curve) = extract_public_key_bytes(
-        ctx.key_storage.as_ref(),
-        agent_alias,
-        passphrase_provider,
-    )
-    .map_err(AgentError::CryptoError)?;
+    let (agent_pk, agent_pk_curve) =
+        extract_public_key_bytes(ctx.key_storage.as_ref(), agent_alias, passphrase_provider)
+            .map_err(AgentError::CryptoError)?;
     let now = ctx.clock.now();
     let meta = AttestationMetadata {
         timestamp: Some(now),

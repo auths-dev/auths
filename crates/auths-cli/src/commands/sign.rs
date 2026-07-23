@@ -265,7 +265,12 @@ fn short_sha(sha: &str) -> &str {
 /// * `range` - A git ref or range (e.g., "HEAD", "main..HEAD").
 /// * `signer` - The resolved local signing identity (root + device DIDs).
 /// * `scope` - Capabilities this commit claims (emitted as an `Auths-Scope` trailer).
-fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String], autostash: bool) -> Result<()> {
+fn sign_commit_range(
+    range: &str,
+    signer: &LocalSigner,
+    scope: &[String],
+    autostash: bool,
+) -> Result<()> {
     ensure_repo_root_pin(signer);
     validate_scope(scope)?;
 
@@ -274,7 +279,8 @@ fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String], autost
         && let Ok(out) = crate::subprocess::git_command(&["status", "--porcelain"]).output()
         && !out.stdout.is_empty()
     {
-        let _ = crate::subprocess::git_command(&["stash", "push", "-m", "auths-autostash"]).output();
+        let _ =
+            crate::subprocess::git_command(&["stash", "push", "-m", "auths-autostash"]).output();
         stashed = true;
     }
 

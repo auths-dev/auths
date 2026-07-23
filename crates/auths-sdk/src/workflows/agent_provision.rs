@@ -4,11 +4,11 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::context::AuthsContext;
 use anyhow::{Context, Result, anyhow};
 use auths_core::storage::keychain::KeyAlias;
 use auths_crypto::CurveType;
 use auths_keri::Capability;
-use crate::context::AuthsContext;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +28,10 @@ impl std::str::FromStr for AgentProfile {
         match s.to_lowercase().as_str() {
             "ci" => Ok(AgentProfile::Ci),
             "assistant" => Ok(AgentProfile::Assistant),
-            _ => Err(anyhow!("Invalid agent profile '{}': expected 'ci' or 'assistant'", s)),
+            _ => Err(anyhow!(
+                "Invalid agent profile '{}': expected 'ci' or 'assistant'",
+                s
+            )),
         }
     }
 }
@@ -118,7 +121,8 @@ pub fn provision_agent_machine(
     fs::set_permissions(&passphrase_path, fs::Permissions::from_mode(0o600))?;
 
     // Copy keys from main keychain to agent file-backend keys.enc
-    let export_res = export_agent_keys_to_file_backend(ctx, &agent_alias, passphrase, &keychain_path);
+    let export_res =
+        export_agent_keys_to_file_backend(ctx, &agent_alias, passphrase, &keychain_path);
 
     // Clean up temporary staging keys from root key storage so root storage stays clean
     let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", agent_alias.as_str()));
