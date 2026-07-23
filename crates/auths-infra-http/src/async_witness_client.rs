@@ -217,6 +217,10 @@ impl AsyncWitnessProvider for HttpAsyncWitnessClient {
             }
         })?;
 
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
         if !response.status().is_success() {
             let body = response.text().await.unwrap_or_default();
             return Err(WitnessError::Network(format!(
