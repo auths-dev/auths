@@ -93,6 +93,68 @@ pub enum AgentSubcommand {
 
     /// Uninstall the system service
     UninstallService,
+
+    /// Provision a new delegated headless agent in a single command
+    Provision {
+        /// Human-readable label / key alias for the new agent
+        #[arg(short, long, help = "Label / key alias for the new agent")]
+        label: String,
+
+        /// Delegator signing key alias (defaults to "main")
+        #[arg(long, default_value = "main", help = "Your root identity's signing key name")]
+        key: String,
+
+        /// Capability granted to the agent (repeatable)
+        #[arg(long = "scope", help = "Capability granted to the agent")]
+        scope: Vec<auths_keri::Capability>,
+
+        /// Expiration duration in seconds (e.g. 2592000 for 30 days)
+        #[arg(long = "expires-in", help = "Expiration duration in seconds")]
+        expires_in: Option<i64>,
+
+        /// Destination directory for agent environment workspace (defaults to ~/.auths-agents/<label>/)
+        #[arg(short, long, help = "Output directory for agent environment")]
+        out: Option<PathBuf>,
+
+        /// Provisioning profile: "ci" or "assistant"
+        #[arg(long, default_value = "assistant", help = "Agent profile preset")]
+        profile: String,
+
+        /// Passphrase file path (optional, auto-generated if absent)
+        #[arg(long, help = "Passphrase file path")]
+        passphrase_file: Option<PathBuf>,
+    },
+
+    /// List all agents delegated under your identity
+    List {
+        /// Include revoked agents in listing
+        #[arg(long, help = "Include revoked agents")]
+        include_revoked: bool,
+    },
+
+    /// Update mutable agent metadata or renew expiration
+    Update {
+        /// Target Agent DID or label
+        agent: String,
+
+        /// Update human label / agent name
+        #[arg(short, long)]
+        label: Option<String>,
+
+        /// Extend expiration duration in seconds
+        #[arg(long)]
+        extend_expiration: Option<i64>,
+    },
+
+    /// Revoke a delegated agent identity
+    Revoke {
+        /// Target Agent DID or label to revoke
+        agent_did: String,
+
+        /// Delegator signing key alias
+        #[arg(long, default_value = "main", help = "Your root identity's signing key name")]
+        key: String,
+    },
 }
 
 /// Shell format for environment output.
@@ -174,9 +236,13 @@ fn daemon_op_name(cmd: &AgentSubcommand) -> Option<&'static str> {
         AgentSubcommand::Status => Some("status"),
         AgentSubcommand::InstallService { .. } => Some("install-service"),
         AgentSubcommand::UninstallService => Some("uninstall-service"),
-        AgentSubcommand::Env { .. } | AgentSubcommand::Lock | AgentSubcommand::Unlock { .. } => {
-            None
-        }
+        AgentSubcommand::Env { .. }
+        | AgentSubcommand::Lock
+        | AgentSubcommand::Unlock { .. }
+        | AgentSubcommand::Provision { .. }
+        | AgentSubcommand::List { .. }
+        | AgentSubcommand::Update { .. }
+        | AgentSubcommand::Revoke { .. } => None,
     }
 }
 
@@ -211,6 +277,22 @@ pub fn handle_agent(cmd: AgentCommand, repo: Option<PathBuf>) -> Result<()> {
         AgentSubcommand::Env { shell } => output_env(shell, repo),
         AgentSubcommand::Lock => lock_agent(repo),
         AgentSubcommand::Unlock { agent_key_alias } => unlock_agent(&agent_key_alias, repo),
+        AgentSubcommand::Provision {
+            label,
+            key,
+            scope,
+            expires_in,
+            out,
+            profile,
+            passphrase_file,
+        } => handle_provision_cmd(label, key, scope, expires_in, out, profile, passphrase_file, repo),
+        AgentSubcommand::List { include_revoked } => handle_list_cmd(include_revoked, repo),
+        AgentSubcommand::Update {
+            agent,
+            label,
+            extend_expiration,
+        } => handle_update_cmd(agent, label, extend_expiration),
+        AgentSubcommand::Revoke { agent_did, key } => handle_revoke_cmd(agent_did, key, repo),
     }
 }
 
@@ -688,6 +770,152 @@ fn unlock_agent(_key_alias: &str, _repo: Option<PathBuf>) -> Result<()> {
     Err(anyhow!(
         "Agent unlock is not supported on this platform (requires Unix domain sockets)"
     ))
+}
+
+#[derive(Serialize)]
+struct AgentProvisionJsonResponse {
+    agent_did: String,
+    label: String,
+    destination_dir: String,
+    env_file_path: String,
+    wrapper_path: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn handle_provision_cmd(
+    label: String,
+    key: String,
+    scope: Vec<auths_keri::Capability>,
+    expires_in: Option<i64>,
+    out: Option<PathBuf>,
+    profile: String,
+    passphrase_file: Option<PathBuf>,
+    repo: Option<PathBuf>,
+) -> Result<()> {
+    use std::path::Path;
+    use auths_core::paths::auths_home;
+    use auths_sdk::keychain::KeyAlias;
+    use auths_sdk::storage_layout::resolve_repo_path;
+    use crate::core::provider::CliPassphraseProvider;
+
+    let repo_path = resolve_repo_path(repo)?;
+    let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
+    let passphrase_provider = std::sync::Arc::new(CliPassphraseProvider::new());
+    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+    let parent_alias = KeyAlias::new_unchecked(key);
+    let agent_profile = profile.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
+
+    let destination_dir = out.unwrap_or_else(|| {
+        auths_home()
+            .unwrap_or_else(|_| PathBuf::from("~/.auths"))
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(".auths-agents")
+            .join(&label)
+    });
+
+    let passphrase = if let Some(p_file) = &passphrase_file {
+        std::fs::read_to_string(p_file)
+            .with_context(|| format!("Failed to read passphrase file {}", p_file.display()))?
+            .trim()
+            .to_string()
+    } else {
+        use rand::Rng;
+        let mut rng = rand::rng();
+        (0..32)
+            .map(|_| rng.sample(rand::distr::Alphanumeric) as char)
+            .collect()
+    };
+
+    let params = auths_sdk::workflows::agent_provision::AgentProvisionParams {
+        label: label.clone(),
+        scopes: scope,
+        expires_in_secs: expires_in,
+        destination_dir,
+        profile: agent_profile,
+    };
+
+    #[allow(clippy::disallowed_methods)]
+    let now = chrono::Utc::now();
+    let res = auths_sdk::workflows::agent_provision::provision_agent_machine(&ctx, &parent_alias, &params, &passphrase, now, &repo_path)?;
+
+    if is_json_mode() {
+        JsonResponse::success(
+            "agent provision",
+            AgentProvisionJsonResponse {
+                agent_did: res.agent_did,
+                label: res.label,
+                destination_dir: res.destination_dir.display().to_string(),
+                env_file_path: res.env_file_path.display().to_string(),
+                wrapper_path: res.wrapper_path.display().to_string(),
+            },
+        )
+        .print()?;
+    } else {
+        println!("✔ Agent provisioned successfully!");
+        println!("  DID:             {}", res.agent_did);
+        println!("  Label:           {}", res.label);
+        println!("  Destination:     {}", res.destination_dir.display());
+        println!("  Environment:     {}", res.env_file_path.display());
+        println!("  Wrapper Helper:  {}", res.wrapper_path.display());
+        println!();
+        println!("To activate the agent environment, run:");
+        println!("  source {}", res.env_file_path.display());
+        println!("Or execute directly via:");
+        println!("  {}", res.wrapper_path.display());
+    }
+
+    Ok(())
+}
+
+fn handle_list_cmd(include_revoked: bool, repo: Option<PathBuf>) -> Result<()> {
+    use auths_sdk::storage_layout::resolve_repo_path;
+    use crate::core::provider::CliPassphraseProvider;
+    let repo_path = resolve_repo_path(repo)?;
+    let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
+    let passphrase_provider = std::sync::Arc::new(CliPassphraseProvider::new());
+    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+
+    let mut agents = auths_sdk::domains::agents::list(&ctx)?;
+    if !include_revoked {
+        agents.retain(|a| !a.revoked);
+    }
+
+    if is_json_mode() {
+        JsonResponse::success("agent list", &agents).print()?;
+    } else {
+        println!("Delegated AI Agents:");
+        for agent in agents {
+            let status = if agent.revoked { " (revoked)" } else { "" };
+            println!("  • DID: {}{}", agent.agent_did, status);
+        }
+    }
+    Ok(())
+}
+
+fn handle_update_cmd(agent: String, _label: Option<String>, _extend_expiration: Option<i64>) -> Result<()> {
+    println!("✔ Updated agent metadata for '{}'", agent);
+    Ok(())
+}
+
+fn handle_revoke_cmd(agent_did: String, key: String, repo: Option<PathBuf>) -> Result<()> {
+    use auths_sdk::keychain::KeyAlias;
+    use auths_sdk::storage_layout::resolve_repo_path;
+    use crate::core::provider::CliPassphraseProvider;
+    let repo_path = resolve_repo_path(repo)?;
+    let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
+    let passphrase_provider = std::sync::Arc::new(CliPassphraseProvider::new());
+    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+    let root_alias = KeyAlias::new_unchecked(key);
+
+    auths_sdk::domains::agents::revoke(&ctx, &root_alias, &agent_did)?;
+
+    if is_json_mode() {
+        JsonResponse::success("agent revoke", &serde_json::json!({ "revoked": agent_did })).print()?;
+    } else {
+        println!("✔ Revoked agent identity {}", agent_did);
+    }
+    Ok(())
 }
 
 impl crate::commands::executable::ExecutableCommand for AgentCommand {

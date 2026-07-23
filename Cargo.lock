@@ -382,6 +382,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "auths-anchor",
+ "auths-core",
  "auths-crypto",
  "auths-index",
  "auths-infra-git",
@@ -1010,6 +1011,7 @@ dependencies = [
 name = "auths-sdk"
 version = "0.1.16"
 dependencies = [
+ "anyhow",
  "async-trait",
  "auths-anchor",
  "auths-core",

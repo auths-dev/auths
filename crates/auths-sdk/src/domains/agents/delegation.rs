@@ -497,7 +497,7 @@ fn resolve_delegator_authority(
 }
 
 /// One agent delegated by the current identity, with its revocation status.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AgentInfo {
     /// The agent's `did:keri:`.
     pub agent_did: String,
