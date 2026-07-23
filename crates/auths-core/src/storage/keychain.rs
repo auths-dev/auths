@@ -418,21 +418,10 @@ pub fn extract_public_key_bytes(
     alias: &KeyAlias,
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
 ) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentError> {
-    if keychain.is_hardware_backend() {
-        // Hardware backends store opaque handles — get public key from hardware
-        let (_, _role, _handle) = keychain.load_key(alias)?;
-        #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
-        {
-            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
-            return Ok((pubkey, auths_crypto::CurveType::P256));
-        }
-        #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
-        {
-            return Err(AgentError::BackendUnavailable {
-                backend: keychain.backend_name(),
-                reason: "hardware backend not available on this platform".into(),
-            });
-        }
+    if keychain.is_hardware_backend()
+        && let Ok(pubkey) = keychain.export_public_key(alias)
+    {
+        return Ok((pubkey, auths_crypto::CurveType::P256));
     }
 
     use crate::crypto::signer::{decrypt_keypair, load_seed_and_pubkey};
@@ -464,12 +453,13 @@ pub fn sign_with_key(
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
     message: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>, auths_crypto::CurveType), AgentError> {
-    if keychain.is_hardware_backend() {
+    if keychain.is_hardware_backend()
+        && let Ok(pubkey) = keychain.export_public_key(alias)
+    {
         let (_, _role, _handle) = keychain.load_key(alias)?;
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         {
             let sig = super::secure_enclave::sign_with_handle(&_handle, message)?;
-            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
             return Ok((sig, pubkey, auths_crypto::CurveType::P256));
         }
         #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
