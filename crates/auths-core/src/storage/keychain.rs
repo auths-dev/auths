@@ -203,6 +203,60 @@ impl PartialEq<String> for KeyAlias {
     }
 }
 
+/// A strongly typed reference to a signing key, which could either be a bare alias
+/// or a fully qualified URI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SigningKeyRef {
+    /// A raw key alias with no scheme prefix (e.g. `main-device`).
+    Alias(KeyAlias),
+    /// A key identifier specified as a URI (e.g. `auths:main-device`).
+    Uri {
+        /// The scheme parsed from the URI.
+        scheme: String,
+        /// The parsed key alias.
+        alias: KeyAlias,
+    },
+}
+
+impl SigningKeyRef {
+    /// Parses a string into a `SigningKeyRef`.
+    pub fn parse(input: &str) -> Result<Self, AgentError> {
+        if let Some(rest) = input.strip_prefix("auths:") {
+            if rest.is_empty() {
+                return Err(AgentError::InvalidInput(
+                    "Invalid Auths key format: alias cannot be empty. Use 'auths:<alias>'".into(),
+                ));
+            }
+            if rest.contains(':') {
+                return Err(AgentError::InvalidInput(
+                    "Invalid Auths key format: alias cannot contain colons".into(),
+                ));
+            }
+            let alias = KeyAlias::new(rest)?;
+            Ok(Self::Uri {
+                scheme: "auths".to_string(),
+                alias,
+            })
+        } else if input.contains(':') {
+            Err(AgentError::InvalidInput(
+                format!("Unsupported key scheme or format in '{}'. Only 'auths:<alias>' or bare alias allowed.", input)
+            ))
+        } else {
+            let alias = KeyAlias::new(input)?;
+            Ok(Self::Alias(alias))
+        }
+    }
+
+    /// Extracts the underlying bare key alias, regardless of how it was specified.
+    pub fn bare_alias(&self) -> &KeyAlias {
+        match self {
+            Self::Alias(alias) => alias,
+            Self::Uri { alias, .. } => alias,
+        }
+    }
+}
+
+
 /// Migrate a legacy single-key alias `{alias}` to the multi-key form
 /// `{alias}--0`.
 ///
@@ -1119,5 +1173,39 @@ mod tests {
         let box_storage: Box<dyn KeyStorage + Send + Sync> = Box::new(MockHardwareKeyStorage);
         assert!(box_storage.is_hardware_key(&hw_alias));
         assert!(!box_storage.is_hardware_key(&sw_alias));
+    }
+
+    #[test]
+    fn test_signing_key_ref_parsing() {
+        // Valid bare alias
+        let ref1 = SigningKeyRef::parse("agent-label").unwrap();
+        assert!(matches!(ref1, SigningKeyRef::Alias(ref a) if a.as_str() == "agent-label"));
+        assert_eq!(ref1.bare_alias().as_str(), "agent-label");
+
+        // Valid auths uri
+        let ref2 = SigningKeyRef::parse("auths:agent-label").unwrap();
+        match &ref2 {
+            SigningKeyRef::Uri { scheme, alias } => {
+                assert_eq!(scheme, "auths");
+                assert_eq!(alias.as_str(), "agent-label");
+            }
+            _ => panic!("Expected Uri variant"),
+        }
+        assert_eq!(ref2.bare_alias().as_str(), "agent-label");
+
+        // Invalid schemes
+        let err = SigningKeyRef::parse("http:agent-label").unwrap_err();
+        assert!(err.to_string().contains("Unsupported key scheme"));
+
+        let err = SigningKeyRef::parse("ssh:key").unwrap_err();
+        assert!(err.to_string().contains("Unsupported key scheme"));
+
+        // Invalid multiple colons
+        let err = SigningKeyRef::parse("auths:foo:bar").unwrap_err();
+        assert!(err.to_string().contains("cannot contain colons"));
+
+        // Empty alias string
+        let err = SigningKeyRef::parse("auths:").unwrap_err();
+        assert!(err.to_string().contains("alias cannot be empty"));
     }
 }

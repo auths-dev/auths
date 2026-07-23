@@ -135,7 +135,45 @@ pub fn provision_agent_machine(
     let _ = crate::workflows::commit_hooks::refresh_commit_trailers(ctx, &registry_dir);
 
     // 5. Generate env.sh
-    let env_file_path = params.destination_dir.join("env.sh");
+    let env_file_path = generate_environment_script(
+        &params.destination_dir,
+        &registry_dir,
+        &keychain_path,
+        &passphrase_path,
+        passphrase,
+        &params.label,
+    )?;
+
+    // 6. Generate executable wrapper helper bin/auths-agent
+    let wrapper_path = generate_executable_wrapper(
+        &params.destination_dir,
+        &env_file_path,
+        &params.label,
+    )?;
+
+    let expires_dt = expires_at.and_then(|ts| DateTime::from_timestamp(ts, 0));
+
+    Ok(AgentProvisionResult {
+        agent_did,
+        parent_alias: parent_alias.to_string(),
+        label: params.label.clone(),
+        destination_dir: params.destination_dir.clone(),
+        keychain_path,
+        env_file_path,
+        wrapper_path,
+        expires_at: expires_dt,
+    })
+}
+
+fn generate_environment_script(
+    destination_dir: &Path,
+    registry_dir: &Path,
+    keychain_path: &Path,
+    passphrase_path: &Path,
+    passphrase: &str,
+    label: &str,
+) -> Result<PathBuf> {
+    let env_file_path = destination_dir.join("env.sh");
     let env_script_content = format!(
         r#"# Auths Agent Environment Variables for '{label}' — Auto-generated
 export AUTHS_AGENT_LABEL="{label}"
@@ -156,18 +194,24 @@ export GIT_CONFIG_VALUE_1="auths-sign"
 export GIT_CONFIG_KEY_2="user.signingkey"
 export GIT_CONFIG_VALUE_2="auths:{label}"
 "#,
-        home = params.destination_dir.display(),
+        home = destination_dir.display(),
         repo = registry_dir.display(),
         keychain = keychain_path.display(),
         passphrase_file = passphrase_path.display(),
         passphrase = passphrase,
-        label = params.label
+        label = label
     );
     fs::write(&env_file_path, &env_script_content)?;
     fs::set_permissions(&env_file_path, fs::Permissions::from_mode(0o600))?;
+    Ok(env_file_path)
+}
 
-    // 6. Generate executable wrapper helper bin/auths-agent
-    let bin_dir = params.destination_dir.join("bin");
+fn generate_executable_wrapper(
+    destination_dir: &Path,
+    env_file_path: &Path,
+    label: &str,
+) -> Result<PathBuf> {
+    let bin_dir = destination_dir.join("bin");
     fs::create_dir_all(&bin_dir)?;
     let wrapper_path = bin_dir.join("auths-agent");
     let wrapper_content = format!(
@@ -177,24 +221,12 @@ set -e
 source "{env_sh}"
 exec auths "$@"
 "#,
-        label = params.label,
+        label = label,
         env_sh = env_file_path.display()
     );
     fs::write(&wrapper_path, &wrapper_content)?;
     fs::set_permissions(&wrapper_path, fs::Permissions::from_mode(0o755))?;
-
-    let expires_dt = expires_at.and_then(|ts| DateTime::from_timestamp(ts, 0));
-
-    Ok(AgentProvisionResult {
-        agent_did,
-        parent_alias: parent_alias.to_string(),
-        label: params.label.clone(),
-        destination_dir: params.destination_dir.clone(),
-        keychain_path,
-        env_file_path,
-        wrapper_path,
-        expires_at: expires_dt,
-    })
+    Ok(wrapper_path)
 }
 
 /// Materializes an isolated delegate-machine registry by copying org KEL and stripping root subtrees.
@@ -218,15 +250,25 @@ pub fn materialize_agent_machine_registry(
         let idx = git_dir.join("tmp-index");
         let idx_s = idx.to_string_lossy().to_string();
 
-        let _ = Command::new("git")
+        let read_tree_status = Command::new("git")
             .args(["--git-dir", &gd, "read-tree", "refs/auths/registry"])
             .env("GIT_INDEX_FILE", &idx_s)
-            .status();
+            .status()
+            .context("failed to execute git read-tree")?;
+        
+        if !read_tree_status.success() {
+            anyhow::bail!("git read-tree failed with status: {}", read_tree_status);
+        }
 
         let listed = Command::new("git")
             .args(["--git-dir", &gd, "ls-files"])
             .env("GIT_INDEX_FILE", &idx_s)
-            .output()?;
+            .output()
+            .context("failed to execute git ls-files")?;
+            
+        if !listed.status.success() {
+            anyhow::bail!("git ls-files failed with status: {}", listed.status);
+        }
 
         let subtree = format!(
             "identities/{}/{}/{}/",
@@ -237,10 +279,15 @@ pub fn materialize_agent_machine_registry(
 
         for line in String::from_utf8_lossy(&listed.stdout).lines() {
             if line.contains(&subtree) {
-                let _ = Command::new("git")
+                let rm_status = Command::new("git")
                     .args(["--git-dir", &gd, "rm", "--cached", "-q", "--", line])
                     .env("GIT_INDEX_FILE", &idx_s)
-                    .status();
+                    .status()
+                    .context("failed to execute git rm")?;
+                    
+                if !rm_status.success() {
+                    anyhow::bail!("git rm failed with status: {}", rm_status);
+                }
             }
         }
     }
@@ -306,4 +353,63 @@ fn export_agent_keys_to_file_backend(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_generate_environment_script() {
+        let temp_dir = tempdir().unwrap();
+        let dest_dir = temp_dir.path();
+        let registry_dir = dest_dir.join("registry");
+        let keychain_path = dest_dir.join("keys.enc");
+        let passphrase_path = dest_dir.join("passphrase.txt");
+        let passphrase = "test_passphrase123!";
+        let label = "test-agent";
+
+        let env_file = generate_environment_script(
+            dest_dir,
+            &registry_dir,
+            &keychain_path,
+            &passphrase_path,
+            passphrase,
+            label,
+        ).unwrap();
+
+        assert!(env_file.exists());
+        let content = fs::read_to_string(&env_file).unwrap();
+        assert!(content.contains(&format!("export AUTHS_AGENT_LABEL=\"{}\"", label)));
+        assert!(content.contains(&format!("export AUTHS_PASSPHRASE='{}'", passphrase)));
+        assert!(content.contains("export GIT_CONFIG_VALUE_1=\"auths-sign\""));
+    }
+
+    #[test]
+    fn test_generate_executable_wrapper() {
+        let temp_dir = tempdir().unwrap();
+        let dest_dir = temp_dir.path();
+        let env_file = dest_dir.join("env.sh");
+        let label = "test-agent";
+
+        let wrapper_file = generate_executable_wrapper(
+            dest_dir,
+            &env_file,
+            label,
+        ).unwrap();
+
+        assert!(wrapper_file.exists());
+        let content = fs::read_to_string(&wrapper_file).unwrap();
+        assert!(content.contains(&format!("source \"{}\"", env_file.display())));
+        assert!(content.contains("exec auths \"$@\""));
+        
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::metadata(&wrapper_file).unwrap().permissions();
+            assert_eq!(perms.mode() & 0o777, 0o755);
+        }
+    }
 }

@@ -55,10 +55,9 @@ impl LocalSigner {
 pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupError> {
     // Explicit signing key override (e.g., delegated agent `AUTHS_SIGNING_KEY="auths:agent-label"`).
     if let Ok(key_alias_str) = std::env::var("AUTHS_SIGNING_KEY") {
-        let clean_alias = key_alias_str
-            .strip_prefix("auths:")
-            .unwrap_or(&key_alias_str);
-        let alias = auths_core::storage::keychain::KeyAlias::new_unchecked(clean_alias);
+        let key_ref = auths_core::storage::keychain::SigningKeyRef::parse(&key_alias_str)
+            .map_err(|e| SetupError::InvalidSetupConfig(e.to_string()))?;
+        let alias = key_ref.bare_alias().clone();
         if let Ok(key_info) = ctx.key_storage.load_key(&alias) {
             let agent_did = key_info.0.to_string();
             let agent_prefix = auths_id::keri::parse_did_keri(&agent_did)

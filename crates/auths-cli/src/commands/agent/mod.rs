@@ -760,8 +760,11 @@ fn unlock_agent(key_alias: &str, repo: Option<PathBuf>) -> Result<()> {
         ));
     }
 
+    let key_ref = auths_core::storage::keychain::SigningKeyRef::parse(key_alias)?;
+    let parsed_alias = key_ref.bare_alias().clone();
+
     let (_identity_did, _role, encrypted_data) = keychain
-        .load_key(&auths_sdk::keychain::KeyAlias::new_unchecked(key_alias))
+        .load_key(&parsed_alias)
         .map_err(|e| anyhow!("Failed to load key '{}': {}", key_alias, e))?;
 
     let passphrase = rpassword::prompt_password(format!("Passphrase for '{}': ", key_alias))
@@ -897,7 +900,8 @@ fn handle_provision_cmd(
             (label_val, key_val, profile_val, out_val)
         };
 
-    let parent_alias = KeyAlias::new_unchecked(&key_str);
+    let key_ref = auths_core::storage::keychain::SigningKeyRef::parse(&key_str)?;
+    let parent_alias = key_ref.bare_alias().clone();
     let agent_profile =
         profile_str.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
 
@@ -1051,7 +1055,8 @@ fn handle_revoke_cmd(agent_did: String, key: String, repo: Option<PathBuf>) -> R
         &env_config,
         Some(passphrase_provider),
     )?;
-    let root_alias = KeyAlias::new_unchecked(key);
+    let root_ref = auths_core::storage::keychain::SigningKeyRef::parse(&key)?;
+    let root_alias = root_ref.bare_alias().clone();
 
     auths_sdk::domains::agents::revoke(&ctx, &root_alias, &agent_did)?;
 

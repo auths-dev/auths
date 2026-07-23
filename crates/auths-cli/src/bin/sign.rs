@@ -111,12 +111,10 @@ fn validate_verify_option(opt: &str) -> Result<()> {
 }
 
 fn parse_key_identifier(key_file: &str) -> Result<String> {
-    if let Some(alias) = key_file.strip_prefix("auths:") {
-        if alias.is_empty() {
-            bail!("Invalid Auths key format: alias cannot be empty. Use 'auths:<alias>'");
-        }
-        Ok(alias.to_string())
-    } else {
+    let key_ref = auths_core::storage::keychain::SigningKeyRef::parse(key_file)
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    if !matches!(key_ref, auths_core::storage::keychain::SigningKeyRef::Uri { ref scheme, .. } if scheme == "auths") {
         bail!(
             "Unsupported key format: '{}'. \
              Auths keys should be specified as 'auths:<alias>' \
@@ -124,6 +122,8 @@ fn parse_key_identifier(key_file: &str) -> Result<String> {
             key_file
         );
     }
+
+    Ok(key_ref.bare_alias().as_str().to_string())
 }
 
 fn build_signing_context(alias: &str) -> Result<CommitSigningContext> {
