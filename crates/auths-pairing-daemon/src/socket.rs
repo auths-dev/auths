@@ -43,10 +43,11 @@ pub fn handle_signature_request(
     request: SignRequest,
     keychain: &dyn KeychainBackend,
 ) -> Result<SignResponse, DaemonError> {
-    let payload_bytes = hex::decode(&request.payload_hex)
-        .map_err(|e| DaemonError::EntropyCheckFailed(format!("Invalid payload hex: {}", e)))?;
+    let payload_vec = hex::decode(&request.payload_hex)
+        .map_err(|_| DaemonError::InvalidPayloadEncoding)?;
+    let payload_bytes = zeroize::Zeroizing::new(payload_vec);
 
-    let signature = keychain.sign_with_biometric_prompt(&request.key_alias, &payload_bytes)?;
+    let signature = keychain.sign_with_biometric_prompt(&request.key_alias, payload_bytes.as_ref())?;
     Ok(SignResponse {
         signature_hex: hex::encode(signature),
     })
