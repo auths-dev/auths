@@ -98,11 +98,11 @@ pub enum AgentSubcommand {
     Provision {
         /// Human-readable label / key alias for the new agent
         #[arg(short, long, help = "Label / key alias for the new agent")]
-        label: String,
+        label: Option<String>,
 
         /// Delegator signing key alias (defaults to "main")
-        #[arg(long, default_value = "main", help = "Your root identity's signing key name")]
-        key: String,
+        #[arg(long, help = "Your root identity's signing key name")]
+        key: Option<String>,
 
         /// Capability granted to the agent (repeatable)
         #[arg(long = "scope", help = "Capability granted to the agent")]
@@ -117,8 +117,8 @@ pub enum AgentSubcommand {
         out: Option<PathBuf>,
 
         /// Provisioning profile: "ci" or "assistant"
-        #[arg(long, default_value = "assistant", help = "Agent profile preset")]
-        profile: String,
+        #[arg(long, help = "Agent profile preset")]
+        profile: Option<String>,
 
         /// Passphrase file path (optional, auto-generated if absent)
         #[arg(long, help = "Passphrase file path")]
@@ -783,12 +783,12 @@ struct AgentProvisionJsonResponse {
 
 #[allow(clippy::too_many_arguments)]
 fn handle_provision_cmd(
-    label: String,
-    key: String,
+    label: Option<String>,
+    key: Option<String>,
     scope: Vec<auths_keri::Capability>,
     expires_in: Option<i64>,
     out: Option<PathBuf>,
-    profile: String,
+    profile: Option<String>,
     passphrase_file: Option<PathBuf>,
     repo: Option<PathBuf>,
 ) -> Result<()> {
@@ -802,17 +802,92 @@ fn handle_provision_cmd(
     let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
     let passphrase_provider = std::sync::Arc::new(CliPassphraseProvider::new());
     let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
-    let parent_alias = KeyAlias::new_unchecked(key);
-    let agent_profile = profile.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
 
-    let destination_dir = out.unwrap_or_else(|| {
-        auths_home()
-            .unwrap_or_else(|_| PathBuf::from("~/.auths"))
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .join(".auths-agents")
-            .join(&label)
-    });
+    let is_interactive = console::user_attended() && !is_json_mode();
+
+    let (label_str, key_str, profile_str, destination_dir) = if is_interactive && (label.is_none() || key.is_none() || profile.is_none()) {
+        use dialoguer::{Input, Select};
+
+        let label_input = if let Some(l) = label {
+            l
+        } else {
+            Input::new()
+                .with_prompt("Type a name for your agent")
+                .interact_text()?
+        };
+
+        let key_input = if let Some(k) = key {
+            k
+        } else {
+            let aliases = ctx.key_storage.list_aliases().unwrap_or_default();
+            let key_items: Vec<String> = if aliases.is_empty() {
+                vec!["main".to_string()]
+            } else {
+                aliases
+                    .into_iter()
+                    .map(|k| k.as_str().to_string())
+                    .filter(|k| !k.ends_with("--next-0"))
+                    .collect()
+            };
+
+            if key_items.len() > 1 {
+                let selection = Select::new()
+                    .with_prompt("Select parent key to append delegation to")
+                    .items(&key_items)
+                    .default(0)
+                    .interact()?;
+                key_items[selection].clone()
+            } else {
+                key_items.first().cloned().unwrap_or_else(|| "main".to_string())
+            }
+        };
+
+        let profile_input = if let Some(p) = profile {
+            p
+        } else {
+            let profiles = vec![
+                "assistant (Interactive AI assistant profile)",
+                "ci (Headless CI runner profile)",
+            ];
+            let selection = Select::new()
+                .with_prompt("Select agent profile preset")
+                .items(&profiles)
+                .default(0)
+                .interact()?;
+            if selection == 0 {
+                "assistant".to_string()
+            } else {
+                "ci".to_string()
+            }
+        };
+
+        let out_input = out.unwrap_or_else(|| {
+            auths_home()
+                .unwrap_or_else(|_| PathBuf::from("~/.auths"))
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(".auths-agents")
+                .join(&label_input)
+        });
+
+        (label_input, key_input, profile_input, out_input)
+    } else {
+        let label_val = label.unwrap_or_else(|| "agent-builder".to_string());
+        let key_val = key.unwrap_or_else(|| "main".to_string());
+        let profile_val = profile.unwrap_or_else(|| "assistant".to_string());
+        let out_val = out.unwrap_or_else(|| {
+            auths_home()
+                .unwrap_or_else(|_| PathBuf::from("~/.auths"))
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(".auths-agents")
+                .join(&label_val)
+        });
+        (label_val, key_val, profile_val, out_val)
+    };
+
+    let parent_alias = KeyAlias::new_unchecked(&key_str);
+    let agent_profile = profile_str.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
 
     let passphrase = if let Some(p_file) = &passphrase_file {
         std::fs::read_to_string(p_file)
@@ -828,7 +903,7 @@ fn handle_provision_cmd(
     };
 
     let params = auths_sdk::workflows::agent_provision::AgentProvisionParams {
-        label: label.clone(),
+        label: label_str.clone(),
         scopes: scope,
         expires_in_secs: expires_in,
         destination_dir,
@@ -859,10 +934,8 @@ fn handle_provision_cmd(
         println!("  Environment:     {}", res.env_file_path.display());
         println!("  Wrapper Helper:  {}", res.wrapper_path.display());
         println!();
-        println!("To activate the agent environment, run:");
-        println!("  source {}", res.env_file_path.display());
-        println!("Or execute directly via:");
-        println!("  {}", res.wrapper_path.display());
+        println!("Your agent is provisioned!");
+        println!("You can find its details at {}", res.destination_dir.display());
     }
 
     Ok(())
