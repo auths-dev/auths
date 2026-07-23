@@ -15,8 +15,14 @@ impl CliPassphraseProvider {
 }
 
 impl PassphraseProvider for CliPassphraseProvider {
-    /// Securely obtains a passphrase by prompting the user on the terminal.
+    /// Securely obtains a passphrase by checking AUTHS_PASSPHRASE env var or prompting the user on the terminal.
     fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
+        if let Ok(env_pass) = std::env::var("AUTHS_PASSPHRASE")
+            && !env_pass.is_empty()
+        {
+            return Ok(Zeroizing::new(env_pass));
+        }
+
         // Print the contextual prompt provided by the caller to stderr
         eprintln!("{}", prompt_message);
 
