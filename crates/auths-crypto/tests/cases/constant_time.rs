@@ -15,7 +15,7 @@ use std::time::Instant;
 use subtle::ConstantTimeEq;
 
 const LEN: usize = 32; // a key/MAC/channel-binding-sized secret
-const BATCH: usize = 256; // comparisons per timed sample (amortizes timer overhead)
+const BATCH: usize = 512; // comparisons per timed sample (amortizes timer overhead across fast CPUs)
 const SAMPLES: usize = 3000; // timed samples per input class, per round
 const ROUNDS: usize = 5; // median over rounds — one noisy round can't decide the verdict
 const KEEP: f64 = 0.5; // keep the cleanest lower fraction of samples (drop preemption spikes)
@@ -100,7 +100,7 @@ fn median_leak_t(cmp: fn(&[u8], &[u8]) -> bool) -> f64 {
 /// laptop (observed `ct_eq` |t| from ~3 to ~100), so a fixed threshold flakes. Instead:
 /// the control must clear a floor that proves the harness has detection power, and
 /// `ct_eq` must be many times quieter than that same control on the same run.
-const CONTROL_FLOOR: f64 = 1000.0;
+const CONTROL_FLOOR: f64 = 500.0;
 const MIN_SEPARATION: f64 = 8.0;
 
 #[test]

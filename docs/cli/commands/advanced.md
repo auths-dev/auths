@@ -34,14 +34,20 @@ Sign an artifact file with your Auths identity
 |------|---------|-------------|
 | `<FILE>` | — | Path to the artifact file to sign. |
 | `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
+| `--force` | — | Overwrite the --sig-output file if it already exists |
 | `--key <KEY>` | — | Local alias of the identity key. Omit for device-only CI signing. |
 | `--device-key <DEVICE_KEY>` | — | Local alias of the device key. Auto-detected when only one key exists. |
 | `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
 | `--note <NOTE>` | — | Optional note to embed in the attestation |
-| `--commit <COMMIT>` | — | Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted) |
+| `--commit <COMMIT>` | — | Git commit SHA to embed in the attestation (provenance binding; embedded only when given, never inferred from git state) |
 | `--no-commit` | — | Do not embed any commit SHA in the attestation |
 | `--ci` | — | Use ephemeral CI signing (no keychain needed). Requires --commit |
+| `--curve <CURVE>` | — | Curve for the ephemeral CI key (`p256` or `ed25519`). Only meaningful with --ci; defaults to p256 |
 | `--ci-platform <CI_PLATFORM>` | — | CI platform override when --ci is used outside a detected CI environment |
+| `--oidc-token <TOKEN-FILE>` | — | Path to the runner's OIDC token (the keyless exchange: the token is validated against the issuer's JWKS and the verified claims are embedded in the signed attestation as an OIDC binding) |
+| `--oidc-audience <AUD>` | — | Expected OIDC token audience (exact match). Required with --oidc-token |
+| `--oidc-issuer <URL>` | `https://token.actions.githubusercontent.com` | Expected OIDC token issuer (exact match) |
+| `--oidc-jwks <JWKS-FILE>` | — | Pinned JWKS file for offline/air-gapped token validation (default: fetch the issuer's published JWKS over HTTPS) |
 | `--log <LOG_ID>` | — | Transparency log to submit to (overrides default from trust config) |
 | `--allow-unlogged` | — | Skip transparency log submission (local testing only). Produces an unlogged attestation that verifiers reject by default |
 | `-j, --json` | — | Emit machine-readable JSON |
@@ -67,7 +73,7 @@ Sign and publish an artifact attestation to a registry
 | `--device-key <DEVICE_KEY>` | — | Local alias of the device key. Auto-detected when only one key exists |
 | `--expires-in <N>` | — | Duration in seconds until expiration |
 | `--note <NOTE>` | — | Optional note to embed in the attestation |
-| `--commit <COMMIT>` | — | Git commit SHA to embed in the attestation (auto-detected from HEAD if omitted) |
+| `--commit <COMMIT>` | — | Git commit SHA to embed in the attestation (provenance binding; embedded only when given, never inferred from git state) |
 | `--no-commit` | — | Do not embed any commit SHA in the attestation |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -92,11 +98,18 @@ Verify an artifact's signature against an Auths identity
 | `--witness-keys <WITNESS_KEYS>...` | — | Witness public keys as DID:hex pairs (e.g., "did:key:z6Mk...:abcd1234...") |
 | `--witnesses-required <WITNESS_THRESHOLD>` | `1` | Number of witnesses required (default: 1) |
 | `--verify-commit` | — | Also verify the source commit's signing attestation |
+| `--signature-only` | — | For an ephemeral (`did:key:`) attestation, confirm the signature over the artifact digest WITHOUT chasing the commit-anchor leg. This is the runner's self-check: it has no maintainer repo/roots, but it can prove it signed what it emitted. A pass means "digest matches, ephemeral key signed it", not "the signer trust-chains to a maintainer" |
 | `--offline` | — | Verify an air-gapped org bundle entirely offline (no network access) |
 | `--roots <PATH>` | — | Override the pinned trust roots path (default: `.auths/roots`) |
 | `--member <MEMBER>` | — | (offline) Member `did:keri` to classify authority for [aliases: --member-did] |
 | `--signed-at <SIGNED_AT>` | — | (offline) The artifact's in-band signing KEL position |
 | `--json` | — | (offline) Emit the typed verdict as JSON |
+| `--oidc-policy <POLICY-FILE>` | — | OIDC-subject policy file to JOIN against the attestation's signed OIDC binding (issuer + repository [+ workflow_ref] the org trusts). Fail-closed: a missing binding or any mismatch fails verification |
+| `--oidc-policy-did <ORG-DID>` | — | Resolve the OIDC-subject policy from the org's KEL instead of a pinned file: reads the latest policy digest the org anchored (`auths org anchor-oidc-policy`) from the local registry and refuses a digest mismatch — the witnessed log is the source of truth |
+| `--log-evidence <EVIDENCE-FILE>` | — | Offline transparency-log inclusion evidence for this artifact (`auths log prove --out`). Verified fully offline; the verdict's `anchored` field reports the outcome. Requires --log-key — an inclusion proof without a pinned operator proves nothing |
+| `--log-key <HEX>` | — | The log operator's Ed25519 public key (64 hex chars), pinned out of band — never trusted from the evidence file itself |
+| `--expect-signer <DID>` | — | Require the verified signer to be exactly this identity (e.g. a release signer). Fails closed on a signer mismatch — an allowlist applied after verification, it can only narrow a valid verdict, never widen it |
+| `--require-rooted-signer` | — | Require the verified signer to be a rooted did:keri identity (a rotatable, revocable key-state log), rejecting a bare did:key self-attestation. Fails closed; applied after verification, it can only narrow a valid verdict, never widen it |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths artifact verify -->
@@ -224,6 +237,7 @@ Rotate identity keys. Stores the new key under a new alias
 | `--remove-device <INDEX>` | — | Remove a device slot by index on this rotation (repeatable). Currently rejected — requires CESR indexed-signature support |
 | `--signing-threshold <SIGNING_THRESHOLD>` | — | New signing threshold (scalar like `"2"` or fractions like `"1/2,1/2,1/2"`). Omit to keep the prior `kt` |
 | `--rotation-threshold <ROTATION_THRESHOLD>` | — | New rotation (next) threshold, same format as `--signing-threshold`. Omit to keep the prior `nt` |
+| `--from-device` | — | Receive the rotation from a paired device over LAN instead of authoring it locally. The device builds and co-signs the shared-KEL rotation; this host only validates it against the registry's prior key state and appends it. No local key material is touched |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -247,6 +261,25 @@ Export an identity bundle for stateless CI/CD verification
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths id export-bundle -->
+
+### auths id allowed-signers
+
+```bash
+auths id allowed-signers
+```
+
+<!-- BEGIN GENERATED: auths id allowed-signers -->
+Export a KEL-derived `allowed_signers` file so plain `git` / `ssh` can verify this identity's signatures on machines without auths installed
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--alias <ALIAS>` | — | Key alias to export the signing key for |
+| `--principal <PRINCIPAL>` | — | Principal for the allowed_signers line (default: identity DID) |
+| `-o, --output <OUTPUT_FILE>` | — | Output file (default: stdout) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths id allowed-signers -->
 
 ### auths id register
 
@@ -553,7 +586,7 @@ Export a stored key in various formats (requires passphrase for some formats)
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--key-alias <KEY_ALIAS>` | — | Local alias of the key to export. [aliases: --alias] |
-| `--passphrase <PASSPHRASE>` | — | Passphrase to decrypt the key (needed for 'pem'/'pub' formats). |
+| `--passphrase <PASSPHRASE>` | — | Passphrase to decrypt the key (omit to be prompted securely). |
 | `--format <FORMAT>` | — | Export format: pem (OpenSSH private), pub (OpenSSH public), enc (raw encrypted bytes). |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
@@ -615,6 +648,256 @@ Copy a key from the current keychain backend to a different backend
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths key copy-backend -->
+
+### auths kel validate
+
+```bash
+auths kel validate
+```
+
+<!-- BEGIN GENERATED: auths kel validate -->
+Structurally validate a KEL: SAID encodings and chain linkage
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--kel <KEL.json>` | — | Validate this KEL JSON file instead of a stored identity's KEL |
+| `--did <did:keri:...>` | — | Validate this identity's local KEL (defaults to your own identity) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths kel validate -->
+
+### auths key-state
+
+```bash
+auths key-state
+```
+
+<!-- BEGIN GENERATED: auths key-state -->
+Emit or ingest a KERI key-state notice (ksn) — interoperable with keripy/keriox
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from-kel <KEL.json>` | — | Replay this KEL file and emit its current key-state as a KERI `ksn` record (the shape a keripy/keriox peer can read) |
+| `--ingest <KSN.json>` | — | Ingest a KERI `ksn` record from this file (the shape a keripy/keriox peer publishes) and print the resolved key-state |
+| `--reject-stale-below <HEX_SEQ>` | — | Reject an ingested notice whose sequence is below this (lowercase-hex) value — a verifier already holding a newer state refuses a stale or replayed view. Fails closed with a distinct reason; only valid with `--ingest` |
+| `--dt <DT>` | `1970-01-01T00:00:00+00:00` | Timestamp (RFC 3339) to stamp an emitted notice with. Defaults to the epoch so emission stays deterministic; pass the real `now` to publish |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths key-state -->
+
+### auths did-webs
+
+```bash
+auths did-webs
+```
+
+<!-- BEGIN GENERATED: auths did-webs -->
+Emit a did:webs DID document for an AID — resolvable under a standard did:webs resolver
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from-kel <KEL.json>` | — | Replay this KEL file and project its current key-state into a `did:webs` DID document (the shape a did:webs/DID-core resolver reads) |
+| `--domain <DOMAIN>` | — | The web domain the `did:webs` is anchored at — the host (optionally `host%3Aport` and path segments) before the AID in `did:webs:<domain>:<aid>` |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths did-webs -->
+
+### auths keri-emit dip
+
+```bash
+auths keri-emit dip
+```
+
+<!-- BEGIN GENERATED: auths keri-emit dip -->
+Delegated inception (`dip`): the delegate self-signs; `di` names the delegator
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--key <CESR>` | — | The delegate's current signing key, CESR-encoded (qb64) — the same form keripy's `verfer.qb64` |
+| `--delegator <PREFIX>` | — | The delegator's AID prefix (becomes the dip's `di`) |
+| `--next <SAID>` | — | Optional next-key commitment (pre-rotation digest). Absent → `nt=0`, `n=[]` |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths keri-emit dip -->
+
+### auths keri-emit ixn
+
+```bash
+auths keri-emit ixn
+```
+
+<!-- BEGIN GENERATED: auths keri-emit ixn -->
+Interaction (`ixn`): anchors one seal in the KEL (e.g. a delegator-side revocation)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--pre <PREFIX>` | — | The AID prefix authoring the interaction (the delegator, for a revocation) |
+| `--sn <SN>` | — | Sequence number of this interaction |
+| `--prev <SAID>` | — | Prior event SAID (`p`) |
+| `--seal-digest <SAID>` | — | A digest seal `{d}` to anchor (auths's delegator-side revocation marker: the device prefix) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths keri-emit ixn -->
+
+### auths tls-cert issue
+
+```bash
+auths tls-cert issue
+```
+
+<!-- BEGIN GENERATED: auths tls-cert issue -->
+Issue a KEL-rooted leaf certificate for an AID (us → peer)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from-kel <KEL.json>` | — | Replay this KEL file and project its current key-state into the leaf's `did:keri` SAN + binding extension. The KEL is the root of trust |
+| `--san <HOST>` | — | Extra Subject-Alternative-Name host the leaf must serve (DNS name or IP literal). Repeatable. Typically `localhost`, `127.0.0.1`, the LAN host |
+| `--tls-key <KEY.pem>` | — | Use this PKCS#8-PEM TLS keypair as the leaf's subject key instead of a fresh ephemeral one (e.g. to reuse a key the acceptor already holds) |
+| `--sign-key <AID-KEY.pem>` | — | The AID's current signing key (PKCS#8 PEM). When given, the leaf carries an AID authorization over its TLS key (a KERI signature over the leaf SPKI), so `verify` can reject a forged binding minted over an attacker's TLS key. Without it the leaf only chains to the key-state (the discovery surface) and is rejected by the adversarial verifier |
+| `--sign-key-index <N>` | `0` | Which current key (index into the KEL's current key-state) `--sign-key` corresponds to. Defaults to 0 (single-sig AIDs) |
+| `--out <PREFIX>` | — | Write `<PREFIX>.cert.pem` + `<PREFIX>.key.pem` instead of printing to stdout. Without it, the cert PEM is printed (the key never is, to avoid leaking it into logs) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths tls-cert issue -->
+
+### auths tls-cert identity
+
+```bash
+auths tls-cert identity
+```
+
+<!-- BEGIN GENERATED: auths tls-cert identity -->
+Read the did:keri AID out of a leaf's subjectAltName (X.509-SVID identity)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--cert <CERT.pem>` | — | The leaf certificate, PEM-encoded. Its `did:keri` subjectAltName names the auths identity — the AID a verifier looks up before replaying its KEL |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths tls-cert identity -->
+
+### auths tls-cert verify
+
+```bash
+auths tls-cert verify
+```
+
+<!-- BEGIN GENERATED: auths tls-cert verify -->
+Verify a peer's leaf binds to the KEL we hold (peer → us)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--cert <CERT.pem>` | — | The peer's leaf certificate, PEM-encoded |
+| `--from-kel <KEL.json>` | — | Replay this KEL (the one we hold for the cert's AID) and require the cert to bind to its replayed key-state |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths tls-cert verify -->
+
+### auths tls-cert quic
+
+```bash
+auths tls-cert quic
+```
+
+<!-- BEGIN GENERATED: auths tls-cert quic -->
+Carry the KEL-rooted leaf + channel binding over a QUIC/HTTP3 transport
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from-kel <KEL.json>` | — | Replay this KEL and serve its KEL-rooted leaf over the QUIC handshake. The KEL is the root of trust the client re-derives by replay — over QUIC exactly as over TCP |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths tls-cert quic -->
+
+### auths oobi resolve
+
+```bash
+auths oobi resolve
+```
+
+<!-- BEGIN GENERATED: auths oobi resolve -->
+Resolve a peer's OOBI URL → fetch + replay its KEL → print the key-state
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--url <OOBI_URL>` | — | The peer's OOBI URL: `<scheme>://<authority>/oobi/<cid>/<role>[/<eid>]` |
+| `--from-file <STREAM.json>` | — | Resolve an already-fetched stream from this file instead of an HTTP fetch — the offline/hermetic path (the bytes a live endpoint would return). The KEL is still replayed and verified |
+| `--timeout <TIMEOUT>` | `30` | HTTP fetch timeout in seconds (live resolve only) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths oobi resolve -->
+
+### auths oobi endpoint
+
+```bash
+auths oobi endpoint
+```
+
+<!-- BEGIN GENERATED: auths oobi endpoint -->
+Serve an AID: emit its OOBI URL + the `rpy` reply stream a peer fetches
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--from-kel <KEL.json>` | — | Replay this KEL and serve its controller as a discoverable AID |
+| `--scheme <SCHEME>` | `http` | URL scheme to publish the endpoint under (`http`/`https`/`tcp`) |
+| `--authority <HOST:PORT>` | — | Network authority (`host[:port]`) hosting the endpoint — the part of the OOBI URL before `/oobi` |
+| `--url <URL>` | — | Absolute endpoint URL embedded in the `/loc/scheme` reply. Defaults to `<scheme>://<authority>/` when omitted |
+| `--dt <DT>` | `1970-01-01T00:00:00.000000+00:00` | Timestamp (RFC 3339) to stamp the `rpy` replies with. Defaults to the epoch so output stays deterministic; pass the real `now` to publish |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths oobi endpoint -->
+
+### auths ipex grant
+
+```bash
+auths ipex grant
+```
+
+<!-- BEGIN GENERATED: auths ipex grant -->
+Grant (disclose) a credential: embed an ACDC in a `/ipex/grant` `exn`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--acdc <ACDC.json>` | — | The saidified ACDC credential to disclose (its JSON body, `{v,d,i,ri,s,a}`) |
+| `--sender <AID>` | — | The discloser (sender) AID granting the credential |
+| `--recipient <AID>` | — | The recipient (holder) AID the credential is granted to |
+| `--message <MESSAGE>` | `""` | Optional human-readable disclosure message (`a.m`) |
+| `--dt <DT>` | `1970-01-01T00:00:00.000000+00:00` | Timestamp (RFC 3339) to stamp the `exn` with. Defaults to the epoch so output stays deterministic; pass the real `now` to send |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths ipex grant -->
+
+### auths ipex admit
+
+```bash
+auths ipex admit
+```
+
+<!-- BEGIN GENERATED: auths ipex admit -->
+Admit (accept) a received grant: emit an `/ipex/admit` `exn` for it
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--grant <GRANT.json>` | — | The peer's grant `exn` to admit (its JSON body) |
+| `--sender <AID>` | — | The holder (sender) AID admitting the disclosure |
+| `--message <MESSAGE>` | `""` | Optional human-readable admission message (`a.m`) |
+| `--dt <DT>` | `1970-01-01T00:00:00.000000+00:00` | Timestamp (RFC 3339) to stamp the `exn` with. Defaults to the epoch so output stays deterministic; pass the real `now` to send |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths ipex admit -->
 
 ### auths approval list
 
@@ -1056,6 +1339,25 @@ Manage the org-wide authorization policy (anchored on the org KEL)
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths org policy -->
 
+### auths org anchor-oidc-policy
+
+```bash
+auths org anchor-oidc-policy
+```
+
+<!-- BEGIN GENERATED: auths org anchor-oidc-policy -->
+Anchor the org's OIDC-subject policy on its KEL (who may sign keylessly). Verifiers resolve it with `auths artifact verify --oidc-policy-did <org-did>` — the witnessed log is the policy's source of truth, not a pinned file
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--org <ORG>` | — | Organization identity ID |
+| `--file <FILE>` | — | Path to the OIDC-subject policy JSON (issuer + repository, optional workflow_ref) |
+| `--key <KEY>` | — | Org signing key alias (defaults to the org slug alias) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths org anchor-oidc-policy -->
+
 ### auths org metrics
 
 ```bash
@@ -1092,6 +1394,27 @@ Trace an agent's delegation chain to the authorizing root + live-at-signing
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths org trace -->
 
+### auths compliance attest
+
+```bash
+auths compliance attest
+```
+
+<!-- BEGIN GENERATED: auths compliance attest -->
+Anchor a release attestation (artifact digest + signer) in the org KEL — the signing position becomes part of the tamper-evident log
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--org <ORG>` | — | Organization identity ID (`did:keri:…`) or bare prefix |
+| `--artifact <ARTIFACT>` | — | Artifact file to hash (sha256) and attest |
+| `--digest <DIGEST>` | — | Pre-computed artifact digest (`sha256:<64 hex>`) |
+| `--signer <SIGNER>` | — | The signing member's identity (`did:keri:…`) or bare prefix |
+| `--key <KEY>` | — | Org signing key alias (defaults to the org slug alias) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths compliance attest -->
+
 ### auths compliance report
 
 ```bash
@@ -1105,10 +1428,11 @@ Produce a compliance evidence pack for a reporting period
 |------|---------|-------------|
 | `--org <ORG>` | — | Organization identity ID (`did:keri:…`) or bare prefix |
 | `--period <PERIOD>` | — | Reporting period label (free-form, e.g. `2026-Q3`) |
-| `--framework <FRAMEWORK>` | `slsa` | Target framework (tags the pack; with `--predicate`, selects the rendered predicate: SLSA provenance+VSA / SPDX SBOM / CRA mapping) |
+| `--framework <FRAMEWORK>` | `slsa` | Target framework (tags the pack; with `--predicate`, selects the rendered predicate: SLSA provenance+VSA / SPDX SBOM / CRA mapping / SOC 2 TSC mapping / ISO 27001 Annex-A mapping) |
 | `--predicate` | — | Render the framework predicate (in-toto Statement) instead of the raw pack |
 | `--verifier-id <VERIFIER_ID>` | `https://auths.dev/compliance` | Verifier id recorded in the SLSA VSA (with `--predicate --framework slsa`) |
-| `--releases <RELEASES>` | — | JSON file: array of `{ artifact_digest, signer, signed_at?, transparency? }` |
+| `--releases <RELEASES>` | — | JSON file: array of `{ artifact_digest, signer, signed_at?, transparency? }` — caller-asserted positions (alternative to `--discover`) |
+| `--discover` | — | Derive the rows from the release attestations anchored in the org KEL (`compliance attest`); each row's `signed_at` IS its anchoring position |
 | `--offline` | — | Embed the org KEL bundle so each row verifies offline (no network) |
 | `--sign` | — | Org-sign the pack as a DSSE-wrapped in-toto statement |
 | `--key <KEY>` | — | Org signing key alias (defaults to the org slug alias); used with `--sign` |
@@ -1118,6 +1442,25 @@ Produce a compliance evidence pack for a reporting period
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths compliance report -->
+
+### auths compliance verify
+
+```bash
+auths compliance verify
+```
+
+<!-- BEGIN GENERATED: auths compliance verify -->
+Verify a DSSE-signed evidence pack offline — no account, no network, no keychain
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--pack <PACK>` | — | The DSSE-signed pack file (from `compliance report --offline --sign`) |
+| `--roots <ROOTS>` | — | Pinned trust-roots file (one `did:keri:…` per line) — the only trust input |
+| `--log-key <LOG_KEY>` | — | Pinned log-operator key file (one hex Ed25519 key, `#` comments allowed). When given, every row's transparency checkpoint must be SIGNED by this operator — "in the log" becomes operator-attested non-repudiation, not bare Merkle membership |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths compliance verify -->
 
 ### auths credential issue
 
@@ -1190,6 +1533,7 @@ Verify a credential, resolving the issuer KEL/TEL + witness receipts
 | `<CREDENTIAL_SAID>` | — | The credential SAID to verify. |
 | `--issuer <ISSUER>` | — | The issuer's signing key name. |
 | `--require-witnesses` | — | Fail closed unless every lifecycle anchor reaches witness quorum. |
+| `--usage-counter <FILE>` | — | Enforce a quantitative usage cap against an observed call count (JSON: {"said":…,"calls_used":N}). |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1210,6 +1554,7 @@ Present a credential: prove control of the subject AID and emit an `Auths-Presen
 | `--said <SAID>` | — | The credential SAID to present. |
 | `--audience <AUDIENCE>` | — | The relying-party audience to bind to. |
 | `--nonce <NONCE>` | — | The base64url challenge nonce from /v1/auth/challenge. |
+| `--with-evidence` | — | Emit JSON with the header AND the verifiable evidence bundle (for relying parties that hold no replica of your KEL). |
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
@@ -1257,6 +1602,211 @@ Sign an authentication challenge for DID-based login
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths auth challenge -->
+
+### auths auth verify
+
+```bash
+auths auth verify
+```
+
+<!-- BEGIN GENERATED: auths auth verify -->
+Verify a challenge response offline against the registry's current key
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--nonce <NONCE>` | — | The challenge nonce this verifier issued |
+| `--domain <DOMAIN>` | `auths.dev` | The domain the challenge was bound to |
+| `--did <DID>` | — | The responder's did:keri: controller DID (delegated device DIDs fail closed — their liveness needs the delegator's revocation verdict) |
+| `--signature <SIGNATURE>` | — | Hex-encoded signature from the challenge response |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths auth verify -->
+
+### auths treasury open
+
+```bash
+auths treasury open
+```
+
+<!-- BEGIN GENERATED: auths treasury open -->
+Establish a manager's aggregate cap
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manager <MANAGER>` | — | Manager keychain alias (the ledger key). |
+| `--cap <CAP>` | — | Aggregate cap (calls:<N> or a plain integer). |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths treasury open -->
+
+### auths treasury allot
+
+```bash
+auths treasury allot
+```
+
+<!-- BEGIN GENERATED: auths treasury allot -->
+Commit a slice of the cap to a sub-agent (refused if Σ + amount > cap)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manager <MANAGER>` | — |  |
+| `--to <TO>` | — | Sub-agent did:keri: to allot to. |
+| `--amount <AMOUNT>` | — |  |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths treasury allot -->
+
+### auths treasury reallocate
+
+```bash
+auths treasury reallocate
+```
+
+<!-- BEGIN GENERATED: auths treasury reallocate -->
+Move a slice from one sub-agent to another (constant-sum; refused on underflow)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manager <MANAGER>` | — |  |
+| `--from <FROM>` | — | Source sub-agent did:keri:. |
+| `--to <TO>` | — | Target sub-agent did:keri:. |
+| `--amount <AMOUNT>` | — |  |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths treasury reallocate -->
+
+### auths treasury status
+
+```bash
+auths treasury status
+```
+
+<!-- BEGIN GENERATED: auths treasury status -->
+Report parent cap, committed, free pool, slices, and the aggregate invariant
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manager <MANAGER>` | — |  |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths treasury status -->
+
+### auths treasury credit
+
+```bash
+auths treasury credit
+```
+
+<!-- BEGIN GENERATED: auths treasury credit -->
+Credit a recorded x402 inbound settlement to a sub-agent's verifiable P&L
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--to <TO>` | — | Sub-agent did:keri: to credit. |
+| `--settlement <SETTLEMENT>` | — | Path to a recorded x402 SettlementResponse JSON. |
+| `--claim-cents <CLAIM_CENTS>` | — | Assert the credited amount (rejected if ≠ the recorded settlement). |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths treasury credit -->
+
+### auths treasury subdelegate
+
+```bash
+auths treasury subdelegate
+```
+
+<!-- BEGIN GENERATED: auths treasury subdelegate -->
+Sub-delegate a child slice from a sub-agent (Σ children ≤ the parent's slice)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manager <MANAGER>` | — |  |
+| `--parent <PARENT>` | — | The sub-agent (parent) did:keri: doing the sub-delegation. |
+| `--child <CHILD>` | — | The child worker did:keri:. |
+| `--amount <AMOUNT>` | — |  |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths treasury subdelegate -->
+
+### auths treasury reclaim
+
+```bash
+auths treasury reclaim
+```
+
+<!-- BEGIN GENERATED: auths treasury reclaim -->
+Reclaim a revoked sub-agent's slice back to the free pool (idempotent)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--manager <MANAGER>` | — |  |
+| `--agent <AGENT>` | — | The revoked sub-agent did:keri: to reclaim. |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths treasury reclaim -->
+
+### auths anchor verify
+
+```bash
+auths anchor verify
+```
+
+<!-- BEGIN GENERATED: auths anchor verify -->
+Verify a duplicity proof offline — no witness contacted, no registry
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--proof <PROOF>` | — | Path to the duplicity-proof JSON (`-` reads stdin) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths anchor verify -->
+
+### auths witness-set declare
+
+```bash
+auths witness-set declare
+```
+
+<!-- BEGIN GENERATED: auths witness-set declare -->
+Anchor the set's content SAID in your KEL via one `ixn`, so verifiers hold your anchors to exactly this set
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--member <NAME=KEY>` | — | A declared member as `NAME=KEY` (repeatable) |
+| `--threshold <T>` | — | The finalization threshold `t` of the `t`-of-`N` set |
+| `--key <ALIAS>` | — | Keychain alias of your identity signing key (defaults to the identity's primary key) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness-set declare -->
+
+### auths witness-set said
+
+```bash
+auths witness-set said
+```
+
+<!-- BEGIN GENERATED: auths witness-set said -->
+Print the set's content SAID without touching the KEL (deterministic)
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--member <NAME=KEY>` | — | A declared member as `NAME=KEY` (repeatable) |
+| `--threshold <T>` | — | The finalization threshold `t` of the `t`-of-`N` set |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness-set said -->
 
 ### auths multi-sig begin
 
@@ -1552,6 +2102,113 @@ Uninstall the system service
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths agent uninstall-service -->
 
+### auths witness up
+
+```bash
+auths witness up
+```
+
+<!-- BEGIN GENERATED: auths witness up -->
+Stand up a witness node (and its monitor) from a clean box, one command
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port <PORT>` | `3333` | Host port to publish the node's endpoint on |
+| `--data-dir <DATA_DIR>` | `./witness-data` | Host directory for the node's persistent data volume |
+| `--accept-file-key` | — | Acknowledge file-backed key custody when no managed key store (KMS/enclave) is available. Without this, a node refuses to fall back to a file key rather than silently weaken custody |
+| `--image <IMAGE>` | — | Override the node image to run. Defaults to the released, attested image the platform ships. Use this only to pin a specific released tag or to run an image already present on an air-gapped host |
+| `--build-attestation <BUILD_ATTESTATION>` | — | Path to the released image's signed build attestation (`auths artifact sign` output). When supplied, the node serves a proof of which binary it runs, and `status` verifies it. Operators pin the attestation that ships with the released image |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness up -->
+
+### auths witness down
+
+```bash
+auths witness down
+```
+
+<!-- BEGIN GENERATED: auths witness down -->
+Tear a stood-up witness node down
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--data-dir <DATA_DIR>` | `./witness-data` | Host directory of the node to tear down |
+| `--port <PORT>` | `3333` | Host port the node to tear down was published on |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness down -->
+
+### auths witness status
+
+```bash
+auths witness status
+```
+
+<!-- BEGIN GENERATED: auths witness status -->
+Report a stood-up node's health, identity, receipts, and peers
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port <PORT>` | `3333` | Host port the node publishes its endpoint on |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness status -->
+
+### auths witness verify-receipt
+
+```bash
+auths witness verify-receipt
+```
+
+<!-- BEGIN GENERATED: auths witness verify-receipt -->
+Verify a witness receipt offline, on this machine alone
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--receipt <RECEIPT>` | — | Path to the receipt bundle JSON file (`-` reads from stdin) |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness verify-receipt -->
+
+### auths witness register
+
+```bash
+auths witness register
+```
+
+<!-- BEGIN GENERATED: auths witness register -->
+Open a signed candidate entry to register this node in the directory
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--endpoint <ENDPOINT>` | — | Public base URL operators will reach this node at |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness register -->
+
+### auths witness logs
+
+```bash
+auths witness logs
+```
+
+<!-- BEGIN GENERATED: auths witness logs -->
+Stream a stood-up node's logs
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--data-dir <DATA_DIR>` | `./witness-data` | Host directory of the node whose logs to show |
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness logs -->
+
 ### auths witness start
 
 ```bash
@@ -1623,6 +2280,22 @@ List configured witnesses for the current identity
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
 <!-- END GENERATED: auths witness list -->
 
+### auths witness publish
+
+```bash
+auths witness publish
+```
+
+<!-- BEGIN GENERATED: auths witness publish -->
+Publish this identity's full KEL to its configured witnesses, collecting receipts for every event
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-j, --json` | — | Emit machine-readable JSON |
+| `-q, --quiet` | — | Suppress non-essential output |
+| `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
+<!-- END GENERATED: auths witness publish -->
+
 ### auths scim serve
 
 ```bash
@@ -1640,6 +2313,8 @@ Start the SCIM provisioning server (in-process, KERI-authoritative)
 | `--token <TOKEN>` | — | Bearer token authenticating the provisioning channel |
 | `--org-key <ORG_KEY>` | — | Org signing-key alias (default: derived `org-<slug>`) |
 | `--base-url <BASE_URL>` | — | Base URL used for SCIM `meta.location` |
+| `--allowed-capability <ALLOWED_CAPABILITY>` | — | Capability this tenant may grant (repeatable). Empty = deny all (RT-006); pass --allow-all-capabilities to opt into permit-all |
+| `--allow-all-capabilities` | — | Let this tenant grant ANY capability, bypassing the allowlist (opt-in) |
 | `--passphrase <PASSPHRASE>` | — | Passphrase for the org signing key (single-host custody) |
 | `--registry-path <REGISTRY_PATH>` | — | Path to the Auths registry Git repository (default: `~/.auths`) |
 | `-j, --json` | — | Emit machine-readable JSON |

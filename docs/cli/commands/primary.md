@@ -18,9 +18,13 @@ Create your signing identity and configure Git
 | `--profile <PROFILE>` | — | Preset profile: developer, ci, or agent |
 | `--key-alias <KEY_ALIAS>` | `main` | Key alias for the identity key (default: main) |
 | `--force` | — | Force overwrite if identity already exists |
+| `--confirm-replace` | — | Confirm replacing an existing root identity when running non-interactively. Required with `--force` over an existing identity when there is no TTY to confirm at |
 | `--dry-run` | — | Preview agent configuration without creating files or identities |
-| `--registry <REGISTRY>` | — | Registry URL for identity registration [env: AUTHS_REGISTRY_URL=] |
+| `--registry <REGISTRY>` | — | Registry URL for identity registration. No default: auths needs no registry, and registration is opt-in via `--register` [env: AUTHS_REGISTRY_URL=] |
 | `--register` | — | Register identity with the Auths Registry after creation |
+| `--github` | — | Link your GitHub account and upload your SSH signing key, so your commits show as Verified on github.com |
+| `--no-github` | — | Skip linking GitHub, even when this repo has a GitHub remote |
+| `--git-scope <GIT_SCOPE>` | — | Where to write git signing config: local (this repo), global (every repo on this machine), or skip |
 | `--github-action` | — | Scaffold a GitHub Actions workflow using the auths attest-action |
 | `--device-count <DEVICE_COUNT>` | `1` | Number of device slots for a multi-key KEL (default 1) |
 | `--signing-threshold <SIGNING_THRESHOLD>` | — | Signing threshold: scalar integer (e.g. `"2"`) or fraction list (e.g. `"1/2,1/2,1/2"`). Required when `--device-count > 1` |
@@ -43,6 +47,7 @@ Sign a Git commit or artifact file.
 |------|---------|-------------|
 | `<TARGET>` | — | Commit ref, range, or artifact file path |
 | `--sig-output <PATH>` | — | Output path for the signature file. Defaults to <FILE>.auths.json |
+| `--force` | — | Overwrite the signature output file if it already exists |
 | `--key <KEY>` | — | Local alias of the identity key (for artifact signing) |
 | `--device-key <DEVICE_KEY>` | — | Local alias of the device key (for artifact signing, required for files) |
 | `--expires-in <N>` | — | Duration in seconds until expiration (per RFC 6749) |
@@ -160,7 +165,8 @@ Manually pin an identity as trusted
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--did <DID>` | — | The DID of the identity to pin (e.g., did:keri:E...) |
-| `--key <KEY>` | — | The public key in hex format (64 chars for Ed25519) |
+| `--key <KEY>` | — | The public key in hex format. Omit it to resolve the current key from the identity's locally-replayed KEL (air-gapped ceremony is the only case that needs the explicit hex) |
+| `--bundle <BUNDLE>` | — | Path to an identity bundle JSON to resolve the key from (alternative to --key and to local KEL resolution) |
 | `--kel-tip <KEL_TIP>` | — | Identity log checkpoint for tracking key changes (optional, advanced) |
 | `--note <NOTE>` | — | Optional note about this identity |
 | `-j, --json` | — | Emit machine-readable JSON |
