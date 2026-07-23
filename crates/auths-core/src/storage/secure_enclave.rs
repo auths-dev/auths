@@ -377,11 +377,11 @@ impl SecureSigner for SecureEnclaveKeyStorage {
     fn sign_with_alias(
         &self,
         alias: &KeyAlias,
-        _passphrase_provider: &dyn PassphraseProvider,
+        passphrase_provider: &dyn PassphraseProvider,
         message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
-        let handle = self.load_handle(alias)?;
-        sign_with_handle(&handle, message)
+        let (sig, _pubkey, _curve) = super::keychain::sign_with_key(self, alias, passphrase_provider, message)?;
+        Ok(sig)
     }
 
     fn sign_for_identity(
