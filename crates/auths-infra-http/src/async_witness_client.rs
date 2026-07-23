@@ -230,7 +230,11 @@ impl AsyncWitnessProvider for HttpAsyncWitnessClient {
             let body_text = response.text().await.unwrap_or_default();
 
             let is_valid_witness_404 = serde_json::from_str::<WitnessNotFoundResponse>(&body_text)
-                .map(|parsed| parsed.error == "identity_not_found" && parsed.prefix == prefix.as_str())
+                .map(|parsed| {
+                    parsed.error == "identity_not_found"
+                        && parsed.prefix == prefix.as_str()
+                        && parsed.code == 4041
+                })
                 .unwrap_or(false);
 
             if has_witness_header && is_valid_witness_404 {
@@ -238,7 +242,8 @@ impl AsyncWitnessProvider for HttpAsyncWitnessClient {
             } else {
                 return Err(WitnessError::Network(format!(
                     "Ambiguous 404 response from {} (failed to parse WitnessNotFoundResponse for prefix {}): failing closed to prevent downgrade",
-                    url, prefix.as_str()
+                    url,
+                    prefix.as_str()
                 )));
             }
         }
