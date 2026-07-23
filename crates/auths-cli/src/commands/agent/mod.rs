@@ -760,7 +760,7 @@ fn unlock_agent(key_alias: &str, repo: Option<PathBuf>) -> Result<()> {
         ));
     }
 
-    let key_ref = auths_core::storage::keychain::SigningKeyRef::parse(key_alias)?;
+    let key_ref = auths_sdk::keychain::SigningKeyRef::parse(key_alias)?;
     let parsed_alias = key_ref.bare_alias().clone();
 
     let (_identity_did, _role, encrypted_data) = keychain
@@ -809,7 +809,6 @@ fn handle_provision_cmd(
     repo: Option<PathBuf>,
 ) -> Result<()> {
     use crate::core::provider::CliPassphraseProvider;
-    use auths_sdk::keychain::KeyAlias;
     use auths_sdk::paths::auths_home;
     use auths_sdk::storage_layout::resolve_repo_path;
     use std::path::Path;
@@ -900,7 +899,7 @@ fn handle_provision_cmd(
             (label_val, key_val, profile_val, out_val)
         };
 
-    let key_ref = auths_core::storage::keychain::SigningKeyRef::parse(&key_str)?;
+    let key_ref = auths_sdk::keychain::SigningKeyRef::parse(&key_str)?;
     let parent_alias = key_ref.bare_alias().clone();
     let agent_profile =
         profile_str.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
@@ -1045,7 +1044,6 @@ fn handle_update_cmd(
 
 fn handle_revoke_cmd(agent_did: String, key: String, repo: Option<PathBuf>) -> Result<()> {
     use crate::core::provider::CliPassphraseProvider;
-    use auths_sdk::keychain::KeyAlias;
     use auths_sdk::storage_layout::resolve_repo_path;
     let repo_path = resolve_repo_path(repo)?;
     let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
@@ -1055,7 +1053,7 @@ fn handle_revoke_cmd(agent_did: String, key: String, repo: Option<PathBuf>) -> R
         &env_config,
         Some(passphrase_provider),
     )?;
-    let root_ref = auths_core::storage::keychain::SigningKeyRef::parse(&key)?;
+    let root_ref = auths_sdk::keychain::SigningKeyRef::parse(&key)?;
     let root_alias = root_ref.bare_alias().clone();
 
     auths_sdk::domains::agents::revoke(&ctx, &root_alias, &agent_did)?;

@@ -145,11 +145,8 @@ pub fn provision_agent_machine(
     )?;
 
     // 6. Generate executable wrapper helper bin/auths-agent
-    let wrapper_path = generate_executable_wrapper(
-        &params.destination_dir,
-        &env_file_path,
-        &params.label,
-    )?;
+    let wrapper_path =
+        generate_executable_wrapper(&params.destination_dir, &env_file_path, &params.label)?;
 
     let expires_dt = expires_at.and_then(|ts| DateTime::from_timestamp(ts, 0));
 
@@ -255,7 +252,7 @@ pub fn materialize_agent_machine_registry(
             .env("GIT_INDEX_FILE", &idx_s)
             .status()
             .context("failed to execute git read-tree")?;
-        
+
         if !read_tree_status.success() {
             anyhow::bail!("git read-tree failed with status: {}", read_tree_status);
         }
@@ -265,7 +262,7 @@ pub fn materialize_agent_machine_registry(
             .env("GIT_INDEX_FILE", &idx_s)
             .output()
             .context("failed to execute git ls-files")?;
-            
+
         if !listed.status.success() {
             anyhow::bail!("git ls-files failed with status: {}", listed.status);
         }
@@ -284,7 +281,7 @@ pub fn materialize_agent_machine_registry(
                     .env("GIT_INDEX_FILE", &idx_s)
                     .status()
                     .context("failed to execute git rm")?;
-                    
+
                 if !rm_status.success() {
                     anyhow::bail!("git rm failed with status: {}", rm_status);
                 }
@@ -378,7 +375,8 @@ mod tests {
             &passphrase_path,
             passphrase,
             label,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert!(env_file.exists());
         let content = fs::read_to_string(&env_file).unwrap();
@@ -394,17 +392,13 @@ mod tests {
         let env_file = dest_dir.join("env.sh");
         let label = "test-agent";
 
-        let wrapper_file = generate_executable_wrapper(
-            dest_dir,
-            &env_file,
-            label,
-        ).unwrap();
+        let wrapper_file = generate_executable_wrapper(dest_dir, &env_file, label).unwrap();
 
         assert!(wrapper_file.exists());
         let content = fs::read_to_string(&wrapper_file).unwrap();
         assert!(content.contains(&format!("source \"{}\"", env_file.display())));
         assert!(content.contains("exec auths \"$@\""));
-        
+
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

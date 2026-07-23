@@ -238,9 +238,10 @@ impl SigningKeyRef {
                 alias,
             })
         } else if input.contains(':') {
-            Err(AgentError::InvalidInput(
-                format!("Unsupported key scheme or format in '{}'. Only 'auths:<alias>' or bare alias allowed.", input)
-            ))
+            Err(AgentError::InvalidInput(format!(
+                "Unsupported key scheme or format in '{}'. Only 'auths:<alias>' or bare alias allowed.",
+                input
+            )))
         } else {
             let alias = KeyAlias::new(input)?;
             Ok(Self::Alias(alias))
@@ -255,7 +256,6 @@ impl SigningKeyRef {
         }
     }
 }
-
 
 /// Migrate a legacy single-key alias `{alias}` to the multi-key form
 /// `{alias}--0`.
