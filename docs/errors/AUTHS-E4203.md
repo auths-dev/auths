@@ -10,4 +10,4 @@ key operation failed: {0}
 
 ## Suggestion
 
-Rerun the command using a passphrase that is at least 12 characters long.
+Check keychain access and passphrase. Headless/CI (no Touch ID): set AUTHS_KEYCHAIN_BACKEND=file AUTHS_KEYCHAIN_FILE=<path> AUTHS_PASSPHRASE=<pass>, or run `auths init --profile ci`.

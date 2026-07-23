@@ -142,7 +142,7 @@ fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
     // Auths-* trailer replaces it in place rather than appending a second copy, so
     // a re-signed commit (the recovery rewrite) keeps exactly one trailer per token.
     let exec_cmd = format!(
-        "git -c trailer.ifexists=replace commit --amend --no-edit --no-verify{trailer_flags}"
+        "git -c trailer.ifexists=replace commit --amend -C HEAD --no-verify{trailer_flags}"
     );
     let output = crate::subprocess::git_command(&["rebase", "--exec", &exec_cmd, base])
         .output()

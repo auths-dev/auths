@@ -436,19 +436,29 @@ async fn resolve_signer_kel(
     bundle_kels: &[BundleKel],
     did: &str,
 ) -> Result<Vec<Event>, String> {
-    // Stateless first: a bundle that carries the signer's KEL (the root's or a
-    // delegated device's) satisfies resolution without any identity store (CI
-    // runners). Prefix binding is still enforced, so a tampered bundle cannot
-    // smuggle a foreign KEL.
-    if let Some(bundle) = bundle_kels.iter().find(|b| b.did == did) {
-        let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
-        auths_sdk::keri::verify_prefix_binding(&prefix, &bundle.events)
-            .map_err(|e| e.to_string())?;
-        return Ok(bundle.events.clone());
+    let local_res = auths_sdk::keri::KelResolverChain::local(registry).resolve_kel(did);
+    let bundle_opt = bundle_kels.iter().find(|b| b.did == did);
+
+    match (local_res, bundle_opt) {
+        (Ok(local_events), Some(bundle)) => {
+            let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
+            auths_sdk::keri::verify_prefix_binding(&prefix, &bundle.events)
+                .map_err(|e| e.to_string())?;
+            if local_events.len() >= bundle.events.len() {
+                Ok(local_events)
+            } else {
+                Ok(bundle.events.clone())
+            }
+        }
+        (Ok(local_events), None) => Ok(local_events),
+        (Err(_), Some(bundle)) => {
+            let prefix = auths_sdk::keri::parse_did_keri(did).map_err(|e| e.to_string())?;
+            auths_sdk::keri::verify_prefix_binding(&prefix, &bundle.events)
+                .map_err(|e| e.to_string())?;
+            Ok(bundle.events.clone())
+        }
+        (Err(e), None) => Err(e.to_string()),
     }
-    auths_sdk::keri::KelResolverChain::local(registry)
-        .resolve_kel(did)
-        .map_err(|e| e.to_string())
 }
 
 /// Verify a single commit against the replayed KEL.
@@ -712,9 +722,10 @@ pub(crate) async fn commit_trusted_via_bundle(
             .map(|(did, events)| BundleKel { did, events }),
     );
 
-    let auths_home = auths_sdk::paths::auths_home().map_err(|e| e.to_string())?;
+    let repo_path =
+        auths_sdk::storage_layout::resolve_repo_path(None).map_err(|e| e.to_string())?;
     let registry =
-        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&auths_home));
+        GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(&repo_path));
     let device_kel = resolve_signer_kel(&registry, &bundle_kels, &device_did)
         .await
         .map_err(|e| format!("device KEL for {device_did} could not be resolved: {e}"))?;
@@ -727,7 +738,7 @@ pub(crate) async fn commit_trusted_via_bundle(
         .map_err(|e| format!("root KEL for {root_did} could not be resolved: {e}"))?;
 
     let provider = auths_crypto::RingCryptoProvider;
-    let receipt_lookup = GitWitnessReceiptLookup::new(&auths_home);
+    let receipt_lookup = GitWitnessReceiptLookup::new(&repo_path);
     let witnessed = verify_commit_against_kel_witnessed_scoped(
         raw_commit.as_bytes(),
         &device_kel,

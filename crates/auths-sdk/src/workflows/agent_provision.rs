@@ -149,9 +149,12 @@ export AUTHS_SIGNING_KEY="auths:{label}"
 
 # Direct Git Native Signing Overrides (No file modifications to .git/config)
 export GIT_CONFIG_COUNT=3
-export GIT_CONFIG_KEY_0="gpg.format"          export GIT_CONFIG_VALUE_0="ssh"
-export GIT_CONFIG_KEY_1="gpg.ssh.program"      export GIT_CONFIG_VALUE_1="auths-sign"
-export GIT_CONFIG_KEY_2="user.signingkey"      export GIT_CONFIG_VALUE_2="auths:{label}"
+export GIT_CONFIG_KEY_0="gpg.format"
+export GIT_CONFIG_VALUE_0="ssh"
+export GIT_CONFIG_KEY_1="gpg.ssh.program"
+export GIT_CONFIG_VALUE_1="auths-sign"
+export GIT_CONFIG_KEY_2="user.signingkey"
+export GIT_CONFIG_VALUE_2="auths:{label}"
 "#,
         home = params.destination_dir.display(),
         repo = registry_dir.display(),
@@ -207,8 +210,7 @@ pub fn materialize_agent_machine_registry(
         fs::remove_dir_all(agent_registry)?;
     }
 
-    copy_dir_clean(root_repo, agent_registry)
-        .context("failed to copy registry repository")?;
+    copy_dir_clean(root_repo, agent_registry).context("failed to copy registry repository")?;
 
     let git_dir = agent_registry.join(".git");
     if git_dir.exists() {
@@ -248,8 +250,11 @@ pub fn materialize_agent_machine_registry(
 
 /// Recursively copies a directory tree, skipping Unix domain sockets, FIFOs, and special IPC handles.
 fn copy_dir_clean(src: &Path, dst: &Path) -> Result<()> {
-    fs::create_dir_all(dst).with_context(|| format!("failed to create directory {}", dst.display()))?;
-    for entry_res in fs::read_dir(src).with_context(|| format!("failed to read directory {}", src.display()))? {
+    fs::create_dir_all(dst)
+        .with_context(|| format!("failed to create directory {}", dst.display()))?;
+    for entry_res in
+        fs::read_dir(src).with_context(|| format!("failed to read directory {}", src.display()))?
+    {
         let entry = entry_res?;
         let file_type = entry.file_type()?;
 
