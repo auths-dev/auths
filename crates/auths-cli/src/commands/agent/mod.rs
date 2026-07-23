@@ -1048,4 +1048,107 @@ mod tests {
         assert_eq!(parse_timeout("2h").unwrap(), Duration::from_secs(7200));
         assert_eq!(parse_timeout("30").unwrap(), Duration::from_secs(1800));
     }
+
+    #[test]
+    fn test_handle_provision_cmd_invalid_profile() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_path).unwrap();
+
+        let res = handle_provision_cmd(
+            Some("test-agent".to_string()),
+            Some("main".to_string()),
+            vec![],
+            None,
+            Some(temp_dir.path().join("agent-out")),
+            Some("invalid-profile-name".to_string()),
+            None,
+            Some(repo_path),
+        );
+
+        assert!(res.is_err());
+        let err_msg = res.unwrap_err().to_string();
+        assert!(err_msg.contains("invalid") || err_msg.contains("profile") || err_msg.contains("Unknown"));
+    }
+
+    #[test]
+    fn test_handle_provision_cmd_missing_passphrase_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_path).unwrap();
+
+        let missing_pass_file = temp_dir.path().join("nonexistent_passphrase.txt");
+
+        let res = handle_provision_cmd(
+            Some("test-agent".to_string()),
+            Some("main".to_string()),
+            vec![],
+            None,
+            Some(temp_dir.path().join("agent-out")),
+            Some("assistant".to_string()),
+            Some(missing_pass_file),
+            Some(repo_path),
+        );
+
+        assert!(res.is_err());
+        let err_msg = res.unwrap_err().to_string();
+        assert!(err_msg.contains("Failed to read passphrase file"));
+    }
+
+    #[test]
+    fn test_handle_provision_cmd_missing_parent_key() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path().join("repo");
+        std::fs::create_dir_all(&repo_path).unwrap();
+
+        let pass_file = temp_dir.path().join("pass.txt");
+        std::fs::write(&pass_file, "TestPassphrase123!").unwrap();
+
+        let res = handle_provision_cmd(
+            Some("test-agent".to_string()),
+            Some("nonexistent_key_alias".to_string()),
+            vec![],
+            None,
+            Some(temp_dir.path().join("agent-out")),
+            Some("assistant".to_string()),
+            Some(pass_file),
+            Some(repo_path),
+        );
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_handle_provision_cmd_capabilities_parsing_and_error_handling() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path().join("repo");
+        let auths_home = temp_dir.path().join(".auths");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        std::fs::create_dir_all(&auths_home).unwrap();
+
+        unsafe {
+            std::env::set_var("AUTHS_HOME", &auths_home);
+            std::env::set_var("AUTHS_KEYCHAIN_BACKEND", "file");
+            std::env::set_var("AUTHS_KEYCHAIN_FILE", auths_home.join("keys.enc"));
+            std::env::set_var("AUTHS_PASSPHRASE", "RootTestPassphrase!123");
+        }
+
+        let cap: auths_keri::Capability = "sign_commit".parse().unwrap();
+        let pass_file = temp_dir.path().join("agent_pass.txt");
+        std::fs::write(&pass_file, "AgentPassphrase123!").unwrap();
+        let out_dir = temp_dir.path().join("agent-out");
+
+        let res = handle_provision_cmd(
+            Some("test-agent".to_string()),
+            Some("main".to_string()),
+            vec![cap],
+            Some(86400),
+            Some(out_dir),
+            Some("assistant".to_string()),
+            Some(pass_file),
+            Some(auths_home),
+        );
+
+        assert!(res.is_err());
+    }
 }
