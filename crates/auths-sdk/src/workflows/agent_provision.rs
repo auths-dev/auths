@@ -82,16 +82,24 @@ pub fn provision_agent_machine(
     let expires_at = params.expires_in_secs.map(|secs| now.timestamp() + secs);
 
     // 1. Delegate agent identity under parent root in KEL using domains::agents::add_scoped
-    let agent_info = crate::domains::agents::add_scoped(
+    let agent_info_res = crate::domains::agents::add_scoped(
         ctx,
         parent_alias,
         &agent_alias,
         CurveType::P256,
         &params.scopes,
         expires_at,
-    )
-    .map_err(anyhow::Error::from)
-    .context("failed to delegate agent identity in KEL")?;
+    );
+
+    if agent_info_res.is_err() {
+        let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", agent_alias.as_str()));
+        let _ = ctx.key_storage.delete_key(&agent_alias);
+        let _ = ctx.key_storage.delete_key(&next_alias);
+    }
+
+    let agent_info = agent_info_res
+        .map_err(anyhow::Error::from)
+        .context("failed to delegate agent identity in KEL")?;
 
     let agent_did = agent_info.agent_did;
 
@@ -110,7 +118,14 @@ pub fn provision_agent_machine(
     fs::set_permissions(&passphrase_path, Permissions::from_mode(0o600))?;
 
     // Copy keys from main keychain to agent file-backend keys.enc
-    export_agent_keys_to_file_backend(ctx, &agent_alias, passphrase, &keychain_path)?;
+    let export_res = export_agent_keys_to_file_backend(ctx, &agent_alias, passphrase, &keychain_path);
+
+    // Clean up temporary staging keys from root key storage so root storage stays clean
+    let next_alias = KeyAlias::new_unchecked(format!("{}--next-0", agent_alias.as_str()));
+    let _ = ctx.key_storage.delete_key(&agent_alias);
+    let _ = ctx.key_storage.delete_key(&next_alias);
+
+    export_res?;
 
     // 4. Refresh commit-trailers
     let _ = crate::workflows::commit_hooks::refresh_commit_trailers(ctx, &registry_dir);
