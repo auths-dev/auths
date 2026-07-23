@@ -111,8 +111,8 @@ fn validate_verify_option(opt: &str) -> Result<()> {
 }
 
 fn parse_key_identifier(key_file: &str) -> Result<String> {
-    let key_ref = auths_sdk::keychain::SigningKeyRef::parse(key_file)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let key_ref =
+        auths_sdk::keychain::SigningKeyRef::parse(key_file).map_err(|e| anyhow::anyhow!(e))?;
 
     if !matches!(key_ref, auths_sdk::keychain::SigningKeyRef::Uri { ref scheme, .. } if scheme == "auths")
     {
