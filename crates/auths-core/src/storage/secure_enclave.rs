@@ -342,6 +342,10 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         true
     }
 
+    fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+        self.handle_path(alias).exists()
+    }
+
     fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
         let handle = self.load_handle(alias)?;
         public_key_from_handle(&handle)

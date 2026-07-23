@@ -338,6 +338,12 @@ pub trait KeyStorage: Send + Sync {
         false
     }
 
+    /// Returns true if the specific key stored under `alias` is a hardware key.
+    fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+        let _ = alias;
+        self.is_hardware_backend()
+    }
+
     /// Re-associates an existing stored key with a different identity DID
     /// without touching the key material.
     ///
@@ -418,10 +424,21 @@ pub fn extract_public_key_bytes(
     alias: &KeyAlias,
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
 ) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentError> {
-    if keychain.is_hardware_backend()
-        && let Ok(pubkey) = keychain.export_public_key(alias)
-    {
-        return Ok((pubkey, auths_crypto::CurveType::P256));
+    if keychain.is_hardware_key(alias) {
+        // Hardware backends store opaque handles — get public key from hardware
+        let (_, _role, _handle) = keychain.load_key(alias)?;
+        #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
+        {
+            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
+            return Ok((pubkey, auths_crypto::CurveType::P256));
+        }
+        #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
+        {
+            return Err(AgentError::BackendUnavailable {
+                backend: keychain.backend_name(),
+                reason: "hardware backend not available on this platform".into(),
+            });
+        }
     }
 
     use crate::crypto::signer::{decrypt_keypair, load_seed_and_pubkey};
@@ -453,13 +470,12 @@ pub fn sign_with_key(
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
     message: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>, auths_crypto::CurveType), AgentError> {
-    if keychain.is_hardware_backend()
-        && let Ok(pubkey) = keychain.export_public_key(alias)
-    {
+    if keychain.is_hardware_key(alias) {
         let (_, _role, _handle) = keychain.load_key(alias)?;
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         {
             let sig = super::secure_enclave::sign_with_handle(&_handle, message)?;
+            let pubkey = super::secure_enclave::public_key_from_handle(&_handle)?;
             return Ok((sig, pubkey, auths_crypto::CurveType::P256));
         }
         #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
