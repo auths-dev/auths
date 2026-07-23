@@ -175,6 +175,58 @@ struct X402Settlement {
     transaction: String,
 }
 
+/// Strongly-typed USDC settlement network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsdcNetwork {
+    /// Real-money mainnet chains
+    Mainnet(MainnetChain),
+    /// Sandbox testnet chains
+    Testnet(TestnetChain),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MainnetChain {
+    Base,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestnetChain {
+    BaseSepolia,
+}
+
+impl std::str::FromStr for UsdcNetwork {
+    type Err = RailError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "base" => Ok(UsdcNetwork::Mainnet(MainnetChain::Base)),
+            "base-sepolia" => Ok(UsdcNetwork::Testnet(TestnetChain::BaseSepolia)),
+            other => Err(RailError::MissingField(format!(
+                "x402 network `{other}` is not a known USDC network (testnets: {}; mainnets: {})",
+                X402_TESTNETS.join(", "),
+                X402_MAINNETS.join(", ")
+            ))),
+        }
+    }
+}
+
+impl UsdcNetwork {
+    /// Parses a raw network string and validates mode compatibility at the parsing boundary.
+    pub fn parse_for_mode(raw_network: &str, mode: PaymentMode) -> Result<Self, RailError> {
+        let network: UsdcNetwork = raw_network.parse()?;
+        match (network, mode) {
+            (UsdcNetwork::Mainnet(chain), PaymentMode::Real) => Ok(UsdcNetwork::Mainnet(chain)),
+            (UsdcNetwork::Testnet(chain), PaymentMode::Test) => Ok(UsdcNetwork::Testnet(chain)),
+            (UsdcNetwork::Testnet(_), PaymentMode::Real) => Err(RailError::MissingField(format!(
+                "x402 network `{raw_network}` is a testnet but gateway is running in REAL mode — refusing testnet settlement in production"
+            ))),
+            (UsdcNetwork::Mainnet(_), PaymentMode::Test) => Err(RailError::MissingField(format!(
+                "x402 network `{raw_network}` is a MAINNET (REAL money) but the gateway is in test mode — refusing to mis-meter a real-money settle under --test-mode (omit --test-mode for live)"
+            ))),
+        }
+    }
+}
+
 /// Extract the settled cost from a recorded/live **x402/USDC settlement** response.
 ///
 /// Reads `requirements.maxAmountRequired` (ATOMIC USDC, 6 decimals) and converts it to
@@ -190,26 +242,8 @@ pub fn extract_x402(response_bytes: &[u8], mode: PaymentMode) -> Result<Extracte
     let parsed: X402SettlementResponse = serde_json::from_slice(response_bytes)
         .map_err(|e| RailError::Parse(format!("x402 settlement: {e}")))?;
 
-    // Network gate (mode-aware): a testnet is always meterable; a MAINNET (real-money)
-    // network meters ONLY in real mode. Under --test-mode a mainnet settle is refused rather
-    // than mis-metered, so the sandbox switch can never move real money. Unknown → refused.
-    let network = parsed.requirements.network.to_ascii_lowercase();
-    let is_testnet = X402_TESTNETS.contains(&network.as_str());
-    let is_mainnet = X402_MAINNETS.contains(&network.as_str());
-    if !is_testnet && !is_mainnet {
-        return Err(RailError::MissingField(format!(
-            "x402 network `{network}` is not a known USDC network (testnets: {}; mainnets: {})",
-            X402_TESTNETS.join(", "),
-            X402_MAINNETS.join(", "),
-        )));
-    }
-    if is_mainnet && !mode.is_real() {
-        return Err(RailError::MissingField(format!(
-            "x402 network `{network}` is a MAINNET (REAL money) but the gateway is in test mode \
-             — refusing to mis-meter a real-money settle under --test-mode (omit --test-mode for \
-             live)"
-        )));
-    }
+    // Parse, don't validate: Parse raw network string directly into mode-checked UsdcNetwork type
+    let _network = UsdcNetwork::parse_for_mode(&parsed.requirements.network, mode)?;
 
     // The settle must have succeeded to be metered — a failed settle costs nothing.
     if !parsed.settlement.success {
