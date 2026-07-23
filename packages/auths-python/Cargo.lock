@@ -484,6 +484,7 @@ dependencies = [
 name = "auths-sdk"
 version = "0.1.16"
 dependencies = [
+ "anyhow",
  "async-trait",
  "auths-anchor",
  "auths-core",

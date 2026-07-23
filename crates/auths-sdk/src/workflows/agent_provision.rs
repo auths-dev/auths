@@ -207,16 +207,8 @@ pub fn materialize_agent_machine_registry(
         fs::remove_dir_all(agent_registry)?;
     }
 
-    let status = Command::new("cp")
-        .arg("-R")
-        .arg(root_repo)
-        .arg(agent_registry)
-        .status()
+    copy_dir_clean(root_repo, agent_registry)
         .context("failed to copy registry repository")?;
-
-    if !status.success() {
-        anyhow::bail!("cp -R failed when materializing agent machine registry");
-    }
 
     let git_dir = agent_registry.join(".git");
     if git_dir.exists() {
@@ -251,6 +243,32 @@ pub fn materialize_agent_machine_registry(
         }
     }
 
+    Ok(())
+}
+
+/// Recursively copies a directory tree, skipping Unix domain sockets, FIFOs, and special IPC handles.
+fn copy_dir_clean(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst).with_context(|| format!("failed to create directory {}", dst.display()))?;
+    for entry_res in fs::read_dir(src).with_context(|| format!("failed to read directory {}", src.display()))? {
+        let entry = entry_res?;
+        let file_type = entry.file_type()?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileTypeExt;
+            if file_type.is_socket() || file_type.is_fifo() {
+                continue;
+            }
+        }
+
+        let dst_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_clean(&entry.path(), &dst_path)?;
+        } else if file_type.is_file() || file_type.is_symlink() {
+            fs::copy(entry.path(), &dst_path)
+                .with_context(|| format!("failed to copy file {}", entry.path().display()))?;
+        }
+    }
     Ok(())
 }
 
