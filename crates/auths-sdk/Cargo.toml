@@ -23,6 +23,7 @@ auths-oidc-port = { path = "../auths-oidc-port", version = "0.1.16" }
 auths-telemetry.workspace = true
 auths-policy.workspace = true
 auths-crypto.workspace = true
+tracing = "0.1"
 parking_lot.workspace = true
 auths-verifier = { workspace = true, features = ["native"] }
 auths-transparency = { workspace = true, features = ["native"] }
