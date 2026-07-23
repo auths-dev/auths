@@ -498,6 +498,7 @@ components:
             - clock-skew
             - session-expired
             - invalid-pubkey-length
+            - invalid-payload-encoding
         message:
           description: Fixed per-variant human-readable string. Branch on `error`, not `message`.
           type: string
