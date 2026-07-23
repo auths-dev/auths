@@ -413,3 +413,43 @@ fn scoped_agent_with_empty_scope_is_allowed() {
     .expect("an empty scope is a valid (capability-less) delegation");
     assert!(agent.agent_did.starts_with("did:keri:"));
 }
+
+#[test]
+fn test_provision_agent_machine_under_delegated_device_key() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let reg_dir = tmp.path().join("registry");
+    let (root_alias, _keychain) = setup_test_identity(&reg_dir);
+
+    let ctx = build_test_context_with_provider(
+        &reg_dir,
+        Arc::new(_keychain),
+        Some(Arc::new(PrefilledPassphraseProvider::new(PASS)) as Arc<dyn PassphraseProvider + Send + Sync>),
+    );
+
+    let device_alias = KeyAlias::new_unchecked(format!("{}-device", root_alias.as_str()));
+    let dest_dir = tmp.path().join("agent-dest");
+
+    let params = auths_sdk::workflows::agent_provision::AgentProvisionParams {
+        label: "agent-machine-test".to_string(),
+        scopes: vec![],
+        expires_in_secs: None,
+        destination_dir: dest_dir.clone(),
+        profile: auths_sdk::workflows::agent_provision::AgentProfile::Assistant,
+    };
+
+    let now = chrono::Utc::now();
+    let res = auths_sdk::workflows::agent_provision::provision_agent_machine(
+        &ctx,
+        &device_alias,
+        &params,
+        PASS,
+        now,
+        &reg_dir,
+    )
+    .expect("provision_agent_machine under device key must succeed");
+
+    assert!(res.agent_did.starts_with("did:keri:"));
+    assert_eq!(res.label, "agent-machine-test");
+    assert!(dest_dir.join("keys.enc").exists());
+    assert!(dest_dir.join("env.sh").exists());
+}

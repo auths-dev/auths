@@ -108,9 +108,15 @@ pub fn add_scoped(
             .map_err(|e| AgentError::IdentityNotFound {
                 did: format!("identity load failed: {e}"),
             })?;
-    let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
+    let (parent_did, _, _) = ctx
+        .key_storage
+        .load_key(root_alias)
+        .map_err(|e| AgentError::IdentityNotFound {
+            did: format!("parent key alias '{}' load failed: {e}", root_alias.as_str()),
+        })?;
+    let root_prefix = parse_did_keri(parent_did.as_str()).map_err(|e| {
         AgentError::IdentityNotFound {
-            did: format!("invalid root did:keri: {e}"),
+            did: format!("invalid parent did:keri: {e}"),
         }
     })?;
     let (_pk, root_curve) = extract_public_key_bytes(

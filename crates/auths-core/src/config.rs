@@ -137,6 +137,8 @@ pub struct EnvironmentConfig {
     /// Override for the Auths home directory (`AUTHS_HOME`).
     /// `None` falls back to `~/.auths`.
     pub auths_home: Option<PathBuf>,
+    /// Override for the Auths registry repository directory (`AUTHS_REPO`).
+    pub auths_repo: Option<PathBuf>,
     /// Keychain backend settings.
     pub keychain: KeychainConfig,
     /// Path to the SSH agent socket (`SSH_AUTH_SOCK`).
@@ -149,7 +151,7 @@ pub struct EnvironmentConfig {
 impl EnvironmentConfig {
     /// Build an `EnvironmentConfig` from the process environment.
     ///
-    /// Reads `AUTHS_HOME`, `AUTHS_KEYCHAIN_BACKEND`, `AUTHS_KEYCHAIN_FILE`,
+    /// Reads `AUTHS_HOME`, `AUTHS_REPO`, `AUTHS_KEYCHAIN_BACKEND`, `AUTHS_KEYCHAIN_FILE`,
     /// `AUTHS_PASSPHRASE`, and `SSH_AUTH_SOCK`.
     ///
     /// Usage:
@@ -160,6 +162,10 @@ impl EnvironmentConfig {
     pub fn from_env() -> Self {
         Self {
             auths_home: std::env::var("AUTHS_HOME")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from),
+            auths_repo: std::env::var("AUTHS_REPO")
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(PathBuf::from),
@@ -201,6 +207,7 @@ impl EnvironmentConfig {
 #[derive(Default)]
 pub struct EnvironmentConfigBuilder {
     auths_home: Option<PathBuf>,
+    auths_repo: Option<PathBuf>,
     keychain: Option<KeychainConfig>,
     ssh_agent_socket: Option<PathBuf>,
     #[cfg(feature = "keychain-pkcs11")]
@@ -211,6 +218,12 @@ impl EnvironmentConfigBuilder {
     /// Set the Auths home directory override.
     pub fn auths_home(mut self, home: PathBuf) -> Self {
         self.auths_home = Some(home);
+        self
+    }
+
+    /// Set the Auths repository directory override.
+    pub fn auths_repo(mut self, repo: PathBuf) -> Self {
+        self.auths_repo = Some(repo);
         self
     }
 
@@ -237,6 +250,7 @@ impl EnvironmentConfigBuilder {
     pub fn build(self) -> EnvironmentConfig {
         EnvironmentConfig {
             auths_home: self.auths_home,
+            auths_repo: self.auths_repo,
             keychain: self.keychain.unwrap_or_default(),
             ssh_agent_socket: self.ssh_agent_socket,
             #[cfg(feature = "keychain-pkcs11")]

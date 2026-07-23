@@ -58,6 +58,7 @@ pub mod config;
 pub mod crypto;
 pub mod error;
 pub mod pairing;
+/// Path resolution utilities and AuthsPaths.
 pub mod paths;
 pub mod ports;
 pub mod proto;

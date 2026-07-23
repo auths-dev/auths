@@ -1,5 +1,5 @@
 #![allow(clippy::disallowed_types)]
-use std::fs::{self, Permissions};
+use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -105,7 +105,7 @@ pub fn provision_agent_machine(
 
     // Ensure destination directory exists with 0700 permissions
     fs::create_dir_all(&params.destination_dir)?;
-    fs::set_permissions(&params.destination_dir, Permissions::from_mode(0o700))?;
+    fs::set_permissions(&params.destination_dir, fs::Permissions::from_mode(0o700))?;
 
     // 2. Materialize agent machine registry in destination_dir/registry
     let registry_dir = params.destination_dir.join("registry");
@@ -115,7 +115,7 @@ pub fn provision_agent_machine(
     let keychain_path = params.destination_dir.join("keys.enc");
     let passphrase_path = params.destination_dir.join("passphrase.txt");
     fs::write(&passphrase_path, passphrase)?;
-    fs::set_permissions(&passphrase_path, Permissions::from_mode(0o600))?;
+    fs::set_permissions(&passphrase_path, fs::Permissions::from_mode(0o600))?;
 
     // Copy keys from main keychain to agent file-backend keys.enc
     let export_res = export_agent_keys_to_file_backend(ctx, &agent_alias, passphrase, &keychain_path);
@@ -140,7 +140,7 @@ export AUTHS_REPO="{repo}"
 export AUTHS_KEYCHAIN_BACKEND="file"
 export AUTHS_KEYCHAIN_FILE="{keychain}"
 export AUTHS_PASSPHRASE_FILE="{passphrase_file}"
-export AUTHS_PASSPHRASE="{passphrase}"
+export AUTHS_PASSPHRASE='{passphrase}'
 export AUTHS_SIGNING_KEY="auths:{label}"
 
 # Direct Git Native Signing Overrides (No file modifications to .git/config)
@@ -157,7 +157,7 @@ export GIT_CONFIG_KEY_2="user.signingkey"      export GIT_CONFIG_VALUE_2="auths:
         label = params.label
     );
     fs::write(&env_file_path, &env_script_content)?;
-    fs::set_permissions(&env_file_path, Permissions::from_mode(0o600))?;
+    fs::set_permissions(&env_file_path, fs::Permissions::from_mode(0o600))?;
 
     // 6. Generate executable wrapper helper bin/auths-agent
     let bin_dir = params.destination_dir.join("bin");
@@ -174,7 +174,7 @@ exec auths "$@"
         env_sh = env_file_path.display()
     );
     fs::write(&wrapper_path, &wrapper_content)?;
-    fs::set_permissions(&wrapper_path, Permissions::from_mode(0o755))?;
+    fs::set_permissions(&wrapper_path, fs::Permissions::from_mode(0o755))?;
 
     let expires_dt = expires_at.and_then(|ts| DateTime::from_timestamp(ts, 0));
 

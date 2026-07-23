@@ -816,29 +816,20 @@ fn handle_provision_cmd(
         let key_input = if let Some(k) = key {
             k
         } else {
-            // Build temporary context to list keys for select box
+            // Auto-detect active local signing key (defaults to main-device, omitting root hardware AID main)
             let temp_provider = std::sync::Arc::new(CliPassphraseProvider::new());
             let temp_ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(temp_provider))?;
             let aliases = temp_ctx.key_storage.list_aliases().unwrap_or_default();
-            let key_items: Vec<String> = if aliases.is_empty() {
-                vec!["main".to_string()]
+            if aliases.iter().any(|k| k.as_str() == "main-device") {
+                "main-device".to_string()
+            } else if let Some(first_device) = aliases.iter().find(|k| k.as_str().ends_with("-device")) {
+                first_device.as_str().to_string()
             } else {
                 aliases
                     .into_iter()
                     .map(|k| k.as_str().to_string())
-                    .filter(|k| !k.ends_with("--next-0"))
-                    .collect()
-            };
-
-            if key_items.len() > 1 {
-                let selection = Select::new()
-                    .with_prompt("Select parent key to append delegation to")
-                    .items(&key_items)
-                    .default(0)
-                    .interact()?;
-                key_items[selection].clone()
-            } else {
-                key_items.first().cloned().unwrap_or_else(|| "main".to_string())
+                    .find(|k| !k.ends_with("--next-0") && k != "main")
+                    .unwrap_or_else(|| "main-device".to_string())
             }
         };
 
@@ -873,7 +864,7 @@ fn handle_provision_cmd(
         (label_input, key_input, profile_input, out_input)
     } else {
         let label_val = label.unwrap_or_else(|| "agent-builder".to_string());
-        let key_val = key.unwrap_or_else(|| "main".to_string());
+        let key_val = key.unwrap_or_else(|| "main-device".to_string());
         let profile_val = profile.unwrap_or_else(|| "assistant".to_string());
         let out_val = out.unwrap_or_else(|| {
             auths_home()
@@ -895,18 +886,22 @@ fn handle_provision_cmd(
                 .with_context(|| format!("Failed to read passphrase file {}", p_file.display()))?
                 .trim()
                 .to_string();
-            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::new(
+            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::with_parent(
                 label_str.clone(),
                 zeroize::Zeroizing::new(pass.clone()),
+                key_str.clone(),
+                None,
             ));
             (pass, provider)
         } else if is_interactive {
-            eprintln!("Create passphrase for device key '{label_str}':");
+            eprintln!("[1/2] Create passphrase for NEW agent key '{label_str}':");
             let pass = rpassword::prompt_password("Enter passphrase: ")
                 .context("Failed to read passphrase from terminal")?;
-            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::new(
+            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::with_parent(
                 label_str.clone(),
                 zeroize::Zeroizing::new(pass.clone()),
+                key_str.clone(),
+                None,
             ));
             (pass, provider)
         } else {

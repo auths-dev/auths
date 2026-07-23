@@ -154,8 +154,11 @@ impl KeyStorage for SecureEnclaveKeyStorage {
         // a key the KEL already anchored — the delegation would "succeed" with
         // its private key lost.
         if !_encrypted_key_data.is_empty() {
-            // Ensure no leftover hardware handle file collides with this software key
+            // Ensure no leftover hardware handle file or cached handle collides with this software key
             let _ = fs::remove_file(self.handle_path(alias));
+            if let Ok(mut cache) = self.handle_cache.lock() {
+                cache.remove(alias.as_str());
+            }
             let path = self.swkey_path(alias);
             fs::write(&path, _encrypted_key_data).map_err(|e| {
                 AgentError::IO(std::io::Error::other(format!(
@@ -225,18 +228,23 @@ impl KeyStorage for SecureEnclaveKeyStorage {
     }
 
     fn load_key(&self, alias: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
-        // A software item (delegated/imported key) loads its encrypted blob; a
-        // hardware key loads its opaque handle. Handle wins if both exist.
-        let handle = if self.handle_path(alias).exists() {
-            self.load_handle(alias)?
-        } else {
+        // A software key (swkey_path) loads its passphrase-encrypted blob; a
+        // hardware key (handle_path) loads its opaque handle.
+        let handle = if self.swkey_path(alias).exists() {
             let sw = self.swkey_path(alias);
             fs::read(&sw).map_err(|e| {
                 AgentError::StorageError(format!(
-                    "SE key handle not found for '{}': {e}",
+                    "SE software key file read failed for '{}': {e}",
                     alias.as_str()
                 ))
             })?
+        } else if self.handle_path(alias).exists() {
+            self.load_handle(alias)?
+        } else {
+            return Err(AgentError::StorageError(format!(
+                "SE key not found for '{}'",
+                alias.as_str()
+            )));
         };
 
         // Read metadata. A key whose identity binding is missing must not load under a
@@ -347,15 +355,35 @@ impl KeyStorage for SecureEnclaveKeyStorage {
     }
 
     fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
-        self.handle_path(alias).exists()
+        self.handle_path(alias).exists() && !self.swkey_path(alias).exists()
     }
 
     fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
+        if !self.is_hardware_key(alias) {
+            let (_, _role, encrypted) = self.load_key(alias)?;
+            // Software key: for export_public_key without passphrase prompt,
+            // attempt decrypting with empty passphrase if stored unencrypted or
+            // load PKCS8 seed info.
+            use crate::crypto::signer::load_seed_and_pubkey;
+            if let Ok((_, pubkey, _)) = load_seed_and_pubkey(&encrypted) {
+                return Ok(pubkey);
+            }
+            return Err(AgentError::StorageError(format!(
+                "software key '{}' requires passphrase to derive public key",
+                alias.as_str()
+            )));
+        }
         let handle = self.load_handle(alias)?;
         public_key_from_handle(&handle)
     }
 
     fn sign_raw(&self, alias: &KeyAlias, message: &[u8]) -> Result<Vec<u8>, AgentError> {
+        if !self.is_hardware_key(alias) {
+            return Err(AgentError::StorageError(format!(
+                "software key '{}' requires passphrase provider for sign_with_alias",
+                alias.as_str()
+            )));
+        }
         let handle = self.load_handle(alias)?;
         sign_with_handle(&handle, message)
     }
@@ -451,4 +479,45 @@ pub fn sign_with_handle(handle: &[u8], message: &[u8]) -> Result<Vec<u8>, AgentE
 
     sig_buf.truncate(sig_len);
     Ok(sig_buf)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_software_key_precedence_over_stale_hardware_handle() {
+        let temp = TempDir::new().unwrap();
+        let keys_dir = temp.path().join("se_keys");
+        fs::create_dir_all(&keys_dir).unwrap();
+
+        let storage = SecureEnclaveKeyStorage {
+            keys_dir: keys_dir.clone(),
+            handle_cache: Mutex::new(HashMap::new()),
+        };
+
+        let alias = KeyAlias::new_unchecked("main-device");
+        let did = IdentityDID::try_from("did:keri:test-did").unwrap();
+
+        // Write a stale .se handle file
+        fs::write(storage.handle_path(&alias), b"stale-se-handle").unwrap();
+
+        // Store a software key with non-empty encrypted data
+        let sw_data = b"encrypted-software-key-material";
+        storage
+            .store_key(&alias, &did, KeyRole::Primary, sw_data)
+            .unwrap();
+
+        // 1. is_hardware_key must be FALSE when .swkey exists
+        assert!(!storage.is_hardware_key(&alias));
+
+        // 2. load_key must return the software key material, not the stale handle
+        let (loaded_did, _role, loaded_data) = storage.load_key(&alias).unwrap();
+        assert_eq!(loaded_did, did);
+        assert_eq!(loaded_data, sw_data);
+
+        // 3. handle_path file must have been deleted by store_key
+        assert!(!storage.handle_path(&alias).exists());
+    }
 }

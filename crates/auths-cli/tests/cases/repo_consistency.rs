@@ -27,6 +27,7 @@ const REPO_AWARE: &[&str] = &[
     "ctx.repo",
     "--repo",
     "auths_home_with_config",
+    "AuthsPaths",
 ];
 
 /// Storage-touching command sources with a known, reviewed reason for not threading `--repo`, matched by

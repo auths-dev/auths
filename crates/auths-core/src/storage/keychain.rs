@@ -2,7 +2,7 @@
 
 use crate::config::EnvironmentConfig;
 use crate::error::AgentError;
-use crate::paths::auths_home_with_config;
+use crate::paths::AuthsPaths;
 use log::{info, warn};
 use std::sync::Arc;
 
@@ -566,9 +566,9 @@ fn get_platform_default(
         #[cfg(feature = "keychain-secure-enclave")]
         {
             if super::secure_enclave::is_available()
-                && let Ok(home) = auths_home_with_config(config)
+                && let Ok(paths) = AuthsPaths::resolve_with_config(config, None)
             {
-                match super::secure_enclave::SecureEnclaveKeyStorage::new(&home) {
+                match super::secure_enclave::SecureEnclaveKeyStorage::new(&paths.home_dir) {
                     Ok(storage) => {
                         log::info!("Using Secure Enclave (Touch ID signing)");
                         return Ok(Box::new(storage));
@@ -671,12 +671,12 @@ fn get_backend_by_name(
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         "secure-enclave" => {
             info!("Using Secure Enclave backend (AUTHS_KEYCHAIN_BACKEND=secure-enclave)");
-            let home =
-                auths_home_with_config(config).map_err(|e| AgentError::BackendInitFailed {
+            let paths =
+                AuthsPaths::resolve_with_config(config, None).map_err(|e| AgentError::BackendInitFailed {
                     backend: "secure-enclave",
-                    error: format!("failed to resolve auths home: {e}"),
+                    error: format!("failed to resolve auths paths: {e}"),
                 })?;
-            let storage = super::secure_enclave::SecureEnclaveKeyStorage::new(&home)?;
+            let storage = super::secure_enclave::SecureEnclaveKeyStorage::new(&paths.home_dir)?;
             Ok(Box::new(storage))
         }
         _ => {
@@ -692,7 +692,7 @@ fn get_backend_by_name(
 /// Construct an `EncryptedFileStorage` from the provided config.
 ///
 /// Uses `config.keychain.file_path` when set; otherwise resolves the default
-/// path from `config.auths_home` (or `~/.auths/keys.enc`).
+/// path from `AuthsPaths::resolve_with_config`.
 /// Sets the password from `config.keychain.passphrase` when present.
 fn new_encrypted_file_storage(
     config: &EnvironmentConfig,
@@ -700,9 +700,9 @@ fn new_encrypted_file_storage(
     let storage = if let Some(ref path) = config.keychain.file_path {
         EncryptedFileStorage::with_path(path.clone())?
     } else {
-        let home =
-            auths_home_with_config(config).map_err(|e| AgentError::StorageError(e.to_string()))?;
-        EncryptedFileStorage::new(&home)?
+        let paths = AuthsPaths::resolve_with_config(config, None)
+            .map_err(|e: crate::paths::AuthsHomeError| AgentError::StorageError(e.to_string()))?;
+        EncryptedFileStorage::with_path(paths.keychain_file)?
     };
 
     if let Some(ref passphrase) = config.keychain.passphrase {
@@ -796,6 +796,22 @@ impl KeyStorage for Arc<dyn KeyStorage + Send + Sync> {
     fn is_hardware_backend(&self) -> bool {
         self.as_ref().is_hardware_backend()
     }
+    fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+        self.as_ref().is_hardware_key(alias)
+    }
+    fn rebind_identity(
+        &self,
+        alias: &KeyAlias,
+        identity_did: &IdentityDID,
+    ) -> Result<(), AgentError> {
+        self.as_ref().rebind_identity(alias, identity_did)
+    }
+    fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().export_public_key(alias)
+    }
+    fn sign_raw(&self, alias: &KeyAlias, message: &[u8]) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().sign_raw(alias, message)
+    }
 }
 
 impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
@@ -840,6 +856,22 @@ impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
     }
     fn is_hardware_backend(&self) -> bool {
         self.as_ref().is_hardware_backend()
+    }
+    fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+        self.as_ref().is_hardware_key(alias)
+    }
+    fn rebind_identity(
+        &self,
+        alias: &KeyAlias,
+        identity_did: &IdentityDID,
+    ) -> Result<(), AgentError> {
+        self.as_ref().rebind_identity(alias, identity_did)
+    }
+    fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().export_public_key(alias)
+    }
+    fn sign_raw(&self, alias: &KeyAlias, message: &[u8]) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().sign_raw(alias, message)
     }
 }
 

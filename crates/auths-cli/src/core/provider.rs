@@ -24,7 +24,17 @@ impl PassphraseProvider for CliPassphraseProvider {
         }
 
         // Print the contextual prompt provided by the caller to stderr
-        eprintln!("{}", prompt_message);
+        let formatted_prompt = if prompt_message.starts_with("Enter passphrase for key ") {
+            let key_name = prompt_message
+                .trim_start_matches("Enter passphrase for key '")
+                .split('\'')
+                .next()
+                .unwrap_or("parent");
+            format!("[2/2] Enter EXISTING passphrase for parent key '{key_name}' (created during `auths init`):")
+        } else {
+            prompt_message.to_string()
+        };
+        eprintln!("{}", formatted_prompt);
 
         // Use rpassword to prompt securely
         let password = rpassword::prompt_password("Enter passphrase: ")
@@ -71,10 +81,12 @@ impl PassphraseProvider for PrefilledPassphraseProvider {
 }
 
 /// A PassphraseProvider specifically for agent provisioning that supplies a prefilled
-/// passphrase for the new agent while falling back to CLI/environment prompts for parent keys.
+/// passphrase for the new agent while caching and managing passphrases for parent keys.
 pub struct AgentProvisionPassphraseProvider {
     agent_alias: String,
     agent_passphrase: Zeroizing<String>,
+    parent_alias: Option<String>,
+    parent_passphrase: std::sync::Mutex<Option<Zeroizing<String>>>,
     fallback: CliPassphraseProvider,
 }
 
@@ -83,6 +95,23 @@ impl AgentProvisionPassphraseProvider {
         Self {
             agent_alias,
             agent_passphrase,
+            parent_alias: None,
+            parent_passphrase: std::sync::Mutex::new(None),
+            fallback: CliPassphraseProvider::new(),
+        }
+    }
+
+    pub fn with_parent(
+        agent_alias: String,
+        agent_passphrase: Zeroizing<String>,
+        parent_alias: String,
+        parent_passphrase: Option<Zeroizing<String>>,
+    ) -> Self {
+        Self {
+            agent_alias,
+            agent_passphrase,
+            parent_alias: Some(parent_alias),
+            parent_passphrase: std::sync::Mutex::new(parent_passphrase),
             fallback: CliPassphraseProvider::new(),
         }
     }
@@ -90,10 +119,30 @@ impl AgentProvisionPassphraseProvider {
 
 impl PassphraseProvider for AgentProvisionPassphraseProvider {
     fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
-        if prompt_message.contains(&self.agent_alias) {
-            Ok(self.agent_passphrase.clone())
-        } else {
-            self.fallback.get_passphrase(prompt_message)
+        if prompt_message.contains(&self.agent_alias) || prompt_message.contains("agent-builder") {
+            return Ok(self.agent_passphrase.clone());
         }
+
+        if let Some(ref parent) = self.parent_alias {
+            if prompt_message.contains(parent.as_str())
+                || (parent.ends_with("-device") && prompt_message.contains(parent.trim_end_matches("-device")))
+            {
+                let mut guard = self.parent_passphrase.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(ref pass) = *guard {
+                    return Ok(pass.clone());
+                }
+                let pass = self.fallback.get_passphrase(prompt_message)?;
+                *guard = Some(pass.clone());
+                return Ok(pass);
+            }
+        }
+
+        let mut guard = self.parent_passphrase.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(ref pass) = *guard {
+            return Ok(pass.clone());
+        }
+        let pass = self.fallback.get_passphrase(prompt_message)?;
+        *guard = Some(pass.clone());
+        Ok(pass)
     }
 }
