@@ -671,11 +671,12 @@ fn get_backend_by_name(
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         "secure-enclave" => {
             info!("Using Secure Enclave backend (AUTHS_KEYCHAIN_BACKEND=secure-enclave)");
-            let paths =
-                AuthsPaths::resolve_with_config(config, None).map_err(|e| AgentError::BackendInitFailed {
+            let paths = AuthsPaths::resolve_with_config(config, None).map_err(|e| {
+                AgentError::BackendInitFailed {
                     backend: "secure-enclave",
                     error: format!("failed to resolve auths paths: {e}"),
-                })?;
+                }
+            })?;
             let storage = super::secure_enclave::SecureEnclaveKeyStorage::new(&paths.home_dir)?;
             Ok(Box::new(storage))
         }

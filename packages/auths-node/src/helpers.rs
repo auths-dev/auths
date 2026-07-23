@@ -30,6 +30,7 @@ pub fn make_env_config(passphrase: &str, repo_path: &str) -> EnvironmentConfig {
     keychain.passphrase = Some(passphrase.to_string());
     EnvironmentConfig {
         auths_home: Some(repo_path.into()),
+        auths_repo: None,
         keychain,
         ssh_agent_socket: None,
     }

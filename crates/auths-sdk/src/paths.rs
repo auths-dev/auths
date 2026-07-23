@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-pub use auths_core::paths::{auths_home, auths_home_with_config, AuthsHomeError, AuthsPaths};
+pub use auths_core::paths::{AuthsHomeError, AuthsPaths, auths_home, auths_home_with_config};
 
 /// Resolve the registry (local storage) directory for a command, honoring an explicit `--repo` override.
 ///

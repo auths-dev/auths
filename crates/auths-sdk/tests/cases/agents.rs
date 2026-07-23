@@ -423,7 +423,8 @@ fn test_provision_agent_machine_under_delegated_device_key() {
     let ctx = build_test_context_with_provider(
         &reg_dir,
         Arc::new(_keychain),
-        Some(Arc::new(PrefilledPassphraseProvider::new(PASS)) as Arc<dyn PassphraseProvider + Send + Sync>),
+        Some(Arc::new(PrefilledPassphraseProvider::new(PASS))
+            as Arc<dyn PassphraseProvider + Send + Sync>),
     );
 
     let device_alias = KeyAlias::new_unchecked(format!("{}-device", root_alias.as_str()));

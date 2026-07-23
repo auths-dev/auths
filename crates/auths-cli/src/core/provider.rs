@@ -30,7 +30,9 @@ impl PassphraseProvider for CliPassphraseProvider {
                 .split('\'')
                 .next()
                 .unwrap_or("parent");
-            format!("[2/2] Enter EXISTING passphrase for parent key '{key_name}' (created during `auths init`):")
+            format!(
+                "[2/2] Enter EXISTING passphrase for parent key '{key_name}' (created during `auths init`):"
+            )
         } else {
             prompt_message.to_string()
         };
@@ -123,21 +125,27 @@ impl PassphraseProvider for AgentProvisionPassphraseProvider {
             return Ok(self.agent_passphrase.clone());
         }
 
-        if let Some(ref parent) = self.parent_alias {
-            if prompt_message.contains(parent.as_str())
-                || (parent.ends_with("-device") && prompt_message.contains(parent.trim_end_matches("-device")))
-            {
-                let mut guard = self.parent_passphrase.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(ref pass) = *guard {
-                    return Ok(pass.clone());
-                }
-                let pass = self.fallback.get_passphrase(prompt_message)?;
-                *guard = Some(pass.clone());
-                return Ok(pass);
+        if let Some(ref parent) = self.parent_alias
+            && (prompt_message.contains(parent.as_str())
+                || (parent.ends_with("-device")
+                    && prompt_message.contains(parent.trim_end_matches("-device"))))
+        {
+            let mut guard = self
+                .parent_passphrase
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(ref pass) = *guard {
+                return Ok(pass.clone());
             }
+            let pass = self.fallback.get_passphrase(prompt_message)?;
+            *guard = Some(pass.clone());
+            return Ok(pass);
         }
 
-        let mut guard = self.parent_passphrase.lock().unwrap_or_else(|e| e.into_inner());
+        let mut guard = self
+            .parent_passphrase
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(ref pass) = *guard {
             return Ok(pass.clone());
         }

@@ -152,7 +152,11 @@ pub enum AgentSubcommand {
         agent_did: String,
 
         /// Delegator signing key alias
-        #[arg(long, default_value = "main", help = "Your root identity's signing key name")]
+        #[arg(
+            long,
+            default_value = "main",
+            help = "Your root identity's signing key name"
+        )]
         key: String,
     },
 }
@@ -285,7 +289,16 @@ pub fn handle_agent(cmd: AgentCommand, repo: Option<PathBuf>) -> Result<()> {
             out,
             profile,
             passphrase_file,
-        } => handle_provision_cmd(label, key, scope, expires_in, out, profile, passphrase_file, repo),
+        } => handle_provision_cmd(
+            label,
+            key,
+            scope,
+            expires_in,
+            out,
+            profile,
+            passphrase_file,
+            repo,
+        ),
         AgentSubcommand::List { include_revoked } => handle_list_cmd(include_revoked, repo),
         AgentSubcommand::Update {
             agent,
@@ -792,132 +805,152 @@ fn handle_provision_cmd(
     passphrase_file: Option<PathBuf>,
     repo: Option<PathBuf>,
 ) -> Result<()> {
-    use std::path::Path;
-    use auths_core::paths::auths_home;
-    use auths_sdk::keychain::KeyAlias;
-    use auths_sdk::storage_layout::resolve_repo_path;
     use crate::core::provider::CliPassphraseProvider;
+    use auths_sdk::keychain::KeyAlias;
+    use auths_sdk::paths::auths_home;
+    use auths_sdk::storage_layout::resolve_repo_path;
+    use std::path::Path;
 
     let repo_path = resolve_repo_path(repo)?;
     let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
     let is_interactive = console::user_attended() && !is_json_mode();
 
-    let (label_str, key_str, profile_str, destination_dir) = if is_interactive && (label.is_none() || key.is_none() || profile.is_none()) {
-        use dialoguer::{Input, Select};
+    let (label_str, key_str, profile_str, destination_dir) =
+        if is_interactive && (label.is_none() || key.is_none() || profile.is_none()) {
+            use dialoguer::{Input, Select};
 
-        let label_input = if let Some(l) = label {
-            l
-        } else {
-            Input::new()
-                .with_prompt("Type a name for your agent")
-                .interact_text()?
-        };
-
-        let key_input = if let Some(k) = key {
-            k
-        } else {
-            // Auto-detect active local signing key (defaults to main-device, omitting root hardware AID main)
-            let temp_provider = std::sync::Arc::new(CliPassphraseProvider::new());
-            let temp_ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(temp_provider))?;
-            let aliases = temp_ctx.key_storage.list_aliases().unwrap_or_default();
-            if aliases.iter().any(|k| k.as_str() == "main-device") {
-                "main-device".to_string()
-            } else if let Some(first_device) = aliases.iter().find(|k| k.as_str().ends_with("-device")) {
-                first_device.as_str().to_string()
+            let label_input = if let Some(l) = label {
+                l
             } else {
-                aliases
-                    .into_iter()
-                    .map(|k| k.as_str().to_string())
-                    .find(|k| !k.ends_with("--next-0") && k != "main")
-                    .unwrap_or_else(|| "main-device".to_string())
-            }
-        };
+                Input::new()
+                    .with_prompt("Type a name for your agent")
+                    .interact_text()?
+            };
 
-        let profile_input = if let Some(p) = profile {
-            p
-        } else {
-            let profiles = vec![
-                "assistant (Interactive AI assistant profile)",
-                "ci (Headless CI runner profile)",
-            ];
-            let selection = Select::new()
-                .with_prompt("Select agent profile preset")
-                .items(&profiles)
-                .default(0)
-                .interact()?;
-            if selection == 0 {
-                "assistant".to_string()
+            let key_input = if let Some(k) = key {
+                k
             } else {
-                "ci".to_string()
-            }
+                // Auto-detect active local signing key (defaults to main-device, omitting root hardware AID main)
+                let temp_provider = std::sync::Arc::new(CliPassphraseProvider::new());
+                let temp_ctx = crate::factories::storage::build_auths_context(
+                    &repo_path,
+                    &env_config,
+                    Some(temp_provider),
+                )?;
+                let aliases = temp_ctx.key_storage.list_aliases().unwrap_or_default();
+                if aliases.iter().any(|k| k.as_str() == "main-device") {
+                    "main-device".to_string()
+                } else if let Some(first_device) =
+                    aliases.iter().find(|k| k.as_str().ends_with("-device"))
+                {
+                    first_device.as_str().to_string()
+                } else {
+                    aliases
+                        .into_iter()
+                        .map(|k| k.as_str().to_string())
+                        .find(|k| !k.ends_with("--next-0") && k != "main")
+                        .unwrap_or_else(|| "main-device".to_string())
+                }
+            };
+
+            let profile_input = if let Some(p) = profile {
+                p
+            } else {
+                let profiles = vec![
+                    "assistant (Interactive AI assistant profile)",
+                    "ci (Headless CI runner profile)",
+                ];
+                let selection = Select::new()
+                    .with_prompt("Select agent profile preset")
+                    .items(&profiles)
+                    .default(0)
+                    .interact()?;
+                if selection == 0 {
+                    "assistant".to_string()
+                } else {
+                    "ci".to_string()
+                }
+            };
+
+            let out_input = out.unwrap_or_else(|| {
+                auths_home()
+                    .unwrap_or_else(|_| PathBuf::from("~/.auths"))
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .join(".auths-agents")
+                    .join(&label_input)
+            });
+
+            (label_input, key_input, profile_input, out_input)
+        } else {
+            let label_val = label.unwrap_or_else(|| "agent-builder".to_string());
+            let key_val = key.unwrap_or_else(|| "main-device".to_string());
+            let profile_val = profile.unwrap_or_else(|| "assistant".to_string());
+            let out_val = out.unwrap_or_else(|| {
+                auths_home()
+                    .unwrap_or_else(|_| PathBuf::from("~/.auths"))
+                    .parent()
+                    .unwrap_or_else(|| Path::new("."))
+                    .join(".auths-agents")
+                    .join(&label_val)
+            });
+            (label_val, key_val, profile_val, out_val)
         };
-
-        let out_input = out.unwrap_or_else(|| {
-            auths_home()
-                .unwrap_or_else(|_| PathBuf::from("~/.auths"))
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .join(".auths-agents")
-                .join(&label_input)
-        });
-
-        (label_input, key_input, profile_input, out_input)
-    } else {
-        let label_val = label.unwrap_or_else(|| "agent-builder".to_string());
-        let key_val = key.unwrap_or_else(|| "main-device".to_string());
-        let profile_val = profile.unwrap_or_else(|| "assistant".to_string());
-        let out_val = out.unwrap_or_else(|| {
-            auths_home()
-                .unwrap_or_else(|_| PathBuf::from("~/.auths"))
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .join(".auths-agents")
-                .join(&label_val)
-        });
-        (label_val, key_val, profile_val, out_val)
-    };
 
     let parent_alias = KeyAlias::new_unchecked(&key_str);
-    let agent_profile = profile_str.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
+    let agent_profile =
+        profile_str.parse::<auths_sdk::workflows::agent_provision::AgentProfile>()?;
 
-    let (passphrase, passphrase_provider): (String, std::sync::Arc<dyn auths_sdk::signing::PassphraseProvider>) =
-        if let Some(p_file) = &passphrase_file {
-            let pass = std::fs::read_to_string(p_file)
-                .with_context(|| format!("Failed to read passphrase file {}", p_file.display()))?
-                .trim()
-                .to_string();
-            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::with_parent(
+    let (passphrase, passphrase_provider): (
+        String,
+        std::sync::Arc<dyn auths_sdk::signing::PassphraseProvider>,
+    ) = if let Some(p_file) = &passphrase_file {
+        let pass = std::fs::read_to_string(p_file)
+            .with_context(|| format!("Failed to read passphrase file {}", p_file.display()))?
+            .trim()
+            .to_string();
+        let provider = std::sync::Arc::new(
+            crate::core::provider::AgentProvisionPassphraseProvider::with_parent(
                 label_str.clone(),
                 zeroize::Zeroizing::new(pass.clone()),
                 key_str.clone(),
                 None,
-            ));
-            (pass, provider)
-        } else if is_interactive {
-            eprintln!("[1/2] Create passphrase for NEW agent key '{label_str}':");
-            let pass = rpassword::prompt_password("Enter passphrase: ")
-                .context("Failed to read passphrase from terminal")?;
-            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::with_parent(
+            ),
+        );
+        (pass, provider)
+    } else if is_interactive {
+        eprintln!("[1/2] Create passphrase for NEW agent key '{label_str}':");
+        let pass = rpassword::prompt_password("Enter passphrase: ")
+            .context("Failed to read passphrase from terminal")?;
+        let provider = std::sync::Arc::new(
+            crate::core::provider::AgentProvisionPassphraseProvider::with_parent(
                 label_str.clone(),
                 zeroize::Zeroizing::new(pass.clone()),
                 key_str.clone(),
                 None,
-            ));
-            (pass, provider)
-        } else {
-            use rand::Rng;
-            let mut rng = rand::rng();
-            let pass: String = (0..32)
-                .map(|_| rng.sample(rand::distr::Alphanumeric) as char)
-                .collect();
-            let provider = std::sync::Arc::new(crate::core::provider::AgentProvisionPassphraseProvider::new(
+            ),
+        );
+        (pass, provider)
+    } else {
+        use rand::Rng;
+        let mut rng = rand::rng();
+        let pass: String = (0..32)
+            .map(|_| rng.sample(rand::distr::Alphanumeric) as char)
+            .collect();
+        let provider = std::sync::Arc::new(
+            crate::core::provider::AgentProvisionPassphraseProvider::new(
                 label_str.clone(),
                 zeroize::Zeroizing::new(pass.clone()),
-            ));
-            (pass, provider)
-        };
+            ),
+        );
+        (pass, provider)
+    };
 
-    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+    let ctx = crate::factories::storage::build_auths_context(
+        &repo_path,
+        &env_config,
+        Some(passphrase_provider),
+    )?;
 
     let params = auths_sdk::workflows::agent_provision::AgentProvisionParams {
         label: label_str.clone(),
@@ -929,7 +962,14 @@ fn handle_provision_cmd(
 
     #[allow(clippy::disallowed_methods)]
     let now = chrono::Utc::now();
-    let res = auths_sdk::workflows::agent_provision::provision_agent_machine(&ctx, &parent_alias, &params, &passphrase, now, &repo_path)?;
+    let res = auths_sdk::workflows::agent_provision::provision_agent_machine(
+        &ctx,
+        &parent_alias,
+        &params,
+        &passphrase,
+        now,
+        &repo_path,
+    )?;
 
     if is_json_mode() {
         JsonResponse::success(
@@ -952,19 +992,26 @@ fn handle_provision_cmd(
         println!("  Wrapper Helper:  {}", res.wrapper_path.display());
         println!();
         println!("Your agent is provisioned!");
-        println!("You can find its details at {}", res.destination_dir.display());
+        println!(
+            "You can find its details at {}",
+            res.destination_dir.display()
+        );
     }
 
     Ok(())
 }
 
 fn handle_list_cmd(include_revoked: bool, repo: Option<PathBuf>) -> Result<()> {
-    use auths_sdk::storage_layout::resolve_repo_path;
     use crate::core::provider::CliPassphraseProvider;
+    use auths_sdk::storage_layout::resolve_repo_path;
     let repo_path = resolve_repo_path(repo)?;
     let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
     let passphrase_provider = std::sync::Arc::new(CliPassphraseProvider::new());
-    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+    let ctx = crate::factories::storage::build_auths_context(
+        &repo_path,
+        &env_config,
+        Some(passphrase_provider),
+    )?;
 
     let mut agents = auths_sdk::domains::agents::list(&ctx)?;
     if !include_revoked {
@@ -983,25 +1030,34 @@ fn handle_list_cmd(include_revoked: bool, repo: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn handle_update_cmd(agent: String, _label: Option<String>, _extend_expiration: Option<i64>) -> Result<()> {
+fn handle_update_cmd(
+    agent: String,
+    _label: Option<String>,
+    _extend_expiration: Option<i64>,
+) -> Result<()> {
     println!("✔ Updated agent metadata for '{}'", agent);
     Ok(())
 }
 
 fn handle_revoke_cmd(agent_did: String, key: String, repo: Option<PathBuf>) -> Result<()> {
+    use crate::core::provider::CliPassphraseProvider;
     use auths_sdk::keychain::KeyAlias;
     use auths_sdk::storage_layout::resolve_repo_path;
-    use crate::core::provider::CliPassphraseProvider;
     let repo_path = resolve_repo_path(repo)?;
     let env_config = auths_sdk::core_config::EnvironmentConfig::from_env();
     let passphrase_provider = std::sync::Arc::new(CliPassphraseProvider::new());
-    let ctx = crate::factories::storage::build_auths_context(&repo_path, &env_config, Some(passphrase_provider))?;
+    let ctx = crate::factories::storage::build_auths_context(
+        &repo_path,
+        &env_config,
+        Some(passphrase_provider),
+    )?;
     let root_alias = KeyAlias::new_unchecked(key);
 
     auths_sdk::domains::agents::revoke(&ctx, &root_alias, &agent_did)?;
 
     if is_json_mode() {
-        JsonResponse::success("agent revoke", &serde_json::json!({ "revoked": agent_did })).print()?;
+        JsonResponse::success("agent revoke", &serde_json::json!({ "revoked": agent_did }))
+            .print()?;
     } else {
         println!("✔ Revoked agent identity {}", agent_did);
     }
@@ -1068,7 +1124,11 @@ mod tests {
 
         assert!(res.is_err());
         let err_msg = res.unwrap_err().to_string();
-        assert!(err_msg.contains("invalid") || err_msg.contains("profile") || err_msg.contains("Unknown"));
+        assert!(
+            err_msg.contains("invalid")
+                || err_msg.contains("profile")
+                || err_msg.contains("Unknown")
+        );
     }
 
     #[test]
