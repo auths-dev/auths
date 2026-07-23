@@ -131,7 +131,7 @@ pub fn handle_pair(
     // if the agent can't start (perms, disk full, etc.), we proceed
     // via the passphrase provider path — never abort pair on agent
     // startup failure.
-    if let Err(e) = crate::commands::agent::ensure_agent_running(true) {
+    if let Err(e) = crate::commands::daemon::ensure_agent_running(true) {
         log::debug!("auths-agent auto-start skipped: {e}");
     }
 

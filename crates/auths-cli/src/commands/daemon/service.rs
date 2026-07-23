@@ -86,7 +86,7 @@ fn get_launchd_plist_path() -> Result<PathBuf> {
     Ok(home
         .join("Library")
         .join("LaunchAgents")
-        .join("com.auths.agent.plist"))
+        .join("com.auths.daemon.plist"))
 }
 
 fn get_systemd_unit_path() -> Result<PathBuf> {
@@ -95,7 +95,7 @@ fn get_systemd_unit_path() -> Result<PathBuf> {
         .join(".config")
         .join("systemd")
         .join("user")
-        .join("auths-agent.service"))
+        .join("auths-daemon.service"))
 }
 
 fn generate_launchd_plist() -> Result<String> {
@@ -120,7 +120,7 @@ fn generate_launchd_plist() -> Result<String> {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.auths.agent</string>
+    <string>com.auths.daemon</string>
     <key>ProgramArguments</key>
     <array>
         <string>{exe}</string>
@@ -163,7 +163,7 @@ Documentation=https://github.com/auths-rs/auths
 
 [Service]
 Type=simple
-ExecStart={exe} agent start --foreground
+ExecStart={exe} daemon start --foreground
 Restart=on-failure
 RestartSec=5
 
@@ -256,7 +256,7 @@ fn install_systemd_service(dry_run: bool, force: bool) -> Result<()> {
     eprintln!();
     eprintln!("To enable and start the service:");
     eprintln!("  systemctl --user daemon-reload");
-    eprintln!("  systemctl --user enable --now auths-agent");
+    eprintln!("  systemctl --user enable --now auths-daemon");
     eprintln!();
     eprintln!("The agent will start automatically on login.");
 
@@ -308,7 +308,7 @@ fn uninstall_systemd_service() -> Result<()> {
 
     eprintln!("Stopping and disabling systemd service...");
     let _ = std::process::Command::new("systemctl")
-        .args(["--user", "disable", "--now", "auths-agent"])
+        .args(["--user", "disable", "--now", "auths-daemon"])
         .status();
 
     fs::remove_file(&unit_path)

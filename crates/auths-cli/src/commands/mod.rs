@@ -4,6 +4,7 @@ pub mod registry_overrides;
 pub mod account;
 pub mod agent;
 pub mod anchor;
+pub mod daemon;
 pub mod approval;
 pub mod artifact;
 pub mod audit;

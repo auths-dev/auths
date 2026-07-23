@@ -11,7 +11,7 @@ use auths_sdk::crypto::{construct_sshsig_pem, construct_sshsig_signed_data};
 use auths_sdk::ports::agent::{AgentSigningError, AgentSigningPort};
 
 #[cfg(unix)]
-use crate::commands::agent::{ensure_agent_running, get_default_socket_path};
+use crate::commands::daemon::{ensure_agent_running, get_default_socket_path};
 
 /// CLI adapter that delegates signing to the Unix SSH agent.
 ///

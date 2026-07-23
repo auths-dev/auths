@@ -121,6 +121,7 @@ fn run() -> Result<()> {
         RootCommand::Auth(cmd) => cmd.execute(&ctx),
         // Internal
         RootCommand::Emergency(cmd) => cmd.execute(&ctx),
+        RootCommand::Daemon(cmd) => cmd.execute(&ctx),
         RootCommand::Agent(cmd) => cmd.execute(&ctx),
         RootCommand::Treasury(cmd) => cmd.execute(&ctx),
         RootCommand::Anchor(cmd) => cmd.execute(&ctx),

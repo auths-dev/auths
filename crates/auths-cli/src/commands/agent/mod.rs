@@ -1,30 +1,15 @@
-//! SSH agent daemon commands (start, stop, status).
+//! Identity management for delegated headless agents.
 
-pub mod process;
-pub mod service;
-
-use anyhow::{Context, Result, anyhow};
-use clap::{Parser, Subcommand, ValueEnum};
-use serde::Serialize;
-use std::fs;
+use anyhow::{Context, Result};
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use crate::core::fs::{create_restricted_dir, write_sensitive_file};
 use crate::ux::format::{JsonResponse, is_json_mode};
-use process::{
-    cleanup_stale_files, is_process_running, read_pid_file, socket_is_connectable, write_pid_file,
-};
-use service::ServiceManager;
-
-const DEFAULT_SOCKET_NAME: &str = "agent.sock";
-const PID_FILE_NAME: &str = "agent.pid";
-const ENV_FILE_NAME: &str = "agent.env";
-const LOG_FILE_NAME: &str = "agent.log";
 
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "agent",
-    about = "SSH agent daemon management (start, stop, status)."
+    about = "Identity management for delegated headless agents."
 )]
 pub struct AgentCommand {
     #[command(subcommand)]
@@ -33,67 +18,6 @@ pub struct AgentCommand {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum AgentSubcommand {
-    /// Start the SSH agent daemon
-    Start {
-        /// Custom socket path (default: ~/.auths/agent.sock)
-        #[arg(long, help = "Custom Unix socket path")]
-        socket: Option<PathBuf>,
-
-        /// Run in foreground (don't daemonize)
-        #[arg(long, help = "Run in foreground instead of daemonizing")]
-        foreground: bool,
-
-        /// Idle timeout (e.g., "30m", "1h", "0" for never)
-        #[arg(long, default_value = "30m", help = "Idle timeout before auto-lock")]
-        timeout: String,
-    },
-
-    /// Stop the SSH agent daemon
-    Stop,
-
-    /// Show agent status
-    Status,
-
-    /// Output shell environment for SSH_AUTH_SOCK (use with eval)
-    Env {
-        /// Shell format for output
-        #[arg(long, value_enum, default_value = "bash", help = "Shell format")]
-        shell: ShellFormat,
-    },
-
-    /// Lock the agent (clear keys from memory)
-    Lock,
-
-    /// Unlock the agent (re-load keys)
-    Unlock {
-        /// Key alias to unlock
-        #[arg(
-            long = "agent-key-alias",
-            visible_alias = "key",
-            default_value = "default",
-            help = "Key alias to unlock"
-        )]
-        agent_key_alias: String,
-    },
-
-    /// Install as a system service (launchd on macOS, systemd on Linux)
-    InstallService {
-        /// Don't install, just print the service file
-        #[arg(long, help = "Print service file without installing")]
-        dry_run: bool,
-
-        /// Force overwrite if service already exists
-        #[arg(long, help = "Overwrite existing service file")]
-        force: bool,
-
-        /// Service manager to use (auto-detect if not specified)
-        #[arg(long, value_enum, help = "Service manager (auto-detect by default)")]
-        manager: Option<ServiceManager>,
-    },
-
-    /// Uninstall the system service
-    UninstallService,
-
     /// Provision a new delegated headless agent in a single command
     Provision {
         /// Human-readable label / key alias for the new agent
@@ -166,129 +90,48 @@ pub enum AgentSubcommand {
         #[arg(short, long, help = "Label / agent name (e.g., auths-agent)")]
         label: String,
     },
-}
 
-/// Shell format for environment output.
-#[derive(ValueEnum, Clone, Debug, Default)]
-pub enum ShellFormat {
-    #[default]
-    Bash,
-    Zsh,
-    Fish,
-}
-
-/// Status information about the agent.
-#[derive(Serialize, Debug)]
-pub struct AgentStatus {
-    pub running: bool,
-    pub pid: Option<u32>,
-    pub socket_path: Option<String>,
-    pub socket_exists: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub uptime_secs: Option<u64>,
-}
-
-/// Ensures the SSH agent is running, starting it if necessary.
-///
-/// Returns `Ok(true)` if already running, `Ok(false)` if it was started.
-///
-/// Args:
-/// * `quiet`: Suppress startup messages.
-///
-/// Usage:
-/// ```ignore
-/// let was_running = ensure_agent_running(true)?;
-/// ```
-#[allow(dead_code)] // Used by bin/sign.rs (cross-target usage not tracked by lint)
-pub fn ensure_agent_running(quiet: bool) -> Result<bool> {
-    let socket_path = get_default_socket_path()?;
-    let pid_path = get_pid_file_path()?;
-
-    if let Some(pid) = read_pid_file(&pid_path)?
-        && is_process_running(pid)
-        && socket_is_connectable(&socket_path)
-    {
-        return Ok(true);
-    }
-
-    if !quiet {
-        eprintln!("Agent not running, starting...");
-    }
-
-    start_agent(None, false, "30m", quiet)?;
-
-    let timeout = std::time::Duration::from_secs(2);
-    let start = std::time::Instant::now();
-    while start.elapsed() < timeout {
-        if let Some(pid) = read_pid_file(&pid_path)?
-            && is_process_running(pid)
-            && socket_is_connectable(&socket_path)
-        {
-            if !quiet {
-                eprintln!("Agent started (PID {})", pid);
-            }
-            return Ok(false);
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-
-    Err(anyhow!("Failed to start agent within 2 seconds"))
-}
-
-/// The name of a per-machine daemon operation, or `None` for a store operation.
-///
-/// Daemon operations (start/stop/status/install-service/uninstall-service) act
-/// on the per-machine agent and cannot be scoped by `--repo`. Store operations
-/// (env/lock/unlock) read repo-scoped paths.
-fn daemon_op_name(cmd: &AgentSubcommand) -> Option<&'static str> {
-    match cmd {
-        AgentSubcommand::Start { .. } => Some("start"),
-        AgentSubcommand::Stop => Some("stop"),
-        AgentSubcommand::Status => Some("status"),
-        AgentSubcommand::InstallService { .. } => Some("install-service"),
-        AgentSubcommand::UninstallService => Some("uninstall-service"),
-        AgentSubcommand::Env { .. }
-        | AgentSubcommand::Lock
-        | AgentSubcommand::Unlock { .. }
-        | AgentSubcommand::Provision { .. }
-        | AgentSubcommand::List { .. }
-        | AgentSubcommand::Update { .. }
-        | AgentSubcommand::Revoke { .. }
-        | AgentSubcommand::Prompt { .. } => None,
-    }
+    // ── DEPRECATED DAEMON COMMANDS ──
+    #[command(hide = true)]
+    Start {
+        #[arg(long)]
+        socket: Option<PathBuf>,
+        #[arg(long)]
+        foreground: bool,
+        #[arg(long, default_value = "30m")]
+        timeout: String,
+    },
+    #[command(hide = true)]
+    Stop,
+    #[command(hide = true)]
+    Status,
+    #[command(hide = true)]
+    Env {
+        #[arg(long, value_enum, default_value = "bash")]
+        shell: crate::commands::daemon::ShellFormat,
+    },
+    #[command(hide = true)]
+    Lock,
+    #[command(hide = true)]
+    Unlock {
+        #[arg(long = "agent-key-alias", visible_alias = "key", default_value = "default")]
+        agent_key_alias: String,
+    },
+    #[command(hide = true)]
+    InstallService {
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        force: bool,
+        #[arg(long, value_enum)]
+        manager: Option<crate::commands::daemon::service::ServiceManager>,
+    },
+    #[command(hide = true)]
+    UninstallService,
 }
 
 pub fn handle_agent(cmd: AgentCommand, repo: Option<PathBuf>) -> Result<()> {
-    // Daemon operations are per-machine; `--repo` cannot scope them, so reject
-    // it rather than silently operate on the global agent.
-    if let Some(op) = daemon_op_name(&cmd.command)
-        && repo.is_some()
-    {
-        anyhow::bail!(
-            "`--repo` is not supported for `auths agent {}`; the agent daemon is per-machine \
-             and is selected by AUTHS_HOME, not by repository.",
-            op
-        );
-    }
-
     match cmd.command {
-        AgentSubcommand::Start {
-            socket,
-            foreground,
-            timeout,
-        } => start_agent(socket, foreground, &timeout, false),
-        AgentSubcommand::Stop => stop_agent(),
-        AgentSubcommand::Status => show_status(),
-        AgentSubcommand::InstallService {
-            dry_run,
-            force,
-            manager,
-        } => service::install_service(dry_run, force, manager),
-        AgentSubcommand::UninstallService => service::uninstall_service(),
-        // Store operations read repo-scoped paths; thread `--repo` through.
-        AgentSubcommand::Env { shell } => output_env(shell, repo),
-        AgentSubcommand::Lock => lock_agent(repo),
-        AgentSubcommand::Unlock { agent_key_alias } => unlock_agent(&agent_key_alias, repo),
         AgentSubcommand::Provision {
             label,
             key,
@@ -315,489 +158,60 @@ pub fn handle_agent(cmd: AgentCommand, repo: Option<PathBuf>) -> Result<()> {
         } => handle_update_cmd(agent, label, extend_expiration),
         AgentSubcommand::Revoke { agent_did, key } => handle_revoke_cmd(agent_did, key, repo),
         AgentSubcommand::Prompt { label } => handle_prompt_cmd(label),
-    }
-}
 
-fn parse_timeout(s: &str) -> Result<std::time::Duration> {
-    use std::time::Duration;
-
-    let s = s.trim();
-    if s == "0" {
-        return Ok(Duration::ZERO);
-    }
-
-    let (num_str, suffix) = if let Some(stripped) = s.strip_suffix('s') {
-        (stripped, "s")
-    } else if let Some(stripped) = s.strip_suffix('m') {
-        (stripped, "m")
-    } else if let Some(stripped) = s.strip_suffix('h') {
-        (stripped, "h")
-    } else {
-        (s, "m")
-    };
-
-    let num: u64 = num_str
-        .parse()
-        .with_context(|| format!("Invalid timeout number: {}", num_str))?;
-
-    let secs = match suffix {
-        "s" => num,
-        "m" => num * 60,
-        "h" => num * 3600,
-        _ => return Err(anyhow!("Invalid timeout suffix: {}", suffix)),
-    };
-
-    Ok(Duration::from_secs(secs))
-}
-
-fn get_auths_dir() -> Result<PathBuf> {
-    auths_sdk::paths::auths_home().map_err(|e| anyhow!(e))
-}
-
-/// Resolve the agent's storage directory, honoring a `--repo` override.
-///
-/// `None` preserves the default (`AUTHS_HOME` / `~/.auths`); `Some(path)`
-/// scopes the agent's socket/pid/env files to that registry.
-///
-/// Args:
-/// * `repo`: The optional `--repo` override.
-///
-/// Usage:
-/// ```ignore
-/// let dir = get_auths_dir_for_repo(ctx.repo_path.clone())?;
-/// ```
-fn get_auths_dir_for_repo(repo: Option<PathBuf>) -> Result<PathBuf> {
-    match repo {
-        Some(_) => auths_sdk::storage_layout::resolve_repo_path(repo)
-            .context("Failed to resolve the repository path for the agent store"),
-        None => get_auths_dir(),
-    }
-}
-
-fn get_socket_path_for_repo(repo: Option<PathBuf>) -> Result<PathBuf> {
-    Ok(get_auths_dir_for_repo(repo)?.join(DEFAULT_SOCKET_NAME))
-}
-
-fn get_pid_file_path_for_repo(repo: Option<PathBuf>) -> Result<PathBuf> {
-    Ok(get_auths_dir_for_repo(repo)?.join(PID_FILE_NAME))
-}
-
-/// Get the default socket path.
-pub fn get_default_socket_path() -> Result<PathBuf> {
-    Ok(get_auths_dir()?.join(DEFAULT_SOCKET_NAME))
-}
-
-fn get_pid_file_path() -> Result<PathBuf> {
-    Ok(get_auths_dir()?.join(PID_FILE_NAME))
-}
-
-fn get_env_file_path() -> Result<PathBuf> {
-    Ok(get_auths_dir()?.join(ENV_FILE_NAME))
-}
-
-pub(crate) fn get_log_file_path() -> Result<PathBuf> {
-    Ok(get_auths_dir()?.join(LOG_FILE_NAME))
-}
-
-fn start_agent(
-    socket_path: Option<PathBuf>,
-    foreground: bool,
-    timeout_str: &str,
-    quiet: bool,
-) -> Result<()> {
-    let auths_dir = get_auths_dir()?;
-    create_restricted_dir(&auths_dir)
-        .with_context(|| format!("Failed to create auths directory: {:?}", auths_dir))?;
-
-    let socket = match socket_path {
-        Some(s) => s,
-        None => get_default_socket_path()?,
-    };
-    let pid_path = get_pid_file_path()?;
-    let env_path = get_env_file_path()?;
-    let timeout = parse_timeout(timeout_str)?;
-
-    if let Some(pid) = read_pid_file(&pid_path)? {
-        if is_process_running(pid) {
-            return Err(anyhow!(
-                "Agent already running (PID {}). Use 'auths agent stop' first.",
-                pid
-            ));
+        // ── Forward Deprecated Daemon Commands ──
+        AgentSubcommand::Start { socket, foreground, timeout } => {
+            eprintln!("\x1b[33mWARNING: 'auths agent start' is deprecated for daemon management. Please use 'auths daemon start' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::Start { socket, foreground, timeout }
+            }, repo)
         }
-        let _ = fs::remove_file(&pid_path);
-    }
-
-    match fs::remove_file(&socket) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => {
-            return Err(anyhow!("Failed to remove stale socket {:?}: {}", socket, e));
+        AgentSubcommand::Stop => {
+            eprintln!("\x1b[33mWARNING: 'auths agent stop' is deprecated for daemon management. Please use 'auths daemon stop' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::Stop
+            }, repo)
+        }
+        AgentSubcommand::Status => {
+            eprintln!("\x1b[33mWARNING: 'auths agent status' is deprecated for daemon management. Please use 'auths daemon status' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::Status
+            }, repo)
+        }
+        AgentSubcommand::Env { shell } => {
+            eprintln!("\x1b[33mWARNING: 'auths agent env' is deprecated for daemon management. Please use 'auths daemon env' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::Env { shell }
+            }, repo)
+        }
+        AgentSubcommand::Lock => {
+            eprintln!("\x1b[33mWARNING: 'auths agent lock' is deprecated for daemon management. Please use 'auths daemon lock' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::Lock
+            }, repo)
+        }
+        AgentSubcommand::Unlock { agent_key_alias } => {
+            eprintln!("\x1b[33mWARNING: 'auths agent unlock' is deprecated for daemon management. Please use 'auths daemon unlock' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::Unlock { agent_key_alias }
+            }, repo)
+        }
+        AgentSubcommand::InstallService { dry_run, force, manager } => {
+            eprintln!("\x1b[33mWARNING: 'auths agent install-service' is deprecated for daemon management. Please use 'auths daemon install-service' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::InstallService { dry_run, force, manager }
+            }, repo)
+        }
+        AgentSubcommand::UninstallService => {
+            eprintln!("\x1b[33mWARNING: 'auths agent uninstall-service' is deprecated for daemon management. Please use 'auths daemon uninstall-service' instead.\x1b[0m");
+            crate::commands::daemon::handle_daemon(crate::commands::daemon::DaemonCommand {
+                command: crate::commands::daemon::DaemonSubcommand::UninstallService
+            }, repo)
         }
     }
-
-    if foreground {
-        run_agent_foreground(&socket, &pid_path, &env_path, timeout)
-    } else {
-        daemonize_agent(&socket, &env_path, timeout_str, quiet)
-    }
 }
 
-#[cfg(unix)]
-fn run_agent_foreground(
-    socket: &std::path::Path,
-    pid_path: &std::path::Path,
-    env_path: &std::path::Path,
-    timeout: std::time::Duration,
-) -> Result<()> {
-    use auths_sdk::agent_core::AgentHandle;
-    use std::sync::Arc;
-
-    let pid = std::process::id();
-    write_pid_file(pid_path, pid)?;
-
-    let socket_str = socket
-        .to_str()
-        .ok_or_else(|| anyhow!("Socket path is not valid UTF-8"))?;
-    let env_content = format!("export SSH_AUTH_SOCK=\"{}\"\n", socket_str);
-    write_sensitive_file(env_path, &env_content)
-        .with_context(|| format!("Failed to write env file: {:?}", env_path))?;
-
-    eprintln!("Starting SSH agent (foreground)...");
-    eprintln!("Socket: {}", socket_str);
-    eprintln!("PID: {}", pid);
-    if timeout.is_zero() {
-        eprintln!("Idle timeout: disabled");
-    } else {
-        eprintln!("Idle timeout: {:?}", timeout);
-    }
-    eprintln!();
-    eprintln!("To use this agent in your shell:");
-    eprintln!("  eval $(cat {})", env_path.display());
-    eprintln!("  # or");
-    eprintln!("  export SSH_AUTH_SOCK=\"{}\"", socket_str);
-    eprintln!();
-    eprintln!("Press Ctrl+C to stop.");
-
-    let handle = Arc::new(AgentHandle::with_pid_file_and_timeout(
-        socket.to_path_buf(),
-        pid_path.to_path_buf(),
-        timeout,
-    ));
-
-    let authorizer = build_sign_authorizer({
-        use std::io::IsTerminal;
-        std::io::stdin().is_terminal()
-    });
-
-    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
-    let result = rt.block_on(async {
-        auths_sdk::agent_core::start_agent_listener_with_handle(handle.clone(), authorizer).await
-    });
-
-    cleanup_stale_files(&[pid_path, env_path, socket]);
-
-    result.map_err(|e| anyhow!("Agent error: {}", e))
-}
-
-/// Builds the per-request signing authorizer for the agent. An interactive agent gates
-/// each new connecting process behind an approval prompt (so an unlocked agent does not
-/// grant silent signing to every same-user process); a daemonized / non-interactive
-/// agent is permissive, since there is no human present to approve.
-///
-/// Args:
-/// * `interactive`: whether the agent has a terminal to prompt on.
-///
-/// Usage:
-/// ```ignore
-/// let auth = build_sign_authorizer(std::io::stdin().is_terminal());
-/// ```
-#[cfg(unix)]
-fn build_sign_authorizer(
-    interactive: bool,
-) -> std::sync::Arc<dyn auths_sdk::agent_core::SignAuthorizer> {
-    if interactive {
-        std::sync::Arc::new(auths_sdk::agent_core::PerCallerAuthorizer::new(
-            approve_caller,
-        ))
-    } else {
-        std::sync::Arc::new(auths_sdk::agent_core::AllowAllSigning)
-    }
-}
-
-/// Prompts the operator to approve signing for a newly connected caller. Returns true to
-/// approve and pin that caller for the unlock window.
-///
-/// Args:
-/// * `peer`: the connecting process's identity.
-///
-/// Usage:
-/// ```ignore
-/// let approved = approve_caller(&peer);
-/// ```
-#[cfg(unix)]
-fn approve_caller(peer: &auths_sdk::agent_core::PeerIdentity) -> bool {
-    let who = match peer.pid {
-        Some(pid) => format!("process pid {pid} (uid {})", peer.uid),
-        None => format!("a process (uid {})", peer.uid),
-    };
-    eprintln!("\nauths agent: a new caller — {who} — is requesting a signature.");
-    dialoguer::Confirm::new()
-        .with_prompt("Approve signing for this caller?")
-        .default(false)
-        .interact()
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn run_agent_foreground(
-    _socket: &std::path::Path,
-    _pid_path: &std::path::Path,
-    _env_path: &std::path::Path,
-    _timeout: std::time::Duration,
-) -> Result<()> {
-    Err(anyhow!(
-        "SSH agent is not supported on this platform (requires Unix domain sockets)"
-    ))
-}
-
-#[cfg(unix)]
-fn daemonize_agent(
-    socket: &std::path::Path,
-    env_path: &std::path::Path,
-    timeout_str: &str,
-    quiet: bool,
-) -> Result<()> {
-    let socket_str = socket
-        .to_str()
-        .ok_or_else(|| anyhow!("Socket path is not valid UTF-8"))?;
-
-    let log_path = get_log_file_path()?;
-    let child_pid = process::spawn_detached(
-        &[
-            "agent",
-            "start",
-            "--foreground",
-            "--socket",
-            socket_str,
-            "--timeout",
-            timeout_str,
-        ],
-        &log_path,
-    )?;
-
-    if !quiet {
-        eprintln!("Agent daemon started (PID {})", child_pid);
-        eprintln!("Socket: {}", socket_str);
-        eprintln!("Log file: {}", log_path.display());
-        eprintln!();
-        eprintln!("To use this agent:");
-        eprintln!("  eval $(auths agent env)");
-        eprintln!("  # or");
-        eprintln!("  export SSH_AUTH_SOCK=\"{}\"", socket_str);
-    }
-
-    let env_content = format!("export SSH_AUTH_SOCK=\"{}\"\n", socket_str);
-    write_sensitive_file(env_path, &env_content)
-        .with_context(|| format!("Failed to write env file: {:?}", env_path))?;
-
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn daemonize_agent(
-    _socket: &std::path::Path,
-    _env_path: &std::path::Path,
-    _timeout_str: &str,
-    _quiet: bool,
-) -> Result<()> {
-    Err(anyhow!(
-        "Daemonization not supported on this platform. Use --foreground."
-    ))
-}
-
-fn stop_agent() -> Result<()> {
-    let pid_path = get_pid_file_path()?;
-    let socket_path = get_default_socket_path()?;
-    let env_path = get_env_file_path()?;
-
-    let pid = read_pid_file(&pid_path)?
-        .ok_or_else(|| anyhow!("Agent not running (no PID file found at {:?})", pid_path))?;
-
-    if !is_process_running(pid) {
-        eprintln!("Agent process {} not found. Cleaning up stale files.", pid);
-        cleanup_stale_files(&[&pid_path, &socket_path, &env_path]);
-        return Ok(());
-    }
-
-    eprintln!("Stopping agent (PID {})...", pid);
-    process::terminate_process(pid, std::time::Duration::from_secs(5))?;
-    cleanup_stale_files(&[&pid_path, &socket_path, &env_path]);
-    eprintln!("Agent stopped.");
-    Ok(())
-}
-
-fn show_status() -> Result<()> {
-    let pid_path = get_pid_file_path()?;
-    let socket_path = get_default_socket_path()?;
-
-    let pid = read_pid_file(&pid_path)?;
-    let running = pid.map(is_process_running).unwrap_or(false);
-    let socket_exists = socket_path.exists();
-
-    let status = AgentStatus {
-        running,
-        pid: if running { pid } else { None },
-        socket_path: if socket_exists {
-            Some(socket_path.to_string_lossy().to_string())
-        } else {
-            None
-        },
-        socket_exists,
-        uptime_secs: None,
-    };
-
-    if is_json_mode() {
-        JsonResponse::success("agent status", status).print()?;
-    } else if running {
-        eprintln!("Agent Status: RUNNING");
-        if let Some(p) = status.pid {
-            eprintln!("  PID: {}", p);
-        }
-        if let Some(ref sock) = status.socket_path {
-            eprintln!("  Socket: {}", sock);
-        }
-        eprintln!();
-        eprintln!("To use this agent:");
-        eprintln!("  eval $(auths agent env)");
-    } else {
-        eprintln!("Agent Status: STOPPED");
-        if pid.is_some() && !running {
-            eprintln!("  (Stale PID file found at {:?})", pid_path);
-        }
-        eprintln!();
-        eprintln!("To start the agent:");
-        eprintln!("  auths agent start");
-    }
-
-    Ok(())
-}
-
-fn output_env(shell: ShellFormat, repo: Option<PathBuf>) -> Result<()> {
-    let socket_path = get_socket_path_for_repo(repo.clone())?;
-    let pid_path = get_pid_file_path_for_repo(repo)?;
-
-    let pid = read_pid_file(&pid_path)?;
-    let running = pid.map(is_process_running).unwrap_or(false);
-
-    if !running {
-        eprintln!("Error: Agent is not running.");
-        eprintln!("Start the agent with: auths agent start");
-        std::process::exit(1);
-    }
-
-    if !socket_path.exists() {
-        eprintln!("Error: Socket file not found at {:?}", socket_path);
-        eprintln!("The agent may have crashed. Try: auths agent start");
-        std::process::exit(1);
-    }
-
-    let socket_str = socket_path
-        .to_str()
-        .ok_or_else(|| anyhow!("Socket path is not valid UTF-8"))?;
-
-    match shell {
-        ShellFormat::Bash | ShellFormat::Zsh => {
-            println!("export SSH_AUTH_SOCK=\"{}\"", socket_str);
-        }
-        ShellFormat::Fish => {
-            println!("set -x SSH_AUTH_SOCK \"{}\"", socket_str);
-        }
-    }
-
-    Ok(())
-}
-
-#[cfg(unix)]
-fn lock_agent(repo: Option<PathBuf>) -> Result<()> {
-    let pid_path = get_pid_file_path_for_repo(repo.clone())?;
-    let pid = read_pid_file(&pid_path)?;
-    let running = pid.map(is_process_running).unwrap_or(false);
-
-    if !running {
-        return Err(anyhow!("Agent is not running"));
-    }
-
-    let socket_path = get_socket_path_for_repo(repo)?;
-    auths_sdk::agent_core::remove_all_identities(&socket_path)
-        .map_err(|e| anyhow!("Failed to lock agent: {}", e))?;
-
-    eprintln!("Agent locked — all keys removed from memory.");
-    eprintln!("Use `auths agent unlock <key-alias>` to reload a key.");
-
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn lock_agent(_repo: Option<PathBuf>) -> Result<()> {
-    Err(anyhow!(
-        "Agent lock is not supported on this platform (requires Unix domain sockets)"
-    ))
-}
-
-#[cfg(unix)]
-fn unlock_agent(key_alias: &str, repo: Option<PathBuf>) -> Result<()> {
-    let pid_path = get_pid_file_path_for_repo(repo.clone())?;
-    let pid = read_pid_file(&pid_path)?;
-    let running = pid.map(is_process_running).unwrap_or(false);
-
-    if !running {
-        return Err(anyhow!("Agent is not running"));
-    }
-
-    let socket_path = get_socket_path_for_repo(repo)?;
-
-    let keychain = auths_sdk::keychain::get_platform_keychain()
-        .map_err(|e| anyhow!("Failed to get platform keychain: {}", e))?;
-
-    if keychain.is_hardware_backend() {
-        return Err(anyhow!(
-            "Agent-mode signing requires a software-backed key. Key '{}' is hardware-backed \
-             (Secure Enclave) and cannot export raw key material needed by the SSH agent. \
-             Use direct signing instead (which dispatches through the Secure Enclave), \
-             or initialize a separate software-backed identity for agent use.",
-            key_alias
-        ));
-    }
-
-    let key_ref = auths_sdk::keychain::SigningKeyRef::parse(key_alias)?;
-    let parsed_alias = key_ref.bare_alias().clone();
-
-    let (_identity_did, _role, encrypted_data) = keychain
-        .load_key(&parsed_alias)
-        .map_err(|e| anyhow!("Failed to load key '{}': {}", key_alias, e))?;
-
-    let passphrase = rpassword::prompt_password(format!("Passphrase for '{}': ", key_alias))
-        .context("Failed to read passphrase")?;
-
-    let key_bytes = auths_sdk::crypto::decrypt_keypair(&encrypted_data, &passphrase)
-        .map_err(|e| anyhow!("Failed to decrypt key '{}': {}", key_alias, e))?;
-
-    auths_sdk::agent_core::add_identity(&socket_path, &key_bytes)
-        .map_err(|e| anyhow!("Failed to add key to agent: {}", e))?;
-
-    eprintln!("Agent unlocked — key '{}' loaded.", key_alias);
-
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn unlock_agent(_key_alias: &str, _repo: Option<PathBuf>) -> Result<()> {
-    Err(anyhow!(
-        "Agent unlock is not supported on this platform (requires Unix domain sockets)"
-    ))
-}
-
-#[derive(Serialize)]
+#[derive(serde::Serialize)]
 struct AgentProvisionJsonResponse {
     agent_did: String,
     label: String,
@@ -1118,37 +532,6 @@ fn handle_prompt_cmd(label: String) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_get_auths_dir() {
-        let dir = get_auths_dir().unwrap();
-        assert!(dir.ends_with(".auths"));
-    }
-
-    #[test]
-    fn test_get_default_socket_path() {
-        let path = get_default_socket_path().unwrap();
-        assert!(path.ends_with("agent.sock"));
-    }
-
-    #[test]
-    fn test_shell_format_default() {
-        let format: ShellFormat = Default::default();
-        assert!(matches!(format, ShellFormat::Bash));
-    }
-
-    #[test]
-    fn test_parse_timeout() {
-        use std::time::Duration;
-
-        assert_eq!(parse_timeout("0").unwrap(), Duration::ZERO);
-        assert_eq!(parse_timeout("30s").unwrap(), Duration::from_secs(30));
-        assert_eq!(parse_timeout("5m").unwrap(), Duration::from_secs(300));
-        assert_eq!(parse_timeout("30m").unwrap(), Duration::from_secs(1800));
-        assert_eq!(parse_timeout("1h").unwrap(), Duration::from_secs(3600));
-        assert_eq!(parse_timeout("2h").unwrap(), Duration::from_secs(7200));
-        assert_eq!(parse_timeout("30").unwrap(), Duration::from_secs(1800));
-    }
 
     #[test]
     fn test_handle_provision_cmd_invalid_profile() {
