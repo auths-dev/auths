@@ -46,6 +46,7 @@ const STOPWORDS: &[&str] = &[
     "has",
     "home",
     "in",
+    "installed",
     "instead",
     "is",
     "it",
