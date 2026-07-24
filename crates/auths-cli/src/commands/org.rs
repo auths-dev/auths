@@ -1274,19 +1274,15 @@ pub fn handle_org(
     }
 }
 
-/// Read a raw git commit object (`git cat-file commit <sha>`).
+/// Read a raw git commit object using git2.
 fn read_commit_object(sha: &str) -> Result<String> {
-    let out = std::process::Command::new("git")
-        .args(["cat-file", "commit", sha])
-        .output()
-        .context("failed to run git cat-file")?;
-    if !out.status.success() {
-        return Err(anyhow!(
-            "git cat-file commit {sha} failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    String::from_utf8(out.stdout).context("commit object is not valid UTF-8")
+    let repo = git2::Repository::discover(".").context("failed to discover git repository")?;
+    let oid = git2::Oid::from_str(sha).context("invalid SHA format")?;
+    let odb = repo.odb().context("failed to get git ODB")?;
+    let obj = odb
+        .read(oid)
+        .context("failed to read commit object from database")?;
+    String::from_utf8(obj.data().to_vec()).context("commit object is not valid UTF-8")
 }
 
 /// Parse the `Auths-Anchor-Seq` trailer value from a raw commit, if present.

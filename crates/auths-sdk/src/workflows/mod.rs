@@ -11,6 +11,8 @@ pub mod auth;
 pub mod ci;
 /// Commit-time trailer injection (prepare-commit-msg hook + data files).
 pub mod commit_hooks;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod commit_signing;
 /// KEL-native commit-trust resolution (successor to the `allowed_signers` allowlist).
 pub mod commit_trust;
 /// Compliance-as-a-query: evidence packs, DSSE org-signing, offline verification.

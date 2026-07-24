@@ -58,6 +58,7 @@ anyhow = "1"
 # Payment-path observability (#7): Prometheus metrics behind an opt-in /metrics endpoint.
 auths-telemetry = { workspace = true }
 metrics = "0.24"
+git2.workspace = true
 
 [dev-dependencies]
 # The wrap↔gate cross-rail budget parity test drives the durable verifier-held

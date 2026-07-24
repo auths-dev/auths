@@ -1,6 +1,7 @@
 mod clap_collision;
 mod config_repo;
 mod doctor;
+mod e2e_auths_sign;
 mod e2e_git_hook;
 mod expand_rotate;
 mod forgery_resistance;
