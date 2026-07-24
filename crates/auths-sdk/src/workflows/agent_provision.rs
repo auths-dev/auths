@@ -233,7 +233,9 @@ pub fn materialize_agent_machine_registry(
     agent_registry: &Path,
     agent_did: &str,
 ) -> Result<()> {
-    let agent_pfx = agent_did.strip_prefix("did:keri:").unwrap_or(agent_did);
+    let agent_pfx = auths_verifier::IdentityDID::parse(agent_did)
+        .map(|d| d.prefix().to_string())
+        .unwrap_or_else(|_| agent_did.to_string());
 
     if agent_registry.exists() {
         fs::remove_dir_all(agent_registry)?;

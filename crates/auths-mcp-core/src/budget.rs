@@ -579,7 +579,8 @@ impl CounterRef {
 /// safe; we strip the scheme and reject anything that is not a safe single path
 /// component (defensive — the same guard `usage_ledger.rs` applies to a SAID).
 fn safe_key(delegation: &str) -> Result<String, BudgetError> {
-    let tail = delegation.strip_prefix("did:keri:").unwrap_or(delegation);
+    let parsed = auths_verifier::IdentityDID::parse(delegation).ok();
+    let tail = parsed.as_ref().map(|d| d.prefix()).unwrap_or(delegation);
     let safe = !tail.is_empty()
         && tail != "."
         && tail != ".."
