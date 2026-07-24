@@ -18,6 +18,7 @@ mod check_constant_time;
 mod check_curve_agnostic;
 mod check_error_codes;
 mod check_error_docs_published;
+mod check_identifier_discipline;
 mod check_paste_integrity;
 mod check_rfc6979;
 mod check_verify_path_completeness;
@@ -119,6 +120,8 @@ enum Command {
     /// (`validate_kel*`/`replay_kel`) in the verifier + CLI-verify surfaces;
     /// require `validate_signed_kel` or an explicit `rt-002-allow:` justification.
     CheckVerifyPathCompleteness,
+    /// Identifier discipline lint: ban raw strip_prefix("did:keri:"), strip_prefix("sha256:"), etc.
+    CheckIdentifierDiscipline,
     /// Run the AWN witness conformance suite against the shipped protocol core.
     /// Pass `--emit <dir>` to also write the vectors for a third-party witness.
     WitnessConformance {
@@ -164,6 +167,7 @@ fn main() -> anyhow::Result<()> {
         Command::CheckVerifyPathCompleteness => {
             check_verify_path_completeness::run(workspace_root())
         }
+        Command::CheckIdentifierDiscipline => check_identifier_discipline::run(workspace_root()),
         Command::WitnessConformance { emit, url } => {
             witness_conformance::run(emit.as_deref())?;
             match url {
