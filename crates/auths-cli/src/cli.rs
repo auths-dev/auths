@@ -102,6 +102,7 @@ pub enum RootCommand {
     Verify(UnifiedVerifyCommand),
     Status(StatusCommand),
     Whoami(WhoamiCommand),
+    Agent(AgentCommand),
 
     // ── Setup & Troubleshooting ──
     Demo(DemoCommand),
@@ -163,8 +164,6 @@ pub enum RootCommand {
     #[command(hide = true)]
     #[command(hide = true)]
     Emergency(EmergencyCommand),
-    #[command(hide = true)]
-    Agent(AgentCommand),
     #[command(hide = true)]
     Daemon(DaemonCommand),
     /// Aggregate treasury cap across a manager's sub-delegated agents.
