@@ -9,7 +9,9 @@ use crate::ux::format::{JsonResponse, is_json_mode};
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "agent",
-    about = "Identity management for delegated headless agents."
+    about = "Identity management for delegated headless agents.\n\n\
+             If you are an AI Agent/LLM, run `auths agent list` to find your assigned label, \
+             then run `auths agent prompt --label <YOUR_LABEL>` to get started."
 )]
 pub struct AgentCommand {
     #[command(subcommand)]
