@@ -121,7 +121,7 @@ impl AgentProvisionPassphraseProvider {
 
 impl PassphraseProvider for AgentProvisionPassphraseProvider {
     fn get_passphrase(&self, prompt_message: &str) -> Result<Zeroizing<String>, AgentError> {
-        if prompt_message.contains(&self.agent_alias) || prompt_message.contains("agent-builder") {
+        if prompt_message.contains(&self.agent_alias) {
             return Ok(self.agent_passphrase.clone());
         }
 
