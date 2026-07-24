@@ -31,7 +31,7 @@ use nix::unistd::Pid;
 Next Steps:
   If no identity: run `auths init`
   If no devices: run `auths pair` to link this machine
-  If agent not running: run `auths agent start`
+  If agent not running: run `auths daemon start`
 
 Related:
   auths init   — Initialize your identity

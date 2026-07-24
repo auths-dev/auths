@@ -77,7 +77,23 @@ const STOPWORDS: &[&str] = &[
 
 /// Exact substrings that exempt the containing string/line (last resort —
 /// justify every entry).
-const ALLOWED_PHRASES: &[&str] = &["auths slsa generate"];
+const ALLOWED_PHRASES: &[&str] = &[
+    "auths slsa generate",
+    // Deprecation warnings for old agent daemon commands in agent/mod.rs
+    "auths agent start",
+    "auths agent stop",
+    "auths agent status",
+    "auths agent env",
+    "auths agent lock",
+    "auths agent unlock",
+    "auths agent install-service",
+    "auths agent uninstall-service",
+    // Hidden advanced/internal commands documented in advanced.md
+    "auths log",
+    "auths witness",
+    "auths scim",
+    "auths debug",
+];
 
 struct CmdNode {
     subs: BTreeMap<String, CmdNode>,

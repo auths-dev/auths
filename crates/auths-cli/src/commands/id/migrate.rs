@@ -483,7 +483,7 @@ fn perform_gpg_migration(
                 attestation_path.display()
             ));
             out.println("  2. Start using Auths for new commits:");
-            out.println("     auths agent start");
+            out.println("     auths daemon start");
             out.println("  3. Existing GPG-signed commits remain verifiable");
 
             Ok(())
@@ -893,7 +893,7 @@ fn perform_ssh_migration(
 
             out.print_heading("Next Steps");
             out.println("  1. Start using Auths for new commits:");
-            out.println("     auths agent start");
+            out.println("     auths daemon start");
             out.println("  2. Existing SSH-signed commits remain verifiable");
             out.println(
                 "  3. Run 'auths verify HEAD' after your next commit to confirm it verifies",

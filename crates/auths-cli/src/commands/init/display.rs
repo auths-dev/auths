@@ -124,8 +124,8 @@ pub(crate) fn display_agent_result(out: &Output, result: &auths_sdk::result::Age
     out.println(&format!("  Capabilities: {}", cap_display.join(", ")));
     out.newline();
     out.print_success("Agent is ready to sign commits!");
-    out.println("  Start the agent: auths agent start");
-    out.println("  Check status: auths agent status");
+    out.println("  Start the agent: auths daemon start");
+    out.println("  Check status: auths daemon status");
 }
 
 pub(crate) fn display_agent_dry_run(
