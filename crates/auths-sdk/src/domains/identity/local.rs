@@ -198,9 +198,9 @@ fn is_local_signing_device(
 
 /// The delegator (root) KEL tip sequence for `root_did`, or `None` if unreadable.
 fn root_tip_seq(ctx: &AuthsContext, root_did: &str) -> Option<u128> {
-    let prefix = root_did.strip_prefix("did:keri:")?;
+    let parsed = auths_verifier::IdentityDID::parse(root_did).ok()?;
     ctx.registry
-        .get_tip(&Prefix::new_unchecked(prefix.to_string()))
+        .get_tip(&Prefix::new_unchecked(parsed.prefix().to_string()))
         .ok()
         .map(|tip| tip.sequence)
 }

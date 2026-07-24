@@ -244,8 +244,9 @@ pub fn keri_credential_ref(issuer: &Prefix, credential_said: &Said) -> String {
 
 /// Extracts the KERI prefix (AID) from a full `did:keri:` identifier string.
 pub fn did_keri_to_prefix(did: &str) -> Option<Prefix> {
-    did.strip_prefix("did:keri:")
-        .map(|s| Prefix::new_unchecked(s.to_string()))
+    auths_verifier::IdentityDID::parse(did)
+        .ok()
+        .map(|d| Prefix::new_unchecked(d.prefix().to_string()))
 }
 
 // --- Configurable Layout (Primarily for did:key Identity & Attestations) ---

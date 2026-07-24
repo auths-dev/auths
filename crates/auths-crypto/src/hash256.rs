@@ -30,6 +30,29 @@ impl Hash256 {
     pub fn into_inner(self) -> [u8; 32] {
         self.0
     }
+
+    /// Parse a 64-character hex string (with an optional prefix such as `"sha256:"`) into a `Hash256`.
+    pub fn from_hex_prefixed(s: &str, expected_prefix: Option<&str>) -> Result<Self, String> {
+        let clean = match expected_prefix {
+            Some(prefix) => s
+                .strip_prefix(prefix)
+                .ok_or_else(|| format!("expected prefix '{prefix}'")),
+            None => {
+                if let Some(stripped) = s.strip_prefix("sha256:") {
+                    Ok(stripped)
+                } else {
+                    Ok(s)
+                }
+            }
+        }?;
+
+        let bytes = hex::decode(clean).map_err(|e| format!("invalid hex: {e}"))?;
+        let array: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| "hash digest must be exactly 32 bytes (64 hex characters)".to_string())?;
+
+        Ok(Self(array))
+    }
 }
 
 impl From<[u8; 32]> for Hash256 {

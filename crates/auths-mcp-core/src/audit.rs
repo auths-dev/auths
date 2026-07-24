@@ -535,7 +535,8 @@ impl fmt::Display for LogReadError {
 /// anything that is not `[A-Za-z0-9_-]` to `_` (defensive — a `did:keri:E…` tail is base64url and
 /// already safe; this only guards a malformed key from escaping the directory).
 fn safe_key(delegation: &str) -> String {
-    let tail = delegation.strip_prefix("did:keri:").unwrap_or(delegation);
+    let parsed = auths_verifier::IdentityDID::parse(delegation).ok();
+    let tail = parsed.as_ref().map(|d| d.prefix()).unwrap_or(delegation);
     if tail.is_empty() || tail == "." || tail == ".." {
         return "_".to_string();
     }

@@ -100,9 +100,10 @@ pub fn rotate_keri_identity(
         ));
     }
 
-    let prefix = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
+    let parsed_did = auths_verifier::IdentityDID::parse(did.as_str()).map_err(|_| {
         InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
     })?;
+    let prefix = parsed_did.prefix();
 
     let kel = GitKel::new(&repo, prefix);
     let events = kel
@@ -224,10 +225,10 @@ pub fn rotate_registry_identity(
         ));
     }
 
-    let prefix_str = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
+    let parsed_did = auths_verifier::IdentityDID::parse(did.as_str()).map_err(|_| {
         InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
     })?;
-    let prefix = Prefix::new_unchecked(prefix_str.to_string());
+    let prefix = Prefix::new_unchecked(parsed_did.prefix().to_string());
 
     let state = backend
         .get_key_state(&prefix)
@@ -388,10 +389,10 @@ pub fn rotate_registry_identity_multi(
         ));
     }
 
-    let prefix_str = did.as_str().strip_prefix("did:keri:").ok_or_else(|| {
+    let parsed_did = auths_verifier::IdentityDID::parse(did.as_str()).map_err(|_| {
         InitError::InvalidData(format!("Invalid DID format, expected 'did:keri:': {}", did))
     })?;
-    let prefix = Prefix::new_unchecked(prefix_str.to_string());
+    let prefix = Prefix::new_unchecked(parsed_did.prefix().to_string());
 
     let state = backend
         .get_key_state(&prefix)

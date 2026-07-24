@@ -93,10 +93,10 @@ pub fn activity_signing_bytes(doc: &ActivityV1) -> Result<Vec<u8>, EvidenceError
 /// let seed = activity_seed_id(&doc);
 /// ```
 pub fn activity_seed_id(doc: &ActivityV1) -> auths_anchor::SeedId {
-    let agent_tail = doc
-        .subject
-        .agent
-        .strip_prefix("did:keri:")
+    let agent_did = auths_verifier::IdentityDID::parse(&doc.subject.agent).ok();
+    let agent_tail = agent_did
+        .as_ref()
+        .map(|d| d.prefix())
         .unwrap_or(&doc.subject.agent);
     auths_anchor::SeedId::derive(&doc.subject.root, &doc.subject.agent, agent_tail)
 }
@@ -512,12 +512,9 @@ pub fn verify_activity_against_registry(
 
     let backend =
         GitRegistryBackend::from_config_unchecked(RegistryConfig::single_tenant(registry));
-    let agent_tail = doc
-        .subject
-        .agent
-        .strip_prefix("did:keri:")
-        .unwrap_or(&doc.subject.agent);
-    let prefix = Prefix::new(agent_tail.to_string())
+    let parsed_agent = auths_verifier::IdentityDID::parse(&doc.subject.agent)
+        .map_err(|e| EvidenceError::Input(format!("agent DID: {e}")))?;
+    let prefix = Prefix::new(parsed_agent.prefix().to_string())
         .map_err(|e| EvidenceError::Input(format!("agent prefix: {e}")))?;
     let state = backend
         .get_key_state(&prefix)
