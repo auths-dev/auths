@@ -162,7 +162,6 @@ pub enum RootCommand {
 
     // ── Internal (visible via --help-all) ──
     #[command(hide = true)]
-    #[command(hide = true)]
     Emergency(EmergencyCommand),
     #[command(hide = true)]
     Daemon(DaemonCommand),

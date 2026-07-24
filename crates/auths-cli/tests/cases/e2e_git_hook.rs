@@ -39,10 +39,7 @@ fn test_e2e_agent_commit_hook() {
     // We need to inject the same PATH that TestEnv uses so it can find auths and auths-sign
     let path = std::env::var("PATH").unwrap_or_default();
     let target_dir = assert_cmd::cargo::cargo_bin("auths-sign");
-    let bin_dir = target_dir
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    let bin_dir = target_dir.parent().unwrap().to_path_buf();
     let env_path = format!("{}:{}", bin_dir.display(), path);
 
     bash_cmd

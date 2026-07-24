@@ -156,7 +156,7 @@ struct CommandGroup {
 const HELP_GROUPS: &[CommandGroup] = &[
     CommandGroup {
         heading: "Primary",
-        commands: &["init", "sign", "verify", "status", "whoami"],
+        commands: &["init", "sign", "verify", "status", "whoami", "agent"],
     },
     CommandGroup {
         heading: "Setup & Troubleshooting",
@@ -215,7 +215,6 @@ fn print_grouped_help(show_all: bool) -> Result<()> {
         // Internal commands (always hidden, even in --help-all context)
         let internal = [
             "emergency",
-            "agent",
             "witness",
             "scim",
             "commit",

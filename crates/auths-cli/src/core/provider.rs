@@ -42,18 +42,19 @@ impl PassphraseProvider for CliPassphraseProvider {
         let password = rpassword::prompt_password("Enter passphrase: ")
             .context("Failed to read passphrase from terminal") // Add context using anyhow
             .map_err(|e| {
-                // Map the anyhow::Error (wrapping std::io::Error) to AgentError
-                // Consider adding a specific AgentError variant like UserInputCancelled or IOFailed
-                eprintln!("Error reading passphrase: {:?}", e); // Log the specific error
-                // For now, map generic IO errors. A more specific mapping could be done.
                 if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
-                    // Example: Check for specific kinds like Interrupted if needed
-                    // if io_err.kind() == std::io::ErrorKind::Interrupted {
-                    //     return AgentError::UserInputCancelled;
-                    // }
-                    AgentError::IO(std::io::Error::new(io_err.kind(), format!("{}", e))) // Create a new IO error to own the message
+                    if io_err.raw_os_error() == Some(6) {
+                        eprintln!("\nHeadless environment detected. Run `auths agent prompt` to configure your environment.\n");
+                        return AgentError::IO(std::io::Error::new(
+                            io_err.kind(),
+                            "Headless environment detected. No terminal available for passphrase prompt.",
+                        ));
+                    }
+                    eprintln!("Error reading passphrase: {:?}", e);
+                    AgentError::IO(std::io::Error::new(io_err.kind(), format!("{}", e)))
                 } else {
-                    AgentError::SecurityError(format!("Failed to get passphrase: {}", e)) // Fallback
+                    eprintln!("Error reading passphrase: {:?}", e);
+                    AgentError::SecurityError(format!("Failed to get passphrase: {}", e))
                 }
             })?;
 
