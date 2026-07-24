@@ -25,6 +25,7 @@ use auths_verifier::types::CanonicalDid;
 
 use crate::context::AuthsContext;
 use crate::domains::agents::error::AgentError;
+use crate::signing::PassphraseProvider;
 
 /// Result of adding a delegated agent.
 #[derive(Debug, Clone)]
@@ -107,11 +108,19 @@ pub fn add_scoped(
             .map_err(|e| AgentError::IdentityNotFound {
                 did: format!("identity load failed: {e}"),
             })?;
-    let root_prefix = parse_did_keri(managed.controller_did.as_str()).map_err(|e| {
-        AgentError::IdentityNotFound {
-            did: format!("invalid root did:keri: {e}"),
-        }
-    })?;
+    let (parent_did, _, _) =
+        ctx.key_storage
+            .load_key(root_alias)
+            .map_err(|e| AgentError::IdentityNotFound {
+                did: format!(
+                    "parent key alias '{}' load failed: {e}",
+                    root_alias.as_str()
+                ),
+            })?;
+    let root_prefix =
+        parse_did_keri(parent_did.as_str()).map_err(|e| AgentError::IdentityNotFound {
+            did: format!("invalid parent did:keri: {e}"),
+        })?;
     let (_pk, root_curve) = extract_public_key_bytes(
         ctx.key_storage.as_ref(),
         root_alias,
@@ -125,6 +134,11 @@ pub fn add_scoped(
     // registry — its granted scope is anchored by ITS delegator, never self-asserted.
     enforce_scope_subset(ctx, &root_prefix, root_alias, scope)?;
 
+    let cached_provider = Arc::new(auths_core::signing::CachedPassphraseProvider::new(
+        ctx.passphrase_provider.clone(),
+        std::time::Duration::from_secs(300),
+    ));
+
     let agent = incept_delegated_device(
         Arc::clone(&ctx.registry),
         &root_prefix,
@@ -132,7 +146,7 @@ pub fn add_scoped(
         root_curve,
         agent_alias,
         agent_curve,
-        ctx.passphrase_provider.as_ref(),
+        cached_provider.as_ref(),
         ctx.key_storage.as_ref(),
     )
     .map_err(AgentError::DelegationError)?;
@@ -145,7 +159,7 @@ pub fn add_scoped(
         root_alias,
         root_curve,
         &agent.device_prefix,
-        ctx.passphrase_provider.as_ref(),
+        cached_provider.as_ref(),
         ctx.key_storage.as_ref(),
     )
     .map_err(AgentError::DelegationError)?;
@@ -162,7 +176,7 @@ pub fn add_scoped(
                 capabilities: scope.to_vec(),
                 expires_at,
             },
-            ctx.passphrase_provider.as_ref(),
+            cached_provider.as_ref(),
             ctx.key_storage.as_ref(),
         )
         .map_err(AgentError::DelegationError)?;
@@ -172,8 +186,9 @@ pub fn add_scoped(
     // agent), persisted and KEL-anchored through the same path device links
     // use. Exported identity bundles then carry a walkable delegation chain —
     // a provenance leg independent of the KEL events themselves.
-    record_delegation_attestation(
+    record_delegation_attestation_with_provider(
         ctx,
+        cached_provider.as_ref(),
         &managed.controller_did,
         &managed.storage_id,
         root_alias,
@@ -321,7 +336,7 @@ pub fn add_bulk(
 /// This is what puts a programmatically delegated agent into the identity's
 /// attestation chain.
 #[allow(clippy::too_many_arguments)]
-fn record_delegation_attestation(
+pub fn record_delegation_attestation(
     ctx: &AuthsContext,
     identity_did: &IdentityDID,
     rid: &str,
@@ -331,12 +346,35 @@ fn record_delegation_attestation(
     agent_did: &IdentityDID,
     expires_at: Option<i64>,
 ) -> Result<(), AgentError> {
-    let (agent_pk, agent_pk_curve) = extract_public_key_bytes(
-        ctx.key_storage.as_ref(),
-        agent_alias,
+    record_delegation_attestation_with_provider(
+        ctx,
         ctx.passphrase_provider.as_ref(),
+        identity_did,
+        rid,
+        root_alias,
+        root_prefix,
+        agent_alias,
+        agent_did,
+        expires_at,
     )
-    .map_err(AgentError::CryptoError)?;
+}
+
+/// Record a delegation attestation using a custom passphrase provider.
+#[allow(clippy::too_many_arguments)]
+pub fn record_delegation_attestation_with_provider(
+    ctx: &AuthsContext,
+    passphrase_provider: &dyn PassphraseProvider,
+    identity_did: &IdentityDID,
+    rid: &str,
+    root_alias: &KeyAlias,
+    root_prefix: &auths_id::keri::types::Prefix,
+    agent_alias: &KeyAlias,
+    agent_did: &IdentityDID,
+    expires_at: Option<i64>,
+) -> Result<(), AgentError> {
+    let (agent_pk, agent_pk_curve) =
+        extract_public_key_bytes(ctx.key_storage.as_ref(), agent_alias, passphrase_provider)
+            .map_err(AgentError::CryptoError)?;
     let now = ctx.clock.now();
     let meta = AttestationMetadata {
         timestamp: Some(now),
@@ -364,7 +402,7 @@ fn record_delegation_attestation(
             oidc_binding: None,
         },
         &signer,
-        ctx.passphrase_provider.as_ref(),
+        passphrase_provider,
     )
     .map_err(AgentError::AttestationError)?;
     let mut batch = auths_id::storage::registry::backend::AtomicWriteBatch::new();
@@ -373,7 +411,7 @@ fn record_delegation_attestation(
         ctx.registry.as_ref(),
         &signer,
         root_alias,
-        ctx.passphrase_provider.as_ref(),
+        passphrase_provider,
         root_prefix,
         &attestation,
         &mut batch,
@@ -497,7 +535,7 @@ fn resolve_delegator_authority(
 }
 
 /// One agent delegated by the current identity, with its revocation status.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AgentInfo {
     /// The agent's `did:keri:`.
     pub agent_did: String,

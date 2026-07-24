@@ -1,6 +1,5 @@
 //! Signing abstractions and DID resolution.
 
-use crate::crypto::signer::decrypt_keypair;
 use crate::error::AgentError;
 use crate::storage::keychain::{IdentityDID, KeyAlias, KeyStorage};
 
@@ -276,56 +275,13 @@ impl<S: KeyStorage + Send + Sync + 'static> SecureSigner for StorageSigner<S> {
         passphrase_provider: &dyn PassphraseProvider,
         message: &[u8],
     ) -> Result<Vec<u8>, AgentError> {
-        // Hardware backends (Secure Enclave, HSM) handle signing internally
-        if self.storage.is_hardware_backend() {
-            #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
-            {
-                let (_identity_did, _role, handle) = self.storage.load_key(alias)?;
-                return crate::storage::secure_enclave::sign_with_handle(&handle, message);
-            }
-            #[cfg(not(all(target_os = "macos", feature = "keychain-secure-enclave")))]
-            {
-                return Err(AgentError::BackendUnavailable {
-                    backend: self.storage.backend_name(),
-                    reason: "hardware signing not available on this platform".into(),
-                });
-            }
-        }
-
-        let (_identity_did, _role, encrypted_data) = self.storage.load_key(alias)?;
-
-        const MAX_ATTEMPTS: u8 = 3;
-        let mut attempt = 0u8;
-        let key_bytes = loop {
-            let prompt = if attempt == 0 {
-                format!("Enter passphrase for key '{}' to sign:", alias)
-            } else {
-                format!(
-                    "Incorrect passphrase, try again ({}/{}):",
-                    attempt + 1,
-                    MAX_ATTEMPTS
-                )
-            };
-
-            let passphrase = passphrase_provider.get_passphrase(&prompt)?;
-
-            match decrypt_keypair(&encrypted_data, &passphrase) {
-                Ok(kb) => break kb,
-                Err(AgentError::IncorrectPassphrase) if attempt + 1 < MAX_ATTEMPTS => {
-                    passphrase_provider.on_incorrect_passphrase(&prompt);
-                    attempt += 1;
-                }
-                Err(e) => return Err(e),
-            }
-        };
-
-        // parse curve-tagged seed and dispatch sign on curve.
-        // Previously hardcoded sign_ed25519_sync which silently produced garbage
-        // signatures for P-256 identities.
-        let parsed = auths_crypto::parse_key_material(&key_bytes)
-            .map_err(|e| AgentError::KeyDeserializationError(e.to_string()))?;
-        auths_crypto::typed_sign(&parsed.seed, message)
-            .map_err(|e| AgentError::CryptoError(format!("signing failed: {}", e)))
+        let (sig, _pubkey, _curve) = crate::storage::keychain::sign_with_key(
+            &self.storage,
+            alias,
+            passphrase_provider,
+            message,
+        )?;
+        Ok(sig)
     }
 
     fn sign_for_identity(

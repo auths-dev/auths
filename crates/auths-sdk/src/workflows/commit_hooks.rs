@@ -54,7 +54,7 @@ pub const PREPARE_COMMIT_MSG_HOOK: &str = r#"#!/bin/sh
 # Chains to the repo's own hook when one exists.
 
 MSG_FILE="$1"
-AUTHS_HOME="${AUTHS_REPO:-$HOME/.auths}"
+AUTHS_HOME="${AUTHS_HOME:-${AUTHS_REPO:-$HOME/.auths}}"
 TRAILERS="$AUTHS_HOME/commit-trailers"
 
 if [ -f "$TRAILERS" ]; then

@@ -46,6 +46,7 @@ pub(crate) fn validate_capabilities(capabilities: &[String]) -> PyResult<()> {
 pub(crate) fn make_keychain_config(passphrase: &str, repo_path: &str) -> EnvironmentConfig {
     EnvironmentConfig {
         auths_home: Some(repo_path.into()),
+        auths_repo: None,
         keychain: KeychainConfig {
             backend: Some("file".to_string()),
             file_path: None,

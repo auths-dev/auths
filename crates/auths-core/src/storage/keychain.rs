@@ -2,7 +2,7 @@
 
 use crate::config::EnvironmentConfig;
 use crate::error::AgentError;
-use crate::paths::auths_home_with_config;
+use crate::paths::AuthsPaths;
 use log::{info, warn};
 use std::sync::Arc;
 
@@ -203,6 +203,60 @@ impl PartialEq<String> for KeyAlias {
     }
 }
 
+/// A strongly typed reference to a signing key, which could either be a bare alias
+/// or a fully qualified URI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SigningKeyRef {
+    /// A raw key alias with no scheme prefix (e.g. `main-device`).
+    Alias(KeyAlias),
+    /// A key identifier specified as a URI (e.g. `auths:main-device`).
+    Uri {
+        /// The scheme parsed from the URI.
+        scheme: String,
+        /// The parsed key alias.
+        alias: KeyAlias,
+    },
+}
+
+impl SigningKeyRef {
+    /// Parses a string into a `SigningKeyRef`.
+    pub fn parse(input: &str) -> Result<Self, AgentError> {
+        if let Some(rest) = input.strip_prefix("auths:") {
+            if rest.is_empty() {
+                return Err(AgentError::InvalidInput(
+                    "Invalid Auths key format: alias cannot be empty. Use 'auths:<alias>'".into(),
+                ));
+            }
+            if rest.contains(':') {
+                return Err(AgentError::InvalidInput(
+                    "Invalid Auths key format: alias cannot contain colons".into(),
+                ));
+            }
+            let alias = KeyAlias::new(rest)?;
+            Ok(Self::Uri {
+                scheme: "auths".to_string(),
+                alias,
+            })
+        } else if input.contains(':') {
+            Err(AgentError::InvalidInput(format!(
+                "Unsupported key scheme or format in '{}'. Only 'auths:<alias>' or bare alias allowed.",
+                input
+            )))
+        } else {
+            let alias = KeyAlias::new(input)?;
+            Ok(Self::Alias(alias))
+        }
+    }
+
+    /// Extracts the underlying bare key alias, regardless of how it was specified.
+    pub fn bare_alias(&self) -> &KeyAlias {
+        match self {
+            Self::Alias(alias) => alias,
+            Self::Uri { alias, .. } => alias,
+        }
+    }
+}
+
 /// Migrate a legacy single-key alias `{alias}` to the multi-key form
 /// `{alias}--0`.
 ///
@@ -338,6 +392,12 @@ pub trait KeyStorage: Send + Sync {
         false
     }
 
+    /// Returns true if the specific key stored under `alias` is a hardware key.
+    fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+        let _ = alias;
+        self.is_hardware_backend()
+    }
+
     /// Re-associates an existing stored key with a different identity DID
     /// without touching the key material.
     ///
@@ -418,7 +478,7 @@ pub fn extract_public_key_bytes(
     alias: &KeyAlias,
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
 ) -> Result<(Vec<u8>, auths_crypto::CurveType), AgentError> {
-    if keychain.is_hardware_backend() {
+    if keychain.is_hardware_key(alias) {
         // Hardware backends store opaque handles — get public key from hardware
         let (_, _role, _handle) = keychain.load_key(alias)?;
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
@@ -464,7 +524,7 @@ pub fn sign_with_key(
     passphrase_provider: &dyn crate::signing::PassphraseProvider,
     message: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>, auths_crypto::CurveType), AgentError> {
-    if keychain.is_hardware_backend() {
+    if keychain.is_hardware_key(alias) {
         let (_, _role, _handle) = keychain.load_key(alias)?;
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         {
@@ -560,9 +620,9 @@ fn get_platform_default(
         #[cfg(feature = "keychain-secure-enclave")]
         {
             if super::secure_enclave::is_available()
-                && let Ok(home) = auths_home_with_config(config)
+                && let Ok(paths) = AuthsPaths::resolve_with_config(config, None)
             {
-                match super::secure_enclave::SecureEnclaveKeyStorage::new(&home) {
+                match super::secure_enclave::SecureEnclaveKeyStorage::new(&paths.home_dir) {
                     Ok(storage) => {
                         log::info!("Using Secure Enclave (Touch ID signing)");
                         return Ok(Box::new(storage));
@@ -665,12 +725,13 @@ fn get_backend_by_name(
         #[cfg(all(target_os = "macos", feature = "keychain-secure-enclave"))]
         "secure-enclave" => {
             info!("Using Secure Enclave backend (AUTHS_KEYCHAIN_BACKEND=secure-enclave)");
-            let home =
-                auths_home_with_config(config).map_err(|e| AgentError::BackendInitFailed {
+            let paths = AuthsPaths::resolve_with_config(config, None).map_err(|e| {
+                AgentError::BackendInitFailed {
                     backend: "secure-enclave",
-                    error: format!("failed to resolve auths home: {e}"),
-                })?;
-            let storage = super::secure_enclave::SecureEnclaveKeyStorage::new(&home)?;
+                    error: format!("failed to resolve auths paths: {e}"),
+                }
+            })?;
+            let storage = super::secure_enclave::SecureEnclaveKeyStorage::new(&paths.home_dir)?;
             Ok(Box::new(storage))
         }
         _ => {
@@ -686,7 +747,7 @@ fn get_backend_by_name(
 /// Construct an `EncryptedFileStorage` from the provided config.
 ///
 /// Uses `config.keychain.file_path` when set; otherwise resolves the default
-/// path from `config.auths_home` (or `~/.auths/keys.enc`).
+/// path from `AuthsPaths::resolve_with_config`.
 /// Sets the password from `config.keychain.passphrase` when present.
 fn new_encrypted_file_storage(
     config: &EnvironmentConfig,
@@ -694,9 +755,9 @@ fn new_encrypted_file_storage(
     let storage = if let Some(ref path) = config.keychain.file_path {
         EncryptedFileStorage::with_path(path.clone())?
     } else {
-        let home =
-            auths_home_with_config(config).map_err(|e| AgentError::StorageError(e.to_string()))?;
-        EncryptedFileStorage::new(&home)?
+        let paths = AuthsPaths::resolve_with_config(config, None)
+            .map_err(|e: crate::paths::AuthsHomeError| AgentError::StorageError(e.to_string()))?;
+        EncryptedFileStorage::with_path(paths.keychain_file)?
     };
 
     if let Some(ref passphrase) = config.keychain.passphrase {
@@ -790,6 +851,23 @@ impl KeyStorage for Arc<dyn KeyStorage + Send + Sync> {
     fn is_hardware_backend(&self) -> bool {
         self.as_ref().is_hardware_backend()
     }
+    // Forward to inner storage so backends like SecureEnclave can distinguish software vs hardware keys
+    fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+        self.as_ref().is_hardware_key(alias)
+    }
+    fn rebind_identity(
+        &self,
+        alias: &KeyAlias,
+        identity_did: &IdentityDID,
+    ) -> Result<(), AgentError> {
+        self.as_ref().rebind_identity(alias, identity_did)
+    }
+    fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().export_public_key(alias)
+    }
+    fn sign_raw(&self, alias: &KeyAlias, message: &[u8]) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().sign_raw(alias, message)
+    }
 }
 
 impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
@@ -834,6 +912,23 @@ impl KeyStorage for Box<dyn KeyStorage + Send + Sync> {
     }
     fn is_hardware_backend(&self) -> bool {
         self.as_ref().is_hardware_backend()
+    }
+    // Forward to inner storage so backends like SecureEnclave can distinguish software vs hardware keys
+    fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+        self.as_ref().is_hardware_key(alias)
+    }
+    fn rebind_identity(
+        &self,
+        alias: &KeyAlias,
+        identity_did: &IdentityDID,
+    ) -> Result<(), AgentError> {
+        self.as_ref().rebind_identity(alias, identity_did)
+    }
+    fn export_public_key(&self, alias: &KeyAlias) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().export_public_key(alias)
+    }
+    fn sign_raw(&self, alias: &KeyAlias, message: &[u8]) -> Result<Vec<u8>, AgentError> {
+        self.as_ref().sign_raw(alias, message)
     }
 }
 
@@ -1025,5 +1120,92 @@ mod tests {
             .unwrap();
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0].as_str(), "deploy-agent");
+    }
+
+    struct MockHardwareKeyStorage;
+    impl KeyStorage for MockHardwareKeyStorage {
+        fn store_key(
+            &self,
+            _: &KeyAlias,
+            _: &IdentityDID,
+            _: KeyRole,
+            _: &[u8],
+        ) -> Result<(), AgentError> {
+            Ok(())
+        }
+        fn load_key(&self, _: &KeyAlias) -> Result<(IdentityDID, KeyRole, Vec<u8>), AgentError> {
+            Err(AgentError::StorageError("not found".into()))
+        }
+        fn delete_key(&self, _: &KeyAlias) -> Result<(), AgentError> {
+            Ok(())
+        }
+        fn list_aliases(&self) -> Result<Vec<KeyAlias>, AgentError> {
+            Ok(vec![])
+        }
+        fn list_aliases_for_identity(&self, _: &IdentityDID) -> Result<Vec<KeyAlias>, AgentError> {
+            Ok(vec![])
+        }
+        fn get_identity_for_alias(&self, _: &KeyAlias) -> Result<IdentityDID, AgentError> {
+            Err(AgentError::StorageError("not found".into()))
+        }
+        fn backend_name(&self) -> &'static str {
+            "MockHardware"
+        }
+        fn is_hardware_backend(&self) -> bool {
+            true
+        }
+        fn is_hardware_key(&self, alias: &KeyAlias) -> bool {
+            // Returns false for software key aliases to simulate software/hardware key differentiation
+            alias.as_str() != "software-key"
+        }
+    }
+
+    #[test]
+    fn test_arc_and_box_forward_is_hardware_key() {
+        let mock = MockHardwareKeyStorage;
+        let hw_alias = KeyAlias::new_unchecked("hardware-key");
+        let sw_alias = KeyAlias::new_unchecked("software-key");
+
+        let arc_storage: Arc<dyn KeyStorage + Send + Sync> = Arc::new(mock);
+        assert!(arc_storage.is_hardware_key(&hw_alias));
+        assert!(!arc_storage.is_hardware_key(&sw_alias));
+
+        let box_storage: Box<dyn KeyStorage + Send + Sync> = Box::new(MockHardwareKeyStorage);
+        assert!(box_storage.is_hardware_key(&hw_alias));
+        assert!(!box_storage.is_hardware_key(&sw_alias));
+    }
+
+    #[test]
+    fn test_signing_key_ref_parsing() {
+        // Valid bare alias
+        let ref1 = SigningKeyRef::parse("agent-label").unwrap();
+        assert!(matches!(ref1, SigningKeyRef::Alias(ref a) if a.as_str() == "agent-label"));
+        assert_eq!(ref1.bare_alias().as_str(), "agent-label");
+
+        // Valid auths uri
+        let ref2 = SigningKeyRef::parse("auths:agent-label").unwrap();
+        match &ref2 {
+            SigningKeyRef::Uri { scheme, alias } => {
+                assert_eq!(scheme, "auths");
+                assert_eq!(alias.as_str(), "agent-label");
+            }
+            _ => panic!("Expected Uri variant"),
+        }
+        assert_eq!(ref2.bare_alias().as_str(), "agent-label");
+
+        // Invalid schemes
+        let err = SigningKeyRef::parse("http:agent-label").unwrap_err();
+        assert!(err.to_string().contains("Unsupported key scheme"));
+
+        let err = SigningKeyRef::parse("ssh:key").unwrap_err();
+        assert!(err.to_string().contains("Unsupported key scheme"));
+
+        // Invalid multiple colons
+        let err = SigningKeyRef::parse("auths:foo:bar").unwrap_err();
+        assert!(err.to_string().contains("cannot contain colons"));
+
+        // Empty alias string
+        let err = SigningKeyRef::parse("auths:").unwrap_err();
+        assert!(err.to_string().contains("alias cannot be empty"));
     }
 }

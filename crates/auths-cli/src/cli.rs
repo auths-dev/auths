@@ -10,6 +10,7 @@ use crate::commands::approval::ApprovalCommand;
 use crate::commands::artifact::ArtifactCommand;
 use crate::commands::audit::AuditCommand;
 use crate::commands::auth::AuthCommand;
+use crate::commands::daemon::DaemonCommand;
 
 use crate::commands::commit::CommitCmd;
 use crate::commands::completions::CompletionsCommand;
@@ -101,6 +102,7 @@ pub enum RootCommand {
     Verify(UnifiedVerifyCommand),
     Status(StatusCommand),
     Whoami(WhoamiCommand),
+    Agent(AgentCommand),
 
     // ── Setup & Troubleshooting ──
     Demo(DemoCommand),
@@ -162,7 +164,7 @@ pub enum RootCommand {
     #[command(hide = true)]
     Emergency(EmergencyCommand),
     #[command(hide = true)]
-    Agent(AgentCommand),
+    Daemon(DaemonCommand),
     /// Aggregate treasury cap across a manager's sub-delegated agents.
     Treasury(TreasuryCommand),
     /// Verify witness-network anchor evidence (duplicity proofs) offline.

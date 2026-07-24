@@ -9,6 +9,7 @@ pub mod artifact;
 pub mod audit;
 pub mod auth;
 pub mod cache;
+pub mod daemon;
 
 pub mod commit;
 pub mod completions;

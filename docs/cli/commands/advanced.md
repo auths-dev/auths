@@ -1966,13 +1966,13 @@ Generate an incident report
 | `-q, --quiet` | — | Suppress non-essential output |
 <!-- END GENERATED: auths emergency report -->
 
-### auths agent start
+### auths daemon start
 
 ```bash
-auths agent start
+auths daemon start
 ```
 
-<!-- BEGIN GENERATED: auths agent start -->
+<!-- BEGIN GENERATED: auths daemon start -->
 Start the SSH agent daemon
 
 | Flag | Default | Description |
@@ -1983,15 +1983,15 @@ Start the SSH agent daemon
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent start -->
+<!-- END GENERATED: auths daemon start -->
 
-### auths agent stop
+### auths daemon stop
 
 ```bash
-auths agent stop
+auths daemon stop
 ```
 
-<!-- BEGIN GENERATED: auths agent stop -->
+<!-- BEGIN GENERATED: auths daemon stop -->
 Stop the SSH agent daemon
 
 | Flag | Default | Description |
@@ -1999,15 +1999,15 @@ Stop the SSH agent daemon
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent stop -->
+<!-- END GENERATED: auths daemon stop -->
 
-### auths agent status
+### auths daemon status
 
 ```bash
-auths agent status
+auths daemon status
 ```
 
-<!-- BEGIN GENERATED: auths agent status -->
+<!-- BEGIN GENERATED: auths daemon status -->
 Show agent status
 
 | Flag | Default | Description |
@@ -2015,15 +2015,15 @@ Show agent status
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent status -->
+<!-- END GENERATED: auths daemon status -->
 
-### auths agent env
+### auths daemon env
 
 ```bash
-auths agent env
+auths daemon env
 ```
 
-<!-- BEGIN GENERATED: auths agent env -->
+<!-- BEGIN GENERATED: auths daemon env -->
 Output shell environment for SSH_AUTH_SOCK (use with eval)
 
 | Flag | Default | Description |
@@ -2032,15 +2032,15 @@ Output shell environment for SSH_AUTH_SOCK (use with eval)
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent env -->
+<!-- END GENERATED: auths daemon env -->
 
-### auths agent lock
+### auths daemon lock
 
 ```bash
-auths agent lock
+auths daemon lock
 ```
 
-<!-- BEGIN GENERATED: auths agent lock -->
+<!-- BEGIN GENERATED: auths daemon lock -->
 Lock the agent (clear keys from memory)
 
 | Flag | Default | Description |
@@ -2048,15 +2048,15 @@ Lock the agent (clear keys from memory)
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent lock -->
+<!-- END GENERATED: auths daemon lock -->
 
-### auths agent unlock
+### auths daemon unlock
 
 ```bash
-auths agent unlock
+auths daemon unlock
 ```
 
-<!-- BEGIN GENERATED: auths agent unlock -->
+<!-- BEGIN GENERATED: auths daemon unlock -->
 Unlock the agent (re-load keys)
 
 | Flag | Default | Description |
@@ -2065,15 +2065,15 @@ Unlock the agent (re-load keys)
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent unlock -->
+<!-- END GENERATED: auths daemon unlock -->
 
-### auths agent install-service
+### auths daemon install-service
 
 ```bash
-auths agent install-service
+auths daemon install-service
 ```
 
-<!-- BEGIN GENERATED: auths agent install-service -->
+<!-- BEGIN GENERATED: auths daemon install-service -->
 Install as a system service (launchd on macOS, systemd on Linux)
 
 | Flag | Default | Description |
@@ -2084,15 +2084,15 @@ Install as a system service (launchd on macOS, systemd on Linux)
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent install-service -->
+<!-- END GENERATED: auths daemon install-service -->
 
-### auths agent uninstall-service
+### auths daemon uninstall-service
 
 ```bash
-auths agent uninstall-service
+auths daemon uninstall-service
 ```
 
-<!-- BEGIN GENERATED: auths agent uninstall-service -->
+<!-- BEGIN GENERATED: auths daemon uninstall-service -->
 Uninstall the system service
 
 | Flag | Default | Description |
@@ -2100,7 +2100,7 @@ Uninstall the system service
 | `-j, --json` | — | Emit machine-readable JSON |
 | `-q, --quiet` | — | Suppress non-essential output |
 | `--repo <REPO>` | — | Override the local storage directory (default: ~/.auths) |
-<!-- END GENERATED: auths agent uninstall-service -->
+<!-- END GENERATED: auths daemon uninstall-service -->
 
 ### auths witness up
 

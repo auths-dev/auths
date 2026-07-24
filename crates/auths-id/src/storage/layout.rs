@@ -336,19 +336,17 @@ use crate::storage::registry::shard::sanitize_did;
 /// `~/.auths` work correctly (the shell does not expand tildes when they
 /// arrive via clap default values or programmatic callers).
 #[cfg(feature = "git-storage")]
-#[allow(clippy::disallowed_methods)] // INVARIANT: designated home-dir resolution for repo path
 pub fn resolve_repo_path(repo_arg: Option<PathBuf>) -> Result<PathBuf, StorageError> {
-    match repo_arg {
-        Some(pathbuf) if !pathbuf.as_os_str().is_empty() => {
-            auths_utils::path::expand_tilde(&pathbuf)
-                .map_err(|e| StorageError::NotFound(e.to_string()))
+    let expanded = repo_arg.and_then(|p| {
+        if p.as_os_str().is_empty() {
+            None
+        } else {
+            auths_utils::path::expand_tilde(&p).ok()
         }
-        _ => {
-            let home = dirs::home_dir()
-                .ok_or_else(|| StorageError::NotFound("Could not find HOME directory".into()))?;
-            Ok(home.join(TOOL_PATH))
-        }
-    }
+    });
+    auths_core::paths::AuthsPaths::resolve(expanded.as_deref())
+        .map(|p| p.registry_dir)
+        .map_err(|e| StorageError::NotFound(e.to_string()))
 }
 
 /// Creates a Git namespace prefix string for a given DID.

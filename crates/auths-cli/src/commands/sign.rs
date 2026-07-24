@@ -142,7 +142,7 @@ fn execute_git_rebase(base: &str, trailers: &[String]) -> Result<()> {
     // Auths-* trailer replaces it in place rather than appending a second copy, so
     // a re-signed commit (the recovery rewrite) keeps exactly one trailer per token.
     let exec_cmd = format!(
-        "git -c trailer.ifexists=replace commit --amend --no-edit --no-verify{trailer_flags}"
+        "git -c trailer.ifexists=replace commit --amend -C HEAD --no-verify{trailer_flags}"
     );
     let output = crate::subprocess::git_command(&["rebase", "--exec", &exec_cmd, base])
         .output()
@@ -265,15 +265,31 @@ fn short_sha(sha: &str) -> &str {
 /// * `range` - A git ref or range (e.g., "HEAD", "main..HEAD").
 /// * `signer` - The resolved local signing identity (root + device DIDs).
 /// * `scope` - Capabilities this commit claims (emitted as an `Auths-Scope` trailer).
-fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String]) -> Result<()> {
+fn sign_commit_range(
+    range: &str,
+    signer: &LocalSigner,
+    scope: &[String],
+    autostash: bool,
+) -> Result<()> {
     ensure_repo_root_pin(signer);
     validate_scope(scope)?;
+
+    let mut stashed = false;
+    if autostash
+        && let Ok(out) = crate::subprocess::git_command(&["status", "--porcelain"]).output()
+        && !out.stdout.is_empty()
+    {
+        let _ =
+            crate::subprocess::git_command(&["stash", "push", "-m", "auths-autostash"]).output();
+        stashed = true;
+    }
+
     let trailers = commit_trailer_args(signer, scope);
     let is_range = range.contains("..");
-    if is_range {
+    let res = if is_range {
         let parts: Vec<&str> = range.splitn(2, "..").collect();
         let base = parts[0];
-        execute_git_rebase(base, &trailers)?;
+        execute_git_rebase(base, &trailers)
     } else {
         // `-c trailer.ifexists=replace`: amending a commit that already carries an
         // Auths-* trailer (a re-sign) replaces that trailer in place instead of
@@ -295,12 +311,21 @@ fn sign_commit_range(range: &str, signer: &LocalSigner, scope: &[String]) -> Res
             .context("Failed to spawn git commit --amend")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!(
+            Err(anyhow!(
                 "Failed to amend commit with signature. Ensure you have a commit to amend and no conflicting changes.\n\nGit reported: {}",
                 stderr.trim()
-            ));
+            ))
+        } else {
+            Ok(())
         }
+    };
+
+    if stashed {
+        let _ = crate::subprocess::git_command(&["stash", "pop"]).output();
     }
+
+    res?;
+
     // The amend succeeded, but git only attaches a signature when a signing program
     // is configured. Confirm one actually landed before claiming success — otherwise
     // `auths verify` would call this commit unsigned and the success line would lie.
@@ -372,6 +397,14 @@ pub struct SignCommand {
     /// reject a claim outside the signer's delegator-anchored grant. Commit-only.
     #[arg(long, value_delimiter = ',')]
     pub scope: Vec<String>,
+
+    /// Override the signing key alias (defaults to AUTHS_SIGNING_KEY or git config).
+    #[arg(long)]
+    pub signer: Option<String>,
+
+    /// Automatically stash and restore uncommitted working tree changes during re-signing.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    pub autostash: bool,
 }
 
 /// Handle the unified sign command.
@@ -415,7 +448,7 @@ pub fn handle_sign_unified(
         }
         SignTarget::CommitRange(range) => {
             let signer = resolve_signer_trailer(repo_opt.as_deref(), env_config)?;
-            sign_commit_range(&range, &signer, &cmd.scope)
+            sign_commit_range(&range, &signer, &cmd.scope, cmd.autostash)
         }
     }
 }

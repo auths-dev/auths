@@ -53,6 +53,44 @@ impl LocalSigner {
 /// // commit trailer: `Auths-Id: {signer.root_did}` + `Auths-Device: {signer.signer_did}`
 /// ```
 pub fn resolve_local_signer(ctx: &AuthsContext) -> Result<LocalSigner, SetupError> {
+    // Explicit signing key override (e.g., delegated agent `AUTHS_SIGNING_KEY="auths:agent-label"`).
+    if let Ok(key_alias_str) = std::env::var("AUTHS_SIGNING_KEY") {
+        let key_ref = auths_core::storage::keychain::SigningKeyRef::parse(&key_alias_str)
+            .map_err(|e| SetupError::InvalidSetupConfig(e.to_string()))?;
+        let alias = key_ref.bare_alias().clone();
+        if let Ok(key_info) = ctx.key_storage.load_key(&alias) {
+            let agent_did = key_info.0.to_string();
+            let agent_prefix = auths_id::keri::parse_did_keri(&agent_did)
+                .map_err(|e| SetupError::InvalidSetupConfig(format!("invalid agent DID: {e}")))?;
+
+            let (root_did, anchor_seq) = if let Ok(managed) = ctx.identity_storage.load_identity() {
+                let rd = managed.controller_did.to_string();
+                let seq = root_tip_seq(ctx, &rd);
+                (rd, seq)
+            } else if let Ok(auths_id::keri::Event::Dip(dip)) =
+                ctx.registry.get_event(&agent_prefix, 0)
+            {
+                let rd = format!("did:keri:{}", dip.di);
+                let seq = root_tip_seq(ctx, &rd);
+                (rd, seq)
+            } else {
+                return Err(SetupError::InvalidSetupConfig(format!(
+                    "AUTHS_SIGNING_KEY '{key_alias_str}' delegation info not found in registry"
+                )));
+            };
+
+            return Ok(LocalSigner {
+                signer_did: agent_did,
+                root_did,
+                anchor_seq,
+            });
+        } else {
+            return Err(SetupError::InvalidSetupConfig(format!(
+                "AUTHS_SIGNING_KEY '{key_alias_str}' not found in key storage"
+            )));
+        }
+    }
+
     // Root machine: prefer this root's delegated device #0 as the signer (its own AID,
     // distinct from the root) so identity_did != device_did. Fall back to the root
     // signing directly (a root identity with no delegated device — e.g. CI).

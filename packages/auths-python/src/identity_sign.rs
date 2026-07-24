@@ -23,6 +23,7 @@ fn make_signer(
     keychain_config.passphrase = Some(passphrase_str.clone());
     let env_config = EnvironmentConfig {
         auths_home: repo_path.map(Into::into),
+        auths_repo: None,
         keychain: keychain_config,
         ssh_agent_socket: None,
     };

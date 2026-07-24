@@ -10,4 +10,4 @@ Incorrect passphrase
 
 ## Suggestion
 
-Check your passphrase and try again. Set AUTHS_PASSPHRASE for automation, or run `auths agent start` for session caching
+Check your passphrase and try again. Set AUTHS_PASSPHRASE for automation

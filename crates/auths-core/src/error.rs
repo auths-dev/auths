@@ -166,9 +166,9 @@ impl AuthsErrorInfo for AgentError {
     fn suggestion(&self) -> Option<&'static str> {
         match self {
             Self::KeyNotFound => Some("Run `auths key list` to see available keys"),
-            Self::IncorrectPassphrase => Some(
-                "Check your passphrase and try again. Set AUTHS_PASSPHRASE for automation, or run `auths agent start` for session caching",
-            ),
+            Self::IncorrectPassphrase => {
+                Some("Check your passphrase and try again. Set AUTHS_PASSPHRASE for automation")
+            }
             Self::MissingPassphrase => {
                 Some("Provide a passphrase with --passphrase or set AUTHS_PASSPHRASE")
             }
@@ -181,7 +181,7 @@ impl AuthsErrorInfo for AgentError {
             }
             Self::GitError(_) => Some("Ensure you're in a Git repository"),
             Self::AgentLocked => {
-                Some("Run `auths agent unlock` or restart with `auths agent start`")
+                Some("Run `auths agent provision` to configure a new agent session")
             }
             Self::UserInputCancelled => {
                 Some("Run the command again and provide the required input")
