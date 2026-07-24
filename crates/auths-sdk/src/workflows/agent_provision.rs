@@ -132,7 +132,11 @@ pub fn provision_agent_machine(
     export_res?;
 
     // 4. Refresh commit-trailers
-    let _ = crate::workflows::commit_hooks::refresh_commit_trailers(ctx, &registry_dir);
+    if let Err(e) =
+        crate::workflows::commit_hooks::refresh_commit_trailers(ctx, &params.destination_dir)
+    {
+        eprintln!("Failed to refresh commit trailers for agent: {}", e);
+    }
 
     // 5. Generate env.sh
     let env_file_path = generate_environment_script(
