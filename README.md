@@ -1,5 +1,16 @@
 # Auths
 
+> [!IMPORTANT]
+> This repository is the experimental predecessor to the current
+> [Auths](https://auths.dev) implementation. Experimental `0.1.x` packages
+> were published from this project, but it was not released as the supported
+> Auths v1 product. The current implementation supersedes it and is developed
+> in [auths-dev/auths-proof](https://github.com/auths-dev/auths-proof), whose
+> repository name is a temporary coordinate. This repository remains available
+> as research history and prior art; new adopters should start at
+> [auths.dev](https://auths.dev). See the
+> [migration and deferral ledger](docs/PREDECESSOR_MIGRATION_LEDGER.md).
+
 [![CI](https://github.com/auths-dev/auths/actions/workflows/ci.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/ci.yml)
 [![Verify Commits](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/auths-dev/auths/actions/workflows/verify-commits.yml?query=branch%3Amain+event%3Apush)
 
