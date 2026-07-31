@@ -768,6 +768,7 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
+ "git2",
  "hex",
  "metrics",
  "reqwest",

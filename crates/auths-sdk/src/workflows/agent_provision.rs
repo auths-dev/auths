@@ -227,6 +227,7 @@ exec auths "$@"
 }
 
 /// Materializes an isolated delegate-machine registry by copying org KEL and stripping root subtrees.
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::disallowed_types)]
 pub fn materialize_agent_machine_registry(
     root_repo: &Path,
@@ -245,29 +246,21 @@ pub fn materialize_agent_machine_registry(
 
     let git_dir = agent_registry.join(".git");
     if git_dir.exists() {
-        let gd = git_dir.to_string_lossy().to_string();
-        let idx = git_dir.join("tmp-index");
-        let idx_s = idx.to_string_lossy().to_string();
+        let repo = git2::Repository::open(agent_registry)
+            .context("failed to open agent registry with git2")?;
 
-        let read_tree_status = Command::new("git")
-            .args(["--git-dir", &gd, "read-tree", "refs/auths/registry"])
-            .env("GIT_INDEX_FILE", &idx_s)
-            .status()
-            .context("failed to execute git read-tree")?;
+        let reference = repo
+            .find_reference("refs/auths/registry")
+            .context("refs/auths/registry not found")?;
+        let commit = reference
+            .peel_to_commit()
+            .context("refs/auths/registry does not point to a commit")?;
+        let tree = commit.tree().context("failed to get commit tree")?;
 
-        if !read_tree_status.success() {
-            anyhow::bail!("git read-tree failed with status: {}", read_tree_status);
-        }
-
-        let listed = Command::new("git")
-            .args(["--git-dir", &gd, "ls-files"])
-            .env("GIT_INDEX_FILE", &idx_s)
-            .output()
-            .context("failed to execute git ls-files")?;
-
-        if !listed.status.success() {
-            anyhow::bail!("git ls-files failed with status: {}", listed.status);
-        }
+        let mut index = repo.index().context("failed to open repo index")?;
+        index
+            .read_tree(&tree)
+            .context("failed to read tree into index")?;
 
         let subtree = format!(
             "identities/{}/{}/{}/",
@@ -276,19 +269,42 @@ pub fn materialize_agent_machine_registry(
             agent_pfx
         );
 
-        for line in String::from_utf8_lossy(&listed.stdout).lines() {
-            if line.contains(&subtree) {
-                let rm_status = Command::new("git")
-                    .args(["--git-dir", &gd, "rm", "--cached", "-q", "--", line])
-                    .env("GIT_INDEX_FILE", &idx_s)
-                    .status()
-                    .context("failed to execute git rm")?;
-
-                if !rm_status.success() {
-                    anyhow::bail!("git rm failed with status: {}", rm_status);
+        let mut paths_to_remove = Vec::new();
+        for entry in index.iter() {
+            if let Some(path_str) = String::from_utf8_lossy(&entry.path).to_string().into() {
+                // Historically, the bash script removed paths that CONTAINED the agent subtree.
+                // We faithfully replicate the exact semantic string match to avoid regressions.
+                if path_str.contains(&subtree) {
+                    paths_to_remove.push(entry.path.clone());
                 }
             }
         }
+
+        for path_bytes in paths_to_remove {
+            if let Ok(path_str) = std::str::from_utf8(&path_bytes) {
+                let path = std::path::Path::new(path_str);
+                index.remove_dir(path, 0).ok();
+                index.remove(path, 0).ok();
+            }
+        }
+
+        let new_tree_oid = index
+            .write_tree()
+            .context("failed to write new tree to index")?;
+        let new_tree = repo
+            .find_tree(new_tree_oid)
+            .context("failed to find newly written tree")?;
+
+        let sig = git2::Signature::now("Auths Agent Provision", "agent@auths.local")?;
+        repo.commit(
+            Some("refs/auths/registry"),
+            &sig,
+            &sig,
+            "Isolate agent registry context",
+            &new_tree,
+            &[&commit],
+        )
+        .context("failed to commit isolated registry tree")?;
     }
 
     Ok(())

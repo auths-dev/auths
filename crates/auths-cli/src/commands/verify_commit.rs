@@ -653,19 +653,15 @@ async fn verify_one_commit(
     result
 }
 
-/// The raw git commit object (headers + message + `gpgsig`), exactly as produced by
-/// `git cat-file commit <sha>` — the bytes the SSH signature is computed over.
+/// The raw git commit object (headers + message + `gpgsig`), read using `git2` — the bytes the SSH signature is computed over.
 fn raw_commit_object(sha: &str) -> Result<String> {
-    let output = git_command(&["cat-file", "commit", sha])
-        .output()
-        .context("Failed to run git cat-file")?;
-    if !output.status.success() {
-        return Err(anyhow!(
-            "git cat-file commit {sha} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    String::from_utf8(output.stdout).context("Commit object is not valid UTF-8")
+    let repo = git2::Repository::discover(".").context("failed to discover git repository")?;
+    let oid = git2::Oid::from_str(sha).context("invalid SHA format")?;
+    let odb = repo.odb().context("failed to get git ODB")?;
+    let obj = odb
+        .read(oid)
+        .context("Failed to read commit object from database")?;
+    String::from_utf8(obj.data().to_vec()).context("Commit object is not valid UTF-8")
 }
 
 /// Map a [`CommitVerdict`] onto a CLI result row: the valid flag, the verified signer,

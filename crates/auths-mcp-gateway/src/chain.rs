@@ -397,45 +397,37 @@ impl Chain {
         std::fs::write(work.join("call.json"), canonical)?;
 
         // Fresh repo so each call is its own signed commit.
-        must(
-            Command::new("git").arg("init").arg("-q").current_dir(&work),
-            "git init (per-call work repo)",
-        )?;
+        let repo = git2::Repository::init(&work)?;
+
         // Configure git to sign as the agent through `auths-sign` (git's SSH signing
         // program). `auths sign HEAD` amends the commit, which triggers this signer.
         let sign_prog = locate_auths_sign(&self.auths_bin)?;
-        for (k, v) in [
-            ("gpg.format", "ssh".to_string()),
-            ("gpg.ssh.program", sign_prog.to_string_lossy().to_string()),
-            ("user.signingkey", format!("auths:{}", self.agent_alias)),
-            ("commit.gpgsign", "true".to_string()),
-            ("user.name", self.agent_alias.clone()),
-            ("user.email", format!("{}@auths.local", self.agent_alias)),
-        ] {
-            must(
-                Command::new("git")
-                    .args(["config", k, &v])
-                    .current_dir(&work),
-                "git config (agent signer)",
-            )?;
+        {
+            let mut config = repo.config()?;
+            config.set_str("gpg.format", "ssh")?;
+            config.set_str("gpg.ssh.program", &sign_prog.to_string_lossy())?;
+            config.set_str("user.signingkey", &format!("auths:{}", self.agent_alias))?;
+            config.set_bool("commit.gpgsign", true)?;
+            config.set_str("user.name", &self.agent_alias)?;
+            config.set_str("user.email", &format!("{}@auths.local", self.agent_alias))?;
         }
-        must(
-            Command::new("git")
-                .args(["add", "call.json"])
-                .current_dir(&work),
-            "git add",
-        )?;
+
+        let mut index = repo.index()?;
+        index.add_path(std::path::Path::new("call.json"))?;
+        let tree_id = index.write_tree()?;
+        let tree = repo.find_tree(tree_id)?;
+
         // The signed `Auths-Prev` trailer links this call to the prior spend-log record (the hash of
         // its commit), or a fixed genesis sentinel for the first — so the offline audit can verify
         // the log is a continuous chain and catch a DROPPED or reordered record, not only an edited
         // one. The SSH signature applied below covers it.
-        must(
-            Command::new("git")
-                .args(["commit", "-qm", "tools/call", "--no-gpg-sign"])
-                .args(["--trailer", &format!("Auths-Prev:{prev_binding}")])
-                .current_dir(&work),
-            "git commit",
+        let sig = git2::Signature::now(
+            &self.agent_alias,
+            &format!("{}@auths.local", self.agent_alias),
         )?;
+        let msg = format!("tools/call\n\nAuths-Prev:{}", prev_binding);
+        repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[])?;
+
         // Sign as the agent against its delegate-machine registry, claiming the
         // capability the call exercises (the verifier checks it ⊆ anchored scope).
         must(
@@ -445,23 +437,17 @@ impl Chain {
                 .current_dir(&work),
             "auths sign HEAD --scope",
         )?;
-        let sha = must(
-            Command::new("git")
-                .args(["rev-parse", "HEAD"])
-                .current_dir(&work),
-            "git rev-parse HEAD",
-        )?;
-        let sha = String::from_utf8_lossy(&sha.stdout).trim().to_string();
-        // The raw commit object text the verifier parses (gpgsig + trailers).
-        let raw = must(
-            Command::new("git")
-                .args(["cat-file", "commit", &sha])
-                .current_dir(&work),
-            "git cat-file commit",
-        )?;
-        self.inproc.learn_call(capability, &raw.stdout);
+
+        // Read back the amended, signed commit
+        let head_commit = repo.head()?.peel_to_commit()?;
+        let sha = head_commit.id().to_string();
+        let odb = repo.odb()?;
+        let obj = odb.read(head_commit.id())?;
+        let raw_stdout = obj.data().to_vec();
+
+        self.inproc.learn_call(capability, &raw_stdout);
         metrics::counter!(crate::metrics_http::SIGN_TOTAL, "path" => "subprocess").increment(1);
-        Ok((raw.stdout, sha))
+        Ok((raw_stdout, sha))
     }
 
     /// Sign a SETTLEMENT commit: the agent attests its OWN settled cost under the dedicated
@@ -497,52 +483,42 @@ impl Chain {
         std::fs::create_dir_all(&work)?;
         // A minimal payload so the commit has a tree; the cost lives in the SIGNED trailers below.
         std::fs::write(work.join("settle.json"), b"{}")?;
-        must(
-            Command::new("git").arg("init").arg("-q").current_dir(&work),
-            "git init (per-settlement work repo)",
-        )?;
+        // Fresh repo so each settlement is its own signed commit.
+        let repo = git2::Repository::init(&work)?;
+
         let sign_prog = locate_auths_sign(&self.auths_bin)?;
-        for (k, v) in [
-            ("gpg.format", "ssh".to_string()),
-            ("gpg.ssh.program", sign_prog.to_string_lossy().to_string()),
-            ("user.signingkey", format!("auths:{}", self.agent_alias)),
-            ("commit.gpgsign", "true".to_string()),
-            ("user.name", self.agent_alias.clone()),
-            ("user.email", format!("{}@auths.local", self.agent_alias)),
-        ] {
-            must(
-                Command::new("git")
-                    .args(["config", k, &v])
-                    .current_dir(&work),
-                "git config (agent signer)",
-            )?;
+        {
+            let mut config = repo.config()?;
+            config.set_str("gpg.format", "ssh")?;
+            config.set_str("gpg.ssh.program", &sign_prog.to_string_lossy())?;
+            config.set_str("user.signingkey", &format!("auths:{}", self.agent_alias))?;
+            config.set_bool("commit.gpgsign", true)?;
+            config.set_str("user.name", &self.agent_alias)?;
+            config.set_str("user.email", &format!("{}@auths.local", self.agent_alias))?;
         }
-        must(
-            Command::new("git")
-                .args(["add", "settle.json"])
-                .current_dir(&work),
-            "git add",
-        )?;
+
+        let mut index = repo.index()?;
+        index.add_path(std::path::Path::new("settle.json"))?;
+        let tree_id = index.write_tree()?;
+        let tree = repo.find_tree(tree_id)?;
+
         // The settled cost as SIGNED trailers — the SSH signature covers the whole message.
-        must(
-            Command::new("git")
-                .args(["commit", "-qm", "tools/settle", "--no-gpg-sign"])
-                .args(["--trailer", &format!("Auths-Settle-Call:{call_binding}")])
-                .args(["--trailer", &format!("Auths-Settle-Rail:{rail}")])
-                // The settled cost/cumulative are stamped as raw cent integers (the audit parses
-                // them back with `parse::<u64>()`) — unwrap Cents at this trailer-format boundary.
-                .args([
-                    "--trailer",
-                    &format!("Auths-Settle-Cents:{}", actual.get().get()),
-                ])
-                .args(["--trailer", &format!("Auths-Settle-Ref:{rail_ref}")])
-                .args([
-                    "--trailer",
-                    &format!("Auths-Settle-Cumulative:{}", cumulative_cents.get()),
-                ])
-                .current_dir(&work),
-            "git commit (settlement, signed cost trailers)",
+        let sig = git2::Signature::now(
+            &self.agent_alias,
+            &format!("{}@auths.local", self.agent_alias),
         )?;
+        let msg = format!(
+            "tools/settle\n\n\
+             Auths-Settle-Call:{call_binding}\n\
+             Auths-Settle-Rail:{rail}\n\
+             Auths-Settle-Cents:{}\n\
+             Auths-Settle-Ref:{rail_ref}\n\
+             Auths-Settle-Cumulative:{}",
+            actual.get().get(),
+            cumulative_cents.get()
+        );
+        repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[])?;
+
         must(
             Command::new(&self.auths_bin)
                 .args(["--repo", &self.agent_repo.to_string_lossy(), "sign", "HEAD"])
@@ -550,21 +526,15 @@ impl Chain {
                 .current_dir(&work),
             "auths sign HEAD --scope settle",
         )?;
-        let sha = must(
-            Command::new("git")
-                .args(["rev-parse", "HEAD"])
-                .current_dir(&work),
-            "git rev-parse HEAD",
-        )?;
-        let sha = String::from_utf8_lossy(&sha.stdout).trim().to_string();
-        let raw = must(
-            Command::new("git")
-                .args(["cat-file", "commit", &sha])
-                .current_dir(&work),
-            "git cat-file commit",
-        )?;
-        self.inproc.learn_settlement(&raw.stdout);
-        Ok((raw.stdout, sha))
+
+        let head_commit = repo.head()?.peel_to_commit()?;
+        let sha = head_commit.id().to_string();
+        let odb = repo.odb()?;
+        let obj = odb.read(head_commit.id())?;
+        let raw_stdout = obj.data().to_vec();
+
+        self.inproc.learn_settlement(&raw_stdout);
+        Ok((raw_stdout, sha))
     }
 }
 
@@ -616,76 +586,52 @@ fn materialize_agent_machine(org: &Path, agent: &Path, root_did: &str) -> anyhow
         Command::new("cp").arg("-R").arg(org).arg(agent),
         "cp -R org registry → agent machine",
     )?;
-    let git_dir = agent.join(".git");
-    let gd = git_dir.to_string_lossy().to_string();
-    let idx = git_dir.join("tmp-index");
-    let idx_s = idx.to_string_lossy().to_string();
 
-    must(
-        Command::new("git")
-            .args(["--git-dir", &gd, "read-tree", "refs/auths/registry"])
-            .env("GIT_INDEX_FILE", &idx_s),
-        "read-tree refs/auths/registry",
-    )?;
-    let listed = must(
-        Command::new("git")
-            .args(["--git-dir", &gd, "ls-files"])
-            .env("GIT_INDEX_FILE", &idx_s),
-        "ls-files (agent index)",
-    )?;
+    let repo = git2::Repository::open(agent)?;
+    let reference = repo.find_reference("refs/auths/registry")?;
+    let commit = reference.peel_to_commit()?;
+    let tree = commit.tree()?;
+
+    let mut index = repo.index()?;
+    index.read_tree(&tree)?;
+
     let subtree = format!(
         "identities/{}/{}/{}/",
         &root_pfx[0..2.min(root_pfx.len())],
         &root_pfx[2..4.min(root_pfx.len())],
         root_pfx
     );
-    for line in String::from_utf8_lossy(&listed.stdout).lines() {
-        if line.contains(&subtree) {
-            must(
-                Command::new("git")
-                    .args(["--git-dir", &gd, "rm", "--cached", "-q", "--", line])
-                    .env("GIT_INDEX_FILE", &idx_s),
-                "rm --cached (drop org icp subtree)",
-            )?;
+
+    let mut paths_to_remove = Vec::new();
+    for entry in index.iter() {
+        if let Some(path_str) = String::from_utf8_lossy(&entry.path).to_string().into() {
+            if path_str.contains(&subtree) {
+                paths_to_remove.push(entry.path.clone());
+            }
         }
     }
-    let tree = must(
-        Command::new("git")
-            .args(["--git-dir", &gd, "write-tree"])
-            .env("GIT_INDEX_FILE", &idx_s),
-        "write-tree (agent-only)",
+
+    for path_bytes in paths_to_remove {
+        if let Ok(path_str) = std::str::from_utf8(&path_bytes) {
+            let path = std::path::Path::new(path_str);
+            index.remove_dir(path, 0).ok();
+            index.remove(path, 0).ok();
+        }
+    }
+
+    let new_tree_oid = index.write_tree()?;
+    let new_tree = repo.find_tree(new_tree_oid)?;
+
+    let sig = git2::Signature::now("Auths Agent Provision", "agent@auths.local")?;
+    repo.commit(
+        Some("refs/auths/registry"),
+        &sig,
+        &sig,
+        "agent-only",
+        &new_tree,
+        &[&commit],
     )?;
-    let tree = String::from_utf8_lossy(&tree.stdout).trim().to_string();
-    let parent = must(
-        Command::new("git").args(["--git-dir", &gd, "rev-parse", "refs/auths/registry"]),
-        "rev-parse refs/auths/registry",
-    )?;
-    let parent = String::from_utf8_lossy(&parent.stdout).trim().to_string();
-    let commit = must(
-        Command::new("git").args([
-            "--git-dir",
-            &gd,
-            "commit-tree",
-            &tree,
-            "-p",
-            &parent,
-            "-m",
-            "agent-only",
-        ]),
-        "commit-tree (agent-only)",
-    )?;
-    let commit = String::from_utf8_lossy(&commit.stdout).trim().to_string();
-    must(
-        Command::new("git").args([
-            "--git-dir",
-            &gd,
-            "update-ref",
-            "refs/auths/registry",
-            &commit,
-        ]),
-        "update-ref refs/auths/registry",
-    )?;
-    std::fs::remove_file(&idx).ok();
+
     Ok(())
 }
 
